@@ -28,8 +28,6 @@ export class ShoppingCartEntity {
   @Column({ type: 'text', nullable: true })
   spc_comments: string;
 
-  // --- Relationships (IMPROVED from diagram) ---
-
   @ManyToOne(() => MemberEntity, (member) => member.shoppingCartItems)
   @JoinColumn({ name: 'mem_id' }) // Using ID for relation
   member: MemberEntity;

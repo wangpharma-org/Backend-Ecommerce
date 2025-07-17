@@ -24,12 +24,8 @@ export class ShoppingHeadEntity {
   @Column({ type: 'datetime', nullable: true })
   soh_saledate: Date;
 
-  // ... (ใส่ฟิลด์ soh_ ที่เหลือ)
-
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
   soh_lottotal: number;
-
-  // --- Relationships ---
 
   @ManyToOne(() => MemberEntity, (member) => member.orders)
   @JoinColumn({ name: 'mem_id' })
