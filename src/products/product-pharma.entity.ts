@@ -42,8 +42,6 @@ export class ProductPharmaEntity {
   @Column({ length: 6, nullable: true })
   pp_eatunit: string;
 
-  // ... (ใส่ฟิลด์ pp_ อื่นๆ ที่เหลือตามลำดับ และกำหนดเป็น nullable: true)
-
   @Column({ length: 11, nullable: true })
   pp_print: string;
 

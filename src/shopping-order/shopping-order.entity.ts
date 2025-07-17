@@ -31,10 +31,6 @@ export class ShoppingOrderEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2 })
   spo_total_decimal: number;
 
-  // ... (ใส่ฟิลด์ spo_ ที่เหลือ)
-
-  // --- Relationships ---
-
   @ManyToOne(() => ShoppingHeadEntity, (header) => header.details)
   @JoinColumn({ name: 'shopping_order_hd_id' })
   orderHeader: ShoppingHeadEntity;

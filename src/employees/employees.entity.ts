@@ -9,19 +9,13 @@ export class EmployeeEntity {
   @Column({ unique: true, length: 20 })
   emp_code: string;
 
-  @Column({ unique: true, length: 12 })
-  emp_username: string;
-
-  @Column({ length: 255 })
-  emp_password_sha: string; // Storing hashed password
-
   @Column({ length: 255, nullable: true })
   emp_nickname: string;
 
-  @Column({ length: 255 })
+  @Column({ length: 255, nullable: true })
   emp_firstname: string;
 
-  @Column({ length: 255 })
+  @Column({ length: 255, nullable: true })
   emp_lastname: string;
 
   @Column({ length: 255, nullable: true })
