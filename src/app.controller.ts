@@ -1,4 +1,4 @@
-import { Body, Controller, Request, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 
@@ -9,7 +9,7 @@ export class AppController {
     private readonly authService: AuthService,
   ) {}
 
-  @Post('/login')
+  @Post('/ecom/login')
   async signin(
     @Body() data: { username: string; password: string },
   ): Promise<SigninResponse> {
