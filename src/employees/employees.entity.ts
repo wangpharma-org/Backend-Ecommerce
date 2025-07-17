@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
-import { MemberEntity } from 'src/members/members.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Entity({ name: 'employee' })
 export class EmployeeEntity {
@@ -24,6 +24,6 @@ export class EmployeeEntity {
   @Column({ length: 255, nullable: true })
   emp_img_path: string;
 
-  @OneToMany(() => MemberEntity, (member) => member.employee)
-  members: MemberEntity[];
+  @OneToMany(() => UserEntity, (member) => member.employee)
+  members: UserEntity[];
 }

@@ -1,4 +1,14 @@
-import { Entity, Column, PrimaryColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryColumn,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+} from 'typeorm';
+import { EmployeeEntity } from 'src/employees/employees.entity';
+import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -91,4 +101,16 @@ export class UserEntity {
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   mem_Rcoin: number;
+
+  @ManyToOne(() => EmployeeEntity, (employee) => employee.members, {
+    nullable: true,
+  })
+  @JoinColumn({ name: 'emp_id_ref' })
+  employee: EmployeeEntity;
+
+  @OneToMany(() => ShoppingCartEntity, (cart) => cart.member)
+  shoppingCartItems: ShoppingCartEntity[];
+
+  @OneToMany(() => ShoppingHeadEntity, (orderHd) => orderHd.member)
+  orders: ShoppingHeadEntity[];
 }

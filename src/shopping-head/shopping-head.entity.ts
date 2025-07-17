@@ -7,7 +7,7 @@ import {
   JoinColumn,
   OneToMany,
 } from 'typeorm';
-import { MemberEntity } from 'src/members/members.entity';
+import { UserEntity } from 'src/users/users.entity';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 
 @Entity({ name: 'shopping_head' })
@@ -27,9 +27,9 @@ export class ShoppingHeadEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
   soh_lottotal: number;
 
-  @ManyToOne(() => MemberEntity, (member) => member.orders)
+  @ManyToOne(() => UserEntity, (member) => member.orders)
   @JoinColumn({ name: 'mem_id' })
-  member: MemberEntity;
+  member: UserEntity;
 
   @OneToMany(() => ShoppingOrderEntity, (detail) => detail.orderHeader)
   details: ShoppingOrderEntity[];
