@@ -6,8 +6,6 @@ import { UsersModule } from './users/users.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmployeesModule } from './employees/employees.module';
-import { MembersService } from './members/members.service';
-import { MembersModule } from './members/members.module';
 import { ProductsModule } from './products/products.module';
 import { ShoppingCartModule } from './shopping-cart/shopping-cart.module';
 import { ShoppingOrderService } from './shopping-order/shopping-order.service';
@@ -36,13 +34,12 @@ import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
       }),
     }),
     EmployeesModule,
-    MembersModule,
     ProductsModule,
     ShoppingCartModule,
     ShoppingOrderModule,
     ShoppingHeadModule,
   ],
   controllers: [AppController],
-  providers: [AppService, MembersService, ShoppingOrderService],
+  providers: [AppService, ShoppingOrderService],
 })
 export class AppModule {}

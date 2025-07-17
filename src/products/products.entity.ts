@@ -59,6 +59,21 @@ export class ProductEntity {
   @Column({ length: 60, nullable: true })
   pro_barcode3: string;
 
+  @Column({ length: 255, nullable: true })
+  pro_imgmain: string;
+
+  // @Column({ length: 255, nullable: true })
+  // pro_img: string;
+
+  // @Column({ length: 255, nullable: true })
+  // pro_U1: string;
+
+  // @Column({ length: 255, nullable: true })
+  // pro_U2: string;
+
+  // @Column({ length: 255, nullable: true })
+  // pro_U3: string;
+
   @Column({ type: 'enum', enum: ['Y', 'N'], default: 'N' })
   pro_isdrug: 'Y' | 'N';
 

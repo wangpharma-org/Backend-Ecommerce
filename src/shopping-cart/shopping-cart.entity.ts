@@ -5,7 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { MemberEntity } from 'src/members/members.entity';
+import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
 
 @Entity({ name: 'shopping_cart' })
@@ -28,9 +28,9 @@ export class ShoppingCartEntity {
   @Column({ type: 'text', nullable: true })
   spc_comments: string;
 
-  @ManyToOne(() => MemberEntity, (member) => member.shoppingCartItems)
+  @ManyToOne(() => UserEntity, (member) => member.shoppingCartItems)
   @JoinColumn({ name: 'mem_id' }) // Using ID for relation
-  member: MemberEntity;
+  member: UserEntity;
 
   @ManyToOne(() => ProductEntity, (product) => product.inCarts)
   @JoinColumn({ name: 'pro_id' }) // Using ID for relation
