@@ -46,6 +46,6 @@ export class ProductPharmaEntity {
   pp_print: string;
 
   @OneToOne(() => ProductEntity, (product) => product.pharmaDetails)
-  @JoinColumn({ name: 'pro_id' })
+  @JoinColumn({ name: 'pro_code' })
   product: ProductEntity;
 }
