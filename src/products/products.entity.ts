@@ -80,6 +80,12 @@ export class ProductEntity {
   @Column({ length: 30, nullable: true })
   pro_unit3: string;
 
+  @Column({ nullable: true })
+  pro_point: number;
+
+  @Column({ default: false })
+  pro_free: boolean;
+
   @Column({ type: 'enum', enum: ['Y', 'N'], default: 'N' })
   pro_isdrug: 'Y' | 'N';
 

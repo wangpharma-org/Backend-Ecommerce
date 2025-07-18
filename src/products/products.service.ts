@@ -9,13 +9,22 @@ export class ProductsService {
     private readonly productRepo: Repository<ProductEntity>,
   ) {}
 
-  async createProduct(product: ProductEntity): Promise<ProductEntity> {
+  async createProduct(product: ProductEntity) {
     try {
       const newProduct = this.productRepo.create(product);
-      return await this.productRepo.save(newProduct);
+      await this.productRepo.save(newProduct);
     } catch (error) {
       console.error('Error creating product:', error);
       throw new Error('Error creating product');
+    }
+  }
+
+  async updateProduct(product: ProductEntity) {
+    try {
+      await this.productRepo.update({ pro_code: product.pro_code }, product);
+      console.log('Product Update Sucesss');
+    } catch (error) {
+      console.error('Error updating product:', error);
     }
   }
 
@@ -51,6 +60,26 @@ export class ProductsService {
     } catch (error) {
       console.error('Error searching products:', error);
       throw new Error('Error searching products');
+    }
+  }
+
+  async listFree() {
+    try {
+      const data = await this.productRepo.find({
+        where: {
+          pro_free: true,
+        },
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_point: true,
+          pro_imgmain: true,
+        },
+      });
+      return data;
+    } catch (error) {
+      console.error('Error free products:', error);
+      throw new Error('Error free products');
     }
   }
 }
