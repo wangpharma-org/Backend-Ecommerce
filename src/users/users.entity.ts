@@ -33,6 +33,9 @@ export class UserEntity {
   @Column({ length: 7, nullable: true, default: null })
   mem_dayend: string;
 
+  @Column({ length: 6, nullable: true })
+  mem_price: string;
+
   @Column({ nullable: true, default: null })
   mem_timestart: Date;
 
@@ -41,9 +44,6 @@ export class UserEntity {
 
   @Column({ nullable: true, default: null })
   mem_type: number;
-
-  @Column({ length: 6, nullable: true, default: null })
-  mem_price: string;
 
   @Column({ length: 60, nullable: true, default: null })
   mem_taxid: string;
