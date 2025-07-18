@@ -22,31 +22,32 @@ export class ProductsService {
   async searchProducts(data: {
     keyword: string;
     offset: number;
-  }): Promise<ProductEntity[]> {
+  }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
-      const products = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_name LIKE :keyword', {
           keyword: `%${data.keyword}%`,
         })
-        .orWhere('JSON_CONTAINS(product.pro_keysearch, :jsonKeyword)', {
-          jsonKeyword: JSON.stringify(data.keyword),
-        })
+        .orWhere('product.pro_keysearch LIKE :keyword', {
+          keyword: `%${data.keyword}%`,
+        });
+
+      const totalCount = await qb.getCount();
+      const products = await qb
         .take(30)
         .skip(data.offset)
         .select([
           'product.pro_id',
           'product.pro_code',
           'product.pro_name',
-          'product.pro_nameEN',
-          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
           'product.pro_imgmain',
         ])
         .getMany();
-      return products;
+      return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
       throw new Error('Error searching products');

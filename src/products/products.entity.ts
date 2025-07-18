@@ -32,8 +32,8 @@ export class ProductEntity {
   @Column({ length: 255, nullable: true })
   pro_genericname: string;
 
-  @Column('json')
-  pro_keysearch: string[];
+  @Column({ nullable: true, length: 10000 })
+  pro_keysearch: string;
 
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
   pro_priceA: number;
