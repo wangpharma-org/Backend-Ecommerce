@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -23,5 +23,10 @@ export class AppController {
   async searchProducts(@Body() data: { keyword: string; offset: number }) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
+  }
+
+  @Get('/ecom/product-coin')
+  async productCoin() {
+    return await this.productsService.listFree();
   }
 }
