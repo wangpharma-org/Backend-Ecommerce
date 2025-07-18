@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
+import { ShoppingOrderEntity } from './shopping-order/shopping-order.entity';
+import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 
 @Controller()
 export class AppController {
@@ -9,7 +11,8 @@ export class AppController {
     private readonly appService: AppService,
     private readonly authService: AuthService,
     private readonly productsService: ProductsService,
-  ) {}
+    private readonly shoppingOrderService: ShoppingOrderService
+  ) { }
 
   @Post('/ecom/login')
   async signin(
@@ -29,4 +32,11 @@ export class AppController {
   async productCoin() {
     return await this.productsService.listFree();
   }
+
+  @Get('/ecom/last6/:memCode')
+  async getLast6Orders(@Param('memCode') memCode: string): Promise<ShoppingOrderEntity[]> {
+    return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+  }
+
+  
 }

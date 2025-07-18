@@ -40,6 +40,6 @@ import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
     ShoppingHeadModule,
   ],
   controllers: [AppController],
-  providers: [AppService, ShoppingOrderService],
+  providers: [AppService],
 })
 export class AppModule {}
