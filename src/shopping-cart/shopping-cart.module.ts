@@ -6,5 +6,6 @@ import { ShoppingCartEntity } from './shopping-cart.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([ShoppingCartEntity])],
   providers: [ShoppingCartService],
+  exports: [ShoppingCartService],
 })
 export class ShoppingCartModule {}

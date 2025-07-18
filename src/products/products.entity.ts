@@ -1,20 +1,11 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  OneToOne,
-  OneToMany,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, OneToOne, OneToMany } from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
-  @PrimaryGeneratedColumn()
-  pro_id: number;
-
-  @Column({ unique: true, length: 20 })
+  @PrimaryColumn({ unique: true, length: 20 })
   pro_code: string;
 
   @Column({ length: 255, nullable: true })

@@ -4,6 +4,7 @@ import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
 import { ShoppingOrderEntity } from './shopping-order/shopping-order.entity';
 import { ShoppingOrderService } from './shopping-order/shopping-order.service';
+import { ShoppingCartService } from './shopping-cart/shopping-cart.service';
 
 @Controller()
 export class AppController {
@@ -11,8 +12,9 @@ export class AppController {
     private readonly appService: AppService,
     private readonly authService: AuthService,
     private readonly productsService: ProductsService,
-    private readonly shoppingOrderService: ShoppingOrderService
-  ) { }
+    private readonly shoppingCartService: ShoppingCartService,
+    private readonly shoppingOrderService: ShoppingOrderService,
+  ) {}
 
   @Post('/ecom/login')
   async signin(
@@ -31,6 +33,25 @@ export class AppController {
   @Get('/ecom/product-coin')
   async productCoin() {
     return await this.productsService.listFree();
+  }
+
+  @Post('/ecom/product-add-cart')
+  async addProductCart(
+    @Body()
+    data: {
+      mem_code: string;
+      pro_code: string;
+      pro_unit: string;
+      amount: number;
+    },
+  ) {
+    console.log(data);
+    return await this.shoppingCartService.addProductCart(data);
+  }
+
+  @Get('/ecom/product-cart/:mem_code')
+  async getProductCart(@Param('mem_code') mem_code: string) {
+    return this.shoppingCartService.getProductCart(mem_code);
   }
 
   @Get('/ecom/last6/:memCode')

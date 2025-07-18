@@ -36,6 +36,6 @@ export class ShoppingOrderEntity {
   orderHeader: ShoppingHeadEntity;
 
   @ManyToOne(() => ProductEntity, (product) => product.inOrders)
-  @JoinColumn({ name: 'pro_id' })
+  @JoinColumn({ name: 'pro_code' })
   product: ProductEntity;
 }
