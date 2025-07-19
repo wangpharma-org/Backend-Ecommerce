@@ -51,7 +51,6 @@ export class ProductsService {
         .take(30)
         .skip(data.offset)
         .select([
-          // 'product.pro_id',
           'product.pro_code',
           'product.pro_name',
           'product.pro_priceA',

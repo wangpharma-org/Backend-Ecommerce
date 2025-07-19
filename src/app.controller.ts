@@ -14,7 +14,7 @@ export class AppController {
     private readonly productsService: ProductsService,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly shoppingOrderService: ShoppingOrderService,
-  ) {}
+  ) { }
 
   @Post('/ecom/login')
   async signin(
@@ -95,6 +95,4 @@ export class AppController {
   async getLast6Orders(@Param('memCode') memCode: string): Promise<ShoppingOrderEntity[]> {
     return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
   }
-
-  
 }

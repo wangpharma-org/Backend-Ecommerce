@@ -49,7 +49,7 @@ export class ShoppingCartService {
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
-  ) {}
+  ) { }
 
   async addProductCart(data: {
     mem_code: string;
@@ -243,4 +243,5 @@ export class ShoppingCartService {
       throw new Error(`Error in Get product Cart`);
     }
   }
+
 }
