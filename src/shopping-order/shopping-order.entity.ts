@@ -13,9 +13,6 @@ export class ShoppingOrderEntity {
   @PrimaryGeneratedColumn()
   spo_id: number;
 
-  @Column({ length: 11, nullable: true })
-  spo_runing: string;
-
   @Column({ type: 'decimal', precision: 16, scale: 2 })
   spo_qty: number;
 
