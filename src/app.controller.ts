@@ -5,6 +5,8 @@ import { ProductsService } from './products/products.service';
 import { ShoppingOrderEntity } from './shopping-order/shopping-order.entity';
 import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 import { ShoppingCartService } from './shopping-cart/shopping-cart.service';
+import { ShoppingHeadEntity } from './shopping-head/shopping-head.entity';
+import { ShoppingHeadService } from './shopping-head/shopping-head.service';
 
 @Controller()
 export class AppController {
@@ -14,6 +16,7 @@ export class AppController {
     private readonly productsService: ProductsService,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly shoppingOrderService: ShoppingOrderService,
+    private readonly shoppingHeadService: ShoppingHeadService
   ) { }
 
   @Post('/ecom/login')
@@ -94,5 +97,10 @@ export class AppController {
   @Get('/ecom/last6/:memCode')
   async getLast6Orders(@Param('memCode') memCode: string): Promise<ShoppingOrderEntity[]> {
     return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+  }
+
+  @Get('/ecom/all-order-member/:memCode')
+  async AllOrderByMember(@Param('memCode') memCode: string): Promise<ShoppingHeadEntity[]> {
+    return this.shoppingHeadService.AllOrderByMember(memCode)
   }
 }

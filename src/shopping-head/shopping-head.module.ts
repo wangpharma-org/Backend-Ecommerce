@@ -6,5 +6,6 @@ import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([ShoppingHeadEntity])],
   providers: [ShoppingHeadService],
+  exports: [ShoppingHeadService]
 })
 export class ShoppingHeadModule {}
