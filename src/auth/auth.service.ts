@@ -27,6 +27,14 @@ export class AuthService {
       name: user.mem_nameSite ?? '',
       mem_code: user.mem_code ?? '',
       price_option: user.mem_price ?? '',
+      mem_address: user.mem_address ?? '',
+      mem_village: user.mem_village ?? '',
+      mem_alley: user.mem_alley ?? '',
+      mem_tumbon: user.mem_tumbon ?? '',
+      mem_amphur: user.mem_amphur ?? '',
+      mem_province: user.mem_province ?? '',
+      mem_post: user.mem_post ?? '',
+      mem_phone: user.mem_phone ?? '',
     };
     const access_token = await this.jwtService.signAsync(payload, {
       expiresIn: '12h',
