@@ -38,6 +38,7 @@ import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
     ShoppingCartModule,
     ShoppingOrderModule,
     ShoppingHeadModule,
+    ShoppingCartModule,
   ],
   controllers: [AppController],
   providers: [AppService, ShoppingOrderService],
