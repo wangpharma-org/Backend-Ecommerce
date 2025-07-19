@@ -16,7 +16,7 @@ export class ShoppingCartEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2 })
   spc_amount: number;
 
-  @Column({ length: 3, nullable: true })
+  @Column({ length: 50, nullable: true })
   spc_unit: string;
 
   @Column({ length: 20 })
