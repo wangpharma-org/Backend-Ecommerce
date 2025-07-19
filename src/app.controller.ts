@@ -16,8 +16,7 @@ export class AppController {
     private readonly productsService: ProductsService,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly shoppingOrderService: ShoppingOrderService,
-    private readonly shoppingHeadService: ShoppingHeadService
-  ) { }
+  ) {}
 
   @Post('/ecom/login')
   async signin(
@@ -98,9 +97,10 @@ export class AppController {
   async getLast6Orders(@Param('memCode') memCode: string): Promise<ShoppingOrderEntity[]> {
     return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
   }
-
-  @Get('/ecom/all-order-member/:memCode')
-  async AllOrderByMember(@Param('memCode') memCode: string): Promise<ShoppingHeadEntity[]> {
-    return this.shoppingHeadService.AllOrderByMember(memCode)
+  @Get('/ecom/summary-cart/:memCode')
+  async getDataFromCart(@Param('memCode') memCode: string): Promise<any> {
+    return this.shoppingCartService.getDataFromCart(memCode);
   }
+
+  
 }

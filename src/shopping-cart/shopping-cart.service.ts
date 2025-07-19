@@ -44,8 +44,26 @@ interface RawProductCart {
   spc_checked: number;
 }
 
+
+// Define a DTO for the return type
+export interface CartSummary {
+  cart: any[];
+  sum_order: {
+    sum_price: number;
+    discount: number;
+    shipping_price: number;
+    total: number;
+    coin: number;
+  };
+  member: any;
+  payment_type: any;
+  shipping_type: any;
+}
+
+
 @Injectable()
 export class ShoppingCartService {
+  [x: string]: any;
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
