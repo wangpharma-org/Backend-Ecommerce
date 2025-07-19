@@ -35,7 +35,7 @@ export class ProductsService {
     try {
       const qb = this.productRepo
         .createQueryBuilder('product')
-        .where('product.pro_free = false')
+        .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
             qb.where('product.pro_name LIKE :keyword', {
@@ -51,7 +51,7 @@ export class ProductsService {
         .take(30)
         .skip(data.offset)
         .select([
-          'product.pro_id',
+          // 'product.pro_id',
           'product.pro_code',
           'product.pro_name',
           'product.pro_priceA',

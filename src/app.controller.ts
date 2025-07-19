@@ -49,6 +49,43 @@ export class AppController {
     return await this.shoppingCartService.addProductCart(data);
   }
 
+  @Post('/ecom/product-check-all-cart')
+  async checkProductCartAll(
+    @Body()
+    data: {
+      mem_code: string;
+      type: string;
+    },
+  ) {
+    console.log(data);
+    return await this.shoppingCartService.checkedProductCartAll(data);
+  }
+
+  @Post('/ecom/product-delete-cart')
+  async deleteProductCart(
+    @Body()
+    data: {
+      mem_code: string;
+      pro_code: string;
+    },
+  ) {
+    console.log(data);
+    return await this.shoppingCartService.handleDeleteCart(data);
+  }
+
+  @Post('/ecom/product-check-cart')
+  async checkProductCart(
+    @Body()
+    data: {
+      mem_code: string;
+      pro_code: string;
+      type: string;
+    },
+  ) {
+    console.log(data);
+    return await this.shoppingCartService.checkedProductCart(data);
+  }
+
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Param('mem_code') mem_code: string) {
     return this.shoppingCartService.getProductCart(mem_code);
