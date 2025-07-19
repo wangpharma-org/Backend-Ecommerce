@@ -48,6 +48,9 @@ export class UserEntity {
   @Column({ length: 60, nullable: true, default: null })
   mem_taxid: string;
 
+  @Column({ length: 10, nullable: true, default: null })
+  mem_phone: string;
+
   @Column({ nullable: true, default: null })
   mem_office: boolean;
 
