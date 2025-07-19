@@ -11,6 +11,12 @@ import { ShoppingCartModule } from './shopping-cart/shopping-cart.module';
 import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 import { ShoppingOrderModule } from './shopping-order/shopping-order.module';
 import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
+import { UserEntity } from './users/users.entity';
+import { ShoppingOrderEntity } from './shopping-order/shopping-order.entity';
+import { ShoppingHeadEntity } from './shopping-head/shopping-head.entity';
+import { ShoppingCartEntity } from './shopping-cart/shopping-cart.entity';
+import { ProductEntity } from './products/products.entity';
+import { ProductPharmaEntity } from './products/product-pharma.entity';
 
 @Module({
   imports: [
@@ -38,9 +44,8 @@ import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
     ShoppingCartModule,
     ShoppingOrderModule,
     ShoppingHeadModule,
-    ShoppingCartModule,
   ],
   controllers: [AppController],
-  providers: [AppService, ShoppingOrderService],
+  providers: [AppService],
 })
 export class AppModule {}
