@@ -3,6 +3,7 @@ import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
 import { ShoppingCartService } from './shopping-cart/shopping-cart.service';
+import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 
 @Controller()
 export class AppController {
@@ -11,6 +12,7 @@ export class AppController {
     private readonly authService: AuthService,
     private readonly productsService: ProductsService,
     private readonly shoppingCartService: ShoppingCartService,
+    private readonly shoppingOrderService: ShoppingOrderService,
   ) {}
 
   @Post('/ecom/login')
@@ -25,6 +27,20 @@ export class AppController {
   async searchProducts(@Body() data: { keyword: string; offset: number }) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
+  }
+
+  @Post('/ecom/submit-order')
+  async submitOrder(
+    @Body()
+    data: {
+      mem_code: string;
+      total_price: number;
+      listFree: [{ pro_code: string; amount: number; unit: string }] | null;
+      priceOption: string;
+    },
+  ) {
+    console.log('data in controller:', data);
+    return await this.shoppingOrderService.submitOrder(data);
   }
 
   @Get('/ecom/product-coin')

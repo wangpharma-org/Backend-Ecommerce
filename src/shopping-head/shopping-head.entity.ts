@@ -15,8 +15,8 @@ export class ShoppingHeadEntity {
   @PrimaryGeneratedColumn()
   soh_id: number;
 
-  @Column({ length: 11 })
-  soh_runing: string;
+  @Column({ length: 20, nullable: true, unique: true })
+  soh_running: string;
 
   @CreateDateColumn()
   soh_datetime: Date;
@@ -24,13 +24,31 @@ export class ShoppingHeadEntity {
   @Column({ type: 'datetime', nullable: true })
   soh_saledate: Date;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 16,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
   soh_sumprice: number;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 16,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
   soh_coin_recieve: number;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 16,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
   soh_coin_use: number;
 
   @Column({ length: 50, nullable: true })
@@ -39,10 +57,10 @@ export class ShoppingHeadEntity {
   @Column({ length: 50, nullable: true })
   soh_shipping_type: string;
 
-  @Column({ default: 0 })
+  @Column({ default: 0, nullable: true })
   soh_listsale: number;
 
-  @Column({ default: 0 })
+  @Column({ default: 0, nullable: true })
   soh_free: number;
 
   @ManyToOne(() => UserEntity, (member) => member.orders)

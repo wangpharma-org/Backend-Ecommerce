@@ -13,23 +13,29 @@ export class ShoppingOrderEntity {
   @PrimaryGeneratedColumn()
   spo_id: number;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2 })
+  @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_qty: number;
 
-  @Column({ length: 20 })
+  @Column({ length: 20, nullable: true })
   spo_unit: string;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2 })
+  // @Column({ name: 'soh_running', length: 20, nullable: true })
+  // soh_running: string;
+
+  @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_price_unit: number;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2 })
-  spo_ppu: number;
+  // @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
+  // spo_ppu: number;
 
-  @Column({ type: 'decimal', precision: 16, scale: 2 })
+  @Column({ length: 20, nullable: true })
+  pro_code: string;
+
+  @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_total_decimal: number;
 
   @ManyToOne(() => ShoppingHeadEntity, (header) => header.details)
-  @JoinColumn({ name: 'shopping_order_hd_id' })
+  @JoinColumn({ name: 'soh_running', referencedColumnName: 'soh_running' })
   orderHeader: ShoppingHeadEntity;
 
   @ManyToOne(() => ProductEntity, (product) => product.inOrders)
