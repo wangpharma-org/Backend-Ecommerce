@@ -16,6 +16,7 @@ export class AppController {
     private readonly productsService: ProductsService,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly shoppingOrderService: ShoppingOrderService,
+    private readonly shoppingHeadService: ShoppingHeadService,
   ) {}
 
   @Post('/ecom/login')
@@ -101,6 +102,13 @@ export class AppController {
   async getDataFromCart(@Param('memCode') memCode: string): Promise<any> {
     return this.shoppingCartService.getDataFromCart(memCode);
   }
+  @Get('/ecom/all-order-member/:memCode')
+  async AllOrderByMember(@Param('memCode') memCode: string): Promise<ShoppingHeadEntity[]> {
+    return this.shoppingHeadService.AllOrderByMember(memCode);
+  }
+  @Get('/ecom/some-order-member/:soh_runing')
+  async SomeOrderByMember(@Param('soh_runing') soh_runing: string): Promise<ShoppingHeadEntity[]> {
+    return this.shoppingHeadService.SomeOrderByMember(soh_runing);
+  }
 
-  
 }

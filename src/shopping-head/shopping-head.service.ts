@@ -51,4 +51,33 @@ export class ShoppingHeadService {
         }
     }
 
+    async SomeOrderByMember(soh_runing: string): Promise<ShoppingHeadEntity[]> {
+        try {
+            const result = await this.shoppingHeadRepo
+                .createQueryBuilder('head')
+                .leftJoin('head.details', 'order')
+                .leftJoin('order.product', 'product')
+                .leftJoin('head.member', 'member')
+                .where('head.soh_runing = :soh_runing', { soh_runing })
+                .select([
+                    'head.soh_runing',
+                    'head.soh_sumprice',
+                    'head.soh_datetime',
+                    'head.soh_coin_recieve',
+                    'order', // ดึงทั้งหมดของ order
+                    // 'order.spo_id',
+                    'product.pro_code',
+                    'product.pro_name',
+                    'product.pro_imgmain',
+                ])
+                .orderBy('head.soh_datetime', 'DESC')
+                .getMany();
+            return result;
+        }
+        catch (error) {
+            console.error('Error get Order fail:', error);
+            throw new Error(`Error get Order fail`);
+        }
+    }
+
 }
