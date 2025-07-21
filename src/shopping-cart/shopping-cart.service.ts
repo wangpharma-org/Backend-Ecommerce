@@ -149,6 +149,21 @@ export class ShoppingCartService {
     }
   }
 
+  async handleGetCartToOrder(
+    mem_code: string,
+  ): Promise<ShoppingCartEntity[] | undefined> {
+    try {
+      return await this.shoppingCartRepo.find({
+        where: {
+          mem_code: mem_code,
+          spc_checked: true,
+        },
+      });
+    } catch {
+      throw new Error('Somthing wrong in handleGetCartToOrder');
+    }
+  }
+
   async handleDeleteCart(data: {
     pro_code: string;
     mem_code: string;

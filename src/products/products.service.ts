@@ -44,6 +44,15 @@ export class ProductsService {
               keyword: `%${data.keyword}%`,
             });
           }),
+        )
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix3', { prefix3: 'ส่งเสริม%' })
+              .andWhere('product.pro_name NOT LIKE :prefix4', { prefix4: '-%' })
+              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '/%' });
+          }),
         );
 
       const totalCount = await qb.getCount();
