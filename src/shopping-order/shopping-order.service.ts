@@ -17,8 +17,10 @@ export class ShoppingOrderService {
   async submitOrder(data: {
     mem_code: string;
     total_price: number;
-    listFree: [{ pro_code: string; amount: number; unit: string }] | null;
+    listFree: [{ pro_code: string; amount: number; pro_unit1: string }] | null;
     priceOption: string;
+    paymentOptions: string;
+    shippingOptions: string;
   }): Promise<string | undefined> {
     try {
       const cart = await this.shoppingCartService.handleGetCartToOrder(
@@ -29,6 +31,8 @@ export class ShoppingOrderService {
         soh_sumprice: data.total_price,
         member: { mem_code: data.mem_code },
         soh_saledate: new Date(),
+        soh_payment_type: data.paymentOptions,
+        soh_shipping_type: data.shippingOptions,
       });
 
       const NewHead = await this.shoppingHeadEntity.save(head);
@@ -90,7 +94,7 @@ export class ShoppingOrderService {
           const orderFreeMap = this.shoppingOrderRepo.create({
             orderHeader: { soh_running: running },
             pro_code: order.pro_code,
-            spo_unit: order.unit,
+            spo_unit: order.pro_unit1,
             spo_qty: order.amount,
           });
           return orderFreeMap;

@@ -35,8 +35,12 @@ export class AppController {
     data: {
       mem_code: string;
       total_price: number;
-      listFree: [{ pro_code: string; amount: number; unit: string }] | null;
+      listFree:
+        | [{ pro_code: string; amount: number; pro_unit1: string }]
+        | null;
       priceOption: string;
+      paymentOptions: string;
+      shippingOptions: string;
     },
   ) {
     console.log('data in controller:', data);
