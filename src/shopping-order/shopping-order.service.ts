@@ -122,6 +122,10 @@ export class ShoppingOrderService {
             soh_sumprice: sumprice,
           },
         );
+        cart?.map((cart) => {
+          void this.shoppingCartService.clearCheckoutCart(cart.spc_id);
+        });
+
         return running;
       } else {
         return;

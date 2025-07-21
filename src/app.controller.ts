@@ -47,6 +47,11 @@ export class AppController {
     return await this.shoppingOrderService.submitOrder(data);
   }
 
+  @Get('/ecom/cart/count/:mem_code')
+  async CountCart(@Param('mem_code') mem_code: string) {
+    return await this.shoppingCartService.getCartItemCount(mem_code);
+  }
+
   @Get('/ecom/product-coin')
   async productCoin() {
     return await this.productsService.listFree();

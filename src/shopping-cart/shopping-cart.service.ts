@@ -180,6 +180,14 @@ export class ShoppingCartService {
     }
   }
 
+  async clearCheckoutCart(spc_id: number) {
+    try {
+      await this.shoppingCartRepo.delete(spc_id);
+    } catch {
+      throw new Error('Clear Checkout Cart Failed');
+    }
+  }
+
   async checkedProductCartAll(data: {
     mem_code: string;
     type: string;
@@ -210,6 +218,25 @@ export class ShoppingCartService {
       }
     } catch {
       throw new Error('Somthing wrong in checkedProductCartAll');
+    }
+  }
+
+  async getCartItemCount(mem_code: string): Promise<number> {
+    try {
+      const result = await this.shoppingCartRepo
+        .createQueryBuilder('cart')
+        .where('cart.mem_code = :mem_code', { mem_code })
+        .select('COUNT(DISTINCT cart.pro_code)', 'total')
+        .getRawOne<{ total: string }>();
+
+      if (result) {
+        return parseInt(result.total, 10);
+      } else {
+        return 0;
+      }
+    } catch (error) {
+      console.error('Error getting cart item count:', error);
+      throw new Error('Error in getCartItemCount');
     }
   }
 
