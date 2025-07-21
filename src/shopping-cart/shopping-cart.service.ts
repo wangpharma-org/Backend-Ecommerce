@@ -158,6 +158,7 @@ export class ShoppingCartService {
           mem_code: mem_code,
           spc_checked: true,
         },
+        relations: ['product'],
       });
     } catch {
       throw new Error('Somthing wrong in handleGetCartToOrder');
