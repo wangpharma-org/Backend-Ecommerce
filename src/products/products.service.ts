@@ -64,9 +64,13 @@ export class ProductsService {
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
               .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
-              .andWhere('product.pro_name NOT LIKE :prefix3', { prefix3: 'ส่งเสริม%' })
+              .andWhere('product.pro_name NOT LIKE :prefix3', {
+                prefix3: 'ส่งเสริม%',
+              })
               .andWhere('product.pro_name NOT LIKE :prefix4', { prefix4: '-%' })
-              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '/%' });
+              .andWhere('product.pro_name NOT LIKE :prefix5', {
+                prefix5: '/%',
+              });
           }),
         );
 
@@ -102,6 +106,7 @@ export class ProductsService {
           pro_name: true,
           pro_point: true,
           pro_imgmain: true,
+          pro_unit1: true,
         },
       });
       return data;
