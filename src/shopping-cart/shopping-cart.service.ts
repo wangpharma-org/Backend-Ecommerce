@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ProductsService } from 'src/products/products.service';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -67,6 +68,7 @@ export class ShoppingCartService {
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
+    private readonly productsService: ProductsService,
   ) { }
 
   async addProductCart(data: {
@@ -298,7 +300,41 @@ export class ShoppingCartService {
         });
       }
 
-      return Object.values(grouped);
+      const totalSmallestUnit = await Promise.all(
+        Object.values(grouped).map(async (group) => {
+          // กรอง orderItems ตาม pro_code
+          const orderItems = group.shopping_cart.map((item) => ({
+            unit: item.spc_unit,
+            quantity: parseFloat(item.spc_amount), // แปลงจำนวนเป็นตัวเลข
+            pro_code: group.pro_code, // เพิ่ม pro_code ใน orderItems
+          }));
+
+          console.log('orderItems:', orderItems);
+
+          // คำนวณหน่วยที่เล็กที่สุดสำหรับ pro_code นี้
+          return this.productsService.calculateSmallestUnit(orderItems);
+        })
+      );
+      console.log('totalSmallestUnit:', totalSmallestUnit);
+
+      const ProductMaptotalSmallestUnit = totalSmallestUnit.map((total, index) => ({
+        pro_code: Object.values(grouped)[index].pro_code,
+        totalSmallestUnit: total,
+      }));
+
+      // กรองเอาเฉพาะ product ที่ตรงกับ pro_code และเพิ่ม totalSmallestUnit เข้าไปในแต่ละ group
+      const result: ShoppingProductCart[] = Object.values(grouped).map((group) => {
+        const productTotal = ProductMaptotalSmallestUnit.find(
+          (item) => item.pro_code === group.pro_code
+        );
+
+        return {
+          ...group,
+          totalSmallestUnit: productTotal ? productTotal.totalSmallestUnit : 0, // เพิ่ม totalSmallestUnit เข้าไปในแต่ละ group
+        };
+      });
+
+      return result;
     } catch (error) {
       console.error('Error get product cart:', error);
       throw new Error(`Error in Get product Cart`);
