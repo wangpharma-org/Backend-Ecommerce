@@ -63,6 +63,9 @@ export class ShoppingHeadEntity {
   @Column({ default: 0, nullable: true })
   soh_free: number;
 
+  @Column({ default: false })
+  status_api: boolean;
+
   @ManyToOne(() => UserEntity, (member) => member.orders)
   @JoinColumn({ name: 'mem_code' })
   member: UserEntity;

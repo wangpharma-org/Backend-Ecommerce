@@ -36,7 +36,14 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [{ pro_code: string; amount: number; pro_unit1: string }]
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
         | null;
       priceOption: string;
       paymentOptions: string;

@@ -8,15 +8,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmployeesModule } from './employees/employees.module';
 import { ProductsModule } from './products/products.module';
 import { ShoppingCartModule } from './shopping-cart/shopping-cart.module';
-import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 import { ShoppingOrderModule } from './shopping-order/shopping-order.module';
 import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
-import { UserEntity } from './users/users.entity';
-import { ShoppingOrderEntity } from './shopping-order/shopping-order.entity';
-import { ShoppingHeadEntity } from './shopping-head/shopping-head.entity';
-import { ShoppingCartEntity } from './shopping-cart/shopping-cart.entity';
-import { ProductEntity } from './products/products.entity';
-import { ProductPharmaEntity } from './products/product-pharma.entity';
+import { FailedApiModule } from './failed-api/failed-api.module';
 
 @Module({
   imports: [
@@ -44,6 +38,7 @@ import { ProductPharmaEntity } from './products/product-pharma.entity';
     ShoppingCartModule,
     ShoppingOrderModule,
     ShoppingHeadModule,
+    FailedApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
