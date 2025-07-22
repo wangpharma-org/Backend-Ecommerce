@@ -2,12 +2,27 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
+
+interface ProductEntityUnit {
+  pro_code: string;
+  pro_name: string;
+  Unit1: { unit: string; ratio: number };
+  Unit2: { unit: string; ratio: number };
+  Unit3: { unit: string; ratio: number };
+}
+
+interface OrderItem {
+  pro_code: string;
+  unit: string;
+  quantity: number;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
-  ) {}
+  ) { }
 
   async createProduct(product: ProductEntity) {
     try {
@@ -64,7 +79,6 @@ export class ProductsService {
         .take(30)
         .skip(data.offset)
         .select([
-          // 'product.pro_id',
           'product.pro_code',
           'product.pro_name',
           'product.pro_priceA',
@@ -101,4 +115,112 @@ export class ProductsService {
       throw new Error('Error free products');
     }
   }
+
+  // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล
+  private async getProductsWithUnits(pro_code: string) {
+    const products = await this.productRepo
+      .createQueryBuilder('product')
+      .where('product.pro_code = :pro_code', { pro_code })
+      .select([
+        'product.pro_code',
+        'product.pro_unit1',
+        'product.pro_ratio1',
+        'product.pro_unit2',
+        'product.pro_ratio2',
+        'product.pro_unit3',
+        'product.pro_ratio3',
+      ])
+      .getMany();
+
+    // แปลงข้อมูลให้อยู่ในรูปแบบ units array
+    return products.map((product: any) => ({
+      ...product,
+      units: [
+        { unit: product.pro_unit1, ratio: product.pro_ratio1 },
+        { unit: product.pro_unit2, ratio: product.pro_ratio2 },
+        { unit: product.pro_unit3, ratio: product.pro_ratio3 },
+      ].filter(u => u.unit), // กรอง unit ที่ไม่มีค่า
+    }));
+  }
+
+ 
+  async calculateSmallestUnit(order: OrderItem[]): Promise<number> {
+    let total = 0;
+    try {
+      // ลูปผ่านทุก orderItem
+      for (const orderItem of order) {
+        const { unit, quantity, pro_code } = orderItem;
+
+        const productsWithUnits = await this.getProductsWithUnits(pro_code);
+
+        const product = productsWithUnits.find(p => p.pro_code === pro_code);
+        if (!product) {
+          throw new Error(`Product with code ${pro_code} not found`);
+        }
+
+        const unitData = product.units.find(u => u.unit === unit);
+        if (unitData) {
+          const totalForItem = quantity * unitData.ratio; // คำนวณหน่วยที่เล็กที่สุดสำหรับแต่ละ orderItem
+
+          total += totalForItem; // บวกผลลัพธ์เข้ากับ total รวม
+
+          console.log(`pro_code: ${pro_code}, Unit: ${unit}, Quantity: ${quantity}, Total for ${pro_code}: ${totalForItem}`);
+        }
+      }
+
+      return total; // ส่งผลลัพธ์ที่เป็นตัวเลข
+    } catch (error) {
+      console.error('Error calculating smallest unit:', error);
+      throw new Error('Error calculating smallest unit');
+    }
+  }
+
+
+  // async ShowUnitProduct(pro_code: string): Promise<ProductEntityUnit> {
+  //   try {
+  //     const product = await this.productRepo
+  //       .createQueryBuilder('product')
+  //       .where('product.pro_code = :pro_code', { pro_code })
+  //       .select([
+  //         'product.pro_code',
+  //         'product.pro_name',
+  //         'product.pro_unit1',
+  //         'product.pro_ratio1',
+  //         'product.pro_unit2',
+  //         'product.pro_ratio2',
+  //         'product.pro_unit3',
+  //         'product.pro_ratio3'
+  //       ])
+  //       .getOne();
+
+  //     console.log('Product:', product);
+
+  //     if (!product) {
+  //       throw new Error('Product not found');
+  //     }
+
+  //     const formattedResult = {
+  //       pro_code: product.pro_code,
+  //       pro_name: product.pro_name,
+  //       Unit1: {
+  //         unit: product.pro_unit1,
+  //         ratio: product.pro_ratio1
+  //       },
+  //       Unit2: {
+  //         unit: product.pro_unit2,
+  //         ratio: product.pro_ratio2
+  //       },
+  //       Unit3: {
+  //         unit: product.pro_unit3,
+  //         ratio: product.pro_ratio3
+  //       }
+  //     };
+  //     console.log("formattedResult", formattedResult);
+
+  //     return formattedResult;
+  //   } catch (error) {
+  //     console.error('Error calculating unit:', error);
+  //     throw new Error('Error calculating unit');
+  //   }
+  // }
 }
