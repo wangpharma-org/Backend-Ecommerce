@@ -164,7 +164,7 @@ export class ProductsService {
 
           total += totalForItem; // บวกผลลัพธ์เข้ากับ total รวม
 
-          console.log(`pro_code: ${pro_code}, Unit: ${unit}, Quantity: ${quantity}, Total for ${pro_code}: ${totalForItem}`);
+          // console.log(`pro_code: ${pro_code}, Unit: ${unit}, Quantity: ${quantity}, Total for ${pro_code}: ${totalForItem}`);
         }
       }
 

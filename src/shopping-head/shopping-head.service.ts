@@ -83,7 +83,6 @@ export class ShoppingHeadService {
                     // จัดกลุ่มรายละเอียดสินค้า
                     for (const detail of item.details) {
                         const proCode = detail.product.pro_code;
-                        console.log('proCode:', proCode);
 
                         if (!groupedDetails[proCode]) {
                             groupedDetails[proCode] = {
@@ -107,7 +106,6 @@ export class ShoppingHeadService {
                             quantity: parseFloat(item.spo_qty), // แปลงจำนวนเป็นตัวเลข
                         }))
                     );
-                    console.log('orderItems:', orderItems);
 
                     // คำนวณหน่วยที่เล็กที่สุดสำหรับทุก pro_code ใน details
                     const totalSmallestUnit = await Promise.all(
@@ -123,13 +121,11 @@ export class ShoppingHeadService {
                             return this.productService.calculateSmallestUnit(orderItems);
                         })
                     );
-                    console.log('totalSmallestUnit:', totalSmallestUnit);
 
                     const ProductMaptotalSmallestUnit = totalSmallestUnit.map((total, index) => ({
                         pro_code: Object.values(groupedDetails)[index].pro_code,
                         totalSmallestUnit: total,
                     }));
-                    console.log('ProductMaptotalSmallestUnit:', ProductMaptotalSmallestUnit);
 
                     const response = {
                         ...item,
