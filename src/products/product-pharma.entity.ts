@@ -37,10 +37,28 @@ export class ProductPharmaEntity {
   pp_side_effects: string;
 
   @Column({ type: 'text', nullable: true })
-  pp_other_drug_interactions: string;
+  pp_other_dangerous_reactions: string;
 
   @Column({ length: 6, nullable: true })
   pp_eatunit: string;
+
+  @Column({ nullable: true })
+  pp_eatamount: number;
+
+  @Column({ nullable: true })
+  dayamount: number;
+
+  @Column({ type: 'text', nullable: true })
+  othereat: string;
+
+  @Column({ type: 'text', nullable: true })
+  pp_before_after_meals: string;
+
+  @Column({ type: 'text', nullable: true })
+  pp_suggestion: string;
+
+  @Column({ type: 'text', nullable: true })
+  pp_note: string;
 
   @Column({ length: 11, nullable: true })
   pp_print: string;

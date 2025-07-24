@@ -7,6 +7,10 @@ import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
 import { FailedEntity } from 'src/failed-api/failed-api.entity';
 import { lastValueFrom } from 'rxjs';
+import { ProductEntity } from 'src/products/products.entity';
+import { DataSource } from 'typeorm';
+import { run } from 'node:test';
+
 @Injectable()
 export class ShoppingOrderService {
   constructor(
@@ -18,6 +22,9 @@ export class ShoppingOrderService {
     private readonly httpService: HttpService,
     @InjectRepository(FailedEntity)
     private readonly failedEntity: Repository<FailedEntity>,
+    @InjectRepository(ProductEntity)
+    private readonly productEntity: Repository<ProductEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async sendDataToOldSystem(soh_running: string) {
@@ -72,128 +79,158 @@ export class ShoppingOrderService {
     shippingOptions: string;
   }): Promise<string | undefined> {
     try {
-      const cart = await this.shoppingCartService.handleGetCartToOrder(
-        data.mem_code,
-      );
+      const running = await this.dataSource.transaction(async (manager) => {
+        const cart = await this.shoppingCartService.handleGetCartToOrder(
+          data.mem_code,
+        );
 
-      if (!cart || cart.length === 0) {
-        throw new Error('Cart is empty');
-      }
-
-      const head = this.shoppingHeadEntity.create({
-        soh_sumprice: data.total_price,
-        member: { mem_code: data.mem_code },
-        soh_saledate: new Date(),
-        soh_payment_type: data.paymentOptions,
-        soh_shipping_type: data.shippingOptions,
-      });
-
-      const NewHead = await this.shoppingHeadEntity.save(head);
-      const running = `005-${NewHead.soh_id.toString().padStart(6, '0')}`;
-      await this.shoppingHeadEntity.update(
-        { soh_id: NewHead.soh_id },
-        { soh_running: running },
-      );
-
-      const orderSales = cart?.map((item) => {
-        const unitPrice =
-          data.priceOption === 'A'
-            ? item?.product?.pro_priceA
-            : data.priceOption === 'B'
-              ? item?.product?.pro_priceB
-              : data.priceOption === 'C'
-                ? item?.product?.pro_priceC
-                : 0;
-
-        const ratio =
-          item?.product?.pro_unit1 === item?.spc_unit
-            ? item?.product?.pro_ratio1
-            : item?.product?.pro_unit2 === item?.spc_unit
-              ? item?.product?.pro_ratio2
-              : item?.product?.pro_unit3 === item?.spc_unit
-                ? item?.product?.pro_ratio3
-                : 1;
-
-        if (isNaN(unitPrice) || isNaN(ratio) || isNaN(item.spc_amount)) {
-          console.log('Bad item:', item);
-          throw new Error('Invalid product price or ratio');
+        if (!cart || cart.length === 0) {
+          throw new Error('Cart is empty');
         }
 
-        const price = item.spc_amount * unitPrice * ratio;
-
-        const order = this.shoppingOrderRepo.create({
-          orderHeader: { soh_running: running },
-          spo_qty: item.spc_amount,
-          spo_unit: item.spc_unit,
-          spo_price_unit: unitPrice,
-          spo_total_decimal: price,
-          pro_code: item.pro_code,
+        const head = this.shoppingHeadEntity.create({
+          soh_sumprice: data.total_price,
+          member: { mem_code: data.mem_code },
+          soh_saledate: new Date(),
+          soh_payment_type: data.paymentOptions,
+          soh_shipping_type: data.shippingOptions,
         });
-        return order;
-      });
 
-      const sumprice = orderSales?.reduce((total, order) => {
-        return total + Number(order.spo_total_decimal);
-      }, 0);
+        const NewHead = await manager.save(ShoppingHeadEntity, head);
+        const running = `005-${NewHead.soh_id.toString().padStart(6, '0')}`;
+        await manager.update(
+          ShoppingHeadEntity,
+          { soh_id: NewHead.soh_id },
+          { soh_running: running },
+        );
 
-      const sumpoint = data.listFree?.reduce((total, order) => {
-        return total + Number(order.pro_point * order.amount);
-      }, 0);
+        const orderSales = cart?.map((item) => {
+          const unitPrice =
+            data.priceOption === 'A'
+              ? item?.product?.pro_priceA
+              : data.priceOption === 'B'
+                ? item?.product?.pro_priceB
+                : data.priceOption === 'C'
+                  ? item?.product?.pro_priceC
+                  : 0;
 
-      if (sumprice !== data.total_price) {
-        console.log('Sumprice: ', sumprice);
-        console.log('data.total_price: ', data.total_price);
-        throw new Error('Price Error');
-      }
+          const ratio =
+            item?.product?.pro_unit1 === item?.spc_unit
+              ? item?.product?.pro_ratio1
+              : item?.product?.pro_unit2 === item?.spc_unit
+                ? item?.product?.pro_ratio2
+                : item?.product?.pro_unit3 === item?.spc_unit
+                  ? item?.product?.pro_ratio3
+                  : 1;
 
-      console.log('Point can use: ', sumprice * 0.01);
-      console.log('Point use: ', sumpoint);
+          if (isNaN(unitPrice) || isNaN(ratio) || isNaN(item.spc_amount)) {
+            console.log('Bad item:', item);
+            throw new Error('Invalid product price or ratio');
+          }
 
-      if (sumpoint) {
-        if (sumprice * 0.01 < sumpoint) {
-          console.log('Point can use: ', sumprice * 0.01);
-          console.log('Point use: ', sumprice);
-          throw new Error('Point Error');
-        }
-      }
+          const price = item.spc_amount * unitPrice * ratio;
 
-      if (data.listFree && data.listFree.length > 0) {
-        const orderFree = data.listFree.map((order) => {
-          const orderFreeMap = this.shoppingOrderRepo.create({
+          const order = manager.create(ShoppingOrderEntity, {
             orderHeader: { soh_running: running },
-            pro_code: order.pro_code,
-            spo_unit: order.pro_unit1,
-            spo_qty: order.amount,
+            spo_qty: item.spc_amount,
+            spo_unit: item.spc_unit,
+            spo_price_unit: unitPrice,
+            spo_total_decimal: price,
+            pro_code: item.pro_code,
           });
-          return orderFreeMap;
+          return order;
         });
 
-        const saveProduct = await this.shoppingOrderRepo.save(orderFree);
-        await this.shoppingHeadEntity.update(
-          { soh_id: NewHead.soh_id },
-          { soh_free: saveProduct.length },
-        );
-      }
+        const sumprice = orderSales?.reduce((total, order) => {
+          return total + Number(order.spo_total_decimal);
+        }, 0);
 
-      if (orderSales) {
-        console.log(orderSales);
-        const saveProduct = await this.shoppingOrderRepo.save(orderSales);
-        await this.shoppingHeadEntity.update(
-          { soh_id: NewHead.soh_id },
-          {
-            soh_listsale: saveProduct.length,
-            soh_sumprice: sumprice,
-          },
-        );
-        cart?.map((cart) => {
-          void this.shoppingCartService.clearCheckoutCart(cart.spc_id);
-        });
+        if (sumprice !== data.total_price) {
+          console.log('Sumprice: ', sumprice);
+          console.log('data.total_price: ', data.total_price);
+          throw new Error('Price Error');
+        }
 
+        if (data.listFree && data.listFree.length > 0) {
+          const listFree = await Promise.all(
+            data.listFree.map((order) => {
+              if (order.amount < 0) {
+                throw new Error('Amount Failed');
+              }
+              return manager.findOne(ProductEntity, {
+                where: {
+                  pro_code: order.pro_code,
+                },
+              });
+            }),
+          );
+
+          const sumpoint = listFree?.reduce((total, order, index) => {
+            if (!order?.pro_free) {
+              throw new Error('Point Error');
+            }
+            const amount = data.listFree?.[index].amount ?? 0;
+            const point = order?.pro_point ?? 0;
+            return total + point * amount;
+          }, 0);
+
+          console.log('Point can use: ', sumprice * 0.01);
+          console.log('Point use: ', sumpoint);
+
+          if (sumpoint) {
+            if (sumprice * 0.01 < sumpoint) {
+              console.log('Point can use: ', sumprice * 0.01);
+              console.log('Point use: ', sumprice);
+              throw new Error('Point Error');
+            }
+          }
+
+          const orderFree = data.listFree.map((order) => {
+            const orderFreeMap = manager.create(ShoppingOrderEntity, {
+              orderHeader: { soh_running: running },
+              pro_code: order.pro_code,
+              spo_unit: order.pro_unit1,
+              spo_qty: order.amount,
+            });
+            return orderFreeMap;
+          });
+
+          const saveProduct = await manager.save(
+            ShoppingOrderEntity,
+            orderFree,
+          );
+          await manager.update(
+            ShoppingHeadEntity,
+            { soh_id: NewHead.soh_id },
+            { soh_free: saveProduct.length },
+          );
+        }
+
+        if (orderSales) {
+          console.log(orderSales);
+          const saveProduct = await manager.save(
+            ShoppingOrderEntity,
+            orderSales,
+          );
+          await manager.update(
+            ShoppingHeadEntity,
+            { soh_id: NewHead.soh_id },
+            {
+              soh_listsale: saveProduct.length,
+              soh_sumprice: sumprice,
+            },
+          );
+          cart?.map((cart) => {
+            void this.shoppingCartService.clearCheckoutCart(cart.spc_id);
+          });
+          return running;
+        } else {
+          return;
+        }
+      });
+      if (running) {
         await this.sendDataToOldSystem(running);
-
         return running;
-      } else {
-        return;
       }
     } catch (error) {
       console.log('Error : ', error);

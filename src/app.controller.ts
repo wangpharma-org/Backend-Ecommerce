@@ -29,6 +29,12 @@ export class AppController {
     return await this.productsService.searchProducts(data);
   }
 
+  @Post('/ecom/product-for-u')
+  async productForYou(@Body() data: { keyword: string; pro_code: string }) {
+    console.log('data in controller:', data);
+    return await this.productsService.productForYou(data);
+  }
+
   @Post('/ecom/submit-order')
   async submitOrder(
     @Body()
@@ -57,6 +63,11 @@ export class AppController {
   @Get('/ecom/cart/count/:mem_code')
   async CountCart(@Param('mem_code') mem_code: string) {
     return await this.shoppingCartService.getCartItemCount(mem_code);
+  }
+
+  @Get('/ecom/product-detail/:pro_code')
+  async GetProductDetail(@Param('pro_code') pro_code: string) {
+    return await this.productsService.getProductDetail(pro_code);
   }
 
   @Get('/ecom/product-coin')

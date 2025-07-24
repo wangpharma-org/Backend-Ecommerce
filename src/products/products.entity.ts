@@ -53,6 +53,18 @@ export class ProductEntity {
   @Column({ length: 255, nullable: true })
   pro_imgmain: string;
 
+  @Column({ length: 255, nullable: true })
+  pro_img2: string;
+
+  @Column({ length: 255, nullable: true })
+  pro_img3: string;
+
+  @Column({ length: 255, nullable: true })
+  pro_img4: string;
+
+  @Column({ length: 255, nullable: true })
+  pro_img5: string;
+
   @Column({ nullable: true })
   pro_ratio1: number;
 
