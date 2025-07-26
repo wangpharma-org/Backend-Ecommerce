@@ -42,7 +42,7 @@ export class AppController {
     private readonly shoppingCartService: ShoppingCartService,
     private readonly shoppingOrderService: ShoppingOrderService,
     private readonly shoppingHeadService: ShoppingHeadService,
-  ) { }
+  ) {}
 
   @Post('/ecom/login')
   async signin(
@@ -161,25 +161,30 @@ export class AppController {
   }
 
   @Get('/ecom/last6/:memCode')
-  async getLast6Orders(@Param('memCode') memCode: string): Promise<ShoppingOrderEntity[]> {
+  async getLast6Orders(
+    @Param('memCode') memCode: string,
+  ): Promise<ShoppingOrderEntity[]> {
     return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
   }
   @Get('/ecom/summary-cart/:memCode')
   async getDataFromCart(@Param('memCode') memCode: string): Promise<any> {
-    return this.shoppingCartService.getDataFromCart(memCode);
+    return await this.shoppingCartService.getDataFromCart(memCode);
   }
   @Get('/ecom/all-order-member/:memCode')
-  async AllOrderByMember(@Param('memCode') memCode: string): Promise<AllOrderByMemberRes> {
-    return this.shoppingHeadService.AllOrderByMember(memCode);
+  async AllOrderByMember(
+    @Param('memCode') memCode: string,
+  ): Promise<AllOrderByMemberRes> {
+    return await this.shoppingHeadService.AllOrderByMember(memCode);
   }
   @Get('/ecom/some-order/:soh_runing')
-  async SomeOrderByMember(@Param('soh_runing') soh_runing: string): Promise<ShoppingHeadEntity> {
-    return this.shoppingHeadService.SomeOrderByMember(soh_runing);
+  async SomeOrderByMember(
+    @Param('soh_runing') soh_runing: string,
+  ): Promise<ShoppingHeadEntity> {
+    return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
   }
 
   // @Get('/ecom/format-order/:pro_code')
   // async ShowUnitProduct(@Param('pro_code') pro_code: string): Promise<ProductEntityUnit> {
   //   return this.productsService.ShowUnitProduct(pro_code);
   // }
-
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
+import { ProductPharmaEntity } from './product-pharma.entity';
 
 interface OrderItem {
   pro_code: string;
@@ -14,6 +15,8 @@ export class ProductsService {
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(ProductPharmaEntity)
+    private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
   ) {}
 
   async createProduct(product: ProductEntity) {
@@ -23,6 +26,28 @@ export class ProductsService {
     } catch (error) {
       console.error('Error creating product:', error);
       throw new Error('Error creating product');
+    }
+  }
+
+  async createProductPharmaRepo(detail: ProductPharmaEntity) {
+    try {
+      const newDetail = this.productPharmaEntity.create(detail);
+      await this.productPharmaEntity.save(newDetail);
+    } catch (error) {
+      console.error('Error creating product detail:', error);
+      throw new Error('Error creating product detail');
+    }
+  }
+
+  async updateProductDetail(product: ProductPharmaEntity) {
+    try {
+      await this.productPharmaEntity.update(
+        { product: { pro_code: product.product.pro_code } },
+        product,
+      );
+      console.log('Product Detail Update Sucesss');
+    } catch (error) {
+      console.error('Error updating product detail:', error);
     }
   }
 
