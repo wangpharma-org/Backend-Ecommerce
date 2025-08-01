@@ -8,30 +8,10 @@ import { ShoppingHeadEntity } from './shopping-head/shopping-head.entity';
 import { ShoppingHeadService } from './shopping-head/shopping-head.service';
 import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 import { AllOrderByMemberRes } from './shopping-head/types/AllOrderByMemberRes.type';
-import { ProductEntity } from './products/products.entity';
-
-interface GroupedDetail {
-  pro_code: string;
-  product: any;
-  items: {
-    spo_id: number;
-    spo_qty: string;
-    spo_unit: string;
-    spo_price_unit: string;
-    spo_total_decimal: string;
-  }[];
-}
-
-interface FormattedOrderDto extends Omit<ShoppingHeadEntity, 'details'> {
-  details: GroupedDetail[];
-}
-interface ProductEntityUnit {
-  pro_code: string;
-  pro_name: string;
-  Unit1: { unit: string; ratio: number };
-  Unit2: { unit: string; ratio: number };
-  Unit3: { unit: string; ratio: number };
-}
+import { FavoriteService } from './favorite/favorite.service';
+import { FlashsaleService } from './flashsale/flashsale.service';
+import { UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 @Controller()
 export class AppController {
@@ -42,7 +22,34 @@ export class AppController {
     private readonly shoppingCartService: ShoppingCartService,
     private readonly shoppingOrderService: ShoppingOrderService,
     private readonly shoppingHeadService: ShoppingHeadService,
+    private readonly favoriteService: FavoriteService,
+    private readonly flashsaleService: FlashsaleService,
   ) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/favorite/:mem_code')
+  async getListFavorite(@Param('mem_code') mem_code: string) {
+    console.log('get data favorite');
+    return await this.favoriteService.getListFavorite(mem_code);
+  }
+
+  // @Get('/ecom/flashsale')
+  // async getDataFlashSale() {
+  //   return await this.flashsaleService.getListFlashSale();
+  // }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/favorite/add')
+  async addToFavorite(@Body() data: { mem_code: string; pro_code: string }) {
+    console.log(data);
+    return await this.favoriteService.addToFavorite(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/favorite/delete')
+  async deleteFavorite(@Body() data: { fav_id: number; mem_code: string }) {
+    return await this.favoriteService.deleteFavorite(data);
+  }
 
   @Post('/ecom/login')
   async signin(
@@ -52,18 +59,21 @@ export class AppController {
     return await this.authService.signin(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/search-products')
   async searchProducts(@Body() data: { keyword: string; offset: number }) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-for-u')
   async productForYou(@Body() data: { keyword: string; pro_code: string }) {
     console.log('data in controller:', data);
     return await this.productsService.productForYou(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/submit-order')
   async submitOrder(
     @Body()
@@ -89,21 +99,25 @@ export class AppController {
     return await this.shoppingOrderService.submitOrder(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/cart/count/:mem_code')
   async CountCart(@Param('mem_code') mem_code: string) {
     return await this.shoppingCartService.getCartItemCount(mem_code);
   }
 
-  @Get('/ecom/product-detail/:pro_code')
-  async GetProductDetail(@Param('pro_code') pro_code: string) {
-    return await this.productsService.getProductDetail(pro_code);
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-detail')
+  async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
+    return await this.productsService.getProductDetail(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-coin')
   async productCoin() {
     return await this.productsService.listFree();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-add-cart')
   async addProductCart(
     @Body()
@@ -118,6 +132,7 @@ export class AppController {
     return await this.shoppingCartService.addProductCart(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-check-all-cart')
   async checkProductCartAll(
     @Body()
@@ -130,6 +145,7 @@ export class AppController {
     return await this.shoppingCartService.checkedProductCartAll(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-delete-cart')
   async deleteProductCart(
     @Body()
@@ -142,6 +158,7 @@ export class AppController {
     return await this.shoppingCartService.handleDeleteCart(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-check-cart')
   async checkProductCart(
     @Body()
@@ -155,36 +172,39 @@ export class AppController {
     return await this.shoppingCartService.checkedProductCart(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Param('mem_code') mem_code: string) {
     return this.shoppingCartService.getProductCart(mem_code);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/last6/:memCode')
   async getLast6Orders(
     @Param('memCode') memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
     return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
   }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/summary-cart/:memCode')
   async getDataFromCart(@Param('memCode') memCode: string): Promise<any> {
     return await this.shoppingCartService.getDataFromCart(memCode);
   }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/all-order-member/:memCode')
   async AllOrderByMember(
     @Param('memCode') memCode: string,
   ): Promise<AllOrderByMemberRes> {
     return await this.shoppingHeadService.AllOrderByMember(memCode);
   }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/some-order/:soh_runing')
   async SomeOrderByMember(
     @Param('soh_runing') soh_runing: string,
   ): Promise<ShoppingHeadEntity> {
     return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
   }
-
-  // @Get('/ecom/format-order/:pro_code')
-  // async ShowUnitProduct(@Param('pro_code') pro_code: string): Promise<ProductEntityUnit> {
-  //   return this.productsService.ShowUnitProduct(pro_code);
-  // }
 }

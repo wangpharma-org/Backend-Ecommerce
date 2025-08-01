@@ -21,9 +21,6 @@ export class ShoppingHeadEntity {
   @CreateDateColumn()
   soh_datetime: Date;
 
-  @Column({ type: 'datetime', nullable: true })
-  soh_saledate: Date;
-
   @Column({
     type: 'decimal',
     precision: 16,
@@ -63,8 +60,14 @@ export class ShoppingHeadEntity {
   @Column({ default: 0, nullable: true })
   soh_free: number;
 
-  @Column({ default: false })
-  status_api: boolean;
+  @Column({
+    type: 'decimal',
+    precision: 16,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  soh_coin_after_use: number;
 
   @ManyToOne(() => UserEntity, (member) => member.orders)
   @JoinColumn({ name: 'mem_code' })

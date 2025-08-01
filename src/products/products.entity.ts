@@ -2,6 +2,8 @@ import { Entity, PrimaryColumn, Column, OneToOne, OneToMany } from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
+import { FavoriteEntity } from 'src/favorite/favorite.entity';
+import { FlashSaleEntity } from 'src/flashsale/flashsale.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -89,15 +91,6 @@ export class ProductEntity {
   @Column({ default: false })
   pro_free: boolean;
 
-  @Column({ type: 'enum', enum: ['Y', 'N'], default: 'N' })
-  pro_isdrug: 'Y' | 'N';
-
-  @Column({ type: 'enum', enum: ['Y', 'N'], default: 'Y' })
-  pro_isvat: 'Y' | 'N';
-
-  @Column({ type: 'enum', enum: ['Y', 'N'], default: 'N' })
-  pro_ishot: 'Y' | 'N';
-
   @Column({ length: 120, nullable: true })
   pro_drugregister: string;
 
@@ -109,6 +102,12 @@ export class ProductEntity {
 
   @OneToMany(() => ShoppingCartEntity, (cart) => cart.product)
   inCarts: ShoppingCartEntity[];
+
+  @OneToMany(() => FlashSaleEntity, (cart) => cart.product)
+  flashsale: FlashSaleEntity[];
+
+  @OneToMany(() => FavoriteEntity, (favorite) => favorite.product)
+  inFavorite: FavoriteEntity[];
 
   @OneToMany(() => ShoppingOrderEntity, (orderDetail) => orderDetail.product)
   inOrders: ShoppingOrderEntity[];
