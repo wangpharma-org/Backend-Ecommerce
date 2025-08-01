@@ -19,27 +19,6 @@ export interface ShoppingOrder {
   pro_imgmain: string | null;
 }
 
-interface GroupedDetail {
-  pro_code: string;
-  product: any;
-  items: {
-    spo_id: number;
-    spo_qty: string;
-    spo_unit: string;
-    spo_price_unit: string;
-    spo_total_decimal: string;
-  }[];
-}
-
-interface calculateUnit {
-  soh_running: string;
-  countUnit: number;
-}
-
-interface FormattedOrderDto extends Omit<ShoppingHeadEntity, 'details'> {
-  details: GroupedDetail[];
-}
-
 @Injectable()
 export class ShoppingHeadService {
   constructor(

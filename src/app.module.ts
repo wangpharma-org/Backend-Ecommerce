@@ -11,6 +11,8 @@ import { ShoppingCartModule } from './shopping-cart/shopping-cart.module';
 import { ShoppingOrderModule } from './shopping-order/shopping-order.module';
 import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
 import { FailedApiModule } from './failed-api/failed-api.module';
+import { FavoriteModule } from './favorite/favorite.module';
+import { FlashsaleModule } from './flashsale/flashsale.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { FailedApiModule } from './failed-api/failed-api.module';
     ShoppingOrderModule,
     ShoppingHeadModule,
     FailedApiModule,
+    FavoriteModule,
+    FlashsaleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

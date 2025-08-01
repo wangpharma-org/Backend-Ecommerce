@@ -9,6 +9,7 @@ import {
 import { EmployeeEntity } from 'src/employees/employees.entity';
 import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { FavoriteEntity } from 'src/favorite/favorite.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -113,6 +114,9 @@ export class UserEntity {
 
   @OneToMany(() => ShoppingCartEntity, (cart) => cart.member)
   shoppingCartItems: ShoppingCartEntity[];
+
+  @OneToMany(() => FavoriteEntity, (favorite) => favorite.member)
+  favorite: FavoriteEntity[];
 
   @OneToMany(() => ShoppingHeadEntity, (orderHd) => orderHd.member)
   orders: ShoppingHeadEntity[];

@@ -12,6 +12,8 @@ import { DataSource } from 'typeorm';
 
 @Injectable()
 export class ShoppingOrderService {
+  private slackUrl =
+    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -27,36 +29,47 @@ export class ShoppingOrderService {
   ) {}
 
   async sendDataToOldSystem(soh_running: string) {
+    let data;
     try {
-      const data = await this.shoppingHeadEntity.findOne({
+      data = await this.shoppingHeadEntity.findOne({
         where: {
           soh_running: soh_running,
         },
         relations: {
           details: true,
+          member: true,
+        },
+        select: {
+          member: {
+            mem_code: true,
+          },
         },
       });
 
       const response = await lastValueFrom(
         this.httpService.post(
-          'https://www.wangpharma.com/Akitokung/api/receive_order_cart.php',
+          'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
           data,
         ),
       );
 
-      if (response.status === 201) {
+      if (response.status === 200) {
         return;
-      } else {
-        await this.failedEntity.save(
-          this.failedEntity.create({
-            failed_json: JSON.parse(JSON.stringify(data)) as JSON,
-          }),
-        );
       }
 
       console.log('data on sendDataToOldSystem', data);
     } catch {
-      throw new Error('Something Wrong in sendDataToOldSystem');
+      const res2 = await lastValueFrom(
+        this.httpService.post(this.slackUrl, {
+          text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
+        }),
+      );
+      console.log('Notify external API :', res2);
+      await this.failedEntity.save(
+        this.failedEntity.create({
+          failed_json: JSON.parse(JSON.stringify(data)) as JSON,
+        }),
+      );
     }
   }
 
@@ -78,6 +91,7 @@ export class ShoppingOrderService {
     shippingOptions: string;
   }): Promise<string | undefined> {
     try {
+      let pointAfterUse = 0;
       const running = await this.dataSource.transaction(async (manager) => {
         const cart = await this.shoppingCartService.handleGetCartToOrder(
           data.mem_code,
@@ -90,7 +104,6 @@ export class ShoppingOrderService {
         const head = this.shoppingHeadEntity.create({
           soh_sumprice: data.total_price,
           member: { mem_code: data.mem_code },
-          soh_saledate: new Date(),
           soh_payment_type: data.paymentOptions,
           soh_shipping_type: data.shippingOptions,
         });
@@ -173,13 +186,15 @@ export class ShoppingOrderService {
             return total + point * amount;
           }, 0);
 
+          pointAfterUse = sumprice * 0.01 - sumpoint;
+
           console.log('Point can use: ', sumprice * 0.01);
           console.log('Point use: ', sumpoint);
 
           if (sumpoint) {
             if (sumprice * 0.01 < sumpoint) {
               console.log('Point can use: ', sumprice * 0.01);
-              console.log('Point use: ', sumprice);
+              console.log('Point use: ', sumpoint);
               throw new Error('Point Error');
             }
           }
@@ -217,6 +232,9 @@ export class ShoppingOrderService {
             {
               soh_listsale: saveProduct.length,
               soh_sumprice: sumprice,
+              soh_coin_after_use: pointAfterUse,
+              soh_coin_recieve: sumprice * 0.01,
+              soh_coin_use: sumprice * 0.01 - pointAfterUse,
             },
           );
           cart?.map((cart) => {
@@ -233,6 +251,11 @@ export class ShoppingOrderService {
       }
     } catch (error) {
       console.log('Error : ', error);
+      await lastValueFrom(
+        this.httpService.post(this.slackUrl, {
+          text: `\n*ด่วน! ระบบผิดพลาด*\n\n*ปัญหาอาจเกิดจาก* : ระบบพี่โต้ล่ม (ไม่เป็นปัญหา) หรือ บางอย่างผิดพลาด (อันตราย) \n*รหัสลูกค้า* \n${data.mem_code}`,
+        }),
+      );
       throw new Error('Something Wrong in Submit');
     }
   }

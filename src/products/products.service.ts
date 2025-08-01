@@ -60,11 +60,20 @@ export class ProductsService {
     }
   }
 
-  async getProductDetail(pro_code: string): Promise<ProductEntity> {
+  async getProductDetail(data: {
+    pro_code: string;
+    mem_code: string;
+  }): Promise<ProductEntity> {
     try {
       const product = await this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect('product.pharmaDetails', 'pharma')
+        .leftJoinAndSelect(
+          'product.inFavorite',
+          'favorite',
+          'favorite.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -92,8 +101,9 @@ export class ProductsService {
           'pharma.pp_how_to_use',
           'pharma.pp_caution',
           'pharma.pp_suggestion',
+          'favorite.fav_id',
         ])
-        .where('product.pro_code = :pro_code', { pro_code })
+        .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
         .getOne();
       if (product) {
         return product;

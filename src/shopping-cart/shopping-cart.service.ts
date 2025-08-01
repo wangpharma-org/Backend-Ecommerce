@@ -61,7 +61,6 @@ export interface CartSummary {
   shipping_type: any;
 }
 
-
 @Injectable()
 export class ShoppingCartService {
   [x: string]: any;
@@ -69,7 +68,7 @@ export class ShoppingCartService {
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
     private readonly productsService: ProductsService,
-  ) { }
+  ) {}
 
   async addProductCart(data: {
     mem_code: string;
