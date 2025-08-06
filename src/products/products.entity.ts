@@ -40,7 +40,7 @@ export class ProductEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
   pro_cost: number;
 
-  @Column({ length: 30, nullable: true })
+  @Column({ length: 100, nullable: true })
   pro_supplier: string;
 
   @Column({ length: 60, nullable: true })
