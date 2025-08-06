@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, MoreThan, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 
@@ -228,6 +228,7 @@ export class ProductsService {
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
+          pro_stock: MoreThan(0),
         },
         select: {
           pro_code: true,
@@ -352,3 +353,7 @@ export class ProductsService {
   //   }
   // }
 }
+function not(arg0: number): number | import("typeorm").FindOperator<number> | undefined {
+  throw new Error('Function not implemented.');
+}
+

@@ -94,6 +94,9 @@ export class ProductEntity {
   @Column({ length: 120, nullable: true })
   pro_drugregister: string;
 
+  @Column({ default: 0 })
+  pro_stock: number;
+
   @Column({ type: 'decimal', precision: 6, scale: 1, nullable: true })
   pro_utility: number;
 
