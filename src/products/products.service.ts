@@ -195,9 +195,16 @@ export class ProductsService {
               .andWhere('product.pro_name NOT LIKE :prefix3', {
                 prefix3: 'ส่งเสริม%',
               })
-              .andWhere('product.pro_name NOT LIKE :prefix4', { prefix4: '-%' })
-              .andWhere('product.pro_name NOT LIKE :prefix5', {
-                prefix5: '/%',
+              .andWhere('product.pro_name NOT LIKE :prefix4', {
+                prefix4: 'รีเบท%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+              .andWhere('product.pro_name NOT LIKE :prefix6', {
+                prefix6: '/%',
+              })
+              .andWhere('product.pro_priceA > :zero', { zero: 0 })
+              .andWhere('product.pro_name NOT LIKE :prefix7', {
+                prefix7: 'ค่า%',
               });
           }),
         );
@@ -356,4 +363,3 @@ export class ProductsService {
 function not(arg0: number): number | import("typeorm").FindOperator<number> | undefined {
   throw new Error('Function not implemented.');
 }
-
