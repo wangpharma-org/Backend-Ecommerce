@@ -20,7 +20,7 @@ export class ProductEntity {
   pro_nameSale: string;
 
   @Column({ length: 255, nullable: true })
-  pro_namePacking: string;
+  pro_namePacking: string;  
 
   @Column({ length: 255, nullable: true })
   pro_genericname: string;
