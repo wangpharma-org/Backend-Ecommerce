@@ -147,6 +147,18 @@ export class ProductsService {
               .andWhere('product.pro_name NOT LIKE :prefix4', { prefix4: '-%' })
               .andWhere('product.pro_name NOT LIKE :prefix5', {
                 prefix5: '/%',
+              })
+              .andWhere('product.pro_name NOT LIKE :rebase', {
+                rebase: 'รีเบท%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix6', {
+                prefix6: '/%',
+              })
+              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+              .andWhere('product.pro_name NOT LIKE :prefix7', {
+                prefix7: 'ค่า%',
               });
           }),
         );
