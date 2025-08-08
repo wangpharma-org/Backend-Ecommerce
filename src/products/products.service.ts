@@ -159,6 +159,9 @@ export class ProductsService {
               .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
               .andWhere('product.pro_name NOT LIKE :prefix7', {
                 prefix7: 'ค่า%',
+              })
+              .andWhere('product.pro_code NOT LIKE :message', {
+                message: '@%',
               });
           }),
         );
