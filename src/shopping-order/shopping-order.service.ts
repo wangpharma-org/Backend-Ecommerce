@@ -28,50 +28,50 @@ export class ShoppingOrderService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async sendDataToOldSystem(soh_running: string) {
-    let data;
-    try {
-      data = await this.shoppingHeadEntity.findOne({
-        where: {
-          soh_running: soh_running,
-        },
-        relations: {
-          details: true,
-          member: true,
-        },
-        select: {
-          member: {
-            mem_code: true,
-          },
-        },
-      });
+  // async sendDataToOldSystem(soh_running: string) {
+  //   let data;
+  //   try {
+  //     data = await this.shoppingHeadEntity.findOne({
+  //       where: {
+  //         soh_running: soh_running,
+  //       },
+  //       relations: {
+  //         details: true,
+  //         member: true,
+  //       },
+  //       select: {
+  //         member: {
+  //           mem_code: true,
+  //         },
+  //       },
+  //     });
 
-      const response = await lastValueFrom(
-        this.httpService.post(
-          'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
-          data,
-        ),
-      );
+  //     const response = await lastValueFrom(
+  //       this.httpService.post(
+  //         'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
+  //         data,
+  //       ),
+  //     );
 
-      if (response.status === 200) {
-        return;
-      }
+  //     if (response.status === 200) {
+  //       return;
+  //     }
 
-      console.log('data on sendDataToOldSystem', data);
-    } catch {
-      const res2 = await lastValueFrom(
-        this.httpService.post(this.slackUrl, {
-          text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
-        }),
-      );
-      console.log('Notify external API :', res2);
-      await this.failedEntity.save(
-        this.failedEntity.create({
-          failed_json: JSON.parse(JSON.stringify(data)) as JSON,
-        }),
-      );
-    }
-  }
+  //     console.log('data on sendDataToOldSystem', data);
+  //   } catch {
+  //     const res2 = await lastValueFrom(
+  //       this.httpService.post(this.slackUrl, {
+  //         text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
+  //       }),
+  //     );
+  //     console.log('Notify external API :', res2);
+  //     await this.failedEntity.save(
+  //       this.failedEntity.create({
+  //         failed_json: JSON.parse(JSON.stringify(data)) as JSON,
+  //       }),
+  //     );
+  //   }
+  // }
 
   async submitOrder(data: {
     mem_code: string;
