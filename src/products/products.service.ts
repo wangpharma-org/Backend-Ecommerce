@@ -198,9 +198,22 @@ export class ProductsService {
           new Brackets((qb) => {
             qb.where('product.pro_name LIKE :keyword', {
               keyword: `%${data.keyword}%`,
-            }).orWhere('product.pro_keysearch LIKE :keyword', {
-              keyword: `%${data.keyword}%`,
-            });
+            })
+              .orWhere('product.pro_keysearch LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_barcode1 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_barcode2 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_barcode3 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_code LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              });
           }),
         )
         .andWhere(
@@ -292,11 +305,10 @@ export class ProductsService {
         { unit: product.pro_unit1, ratio: product.pro_ratio1 },
         { unit: product.pro_unit2, ratio: product.pro_ratio2 },
         { unit: product.pro_unit3, ratio: product.pro_ratio3 },
-      ].filter(u => u.unit), // กรอง unit ที่ไม่มีค่า
+      ].filter((u) => u.unit), // กรอง unit ที่ไม่มีค่า
     }));
   }
 
- 
   async calculateSmallestUnit(order: OrderItem[]): Promise<number> {
     let total = 0;
     try {
@@ -306,12 +318,12 @@ export class ProductsService {
 
         const productsWithUnits = await this.getProductsWithUnits(pro_code);
 
-        const product = productsWithUnits.find(p => p.pro_code === pro_code);
+        const product = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
 
-        const unitData = product.units.find(u => u.unit === unit);
+        const unitData = product.units.find((u) => u.unit === unit);
         if (unitData) {
           const totalForItem = quantity * unitData.ratio; // คำนวณหน่วยที่เล็กที่สุดสำหรับแต่ละ orderItem
 
@@ -327,7 +339,6 @@ export class ProductsService {
       throw new Error('Error calculating smallest unit');
     }
   }
-
 
   // async ShowUnitProduct(pro_code: string): Promise<ProductEntityUnit> {
   //   try {
@@ -377,6 +388,8 @@ export class ProductsService {
   //   }
   // }
 }
-function not(arg0: number): number | import("typeorm").FindOperator<number> | undefined {
+function not(
+  arg0: number,
+): number | import('typeorm').FindOperator<number> | undefined {
   throw new Error('Function not implemented.');
 }
