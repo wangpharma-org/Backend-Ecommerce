@@ -19,6 +19,28 @@ export class ProductsService {
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
   ) {}
 
+  async uploadPO(data: { pro_code: string; month: number }[]) {
+    console.log(data);
+    try {
+      const rows = Object.values(data);
+      await Promise.all(
+        rows.map(async (item) => {
+          await this.productRepo.update(
+            { pro_code: item.pro_code },
+            {
+              pro_promotion_month: item.month,
+            },
+          );
+        }),
+      );
+      console.log('Product Promotion Month Update Success');
+      return 'Product Promotion Month Update Success';
+    } catch (error) {
+      console.log(error);
+      throw new Error('Error updating product promotion month');
+    }
+  }
+
   async createProduct(product: ProductEntity) {
     try {
       const newProduct = this.productRepo.create(product);
@@ -180,6 +202,89 @@ export class ProductsService {
         ])
         .getMany();
       return products;
+    } catch (error) {
+      console.error('Error searching products:', error);
+      throw new Error('Error searching products');
+    }
+  }
+
+  async searchCategoryProducts(data: {
+    keyword: string;
+    category: number;
+    offset: number;
+  }): Promise<{ products: ProductEntity[]; totalCount: number }> {
+    try {
+      const qb = this.productRepo
+        .createQueryBuilder('product')
+        .where('product.pro_priceA != 0')
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('product.pro_name LIKE :keyword', {
+              keyword: `%${data.keyword}%`,
+            })
+              .orWhere('product.pro_keysearch LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_barcode1 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_barcode2 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_barcode3 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_code LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              });
+          }),
+        )
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix3', {
+                prefix3: 'ส่งเสริม%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix4', {
+                prefix4: 'รีเบท%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+              .andWhere('product.pro_name NOT LIKE :prefix6', {
+                prefix6: '/%',
+              })
+              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+              .andWhere('product.pro_name NOT LIKE :prefix7', {
+                prefix7: 'ค่า%',
+              });
+            if (data.category === 8) {
+              qb.andWhere('product.pro_free = :free', { free: true });
+            } else {
+              qb.andWhere('product.pro_category = :category', {
+                category: data.category,
+              });
+            }
+          }),
+        );
+
+      const totalCount = await qb.getCount();
+      const products = await qb
+        .take(30)
+        .skip(data.offset)
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_unit1',
+          'product.pro_point',
+        ])
+        .getMany();
+      return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
       throw new Error('Error searching products');

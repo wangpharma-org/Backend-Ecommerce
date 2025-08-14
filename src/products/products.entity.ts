@@ -20,7 +20,7 @@ export class ProductEntity {
   pro_nameSale: string;
 
   @Column({ length: 255, nullable: true })
-  pro_namePacking: string;  
+  pro_namePacking: string;
 
   @Column({ length: 255, nullable: true })
   pro_genericname: string;
@@ -99,6 +99,15 @@ export class ProductEntity {
 
   @Column({ type: 'decimal', precision: 6, scale: 1, nullable: true })
   pro_utility: number;
+
+  @Column({ nullable: true })
+  pro_category: number;
+
+  @Column({ nullable: true })
+  pro_promotion_month: number;
+
+  @Column({ nullable: true, default: 1 })
+  pro_promotion_amount: number;
 
   @OneToOne(() => ProductPharmaEntity, (pharma) => pharma.product)
   pharmaDetails: ProductPharmaEntity;
