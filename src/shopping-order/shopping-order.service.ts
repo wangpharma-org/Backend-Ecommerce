@@ -146,7 +146,7 @@ export class ShoppingOrderService {
             orderHeader: { soh_running: running },
             spo_qty: item.spc_amount,
             spo_unit: item.spc_unit,
-            spo_price_unit: unitPrice,
+            spo_price_unit: unitPrice * ratio,
             spo_total_decimal: price,
             pro_code: item.pro_code,
           });
