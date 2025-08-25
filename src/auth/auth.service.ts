@@ -41,4 +41,16 @@ export class AuthService {
     });
     return { token: access_token };
   }
+
+  async checkUser(data: { username: string; password: string }): Promise<{ valid: boolean; message: string }> {
+    try {
+      console.log('data in auth service to DrugSticker:', data.username);
+      const user = await this.userService.findOne(data.username);
+      return await { valid: user?.mem_password === data.password, message: user ? (user.mem_password === data.password ? 'User is valid' : 'Invalid password') : 'User not found' };
+    }
+    catch (err) {
+      console.log('Error in auth service to DrugSticker:', err);
+      return { valid: false, message: 'Error checking user' };
+    }
+  }
 }
