@@ -157,8 +157,10 @@ export class ShoppingOrderService {
           return total + Number(order.spo_total_decimal);
         }, 0);
 
-        if (sumprice !== data.total_price) {
-          console.log('Sumprice: ', sumprice);
+        const forwardSumpricetoFixed2 = Number(sumprice.toFixed(2));
+
+        if (forwardSumpricetoFixed2 !== data.total_price) {
+          console.log('Sumprice: ', forwardSumpricetoFixed2.toFixed(2));
           console.log('data.total_price: ', data.total_price);
           throw new Error('Price Error');
         }
