@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { UsersService } from 'src/users/users.service';
+import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 
 export interface SigninResponse {
@@ -35,6 +35,7 @@ export class AuthService {
       mem_province: user.mem_province ?? '',
       mem_post: user.mem_post ?? '',
       mem_phone: user.mem_phone ?? '',
+      permission: user.permision_admin,
     };
     const access_token = await this.jwtService.signAsync(payload, {
       expiresIn: '12h',

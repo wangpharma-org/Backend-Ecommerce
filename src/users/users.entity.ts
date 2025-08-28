@@ -6,10 +6,10 @@ import {
   JoinColumn,
   OneToMany,
 } from 'typeorm';
-import { EmployeeEntity } from 'src/employees/employees.entity';
-import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
-import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { FavoriteEntity } from 'src/favorite/favorite.entity';
+import { EmployeeEntity } from '../employees/employees.entity';
+import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
+import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
+import { FavoriteEntity } from '../favorite/favorite.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -102,6 +102,9 @@ export class UserEntity {
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   mem_Ccoin: number;
+
+  @Column({ default: false })
+  permision_admin: boolean;
 
   @Column({ type: 'decimal', precision: 20, scale: 2, default: 0 })
   mem_Rcoin: number;

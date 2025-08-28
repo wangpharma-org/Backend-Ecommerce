@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -12,6 +12,24 @@ import { FavoriteService } from './favorite/favorite.service';
 import { FlashsaleService } from './flashsale/flashsale.service';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { FeatureFlagsService } from './feature-flags/feature-flags.service';
+import { BannerService } from './banner/banner.service';
+
+interface JwtPayload {
+  username: string;
+  name: string;
+  mem_code: string;
+  price_option?: string;
+  mem_address?: string;
+  mem_village?: string;
+  mem_alley?: string;
+  mem_tumbon?: string;
+  mem_amphur?: string;
+  mem_province?: string;
+  mem_post?: string;
+  mem_phone?: string;
+  permission?: boolean;
+}
 
 @Controller()
 export class AppController {
@@ -24,12 +42,70 @@ export class AppController {
     private readonly shoppingHeadService: ShoppingHeadService,
     private readonly favoriteService: FavoriteService,
     private readonly flashsaleService: FlashsaleService,
+    private readonly featureFlagsService: FeatureFlagsService,
+    private readonly bannerService: BannerService,
   ) {}
+
+  @Get('/ecom/presign')
+  async getPresignedURL(
+    @Query('fileName') fileName: string,
+    @Query('fileType') fileType: string,
+  ) {
+    return this.bannerService.getPresignedUrl(fileName, fileType);
+  }
+
+  @Get('/ecom/feature-flag/:flag')
+  async checkFlag(@Param('flag') flag: string) {
+    return this.featureFlagsService.getFlag(flag);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/feature-flag/update-flag')
+  async updateFlag(@Body() data: { flag: string; status: boolean }) {
+    return this.featureFlagsService.updateFlag(data);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/products/insert-po')
-  async uploadPO(@Body() data: { pro_code: string; month: number }[]) {
-    return await this.productsService.uploadPO(data);
+  async uploadPO(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_code: string; month: number }[],
+  ) {
+    const permission = req.user.permission;
+    console.log('permission', permission);
+    if (permission === true) {
+      return await this.productsService.uploadPO(data);
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/products/upload-product-flashsale')
+  async uploadProductFlashSale(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { productCode: string; quantity: number }[],
+  ) {
+    const permission = req.user.permission;
+    console.log('permission', permission);
+    if (permission === true) {
+      return await this.productsService.uploadProductFlashSale(data);
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/products/flashsale-procode')
+  async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    console.log('permission', permission);
+    console.log(req.user);
+    if (permission === true) {
+      return await this.productsService.listProcodeFlashSale();
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -39,10 +115,10 @@ export class AppController {
     return await this.favoriteService.getListFavorite(mem_code);
   }
 
-  // @Get('/ecom/flashsale')
-  // async getDataFlashSale() {
-  //   return await this.flashsaleService.getListFlashSale();
-  // }
+  @Get('/ecom/flashsale/:limit')
+  async getDataFlashSale(@Param('limit') limit: number) {
+    return await this.productsService.getFlashSale(limit);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/add')

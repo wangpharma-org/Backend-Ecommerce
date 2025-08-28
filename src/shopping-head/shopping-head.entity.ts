@@ -7,8 +7,8 @@ import {
   JoinColumn,
   OneToMany,
 } from 'typeorm';
-import { UserEntity } from 'src/users/users.entity';
-import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
+import { UserEntity } from '../users/users.entity';
+import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 
 @Entity({ name: 'shopping_head' })
 export class ShoppingHeadEntity {

@@ -23,4 +23,4 @@ interface OrderByMemberItem {
   Newdetails: NewDetail[];
 }
 
-export type AllOrderByMemberRes = OrderByMemberItem[]
+export type AllOrderByMemberRes = OrderByMemberItem[];

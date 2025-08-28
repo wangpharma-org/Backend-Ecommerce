@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, MoreThan, Repository } from 'typeorm';
+import { Brackets, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
+import { Cron } from '@nestjs/schedule';
 
 interface OrderItem {
   pro_code: string;
@@ -19,9 +20,121 @@ export class ProductsService {
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
   ) {}
 
+  @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  async resetFlashSale() {
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    if (tomorrow.getDate() !== 1) {
+      return;
+    }
+    try {
+      await this.productRepo.update(
+        { pro_promotion_month: Not(IsNull()) },
+        {
+          pro_promotion_month: null,
+          pro_promotion_amount: null,
+          is_detect_amount: false,
+        },
+      );
+      console.log('Reset FlashSale Success');
+    } catch (error) {
+      console.log(error);
+      throw new Error('Error Reset FlashSale');
+    }
+  }
+
+  async listProcodeFlashSale() {
+    try {
+      const data = await this.productRepo.find({
+        where: {
+          pro_promotion_month: Not(IsNull()),
+        },
+        select: {
+          pro_code: true,
+        },
+      });
+      return data;
+    } catch (error) {
+      throw new Error('Error in listProcodeFlashSale: ', error);
+    }
+  }
+
+  async getFlashSale(limit: number) {
+    try {
+      const numberOfMonth = new Date().getMonth() + 1;
+      const data = await this.productRepo.find({
+        where: {
+          pro_promotion_month: numberOfMonth,
+        },
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_priceA: true,
+          pro_imgmain: true,
+          pro_unit1: true,
+          pro_promotion_amount: true,
+        },
+        take: limit,
+      });
+      return data;
+    } catch {
+      throw new Error('Error in getFlashSale');
+    }
+  }
+
+  async uploadProductFlashSale(
+    data: {
+      productCode: string;
+      quantity: number;
+    }[],
+  ) {
+    try {
+      const rows = Object.values(data);
+      const numberOfMonth = new Date().getMonth() + 1;
+      await Promise.all(
+        rows.map(async (item) => {
+          await this.productRepo.update(
+            { pro_code: item.productCode },
+            {
+              pro_promotion_month: numberOfMonth,
+              pro_promotion_amount: item.quantity === 0 ? 1 : item.quantity,
+              is_detect_amount: item.quantity === 0 ? false : true,
+            },
+          );
+        }),
+      );
+      const responseData = this.productRepo.find({
+        where: {
+          pro_promotion_month: numberOfMonth,
+        },
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_promotion_month: true,
+          pro_promotion_amount: true,
+          is_detect_amount: true,
+        },
+      });
+      return responseData;
+    } catch (error) {
+      console.error('Error uploading product flash sale:', error);
+      throw new Error('Error uploading product flash sale');
+    }
+  }
+
   async uploadPO(data: { pro_code: string; month: number }[]) {
     console.log(data);
     try {
+      await this.productRepo.update(
+        { pro_promotion_month: Not(IsNull()) },
+        {
+          pro_promotion_month: null,
+          pro_promotion_amount: null,
+          is_detect_amount: false,
+        },
+      );
+
       const rows = Object.values(data);
       await Promise.all(
         rows.map(async (item) => {
@@ -29,12 +142,13 @@ export class ProductsService {
             { pro_code: item.pro_code },
             {
               pro_promotion_month: item.month,
+              pro_promotion_amount: 1,
             },
           );
         }),
       );
       console.log('Product Promotion Month Update Success');
-      return 'Product Promotion Month Update Success';
+      return 'Product Promotion Month Update Success (PO File)';
     } catch (error) {
       console.log(error);
       throw new Error('Error updating product promotion month');
@@ -116,6 +230,8 @@ export class ProductsService {
           'product.pro_unit1',
           'product.pro_unit2',
           'product.pro_unit3',
+          'product.pro_promotion_month',
+          'product.pro_promotion_amount',
           'product.pro_keysearch',
           'pharma.pro_code',
           'pharma.pp_properties',
@@ -214,6 +330,7 @@ export class ProductsService {
     offset: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const monthNumber = new Date().getMonth() + 1;
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -261,6 +378,10 @@ export class ProductsService {
               });
             if (data.category === 8) {
               qb.andWhere('product.pro_free = :free', { free: true });
+            } else if (data.category === 7) {
+              qb.andWhere('product.pro_promotion_month = :month', {
+                month: monthNumber,
+              });
             } else {
               qb.andWhere('product.pro_category = :category', {
                 category: data.category,
@@ -282,6 +403,8 @@ export class ProductsService {
           'product.pro_imgmain',
           'product.pro_unit1',
           'product.pro_point',
+          'product.pro_promotion_amount',
+          'product.pro_promotion_month',
         ])
         .getMany();
       return { products, totalCount };

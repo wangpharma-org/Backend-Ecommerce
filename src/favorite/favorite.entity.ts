@@ -1,6 +1,6 @@
 import { Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { ProductEntity } from 'src/products/products.entity';
-import { UserEntity } from 'src/users/users.entity';
+import { ProductEntity } from '../products/products.entity';
+import { UserEntity } from '../users/users.entity';
 
 @Entity({ name: 'favorite' })
 export class FavoriteEntity {
