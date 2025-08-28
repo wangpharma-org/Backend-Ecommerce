@@ -2,12 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
-import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
+import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
+import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
-import { FailedEntity } from 'src/failed-api/failed-api.entity';
-import { lastValueFrom } from 'rxjs';
-import { ProductEntity } from 'src/products/products.entity';
+import { FailedEntity } from '../failed-api/failed-api.entity';
+import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 
 @Injectable()
@@ -46,25 +45,25 @@ export class ShoppingOrderService {
         },
       });
 
-      const response = await lastValueFrom(
-        this.httpService.post(
-          'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
-          data,
-        ),
-      );
+      // const response = await lastValueFrom(
+      //   this.httpService.post(
+      //     'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
+      //     data,
+      //   ),
+      // );
 
-      if (response.status === 200) {
-        return;
-      }
+      // if (response.status === 200) {
+      //   return;
+      // }
 
       console.log('data on sendDataToOldSystem', data);
     } catch {
-      const res2 = await lastValueFrom(
-        this.httpService.post(this.slackUrl, {
-          text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
-        }),
-      );
-      console.log('Notify external API :', res2);
+      // const res2 = await lastValueFrom(
+      //   this.httpService.post(this.slackUrl, {
+      //     text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
+      //   }),
+      // );
+      // console.log('Notify external API :', res2);
       await this.failedEntity.save(
         this.failedEntity.create({
           failed_json: JSON.parse(JSON.stringify(data)) as JSON,
@@ -91,7 +90,9 @@ export class ShoppingOrderService {
     shippingOptions: string;
   }): Promise<string | undefined> {
     try {
+      const numberOfMonth = new Date().getMonth() + 1;
       let pointAfterUse = 0;
+
       const running = await this.dataSource.transaction(async (manager) => {
         const cart = await this.shoppingCartService.handleGetCartToOrder(
           data.mem_code,
@@ -116,68 +117,69 @@ export class ShoppingOrderService {
           { soh_running: running },
         );
 
-        const orderSales = cart?.map((item) => {
+        const orderSales = cart.map((item) => {
+          const unitRatioMap = new Map([
+            [item.product.pro_unit1, item.product.pro_ratio1],
+            [item.product.pro_unit2, item.product.pro_ratio2],
+            [item.product.pro_unit3, item.product.pro_ratio3],
+          ]);
+
+          const totalAmount = cart
+            .filter((c) => c.pro_code === item.pro_code)
+            .reduce((sum, sc) => {
+              const ratio = unitRatioMap.get(sc.spc_unit) ?? 0;
+              return sum + Number(sc.spc_amount) * ratio;
+            }, 0);
+
+          const isPromotionActive =
+            item.product.pro_promotion_month === numberOfMonth &&
+            totalAmount >= (item.product.pro_promotion_amount ?? 0);
+
           const unitPrice =
             data.priceOption === 'A'
-              ? item?.product?.pro_priceA
+              ? Number(item.product.pro_priceA)
               : data.priceOption === 'B'
-                ? item?.product?.pro_priceB
+                ? Number(item.product.pro_priceB)
                 : data.priceOption === 'C'
-                  ? item?.product?.pro_priceC
+                  ? Number(item.product.pro_priceC)
                   : 0;
 
-          const ratio =
-            item?.product?.pro_unit1 === item?.spc_unit
-              ? item?.product?.pro_ratio1
-              : item?.product?.pro_unit2 === item?.spc_unit
-                ? item?.product?.pro_ratio2
-                : item?.product?.pro_unit3 === item?.spc_unit
-                  ? item?.product?.pro_ratio3
-                  : 1;
-
-          if (isNaN(unitPrice) || isNaN(ratio) || isNaN(item.spc_amount)) {
-            console.log('Bad item:', item);
-            throw new Error('Invalid product price or ratio');
-          }
-
-          const price = item.spc_amount * unitPrice * ratio;
+          const ratio = unitRatioMap.get(item.spc_unit) ?? 1;
+          const price = isPromotionActive
+            ? Number(item.spc_amount) * Number(item.product.pro_priceA) * ratio
+            : Number(item.spc_amount) * unitPrice * ratio;
 
           const order = manager.create(ShoppingOrderEntity, {
             orderHeader: { soh_running: running },
             spo_qty: item.spc_amount,
             spo_unit: item.spc_unit,
-            spo_price_unit: unitPrice,
+            spo_price_unit: price / item.spc_amount,
             spo_total_decimal: price,
             pro_code: item.pro_code,
           });
+
           return order;
         });
 
-        const sumprice = orderSales?.reduce((total, order) => {
-          return total + Number(order.spo_total_decimal);
-        }, 0);
+        const sumprice = orderSales.reduce(
+          (total, order) => total + Number(order.spo_total_decimal),
+          0,
+        );
 
         if (sumprice !== data.total_price) {
-          console.log('Sumprice: ', sumprice);
-          console.log('data.total_price: ', data.total_price);
           throw new Error('Price Error');
         }
 
         if (data.listFree && data.listFree.length > 0) {
           const listFree = await Promise.all(
-            data.listFree.map((order) => {
-              if (order.amount < 0) {
-                throw new Error('Amount Failed');
-              }
-              return manager.findOne(ProductEntity, {
-                where: {
-                  pro_code: order.pro_code,
-                },
-              });
-            }),
+            data.listFree.map((order) =>
+              manager.findOne(ProductEntity, {
+                where: { pro_code: order.pro_code },
+              }),
+            ),
           );
 
-          const sumpoint = listFree?.reduce((total, order, index) => {
+          const sumpoint = listFree.reduce((total, order, index) => {
             if (!order?.pro_free) {
               throw new Error('Point Error');
             }
@@ -188,26 +190,18 @@ export class ShoppingOrderService {
 
           pointAfterUse = sumprice * 0.01 - sumpoint;
 
-          console.log('Point can use: ', sumprice * 0.01);
-          console.log('Point use: ', sumpoint);
-
-          if (sumpoint) {
-            if (sumprice * 0.01 < sumpoint) {
-              console.log('Point can use: ', sumprice * 0.01);
-              console.log('Point use: ', sumpoint);
-              throw new Error('Point Error');
-            }
+          if (sumpoint && sumprice * 0.01 < sumpoint) {
+            throw new Error('Point Error');
           }
 
-          const orderFree = data.listFree.map((order) => {
-            const orderFreeMap = manager.create(ShoppingOrderEntity, {
+          const orderFree = data.listFree.map((order) =>
+            manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
               pro_code: order.pro_code,
               spo_unit: order.pro_unit1,
               spo_qty: order.amount,
-            });
-            return orderFreeMap;
-          });
+            }),
+          );
 
           const saveProduct = await manager.save(
             ShoppingOrderEntity,
@@ -220,46 +214,35 @@ export class ShoppingOrderService {
           );
         }
 
-        if (orderSales) {
-          console.log(orderSales);
-          const saveProduct = await manager.save(
-            ShoppingOrderEntity,
-            orderSales,
-          );
-          await manager.update(
-            ShoppingHeadEntity,
-            { soh_id: NewHead.soh_id },
-            {
-              soh_listsale: saveProduct.length,
-              soh_sumprice: sumprice,
-              soh_coin_after_use: pointAfterUse,
-              soh_coin_recieve: sumprice * 0.01,
-              soh_coin_use: sumprice * 0.01 - pointAfterUse,
-            },
-          );
-          cart?.map((cart) => {
-            void this.shoppingCartService.clearCheckoutCart(cart.spc_id);
-          });
-          return running;
-        } else {
-          return;
-        }
+        const saveProduct = await manager.save(ShoppingOrderEntity, orderSales);
+        await manager.update(
+          ShoppingHeadEntity,
+          { soh_id: NewHead.soh_id },
+          {
+            soh_listsale: saveProduct.length,
+            soh_sumprice: sumprice,
+            soh_coin_after_use: pointAfterUse,
+            soh_coin_recieve: sumprice * 0.01,
+            soh_coin_use: sumprice * 0.01 - pointAfterUse,
+          },
+        );
+
+        cart.map(
+          (c) => void this.shoppingCartService.clearCheckoutCart(c.spc_id),
+        );
+
+        return running;
       });
+
       if (running) {
         await this.sendDataToOldSystem(running);
         return running;
       }
     } catch (error) {
-      console.log('Error : ', error);
-      await lastValueFrom(
-        this.httpService.post(this.slackUrl, {
-          text: `\n*ด่วน! ระบบผิดพลาด*\n\n*ปัญหาอาจเกิดจาก* : ระบบพี่โต้ล่ม (ไม่เป็นปัญหา) หรือ บางอย่างผิดพลาด (อันตราย) \n*รหัสลูกค้า* \n${data.mem_code}`,
-        }),
-      );
-      throw new Error('Something Wrong in Submit');
+      console.log('Error: ', error);
     }
   }
-  // ✅ ดึงข้อมูล 6 รายการล่าสุดของแต่ละ mem_code
+
   async getLast6OrdersByMemberCode(
     memCode: string,
   ): Promise<ShoppingOrderEntity[]> {

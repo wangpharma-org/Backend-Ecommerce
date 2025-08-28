@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { ShoppingHeadEntity } from './shopping-head.entity';
 import { Repository } from 'typeorm';
 import { AllOrderByMemberRes } from './types/AllOrderByMemberRes.type';
-import { ProductsService } from 'src/products/products.service';
+import { ProductsService } from '../products/products.service';
 
 export interface ShoppingHead {
   soh_runing: string;

@@ -1,9 +1,9 @@
 import { Entity, PrimaryColumn, Column, OneToOne, OneToMany } from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
-import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
-import { FavoriteEntity } from 'src/favorite/favorite.entity';
-import { FlashSaleEntity } from 'src/flashsale/flashsale.entity';
+import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
+import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
+import { FavoriteEntity } from '../favorite/favorite.entity';
+import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -103,11 +103,14 @@ export class ProductEntity {
   @Column({ nullable: true })
   pro_category: number;
 
-  @Column({ nullable: true })
-  pro_promotion_month: number;
+  @Column({ nullable: true, type: 'tinyint' })
+  pro_promotion_month: number | null;
 
-  @Column({ nullable: true, default: 1 })
-  pro_promotion_amount: number;
+  @Column({ nullable: true, default: 1, type: 'tinyint' })
+  pro_promotion_amount: number | null;
+
+  @Column({ default: false })
+  is_detect_amount: boolean;
 
   @OneToOne(() => ProductPharmaEntity, (pharma) => pharma.product)
   pharmaDetails: ProductPharmaEntity;

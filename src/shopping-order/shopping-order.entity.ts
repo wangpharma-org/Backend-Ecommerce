@@ -5,8 +5,8 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { ShoppingHeadEntity } from 'src/shopping-head/shopping-head.entity';
-import { ProductEntity } from 'src/products/products.entity';
+import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
+import { ProductEntity } from '../products/products.entity';
 
 @Entity({ name: 'shopping_order' })
 export class ShoppingOrderEntity {

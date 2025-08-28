@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProductsService } from 'src/products/products.service';
+import { ProductsService } from '../products/products.service';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -16,6 +16,8 @@ export interface ShoppingProductCart {
   pro_ratio1: number;
   pro_ratio2: number;
   pro_ratio3: number;
+  pro_promotion_month: number;
+  pro_promotion_amount: number;
   shopping_cart: ShoppingCart[];
 }
 
@@ -24,6 +26,8 @@ export interface ShoppingCart {
   spc_amount: string;
   spc_checked: number;
   spc_unit: string;
+  pro_promotion_month: number;
+  pro_promotion_amount: number;
 }
 
 interface RawProductCart {
@@ -39,12 +43,13 @@ interface RawProductCart {
   pro_ratio1: number;
   pro_ratio2: number;
   pro_ratio3: number;
+  pro_promotion_month: number;
+  pro_promotion_amount: number;
   spc_id: number;
   spc_amount: string;
   spc_unit: string;
   spc_checked: number;
 }
-
 
 // Define a DTO for the return type
 export interface CartSummary {
@@ -260,6 +265,8 @@ export class ShoppingCartService {
           'product.pro_ratio1 AS pro_ratio1',
           'product.pro_ratio2 AS pro_ratio2',
           'product.pro_ratio3 AS pro_ratio3',
+          'product.pro_promotion_month AS pro_promotion_month',
+          'product.pro_promotion_amount AS pro_promotion_amount',
           'cart.spc_id AS spc_id',
           'cart.spc_amount AS spc_amount',
           'cart.spc_unit AS spc_unit',
@@ -287,6 +294,8 @@ export class ShoppingCartService {
             pro_ratio1: row.pro_ratio1,
             pro_ratio2: row.pro_ratio2,
             pro_ratio3: row.pro_ratio3,
+            pro_promotion_month: row.pro_promotion_month,
+            pro_promotion_amount: row.pro_promotion_amount,
             shopping_cart: [],
           };
         }
@@ -296,6 +305,8 @@ export class ShoppingCartService {
           spc_amount: row.spc_amount,
           spc_checked: row.spc_checked,
           spc_unit: row.spc_unit,
+          pro_promotion_month: row.pro_promotion_month,
+          pro_promotion_amount: row.pro_promotion_amount,
         });
       }
 
@@ -312,26 +323,31 @@ export class ShoppingCartService {
 
           // คำนวณหน่วยที่เล็กที่สุดสำหรับ pro_code นี้
           return this.productsService.calculateSmallestUnit(orderItems);
-        })
+        }),
       );
       console.log('totalSmallestUnit:', totalSmallestUnit);
 
-      const ProductMaptotalSmallestUnit = totalSmallestUnit.map((total, index) => ({
-        pro_code: Object.values(grouped)[index].pro_code,
-        totalSmallestUnit: total,
-      }));
+      const ProductMaptotalSmallestUnit = totalSmallestUnit.map(
+        (total, index) => ({
+          pro_code: Object.values(grouped)[index].pro_code,
+          totalSmallestUnit: total,
+        }),
+      );
 
-      // กรองเอาเฉพาะ product ที่ตรงกับ pro_code และเพิ่ม totalSmallestUnit เข้าไปในแต่ละ group
-      const result: ShoppingProductCart[] = Object.values(grouped).map((group) => {
-        const productTotal = ProductMaptotalSmallestUnit.find(
-          (item) => item.pro_code === group.pro_code
-        );
+      const result: ShoppingProductCart[] = Object.values(grouped).map(
+        (group) => {
+          const productTotal = ProductMaptotalSmallestUnit.find(
+            (item) => item.pro_code === group.pro_code,
+          );
 
-        return {
-          ...group,
-          totalSmallestUnit: productTotal ? productTotal.totalSmallestUnit : 0, // เพิ่ม totalSmallestUnit เข้าไปในแต่ละ group
-        };
-      });
+          return {
+            ...group,
+            totalSmallestUnit: productTotal
+              ? productTotal.totalSmallestUnit
+              : 0,
+          };
+        },
+      );
 
       return result;
     } catch (error) {
@@ -339,5 +355,4 @@ export class ShoppingCartService {
       throw new Error(`Error in Get product Cart`);
     }
   }
-
 }

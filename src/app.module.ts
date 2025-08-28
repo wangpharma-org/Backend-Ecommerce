@@ -13,10 +13,15 @@ import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
 import { FailedApiModule } from './failed-api/failed-api.module';
 import { FavoriteModule } from './favorite/favorite.module';
 import { FlashsaleModule } from './flashsale/flashsale.module';
+import { BannerService } from './banner/banner.service';
+import { BannerModule } from './banner/banner.module';
+import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     AuthModule,
+    ScheduleModule.forRoot(),
     UsersModule,
     ConfigModule.forRoot({
       isGlobal: true,
@@ -32,7 +37,9 @@ import { FlashsaleModule } from './flashsale/flashsale.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: false,
+        // migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
     }),
     EmployeesModule,
@@ -43,8 +50,10 @@ import { FlashsaleModule } from './flashsale/flashsale.module';
     FailedApiModule,
     FavoriteModule,
     FlashsaleModule,
+    BannerModule,
+    FeatureFlagsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, BannerService],
 })
 export class AppModule {}
