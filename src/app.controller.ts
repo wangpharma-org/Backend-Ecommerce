@@ -27,6 +27,12 @@ export class AppController {
   ) {}
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/products/insert-po')
+  async uploadPO(@Body() data: { pro_code: string; month: number }[]) {
+    return await this.productsService.uploadPO(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/favorite/:mem_code')
   async getListFavorite(@Param('mem_code') mem_code: string) {
     console.log('get data favorite');
@@ -64,6 +70,15 @@ export class AppController {
   async searchProducts(@Body() data: { keyword: string; offset: number }) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/category-products')
+  async searchCategoryProducts(
+    @Body() data: { keyword: string; offset: number; category: number },
+  ) {
+    console.log('data in controller:', data);
+    return await this.productsService.searchCategoryProducts(data);
   }
 
   @UseGuards(JwtAuthGuard)
