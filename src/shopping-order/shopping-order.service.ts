@@ -173,7 +173,7 @@ export class ShoppingOrderService {
           );
           totalSumPrice += sumprice;
 
-          if (groupIndex === group.length - 1) {
+          if (groupIndex === groupCartArray.length - 1) {
             if (data.listFree && data.listFree.length > 0) {
               const listFree = await Promise.all(
                 data.listFree.map((order) =>

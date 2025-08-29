@@ -24,7 +24,8 @@ services:
     ports:
       - "3311:3306"
     volumes:
-      - db-ecommerce-data:/var/lib/mysql
+      - db-ecommerce-data-demo:/var/lib/mysql
 
 volumes:
   db-ecommerce-data:
+  db-ecommerce-data-demo:

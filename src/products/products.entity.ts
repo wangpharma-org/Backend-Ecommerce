@@ -106,7 +106,7 @@ export class ProductEntity {
   @Column({ nullable: true, type: 'tinyint' })
   pro_promotion_month: number | null;
 
-  @Column({ nullable: true, default: 1, type: 'tinyint' })
+  @Column({ nullable: true, default: 1, type: 'smallint' })
   pro_promotion_amount: number | null;
 
   @Column({ default: false })
