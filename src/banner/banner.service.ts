@@ -18,10 +18,10 @@ export class BannerService {
   async getPresignedUrl(filename: string, filetype: string) {
     const params = {
       Bucket: process.env.DO_SPACES_BUCKET,
-      Key: `uploads/${Date.now()}-${filename}`,
+      Key: `${Date.now()}-${filename}`,
       Expires: 60,
       ContentType: filetype,
-      ACL: 'public-read',
+    //   ACL: 'public-read',
     };
 
     const uploadUrl = await this.s3.getSignedUrlPromise('putObject', params);
