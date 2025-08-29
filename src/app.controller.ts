@@ -298,17 +298,4 @@ export class AppController {
   ): Promise<ShoppingHeadEntity> {
     return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
   }
-
-  @Post('/ecom/drug-sticker/checkuser')
-  async checkUser(@Body() data: { username: string; password: string }): Promise<{ valid: boolean; message: string }> {
-    try {
-      console.log('data in controller to DrugSticker:', data.username);
-      return await this.authService.checkUser(data);
-    }
-    catch (err) {
-      console.log('Error in controller to DrugSticker:', err);
-      return { valid: false, message: 'Error checking user' };
-    }
-
-  }
 }
