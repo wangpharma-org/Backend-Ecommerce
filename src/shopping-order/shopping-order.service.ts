@@ -9,6 +9,7 @@ import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class ShoppingOrderService {
@@ -46,25 +47,25 @@ export class ShoppingOrderService {
         },
       });
 
-      // const response = await lastValueFrom(
-      //   this.httpService.post(
-      //     'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
-      //     data,
-      //   ),
-      // );
+      const response = await lastValueFrom(
+        this.httpService.post(
+          'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
+          data,
+        ),
+      );
 
-      // if (response.status === 200) {
-      //   return;
-      // }
+      if (response.status === 200) {
+        return;
+      }
 
       console.log('data on sendDataToOldSystem', data);
     } catch {
-      // const res2 = await lastValueFrom(
-      //   this.httpService.post(this.slackUrl, {
-      //     text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
-      //   }),
-      // );
-      // console.log('Notify external API :', res2);
+      const res2 = await lastValueFrom(
+        this.httpService.post(this.slackUrl, {
+          text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
+        }),
+      );
+      console.log('Notify external API :', res2);
       await this.failedEntity.save(
         this.failedEntity.create({
           failed_json: JSON.parse(JSON.stringify(data)) as JSON,
