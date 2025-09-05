@@ -169,9 +169,9 @@ export class AppController {
     return await this.favoriteService.getListFavorite(mem_code);
   }
 
-  @Get('/ecom/flashsale/:limit')
-  async getDataFlashSale(@Param('limit') limit: number) {
-    return await this.productsService.getFlashSale(limit);
+  @Post('/ecom/flashsale/get-list')
+  async getDataFlashSale(@Body() data: { limit: number; mem_code: string }) {
+    return await this.productsService.getFlashSale(data.limit, data.mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -207,7 +207,13 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/category-products')
   async searchCategoryProducts(
-    @Body() data: { keyword: string; offset: number; category: number; mem_code: string },
+    @Body()
+    data: {
+      keyword: string;
+      offset: number;
+      category: number;
+      mem_code: string;
+    },
   ) {
     console.log('data in controller:', data);
     return await this.productsService.searchCategoryProducts(data);

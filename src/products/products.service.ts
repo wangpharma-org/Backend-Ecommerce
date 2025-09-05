@@ -75,25 +75,37 @@ export class ProductsService {
     }
   }
 
-  async getFlashSale(limit: number) {
+  async getFlashSale(limit: number, mem_code: string) {
     try {
+      console.log(limit, mem_code);
       const numberOfMonth = new Date().getMonth() + 1;
-      const data = await this.productRepo.find({
-        where: {
-          pro_promotion_month: numberOfMonth,
-        },
-        select: {
-          pro_code: true,
-          pro_name: true,
-          pro_priceA: true,
-          pro_imgmain: true,
-          pro_unit1: true,
-          pro_promotion_amount: true,
-        },
-        take: limit,
-      });
+      const data = await this.productRepo
+        .createQueryBuilder('product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :mem_code',
+          { mem_code },
+        )
+        .where('product.pro_promotion_month = :month', { month: numberOfMonth })
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_imgmain',
+          'product.pro_unit1',
+          'product.pro_promotion_amount',
+          'cart.spc_id',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.mem_code',
+        ])
+        .take(Number(limit))
+        .getMany();
+
       return data;
-    } catch {
+    } catch (error) {
+      console.error('Error in getFlashSale:', error);
       throw new Error('Error in getFlashSale');
     }
   }
