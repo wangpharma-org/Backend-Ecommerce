@@ -144,6 +144,7 @@ export class AuthService {
       const response = await lastValueFrom(
         this.httpService.post(
           'https://www.wangpharma.com/Akitokung/api/order/receive-info-member.php',
+          // 'https://webhook.site/0a9cbf03-80ae-4108-bbe1-c4ec552f3b2a',
           {
             mem_address: data.mem_address,
             mem_village: data.mem_village,
