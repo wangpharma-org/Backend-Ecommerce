@@ -123,4 +123,46 @@ export class UserEntity {
 
   @OneToMany(() => ShoppingHeadEntity, (orderHd) => orderHd.member)
   orders: ShoppingHeadEntity[];
+
+  @Column({ length: 50, nullable: true, default: null })
+  line_id: string;
+
+  @Column({ length: 80, nullable: true, default: null })
+  mem_email: string;
+
+  @Column({ length: 100, nullable: true, default: null })
+  website: string;
+
+  @Column({ length: 200, nullable: true, default: null })
+  facebook: string;
+
+  @Column({ length: 15, nullable: true, default: null })
+  owner_title: string;
+
+  @Column({ length: 120, nullable: true, default: null })
+  owner_name: string;
+
+  @Column({ length: 15, nullable: true, default: null })
+  owner_tel: string;
+
+  @Column({ length: 60, nullable: true, default: null })
+  owner_email: string;
+
+  @Column({ length: 15, nullable: true, default: null })
+  pharmacist_title: string;
+
+  @Column({ length: 120, nullable: true, default: null })
+  pharmacist_name: string;
+
+  @Column({ length: 15, nullable: true, default: null })
+  pharmacist_tel: string;
+
+  @Column({ length: 60, nullable: true, default: null })
+  pharmacist_email: string;
+
+  @Column({ length: 100, nullable: true, default: null })
+  mem_sgroup: string;
+
+  @Column({ length: 150, nullable: true, default: null })
+  mem_invoice_type: string;
 }

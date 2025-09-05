@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 export interface ShoppingProductCart {
   pro_code: string;

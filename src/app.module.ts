@@ -13,7 +13,6 @@ import { ShoppingHeadModule } from './shopping-head/shopping-head.module';
 import { FailedApiModule } from './failed-api/failed-api.module';
 import { FavoriteModule } from './favorite/favorite.module';
 import { FlashsaleModule } from './flashsale/flashsale.module';
-import { BannerService } from './banner/banner.service';
 import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -54,6 +53,6 @@ import { ScheduleModule } from '@nestjs/schedule';
     FeatureFlagsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, BannerService],
+  providers: [AppService],
 })
 export class AppModule {}

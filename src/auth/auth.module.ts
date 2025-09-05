@@ -5,10 +5,15 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt.strategy';
 import { jwtConstants } from './constants';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UserEntity } from 'src/users/users.entity';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([UserEntity]),
     UsersModule,
+    HttpModule,
     PassportModule,
     JwtModule.register({
       secret: jwtConstants.secret,

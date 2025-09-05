@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { UserEntity } from 'src/users/users.entity';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -14,6 +25,7 @@ import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 interface JwtPayload {
   username: string;
@@ -46,12 +58,54 @@ export class AppController {
     private readonly bannerService: BannerService,
   ) {}
 
-  @Get('/ecom/presign')
-  async getPresignedURL(
-    @Query('fileName') fileName: string,
-    @Query('fileType') fileType: string,
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/image-banner')
+  async getImageUrl() {
+    return this.bannerService.GetImageUrl();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user-data/:mem_code')
+  async getUserData(@Param('mem_code') mem_code: string) {
+    return this.authService.fetchUserData(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/user-data/update')
+  async updateUserData(@Body() data: UserEntity) {
+    console.log(data);
+    return this.authService.updateUserData(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/upload-file')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadBanner(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() data: { date_start: Date; date_end: Date },
   ) {
-    return this.bannerService.getPresignedUrl(fileName, fileType);
+    const uploadUrl = await this.bannerService.UploadImage(
+      file,
+      data.date_start,
+      data.date_end,
+    );
+    return uploadUrl?.Location;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/user/upload-file')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadImageUser(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() data: { mem_code: string; type: string; old_url: string },
+  ) {
+    console.log(data);
+    return await this.authService.UploadImage(
+      file,
+      data.type,
+      data.mem_code,
+      data.old_url,
+    );
   }
 
   @Get('/ecom/feature-flag/:flag')
@@ -143,7 +197,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/search-products')
-  async searchProducts(@Body() data: { keyword: string; offset: number }) {
+  async searchProducts(
+    @Body() data: { keyword: string; offset: number; mem_code: string },
+  ) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
   }
@@ -151,7 +207,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/category-products')
   async searchCategoryProducts(
-    @Body() data: { keyword: string; offset: number; category: number },
+    @Body() data: { keyword: string; offset: number; category: number; mem_code: string },
   ) {
     console.log('data in controller:', data);
     return await this.productsService.searchCategoryProducts(data);
@@ -267,6 +323,12 @@ export class AppController {
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Param('mem_code') mem_code: string) {
     return this.shoppingCartService.getProductCart(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/product-cart/get-one/:pro_code')
+  async getProductCartOne(@Param('pro_code') pro_code: string) {
+    return this.productsService.getProductOne(pro_code);
   }
 
   @UseGuards(JwtAuthGuard)

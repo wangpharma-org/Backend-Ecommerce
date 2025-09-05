@@ -20,6 +20,21 @@ export class ProductsService {
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
   ) {}
 
+  async getProductOne(pro_code: string) {
+    try {
+      console.log('getProductOne', pro_code);
+      const dataProduct = await this.productRepo.findOne({
+        where: {
+          pro_code: pro_code,
+        },
+      });
+      console.log(dataProduct);
+      return dataProduct;
+    } catch {
+      throw new Error('Something Error in getProductOne');
+    }
+  }
+
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   async resetFlashSale() {
     const today = new Date();
@@ -328,11 +343,18 @@ export class ProductsService {
     keyword: string;
     category: number;
     offset: number;
+    mem_code: string;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const monthNumber = new Date().getMonth() + 1;
       const qb = this.productRepo
         .createQueryBuilder('product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :memCode',
+          { memCode: data.mem_code },
+        )
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -405,6 +427,9 @@ export class ProductsService {
           'product.pro_point',
           'product.pro_promotion_amount',
           'product.pro_promotion_month',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.mem_code',
         ])
         .getMany();
       return { products, totalCount };
@@ -417,10 +442,17 @@ export class ProductsService {
   async searchProducts(data: {
     keyword: string;
     offset: number;
+    mem_code: string;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const qb = this.productRepo
         .createQueryBuilder('product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :memCode',
+          { memCode: data.mem_code },
+        )
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -479,8 +511,12 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.mem_code',
         ])
         .getMany();
+      console.log(products);
       return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
