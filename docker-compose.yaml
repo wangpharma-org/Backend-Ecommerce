@@ -13,19 +13,19 @@ services:
     volumes:
       - db-ecommerce-data:/var/lib/mysql
 
-  db-ecommerce-services-demo:
-    image: mysql:8.0
-    container_name: ecommerce-db-demo
-    environment:
-      MYSQL_DATABASE: ecommerce-db
-      MYSQL_USER: admin
-      MYSQL_PASSWORD: password
-      MYSQL_ROOT_PASSWORD: password
-    ports:
-      - "3311:3306"
-    volumes:
-      - db-ecommerce-data-demo:/var/lib/mysql
+  # db-ecommerce-services-demo:
+  #   image: mysql:8.0
+  #   container_name: ecommerce-db-backend
+  #   environment:  
+  #     MYSQL_DATABASE: ecommerce-db-backend
+  #     MYSQL_USER: admin
+  #     MYSQL_PASSWORD: password
+  #     MYSQL_ROOT_PASSWORD: password
+  #   ports:
+  #     - "3311:3306"
+  #   volumes:
+  #     - db-ecommerce-db-backend:/var/lib/mysql
 
 volumes:
   db-ecommerce-data:
-  db-ecommerce-data-demo:
+  db-ecommerce-db-backend:

@@ -1,3 +1,4 @@
+import { WangdayService } from './backend/wangday.service';
 import { UserEntity } from 'src/users/users.entity';
 import {
   Body,
@@ -26,6 +27,8 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { WangDay } from './backend/wangday.entity';
+import { WangdaySumPrice } from './backend/wangdaySumPrice.entity';
 
 interface JwtPayload {
   username: string;
@@ -42,6 +45,11 @@ interface JwtPayload {
   mem_phone?: string;
   permission?: boolean;
 }
+interface ImportAndSumResult {
+  mem_code: string;
+  date: string;
+  sum: WangdaySumPrice | null;
+}
 
 @Controller()
 export class AppController {
@@ -56,7 +64,8 @@ export class AppController {
     private readonly flashsaleService: FlashsaleService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly bannerService: BannerService,
-  ) {}
+    private readonly wangdayService: WangdayService,
+  ) { }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
@@ -234,15 +243,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -365,5 +374,28 @@ export class AppController {
     @Param('soh_runing') soh_runing: string,
   ): Promise<ShoppingHeadEntity> {
     return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+  }
+
+  @Post('/ecom/wangday/import')
+  async importWangday(@Body() body: { data: any[] }) {
+    // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
+    const rows = (body.data || []).map(item => ({
+      date: item['วันที่'],
+      sh_running: item['เลขที่ใบกำกับ'],
+      wang_code: item['รหัสลูกค้า'],
+      sumprice: item['ยอดเงินสุทธิ']?.toString(),
+    }));
+    const imported = await this.wangdayService.importFromExcel(rows);
+    console.log('Imported rows:', imported.length);
+    return imported;
+  }
+
+  @Get('/ecom/wangday/monthly/:wang_code')
+  async getWangdayMonthly(@Param('wang_code') wang_code: string) {
+    return this.wangdayService.getMonthlySumByWangCode(wang_code);
+  }
+  @Get('/ecom/wangsumprice/:wang_code')
+  async getWangSumPrice(@Param('wang_code') wang_code: string) {
+    return this.wangdayService.getAllWangSumPrice(wang_code);
   }
 }
