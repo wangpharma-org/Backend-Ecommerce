@@ -14,8 +14,7 @@ export class CreditorEntity {
   @PrimaryGeneratedColumn()
   creditor_id: number;
 
-  @Index({ unique: true })
-  @Column()
+  @Column({ unique: true })
   creditor_code: string;
 
   @Column()
