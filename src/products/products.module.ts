@@ -4,9 +4,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ProductListner } from './product.listener';
+import { CreditorEntity } from './creditor.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProductEntity, ProductPharmaEntity])],
+  imports: [
+    TypeOrmModule.forFeature([
+      ProductEntity,
+      ProductPharmaEntity,
+      CreditorEntity,
+    ]),
+  ],
   providers: [ProductsService],
   controllers: [ProductListner],
   exports: [ProductsService],

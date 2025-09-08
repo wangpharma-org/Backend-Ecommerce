@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,7 +9,6 @@ import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class ShoppingOrderService {
@@ -47,30 +46,13 @@ export class ShoppingOrderService {
         },
       });
 
-      const response = await lastValueFrom(
-        this.httpService.post(
-          'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
-          data,
-        ),
-      );
-
-      if (response.status === 200) {
-        return;
+      if (!data) {
+        throw new Error('No order data found');
       }
 
-      console.log('data on sendDataToOldSystem', data);
+      return data as ShoppingHeadEntity;
     } catch {
-      const res2 = await lastValueFrom(
-        this.httpService.post(this.slackUrl, {
-          text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
-        }),
-      );
-      console.log('Notify external API :', res2);
-      await this.failedEntity.save(
-        this.failedEntity.create({
-          failed_json: JSON.parse(JSON.stringify(data)) as JSON,
-        }),
-      );
+      throw new BadRequestException('Something Error Please try again');
     }
   }
 
@@ -256,12 +238,7 @@ export class ShoppingOrderService {
         }
       });
 
-      if (runningNumbers.length > 0) {
-        for (const run of runningNumbers) {
-          await this.sendDataToOldSystem(run);
-        }
-        return runningNumbers;
-      }
+      return runningNumbers;
     } catch (error) {
       console.log('Error: ', error);
     }
@@ -271,9 +248,15 @@ export class ShoppingOrderService {
     memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
     try {
-      const orders = await this.shoppingOrderRepo //ดึงข้อมูลมา 20 ข้อมูลล่าสุด
+      const orders = await this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :memCode',
+          { memCode },
+        )
         .leftJoin('order.orderHeader', 'header')
         .where('header.mem_code = :memCode', { memCode })
         .orderBy('header.soh_datetime', 'DESC')
@@ -287,11 +270,17 @@ export class ShoppingOrderService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
           'header.soh_datetime',
+          'cart.spc_id',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.mem_code',
         ])
         .getMany();
 
-      const uniqueMap = new Map<string, ShoppingOrderEntity>(); //กรอกอันที่ซ้ำออก
+      const uniqueMap = new Map<string, ShoppingOrderEntity>();
       for (const order of orders) {
         const code = order.product?.pro_code;
         if (code && !uniqueMap.has(code)) {

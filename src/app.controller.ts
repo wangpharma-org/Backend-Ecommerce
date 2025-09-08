@@ -5,7 +5,6 @@ import {
   Get,
   Param,
   Post,
-  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -26,6 +25,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { PromotionService } from './promotion/promotion.service';
 
 interface JwtPayload {
   username: string;
@@ -56,7 +56,13 @@ export class AppController {
     private readonly flashsaleService: FlashsaleService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly bannerService: BannerService,
+    private readonly promotionService: PromotionService,
   ) {}
+
+  @Get('/ecom/get-data/:soh_running')
+  async apiForOldSystem(@Param('soh_running') soh_running: string) {
+    return this.shoppingOrderService.sendDataToOldSystem(soh_running);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
@@ -365,5 +371,119 @@ export class AppController {
     @Param('soh_runing') soh_runing: string,
   ): Promise<ShoppingHeadEntity> {
     return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/add')
+  async addPromotion(
+    @Body()
+    data: {
+      promo_name: string;
+      creditor_code: string;
+      start_date: Date;
+      end_date: Date;
+      status: boolean;
+    },
+  ) {
+    return this.promotionService.addPromotion(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/list')
+  async getPromotions() {
+    return this.promotionService.getAllPromotions();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/detail/:promo_id')
+  async getPromotion(@Param('promo_id') promo_id: string) {
+    return this.promotionService.getPromotionById(Number(promo_id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/add-tier')
+  async addTier(
+    @Body()
+    data: {
+      promo_id: number;
+      tier_name: string;
+      min_amount: number;
+      description?: string;
+      tier_postter?: string;
+    },
+  ) {
+    return this.promotionService.addTierToPromotion(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/update-status')
+  async updatePromotionStatus(
+    @Body() data: { promo_id: number; status: boolean },
+  ) {
+    return this.promotionService.updateStatus(data.promo_id, data.status);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/delete-tier')
+  async deleteTier(@Body() data: { tier_id: number }) {
+    return this.promotionService.deleteTier(data.tier_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/delete')
+  async deletePromotion(@Body() data: { promo_id: number }) {
+    return this.promotionService.deletePromotion(data.promo_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/condition/add')
+  async addPromotionCondition(
+    @Body()
+    data: {
+      tier_id: number;
+      product_gcode: string;
+      qty: number;
+      unit: string;
+    },
+  ) {
+    return this.promotionService.createCondition(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/condition/delete')
+  async deletePromotionCondition(@Body() data: { cond_id: number }) {
+    return this.promotionService.deleteCondition(data.cond_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/condition/list/:tier_id')
+  async listPromotionConditions(@Param('tier_id') tier_id: string) {
+    return this.promotionService.getConditionsByTier(Number(tier_id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/reward/add')
+  async addPromotionReward(
+    @Body()
+    data: {
+      tier_id: number;
+      product_gcode: string;
+      qty: number;
+      unit: string;
+    },
+  ) {
+    return this.promotionService.createReward(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/reward/list/:tier_id')
+  async listPromotionRewards(@Param('tier_id') tier_id: string) {
+    return this.promotionService.getRewardsByTier(Number(tier_id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/reward/delete')
+  async deletePromotionReward(@Body() data: { reward_id: number }) {
+    return this.promotionService.deleteReward(data.reward_id);
   }
 }

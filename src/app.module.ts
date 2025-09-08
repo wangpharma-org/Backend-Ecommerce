@@ -16,6 +16,7 @@ import { FlashsaleModule } from './flashsale/flashsale.module';
 import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { PromotionModule } from './promotion/promotion.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     FlashsaleModule,
     BannerModule,
     FeatureFlagsModule,
+    PromotionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

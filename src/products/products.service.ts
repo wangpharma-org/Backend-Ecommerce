@@ -94,6 +94,8 @@ export class ProductsService {
           'product.pro_priceA',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
           'product.pro_promotion_amount',
           'cart.spc_id',
           'cart.spc_amount',
@@ -436,9 +438,12 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
           'product.pro_point',
           'product.pro_promotion_amount',
           'product.pro_promotion_month',
+          'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
@@ -523,6 +528,9 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
@@ -663,9 +671,4 @@ export class ProductsService {
   //     throw new Error('Error calculating unit');
   //   }
   // }
-}
-function not(
-  arg0: number,
-): number | import('typeorm').FindOperator<number> | undefined {
-  throw new Error('Function not implemented.');
 }
