@@ -49,6 +49,11 @@ export class PromotionService {
       const tier = await this.promotionTierRepo.findOne({
         where: {
           tier_id: data.tier_id,
+          promotion: {
+            status: true,
+            start_date: LessThanOrEqual(new Date()),
+            end_date: MoreThanOrEqual(new Date()),
+          },
         },
         relations: {
           conditions: { product: { inCarts: true } },
