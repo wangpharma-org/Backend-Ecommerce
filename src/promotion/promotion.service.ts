@@ -1,11 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
-import { Repository, DeepPartial } from 'typeorm';
+import {
+  Repository,
+  DeepPartial,
+  LessThan,
+  MoreThanOrEqual,
+  LessThanOrEqual,
+} from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import * as AWS from 'aws-sdk';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class PromotionService {
@@ -25,6 +32,16 @@ export class PromotionService {
       accessKeyId: process.env.DO_SPACES_KEY,
       secretAccessKey: process.env.DO_SPACES_SECRET,
     });
+  }
+
+  @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  async cronDeletePromotionOutOfDate() {
+    try {
+      const today = new Date();
+      await this.promotionRepo.delete({ end_date: LessThan(today) });
+    } catch {
+      throw new Error('Something Error in Delete Promotion');
+    }
   }
 
   async tierProducts(data: { tier_id: number; mem_code: string }) {
@@ -86,10 +103,15 @@ export class PromotionService {
   }
 
   async getAllTiers() {
+    const Today = new Date();
     try {
       return await this.promotionTierRepo.find({
         where: {
-          promotion: { status: true },
+          promotion: {
+            status: true,
+            start_date: LessThanOrEqual(Today),
+            end_date: MoreThanOrEqual(Today),
+          },
         },
       });
     } catch {
@@ -99,9 +121,14 @@ export class PromotionService {
 
   async getAllTiersProduct(): Promise<string[]> {
     try {
+      const Today = new Date();
       const tiers = await this.promotionTierRepo.find({
         where: {
-          promotion: { status: true },
+          promotion: {
+            status: true,
+            start_date: LessThanOrEqual(Today),
+            end_date: MoreThanOrEqual(Today),
+          },
         },
         relations: {
           conditions: { product: true },
