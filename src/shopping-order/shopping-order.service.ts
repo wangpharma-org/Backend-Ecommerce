@@ -12,8 +12,6 @@ import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 
 @Injectable()
 export class ShoppingOrderService {
-  private slackUrl =
-    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
