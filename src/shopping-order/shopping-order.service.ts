@@ -163,10 +163,9 @@ export class ShoppingOrderService {
               : Number(item.spc_amount) * unitPrice * ratio;
 
             const isFreebie = Array.isArray(checkFreebies) && checkFreebies.some(
-              (f) =>  String(f.spc_unit) === String(item.spc_unit)
+              (f) => String(f.spc_unit) === String(item.spc_unit) && String(f.pro_code) === String(item.pro_code)
             );
-            console.log('isFreebie check:', { isFreebie, item, checkFreebies }); 
-
+            console.log('Freebie check:', { isFreebie, item, checkFreebies });
             if (isFreebie) {
               price = 0.00;
             }

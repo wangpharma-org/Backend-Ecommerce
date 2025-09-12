@@ -371,7 +371,7 @@ export class ShoppingCartService {
     }
   }
 
-  async getProFreebie(memCode: string): Promise<{spc_id: number, spc_amount: number, spc_unit: string, pro_freebie: number}[]> {
+  async getProFreebie(memCode: string): Promise<{spc_id: number, spc_amount: number, spc_unit: string, pro_freebie: number, pro_code: string}[]> {
     try {
       console.log('Fetching freebie products for mem_code:', memCode);
       const freebies = await this.shoppingCartRepo.find({

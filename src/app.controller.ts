@@ -373,6 +373,7 @@ export class AppController {
   ): Promise<ShoppingHeadEntity> {
     return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
   }
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/wangday/import')
   async importWangday(@Body() body: { data: any[], isLastChunk: boolean, isFirstChunk: boolean }) {
     try {
@@ -409,6 +410,7 @@ export class AppController {
   async searchProductFreebie(@Param('keyword') keyword: string | '') {
     return this.hotdealService.searchProduct(keyword);
   }
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
   async saveHotdeal(@Body() body: { dataInput: HotdealInput }) {
     console.log(body);
@@ -419,7 +421,7 @@ export class AppController {
   async getAllHotdeals() {
     return this.hotdealService.getAllHotdealsWithProductNames();
   }
-
+  @UseGuards(JwtAuthGuard)
   @Delete('/ecom/admin/hotdeal/delete/:id')
   async deleteHotdeal(@Param('id') id: number) {
     return this.hotdealService.deleteHotdeal(id);
@@ -455,11 +457,13 @@ export class AppController {
     return allResults.flat();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/hotdeal/get-hotdeals-by-procodes')
   async getHotdealsByProCodes(@Body() body: { proCodes: string[] }) {
     return this.hotdealService.getHotdealsByProCodes(body.proCodes);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/hotdeal/save-freebies')
   async saveFreebies(@Body() body: { hotDeal: { mem_code: string, pro2_code: string, pro2_unit: string, pro2_amount: string }[] }) {
     console.log("body:", body);
