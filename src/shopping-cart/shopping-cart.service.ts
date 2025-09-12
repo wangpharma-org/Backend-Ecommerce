@@ -77,7 +77,7 @@ export class ShoppingCartService {
     @InjectRepository(PromotionEntity)
     private readonly promotionRepo: Repository<PromotionEntity>,
     private readonly productsService: ProductsService,
-  ) { }
+  ) {}
 
   async addProductCart(data: {
     mem_code: string;
@@ -164,7 +164,7 @@ export class ShoppingCartService {
 
     const numberOfMonth = new Date().getMonth() + 1;
 
-    // ✅ กรองเฉพาะที่ spc_checked === true
+    // กรองเฉพาะที่ spc_checked === true
     const checkedCart = cart.filter((item) => item.spc_checked);
 
     // 1) คำนวณยอดรวม
@@ -223,10 +223,7 @@ export class ShoppingCartService {
       const passed = tiers.filter((t) => totalSumPrice >= t.min_amount);
       if (!passed.length) continue;
 
-      const rewardTiers =
-        totalSumPrice >= tiers[tiers.length - 1].min_amount
-          ? passed
-          : [passed[passed.length - 1]];
+      const rewardTiers = [passed[passed.length - 1]];
 
       for (const tier of rewardTiers) {
         const multiplier = Math.floor(totalSumPrice / tier.min_amount);
@@ -524,7 +521,17 @@ export class ShoppingCartService {
     }
   }
 
-  async getProFreebie(memCode: string): Promise<{ spc_id: number, spc_amount: number, spc_unit: string, is_reward: boolean, pro_code: string }[]> {
+  async getProFreebie(
+    memCode: string,
+  ): Promise<
+    {
+      spc_id: number;
+      spc_amount: number;
+      spc_unit: string;
+      is_reward: boolean;
+      pro_code: string;
+    }[]
+  > {
     try {
       console.log('Fetching freebie products for mem_code:', memCode);
       const freebies = await this.shoppingCartRepo.find({
