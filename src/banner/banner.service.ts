@@ -4,7 +4,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   LessThan,
   LessThanOrEqual,
-  MoreThan,
   MoreThanOrEqual,
   Repository,
 } from 'typeorm';

@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
+import { PromotionEntity } from 'src/promotion/promotion.entity';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -28,6 +29,7 @@ export interface ShoppingCart {
   spc_unit: string;
   pro_promotion_month: number;
   pro_promotion_amount: number;
+  is_reward: boolean;
 }
 
 interface RawProductCart {
@@ -49,6 +51,7 @@ interface RawProductCart {
   spc_amount: string;
   spc_unit: string;
   spc_checked: number;
+  is_reward: boolean | number;
 }
 
 // Define a DTO for the return type
@@ -72,6 +75,8 @@ export class ShoppingCartService {
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
+    @InjectRepository(PromotionEntity)
+    private readonly promotionRepo: Repository<PromotionEntity>,
     private readonly productsService: ProductsService,
   ) {}
 
@@ -80,8 +85,10 @@ export class ShoppingCartService {
     pro_code: string;
     pro_unit: string;
     amount: number;
+    priceCondition: string;
   }): Promise<ShoppingProductCart[]> {
     try {
+      // 1) หาสินค้าในตะกร้า
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -89,33 +96,163 @@ export class ShoppingCartService {
           spc_unit: data.pro_unit,
         },
       });
-      if (existing && Number(existing.spc_amount) + data.amount > 0) {
-        const spc_amount = Number(existing.spc_amount) + data.amount;
-        await this.shoppingCartRepo.update(
-          { spc_id: existing.spc_id },
-          {
-            spc_amount: spc_amount,
-            spc_datetime: Date(),
-          },
-        );
-        return await this.getProductCart(data.mem_code);
-      } else if (existing && Number(existing.spc_amount) + data.amount <= 0) {
-        await this.shoppingCartRepo.delete({ spc_id: existing.spc_id });
-        return await this.getProductCart(data.mem_code);
+
+      // 2) เพิ่ม/แก้ไข/ลบ สินค้าใน cart
+      if (existing) {
+        const newAmount = Number(existing.spc_amount) + data.amount;
+        if (newAmount > 0) {
+          await this.shoppingCartRepo.update(
+            { spc_id: existing.spc_id },
+            { spc_amount: newAmount, spc_datetime: new Date() },
+          );
+        } else {
+          await this.shoppingCartRepo.delete({ spc_id: existing.spc_id });
+        }
       } else {
-        const updateData = {
+        await this.shoppingCartRepo.save({
           pro_code: data.pro_code,
           mem_code: data.mem_code,
           spc_unit: data.pro_unit,
           spc_amount: data.amount,
-          spc_datetime: Date(),
-        };
-        await this.shoppingCartRepo.save(updateData);
-        return await this.getProductCart(data.mem_code);
+          spc_price: 0, // ถ้าต้องมีราคา default
+          is_reward: false, // สินค้าปกติ
+          spc_datetime: new Date(),
+        });
       }
+
+      // 3) ตรวจสอบโปรโมชั่น + เพิ่มของแถม (ราคาศูนย์)
+      await this.checkPromotionReward(data.mem_code, data.priceCondition);
+
+      // 4) คืนตะกร้าล่าสุด
+      return await this.getProductCart(data.mem_code);
     } catch (error) {
       console.error('Error saving product cart:', error);
-      throw new Error(`Error in Add product Cart`);
+      throw new Error('Error in Add product Cart');
+    }
+  }
+
+  async checkPromotionReward(mem_code: string, priceOption: string) {
+    // โหลด cart พร้อม product
+    const cart = await this.shoppingCartRepo.find({
+      where: { mem_code },
+      relations: { product: true },
+    });
+
+    const numberOfMonth = new Date().getMonth() + 1;
+
+    // ✅ กรองเฉพาะที่ spc_checked === true
+    const checkedCart = cart.filter((item) => item.spc_checked);
+
+    // 1) คำนวณยอดรวม
+    const totalSumPrice = checkedCart.reduce((sum, item) => {
+      if (!item.product) return sum;
+
+      const ratioMap = new Map([
+        [item.product.pro_unit1, item.product.pro_ratio1],
+        [item.product.pro_unit2, item.product.pro_ratio2],
+        [item.product.pro_unit3, item.product.pro_ratio3],
+      ]);
+      const ratio = ratioMap.get(item.spc_unit) ?? 1;
+
+      const totalAmount = checkedCart
+        .filter((c) => c.pro_code === item.pro_code)
+        .reduce(
+          (s, sc) =>
+            s + Number(sc.spc_amount) * (ratioMap.get(sc.spc_unit) ?? 0),
+          0,
+        );
+
+      const isPromo =
+        item.product.pro_promotion_month === numberOfMonth &&
+        totalAmount >= (item.product.pro_promotion_amount ?? 0);
+
+      const unitPrice =
+        priceOption === 'A'
+          ? Number(item.product.pro_priceA)
+          : priceOption === 'B'
+            ? Number(item.product.pro_priceB)
+            : priceOption === 'C'
+              ? Number(item.product.pro_priceC)
+              : 0;
+
+      const price = isPromo
+        ? Number(item.spc_amount) * Number(item.product.pro_priceA) * ratio
+        : Number(item.spc_amount) * unitPrice * ratio;
+
+      return sum + price;
+    }, 0);
+
+    // 2) โหลด promotions
+    const promotions = await this.promotionRepo.find({
+      where: { status: true },
+      relations: { tiers: { rewards: { giftProduct: true } } },
+    });
+
+    // 3) คำนวณ reward ที่ควรมี
+    const shouldHave: Array<{ pro_code: string; unit: string; qty: number }> =
+      [];
+
+    for (const promo of promotions) {
+      const tiers = [...promo.tiers].sort(
+        (a, b) => a.min_amount - b.min_amount,
+      );
+      const passed = tiers.filter((t) => totalSumPrice >= t.min_amount);
+      if (!passed.length) continue;
+
+      const rewardTiers =
+        totalSumPrice >= tiers[tiers.length - 1].min_amount
+          ? passed
+          : [passed[passed.length - 1]];
+
+      for (const tier of rewardTiers) {
+        const multiplier = Math.floor(totalSumPrice / tier.min_amount);
+        for (const rw of tier.rewards) {
+          if (!rw.giftProduct?.pro_code) continue;
+          shouldHave.push({
+            pro_code: rw.giftProduct.pro_code,
+            unit: rw.unit,
+            qty: rw.qty * multiplier,
+          });
+        }
+      }
+    }
+
+    // 4) sync reward ใน cart
+    const rewardInCart = cart.filter((c) => c.is_reward);
+
+    // ลบ reward ที่ไม่ควรมี
+    const toRemove = rewardInCart.filter(
+      (r) =>
+        !shouldHave.some(
+          (s) => s.pro_code === r.pro_code && s.unit === r.spc_unit,
+        ),
+    );
+    if (toRemove.length) {
+      await this.shoppingCartRepo.remove(toRemove);
+    }
+
+    // เพิ่ม/อัปเดต reward
+    for (const s of shouldHave) {
+      const found = rewardInCart.find(
+        (r) => r.pro_code === s.pro_code && r.spc_unit === s.unit,
+      );
+
+      if (!found) {
+        await this.shoppingCartRepo.save({
+          pro_code: s.pro_code,
+          mem_code,
+          spc_unit: s.unit,
+          spc_amount: s.qty,
+          spc_price: 0,
+          is_reward: true,
+          spc_datetime: new Date(),
+        });
+      } else if (found.spc_amount !== s.qty) {
+        await this.shoppingCartRepo.update(
+          { spc_id: found.spc_id },
+          { spc_amount: s.qty, spc_datetime: new Date() },
+        );
+      }
     }
   }
 
@@ -123,35 +260,29 @@ export class ShoppingCartService {
     pro_code: string;
     mem_code: string;
     type: string;
+    priceOption: string;
   }): Promise<ShoppingProductCart[]> {
     try {
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
-          {
-            pro_code: data.pro_code,
-            mem_code: data.mem_code,
-          },
-          {
-            spc_checked: true,
-          },
+          { pro_code: data.pro_code, mem_code: data.mem_code },
+          { spc_checked: true },
         );
-        return await this.getProductCart(data.mem_code);
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          {
-            pro_code: data.pro_code,
-            mem_code: data.mem_code,
-          },
-          {
-            spc_checked: false,
-          },
+          { pro_code: data.pro_code, mem_code: data.mem_code },
+          { spc_checked: false },
         );
-        return await this.getProductCart(data.mem_code);
       } else {
-        throw new Error('Somthing wrong in checkedProductCart');
+        throw new Error('Something wrong in checkedProductCart');
       }
-    } catch {
-      throw new Error('Somthing wrong in checkedProductCart');
+
+      await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
+
+      return await this.getProductCart(data.mem_code);
+    } catch (e) {
+      console.error('Error in checkedProductCart', e);
+      throw new Error('Something wrong in checkedProductCart');
     }
   }
 
@@ -174,12 +305,15 @@ export class ShoppingCartService {
   async handleDeleteCart(data: {
     pro_code: string;
     mem_code: string;
+    priceOption: string;
   }): Promise<ShoppingProductCart[]> {
     try {
       await this.shoppingCartRepo.delete({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
       });
+      console.log('priceOption', data.priceOption);
+      await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
       return await this.getProductCart(data.mem_code);
     } catch {
       throw new Error('Somthing wrong in delete product cart');
@@ -197,32 +331,28 @@ export class ShoppingCartService {
   async checkedProductCartAll(data: {
     mem_code: string;
     type: string;
+    priceOption: string;
   }): Promise<ShoppingProductCart[]> {
     try {
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
-          {
-            mem_code: data.mem_code,
-          },
-          {
-            spc_checked: true,
-          },
+          { mem_code: data.mem_code },
+          { spc_checked: true },
         );
-        return await this.getProductCart(data.mem_code);
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          {
-            mem_code: data.mem_code,
-          },
-          {
-            spc_checked: false,
-          },
+          { mem_code: data.mem_code },
+          { spc_checked: false },
         );
-        return await this.getProductCart(data.mem_code);
       } else {
         throw new Error('Somthing wrong in checkedProductCartAll');
       }
-    } catch {
+
+      await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
+
+      return await this.getProductCart(data.mem_code);
+    } catch (e) {
+      console.error('Error in checkedProductCartAll', e);
       throw new Error('Somthing wrong in checkedProductCartAll');
     }
   }
@@ -271,6 +401,7 @@ export class ShoppingCartService {
           'cart.spc_amount AS spc_amount',
           'cart.spc_unit AS spc_unit',
           'cart.spc_checked AS spc_checked',
+          'cart.is_reward AS is_reward',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -299,12 +430,12 @@ export class ShoppingCartService {
             shopping_cart: [],
           };
         }
-
         grouped[code].shopping_cart.push({
           spc_id: row.spc_id,
           spc_amount: row.spc_amount,
           spc_checked: row.spc_checked,
           spc_unit: row.spc_unit,
+          is_reward: !!row.is_reward,
           pro_promotion_month: row.pro_promotion_month,
           pro_promotion_amount: row.pro_promotion_amount,
         });

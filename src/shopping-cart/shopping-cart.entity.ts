@@ -28,6 +28,9 @@ export class ShoppingCartEntity {
   @Column({ default: true })
   spc_checked: boolean;
 
+  @Column({ default: false })
+  is_reward: boolean;
+
   // @Column({ type: 'enum', enum: ['1', '2', '3'], nullable: true })
   // spc_unit: '1' | '2' | '3';
 

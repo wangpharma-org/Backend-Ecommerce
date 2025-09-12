@@ -1,9 +1,20 @@
-import { Entity, PrimaryColumn, Column, OneToOne, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  OneToOne,
+  OneToMany,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+import { CreditorEntity } from './creditor.entity';
+import { PromotionConditionEntity } from '../promotion/promotion-condition.entity';
+import { PromotionRewardEntity } from '../promotion/promotion-reward.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -112,6 +123,13 @@ export class ProductEntity {
   @Column({ default: false })
   is_detect_amount: boolean;
 
+  @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
+  creditor: CreditorEntity;
+
   @OneToOne(() => ProductPharmaEntity, (pharma) => pharma.product)
   pharmaDetails: ProductPharmaEntity;
 
@@ -126,4 +144,10 @@ export class ProductEntity {
 
   @OneToMany(() => ShoppingOrderEntity, (orderDetail) => orderDetail.product)
   inOrders: ShoppingOrderEntity[];
+
+  @OneToMany(() => PromotionConditionEntity, (cond) => cond.product)
+  promotionConditions: PromotionConditionEntity[];
+
+  @OneToMany(() => PromotionRewardEntity, (reward) => reward.giftProduct)
+  promotionRewardsAsGift: PromotionRewardEntity[];
 }

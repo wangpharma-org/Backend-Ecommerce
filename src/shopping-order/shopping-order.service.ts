@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,12 +9,9 @@ import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class ShoppingOrderService {
-  private slackUrl =
-    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -47,30 +44,13 @@ export class ShoppingOrderService {
         },
       });
 
-      const response = await lastValueFrom(
-        this.httpService.post(
-          'https://www.wangpharma.com/Akitokung/api/order/receive_order_cart.php',
-          data,
-        ),
-      );
-
-      if (response.status === 200) {
-        return;
+      if (!data) {
+        throw new Error('No order data found');
       }
 
-      console.log('data on sendDataToOldSystem', data);
+      return data as ShoppingHeadEntity;
     } catch {
-      const res2 = await lastValueFrom(
-        this.httpService.post(this.slackUrl, {
-          text: `\n*ด่วน! ออเดอร์อาจตกหล่น*\n\n*ปัญหาเกิดจาก* : ระบบพี่โต้ล่ม\n*ข้อมูล* \n${data}`,
-        }),
-      );
-      console.log('Notify external API :', res2);
-      await this.failedEntity.save(
-        this.failedEntity.create({
-          failed_json: JSON.parse(JSON.stringify(data)) as JSON,
-        }),
-      );
+      throw new BadRequestException('Something Error Please try again');
     }
   }
 
@@ -97,6 +77,7 @@ export class ShoppingOrderService {
       let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
+
       await this.dataSource.transaction(async (manager) => {
         const cart: ShoppingCartEntity[] | undefined =
           await this.shoppingCartService.handleGetCartToOrder(data.mem_code);
@@ -124,14 +105,17 @@ export class ShoppingOrderService {
           );
           runningNumbers.push(running);
 
-          const orderSales = group.map((item) => {
+          const normalItems = group.filter((item) => !item.is_reward);
+          const rewardItems = group.filter((item) => item.is_reward);
+
+          const orderSales = normalItems.map((item) => {
             const unitRatioMap = new Map([
               [item.product.pro_unit1, item.product.pro_ratio1],
               [item.product.pro_unit2, item.product.pro_ratio2],
               [item.product.pro_unit3, item.product.pro_ratio3],
             ]);
 
-            const totalAmount = group
+            const totalAmount = normalItems
               .filter((c) => c.pro_code === item.pro_code)
               .reduce((sum, sc) => {
                 const ratio = unitRatioMap.get(sc.spc_unit) ?? 0;
@@ -167,6 +151,17 @@ export class ShoppingOrderService {
               pro_code: item.pro_code,
             });
           });
+
+          const orderRewards = rewardItems.map((item) =>
+            manager.create(ShoppingOrderEntity, {
+              orderHeader: { soh_running: running },
+              pro_code: item.pro_code,
+              spo_unit: item.spc_unit,
+              spo_qty: item.spc_amount,
+              spo_price_unit: 0,
+              spo_total_decimal: 0,
+            }),
+          );
 
           const sumprice = orderSales.reduce(
             (total, order) => total + Number(order.spo_total_decimal),
@@ -207,7 +202,7 @@ export class ShoppingOrderService {
                 }),
               );
 
-              const saveProduct = await manager.save(
+              const saveFree = await manager.save(
                 ShoppingOrderEntity,
                 orderFree,
               );
@@ -215,15 +210,16 @@ export class ShoppingOrderService {
               await manager.update(
                 ShoppingHeadEntity,
                 { soh_id: NewHead.soh_id },
-                { soh_free: saveProduct.length },
+                { soh_free: saveFree.length },
               );
             }
           }
 
-          const saveProduct = await manager.save(
-            ShoppingOrderEntity,
-            orderSales,
-          );
+          const saveProduct = await manager.save(ShoppingOrderEntity, [
+            ...orderSales,
+            ...orderRewards,
+          ]);
+
           await manager.update(
             ShoppingHeadEntity,
             { soh_id: NewHead.soh_id },
@@ -256,14 +252,9 @@ export class ShoppingOrderService {
         }
       });
 
-      if (runningNumbers.length > 0) {
-        for (const run of runningNumbers) {
-          await this.sendDataToOldSystem(run);
-        }
-        return runningNumbers;
-      }
+      return runningNumbers;
     } catch (error) {
-      console.log('Error: ', error);
+      console.error('Error: ', error);
     }
   }
 
@@ -271,9 +262,15 @@ export class ShoppingOrderService {
     memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
     try {
-      const orders = await this.shoppingOrderRepo //ดึงข้อมูลมา 20 ข้อมูลล่าสุด
+      const orders = await this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :memCode',
+          { memCode },
+        )
         .leftJoin('order.orderHeader', 'header')
         .where('header.mem_code = :memCode', { memCode })
         .orderBy('header.soh_datetime', 'DESC')
@@ -287,11 +284,17 @@ export class ShoppingOrderService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
           'header.soh_datetime',
+          'cart.spc_id',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.mem_code',
         ])
         .getMany();
 
-      const uniqueMap = new Map<string, ShoppingOrderEntity>(); //กรอกอันที่ซ้ำออก
+      const uniqueMap = new Map<string, ShoppingOrderEntity>();
       for (const order of orders) {
         const code = order.product?.pro_code;
         if (code && !uniqueMap.has(code)) {
