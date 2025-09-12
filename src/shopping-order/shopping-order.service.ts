@@ -24,7 +24,7 @@ export class ShoppingOrderService {
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   async sendDataToOldSystem(soh_running: string) {
     let data;
@@ -58,15 +58,15 @@ export class ShoppingOrderService {
     mem_code: string;
     total_price: number;
     listFree:
-      | [
-          {
-            pro_code: string;
-            amount: number;
-            pro_unit1: string;
-            pro_point: number;
-          },
-        ]
-      | null;
+    | [
+      {
+        pro_code: string;
+        amount: number;
+        pro_unit1: string;
+        pro_point: number;
+      },
+    ]
+    | null;
     priceOption: string;
     paymentOptions: string;
     shippingOptions: string;
@@ -85,6 +85,10 @@ export class ShoppingOrderService {
         if (!cart || cart.length === 0) {
           throw new Error('Cart is empty');
         }
+
+        const checkFreebies = await this.shoppingCartService.getProFreebie(data.mem_code);
+
+        console.log('Cart items to be processed:', cart);
 
         const groupCartArray = groupCart(cart, 80);
 
@@ -136,11 +140,19 @@ export class ShoppingOrderService {
                     : 0;
 
             const ratio = unitRatioMap.get(item.spc_unit) ?? 1;
-            const price = isPromotionActive
+            let price = isPromotionActive
               ? Number(item.spc_amount) *
-                Number(item.product.pro_priceA) *
-                ratio
+              Number(item.product.pro_priceA) *
+              ratio
               : Number(item.spc_amount) * unitPrice * ratio;
+
+            const isFreebie = Array.isArray(checkFreebies) && checkFreebies.some(
+              (f) => String(f.spc_unit) === String(item.spc_unit) && String(f.pro_code) === String(item.pro_code)
+            );
+            console.log('Freebie check:', { isFreebie, item, checkFreebies });
+            if (isFreebie) {
+              price = 0.00;
+            }
 
             return manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },

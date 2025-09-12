@@ -71,14 +71,13 @@ export interface CartSummary {
 
 @Injectable()
 export class ShoppingCartService {
-  [x: string]: any;
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
     @InjectRepository(PromotionEntity)
     private readonly promotionRepo: Repository<PromotionEntity>,
     private readonly productsService: ProductsService,
-  ) {}
+  ) { }
 
   async addProductCart(data: {
     mem_code: string;
@@ -86,6 +85,7 @@ export class ShoppingCartService {
     pro_unit: string;
     amount: number;
     priceCondition: string;
+    is_reward: boolean;
   }): Promise<ShoppingProductCart[]> {
     try {
       // 1) หาสินค้าในตะกร้า
@@ -124,6 +124,30 @@ export class ShoppingCartService {
       await this.checkPromotionReward(data.mem_code, data.priceCondition);
 
       // 4) คืนตะกร้าล่าสุด
+      return await this.getProductCart(data.mem_code);
+    } catch (error) {
+      console.error('Error saving product cart:', error);
+      throw new Error('Error in Add product Cart');
+    }
+  }
+  async addProductCartHotDeal(data: {
+    mem_code: string;
+    pro_code: string;
+    pro_unit: string;
+    amount: number;
+    priceCondition: string;
+    is_reward: boolean;
+  }): Promise<ShoppingProductCart[]> {
+    try {
+      await this.shoppingCartRepo.save({
+        pro_code: data.pro_code,
+        mem_code: data.mem_code,
+        spc_unit: data.pro_unit,
+        spc_amount: data.amount,
+        spc_price: 0, // ถ้าต้องมีราคา default
+        is_reward: true, // สินค้าปกติ
+        spc_datetime: new Date(),
+      });
       return await this.getProductCart(data.mem_code);
     } catch (error) {
       console.error('Error saving product cart:', error);
@@ -484,6 +508,35 @@ export class ShoppingCartService {
     } catch (error) {
       console.error('Error get product cart:', error);
       throw new Error(`Error in Get product Cart`);
+    }
+  }
+
+  async clearFreebieCart(mem_code: string, pro2_code: string): Promise<void> {
+    try {
+      console.log('Clearing freebie cart items for mem_code:', mem_code);
+      await this.shoppingCartRepo.delete({
+        mem_code: mem_code,
+        pro_code: pro2_code,
+      });
+    } catch (error) {
+      console.error('Error clearing freebie cart items:', error);
+      throw new Error('Error in clearFreebieCart');
+    }
+  }
+
+  async getProFreebie(memCode: string): Promise<{ spc_id: number, spc_amount: number, spc_unit: string, is_reward: boolean, pro_code: string }[]> {
+    try {
+      console.log('Fetching freebie products for mem_code:', memCode);
+      const freebies = await this.shoppingCartRepo.find({
+        where: {
+          mem_code: memCode,
+          is_reward: true,
+        },
+      });
+      return freebies;
+    } catch (error) {
+      console.error('Error fetching freebie products:', error);
+      throw new Error('Error in getProFreebie');
     }
   }
 }

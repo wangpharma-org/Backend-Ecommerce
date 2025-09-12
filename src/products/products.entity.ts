@@ -15,6 +15,7 @@ import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import { CreditorEntity } from './creditor.entity';
 import { PromotionConditionEntity } from '../promotion/promotion-condition.entity';
 import { PromotionRewardEntity } from '../promotion/promotion-reward.entity';
+import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -150,4 +151,7 @@ export class ProductEntity {
 
   @OneToMany(() => PromotionRewardEntity, (reward) => reward.giftProduct)
   promotionRewardsAsGift: PromotionRewardEntity[];
+
+  @OneToMany(() => HotdealEntity, (hotdeal) => hotdeal.product)
+  inHotdeals: HotdealEntity[];
 }

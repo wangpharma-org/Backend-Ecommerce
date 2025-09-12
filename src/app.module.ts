@@ -17,6 +17,8 @@ import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PromotionModule } from './promotion/promotion.module';
+import { WangdayModule } from './backend/wangday.module';
+import { HotdealModule } from './hotdeal/hotdeal.module';
 
 @Module({
   imports: [
@@ -37,7 +39,7 @@ import { PromotionModule } from './promotion/promotion.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
@@ -53,8 +55,10 @@ import { PromotionModule } from './promotion/promotion.module';
     BannerModule,
     FeatureFlagsModule,
     PromotionModule,
+    WangdayModule,
+    HotdealModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
