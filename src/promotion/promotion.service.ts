@@ -382,4 +382,23 @@ export class PromotionService {
       throw new Error('Failed to update promotion');
     }
   }
+
+  async updateTier(data: {
+    tier_id: number;
+    tier_name?: string;
+    min_amount?: number;
+    description?: string;
+  }) {
+    try {
+      await this.promotionTierRepo.update(data.tier_id, {
+        tier_name: data.tier_name,
+        min_amount: data.min_amount,
+        description: data.description,
+      });
+      return 'Tier updated successfully';
+    } catch (error) {
+      console.error(error);
+      throw new Error('Failed to update tier');
+    }
+  }
 }

@@ -608,4 +608,17 @@ export class AppController {
   ) {
     return this.productsService.addCreditor(data);
   }
+
+  @Post('/ecom/promotion/edit-tier')
+  async editTier(
+    @Body()
+    data: {
+      tier_id: number;
+      tier_name?: string;
+      min_amount?: number;
+      description?: string;
+    },
+  ) {
+    return await this.promotionService.updateTier(data);
+  }
 }
