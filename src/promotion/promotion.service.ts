@@ -194,7 +194,22 @@ export class PromotionService {
 
   async getAllPromotions() {
     try {
-      return await this.promotionRepo.find();
+      return await this.promotionRepo.find({
+        relations: {
+          creditor: true,
+        },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          start_date: true,
+          end_date: true,
+          status: true,
+          creditor: {
+            creditor_code: true,
+            creditor_name: true,
+          },
+        },
+      });
     } catch {
       throw new Error(`Failed to get promotions`);
     }
