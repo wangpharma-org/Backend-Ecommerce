@@ -4,6 +4,7 @@ import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -126,4 +127,7 @@ export class ProductEntity {
 
   @OneToMany(() => ShoppingOrderEntity, (orderDetail) => orderDetail.product)
   inOrders: ShoppingOrderEntity[];
+
+  @OneToMany(() => HotdealEntity, (hotdeal) => hotdeal.product)
+  inHotdeals: HotdealEntity[];
 }

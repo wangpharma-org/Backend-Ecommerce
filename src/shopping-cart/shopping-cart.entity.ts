@@ -44,4 +44,7 @@ export class ShoppingCartEntity {
   @ManyToOne(() => ProductEntity, (product) => product.inCarts)
   @JoinColumn({ name: 'pro_code' }) // Using ID for relation
   product: ProductEntity;
+
+  @Column({ default: '0' })
+  pro_freebie: number; // จำนวนสินค้าฟรีบี้ที่ได้รับ
 }

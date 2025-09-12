@@ -16,7 +16,8 @@ import { FlashsaleModule } from './flashsale/flashsale.module';
 import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { BackendModule } from './backend/backend.module';
+import { WangdayModule } from './backend/wangday.module';
+import { HotdealModule } from './hotdeal/hotdeal.module';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { BackendModule } from './backend/backend.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
@@ -52,7 +53,8 @@ import { BackendModule } from './backend/backend.module';
     FlashsaleModule,
     BannerModule,
     FeatureFlagsModule,
-    BackendModule,
+    WangdayModule,
+    HotdealModule,
   ],
   controllers: [AppController],
   providers: [AppService],

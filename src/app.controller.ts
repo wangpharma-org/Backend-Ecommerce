@@ -3,6 +3,7 @@ import { UserEntity } from 'src/users/users.entity';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -29,6 +30,7 @@ import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WangDay } from './backend/wangday.entity';
 import { WangdaySumPrice } from './backend/wangdaySumPrice.entity';
+import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 
 interface JwtPayload {
   username: string;
@@ -65,6 +67,7 @@ export class AppController {
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly bannerService: BannerService,
     private readonly wangdayService: WangdayService,
+    private readonly hotdealService: HotdealService,
   ) { }
 
   @UseGuards(JwtAuthGuard)
@@ -288,6 +291,7 @@ export class AppController {
       pro_code: string;
       pro_unit: string;
       amount: number;
+      pro_freebie: number;
     },
   ) {
     console.log(data);
@@ -355,12 +359,6 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('/ecom/summary-cart/:memCode')
-  async getDataFromCart(@Param('memCode') memCode: string): Promise<any> {
-    return await this.shoppingCartService.getDataFromCart(memCode);
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Get('/ecom/all-order-member/:memCode')
   async AllOrderByMember(
     @Param('memCode') memCode: string,
@@ -375,19 +373,23 @@ export class AppController {
   ): Promise<ShoppingHeadEntity> {
     return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
   }
-
   @Post('/ecom/wangday/import')
-  async importWangday(@Body() body: { data: any[] }) {
-    // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
-    const rows = (body.data || []).map(item => ({
-      date: item['วันที่'],
-      sh_running: item['เลขที่ใบกำกับ'],
-      wang_code: item['รหัสลูกค้า'],
-      sumprice: item['ยอดเงินสุทธิ']?.toString(),
-    }));
-    const imported = await this.wangdayService.importFromExcel(rows);
-    console.log('Imported rows:', imported.length);
-    return imported;
+  async importWangday(@Body() body: { data: any[], isLastChunk: boolean, isFirstChunk: boolean }) {
+    try {
+      // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
+      const rows = (body.data || []).map(item => ({
+        date: item['วันที่'],
+        sh_running: item['เลขที่ใบกำกับ'],
+        wang_code: item['รหัสลูกค้า'],
+        sumprice: item['ยอดเงินสุทธิ']?.toString(),
+      }));
+      const imported = await this.wangdayService.importFromExcel(rows, body.isLastChunk, body.isFirstChunk);
+      return "Successful" + imported.length;
+    }
+    catch (error) {
+      console.error('Error importing wangday data:', error);
+      throw error;
+    }
   }
 
   @Get('/ecom/wangday/monthly/:wang_code')
@@ -397,5 +399,85 @@ export class AppController {
   @Get('/ecom/wangsumprice/:wang_code')
   async getWangSumPrice(@Param('wang_code') wang_code: string) {
     return this.wangdayService.getAllWangSumPrice(wang_code);
+  }
+
+  @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
+  async searchProductMain(@Param('keyword') keyword: string | '') {
+    return this.hotdealService.searchProduct(keyword);
+  }
+  @Post('/ecom/admin/hotdeal/search-product-freebie/:keyword')
+  async searchProductFreebie(@Param('keyword') keyword: string | '') {
+    return this.hotdealService.searchProduct(keyword);
+  }
+  @Post('/ecom/admin/hotdeal/save-hotdeal')
+  async saveHotdeal(@Body() body: { dataInput: HotdealInput }) {
+    console.log(body);
+    return this.hotdealService.saveHotdeal(body.dataInput);
+  }
+
+  @Get('/ecom/admin/hotdeal/all-hotdeals')
+  async getAllHotdeals() {
+    return this.hotdealService.getAllHotdealsWithProductNames();
+  }
+
+  @Delete('/ecom/admin/hotdeal/delete/:id')
+  async deleteHotdeal(@Param('id') id: number) {
+    return this.hotdealService.deleteHotdeal(id);
+  }
+
+  @Get('/ecom/hotdeal/simple-list')
+  async getAllHotdealsSimple(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string
+  ) {
+    return this.hotdealService.getAllHotdealsWithProductDetail(
+      limit ? Number(limit) : undefined,
+      offset ? Number(offset) : undefined
+    );
+  }
+
+  @Post('/ecom/hotdeal/check-hotdeal-match')
+  async checkHotdealMatch(
+    @Body() body: { hotDeal: Array<{ mem_code: string, pro_code: string, shopping_cart: Array<{ pro1_unit: string, pro1_amount: string }> }> }
+  ) {
+    const allResults = await Promise.all(
+      (body.hotDeal || []).map(async (deal) => {
+        const results = await Promise.all(
+          (deal.shopping_cart || []).map(item =>
+            this.hotdealService.checkHotdealMatch(deal.mem_code, deal.pro_code, item)
+          )
+        );
+        // filter เฉพาะตัวที่เจอ pro_code
+        return results.filter(Boolean);
+      })
+    );
+    // flatten array
+    return allResults.flat();
+  }
+
+  @Post('/ecom/hotdeal/get-hotdeals-by-procodes')
+  async getHotdealsByProCodes(@Body() body: { proCodes: string[] }) {
+    return this.hotdealService.getHotdealsByProCodes(body.proCodes);
+  }
+
+  @Post('/ecom/hotdeal/save-freebies')
+  async saveFreebies(@Body() body: { hotDeal: { mem_code: string, pro2_code: string, pro2_unit: string, pro2_amount: string }[] }) {
+    console.log("body:", body);
+    // if (!Array.isArray(body)) {
+    //   throw new Error('Body must be an array of freebies');
+    // }
+    // Map body.hotDeal to the expected structure for saveCartProduct
+    const cartProducts = body.hotDeal.map((item: { mem_code: string; pro2_code: string; pro2_unit: string; pro2_amount: string }) => ({
+      mem_code: item.mem_code,
+      pro2_code: item.pro2_code,
+      pro2_unit: item.pro2_unit,
+      pro2_amount: item.pro2_amount
+    }));
+    return this.hotdealService.saveCartProduct(cartProducts);
+  }
+
+  @Delete('/ecom/hotdeal/delete-all')
+  async deleteAllHotdeals(@Body('mem_code') mem_code: string) {
+    return this.shoppingCartService.clearFreebieCart(mem_code);
   }
 }

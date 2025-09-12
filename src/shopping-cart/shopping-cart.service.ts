@@ -3,6 +3,7 @@ import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
+import { console } from 'inspector';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -68,18 +69,18 @@ export interface CartSummary {
 
 @Injectable()
 export class ShoppingCartService {
-  [x: string]: any;
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
     private readonly productsService: ProductsService,
-  ) {}
+  ) { }
 
   async addProductCart(data: {
     mem_code: string;
     pro_code: string;
     pro_unit: string;
     amount: number;
+    pro_freebie: number;
   }): Promise<ShoppingProductCart[]> {
     try {
       const existing = await this.shoppingCartRepo.findOne({
@@ -109,6 +110,7 @@ export class ShoppingCartService {
           spc_unit: data.pro_unit,
           spc_amount: data.amount,
           spc_datetime: Date(),
+          pro_freebie: data.pro_freebie || 0,
         };
         await this.shoppingCartRepo.save(updateData);
         return await this.getProductCart(data.mem_code);
@@ -353,6 +355,35 @@ export class ShoppingCartService {
     } catch (error) {
       console.error('Error get product cart:', error);
       throw new Error(`Error in Get product Cart`);
+    }
+  }
+
+  async clearFreebieCart(mem_code: string): Promise<void> {
+    try {
+      console.log('Clearing freebie cart items for mem_code:', mem_code);
+      await this.shoppingCartRepo.delete({
+        mem_code: mem_code,
+        pro_freebie: 1,
+      });
+    } catch (error) {
+      console.error('Error clearing freebie cart items:', error);
+      throw new Error('Error in clearFreebieCart');
+    }
+  }
+
+  async getProFreebie(memCode: string): Promise<{spc_id: number, spc_amount: number, spc_unit: string, pro_freebie: number}[]> {
+    try {
+      console.log('Fetching freebie products for mem_code:', memCode);
+      const freebies = await this.shoppingCartRepo.find({
+        where: {
+          mem_code: memCode,
+          pro_freebie: 1,
+        },
+      });
+      return freebies;
+    } catch (error) {
+      console.error('Error fetching freebie products:', error);
+      throw new Error('Error in getProFreebie');
     }
   }
 }

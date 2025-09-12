@@ -18,17 +18,17 @@ export class ProductsService {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
-  ) {}
+  ) { }
 
   async getProductOne(pro_code: string) {
     try {
-      console.log('getProductOne', pro_code);
+      // console.log('getProductOne', pro_code);
       const dataProduct = await this.productRepo.findOne({
         where: {
           pro_code: pro_code,
         },
       });
-      console.log(dataProduct);
+      // console.log(dataProduct);
       return dataProduct;
     } catch {
       throw new Error('Something Error in getProductOne');
@@ -663,6 +663,59 @@ export class ProductsService {
   //     throw new Error('Error calculating unit');
   //   }
   // }
+
+  async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
+    try {
+      const products = await this.productRepo.createQueryBuilder('product')
+        .where(
+          new Brackets(qb => {
+            qb.where('product.pro_code LIKE :keyword', { keyword: `%${keyword}%` })
+              .orWhere('product.pro_supplier LIKE :keyword', { keyword: `%${keyword}%` });
+          })
+        )
+        .andWhere('product.pro_priceA != :price', { price: 1 })
+        .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
+        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
+        .andWhere(
+          new Brackets(qb => {
+            qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })
+              .andWhere('product.pro_name NOT LIKE :n2', { n2: '%โอน%' })
+              .andWhere('product.pro_name NOT LIKE :n3', { n3: '%ค่า%' })
+              .andWhere('product.pro_name NOT LIKE :n4', { n4: '%ขนส่ง%' })
+              .andWhere('product.pro_name NOT LIKE :n5', { n5: '%โปรโมชั่น%' })
+          })
+        )
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_barcode1',
+          'product.pro_barcode2',
+          'product.pro_barcode3',
+          'product.pro_imgmain',
+        ])
+        .take(10)
+        .getMany();
+      return products;
+    } catch (error) {
+      console.error('Error searching by code or supplier:', error);
+      throw new Error('Error searching by code or supplier');
+    }
+  }
+
+  async getAllProducts(): Promise<ProductEntity[]> {
+    try {
+      const products = await this.productRepo.find({
+        order: { pro_code: 'ASC' },
+      });
+      return products;
+    } catch (error) {
+      console.error('Error fetching all products:', error);
+      throw new Error('Error fetching all products');
+    }
+  }
 }
 function not(
   arg0: number,

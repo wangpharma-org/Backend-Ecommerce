@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { WangDay } from './wangday.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { WangdaySumPrice } from './wangdaySumPrice.entity';
 
 @Injectable()
 export class WangdayService {
+    private accumulatedRows: Partial<WangDay>[] = [];
     constructor(
         @InjectRepository(WangDay)
         private wangdayRepo: Repository<WangDay>,
@@ -23,27 +24,62 @@ export class WangdayService {
         return `${mm}/${dd}/${yyyy}`;
     }
 
-    async importFromExcel(rows: Partial<WangDay>[]): Promise<WangDay[]> {
-        const results: WangDay[] = [];
+    async importFromExcel(rows: Partial<WangDay>[], isLastChunk: boolean, isFirstChunk: boolean): Promise<WangDay[]> {
+        // 1. เตรียมข้อมูลใหม่ทั้งหมด (แปลงวันที่และ filter ข้อมูลที่จำเป็น)
+        const newRows: Partial<WangDay>[] = [];
+        const dateSet = new Set<string>();
+        if (isFirstChunk === true) {
+            this.accumulatedRows = [];
+        }
         for (const row of rows) {
-            let dateValue = row.date;
+            // trim ทุก field ที่เป็น string
+            const trimmedRow: Partial<WangDay> = {};
+            for (const key in row) {
+                if (typeof row[key] === 'string') {
+                    trimmedRow[key] = (row[key] as string).trim();
+                } else {
+                    trimmedRow[key] = row[key];
+                }
+            }
+            let dateValue = trimmedRow.date;
             if (typeof dateValue === 'number') {
                 dateValue = this.excelDateToJSDate(dateValue);
             }
-            if (!dateValue || !row.wang_code) continue;
-            try {
-                const saved = await this.wangdayRepo.save({ ...row, date: dateValue });
-                results.push(saved);
-            } catch (err: any) {
-                // ถ้า error duplicate entry (unique constraint sh_running) ให้ข้าม
-                if (err.code === 'ER_DUP_ENTRY' || (err.message && err.message.includes('Duplicate entry'))) {
-                    continue;
-                } else {
-                    throw err;
+            if (!dateValue || !trimmedRow.wang_code) continue;
+            newRows.push({ ...trimmedRow, date: dateValue });
+            dateSet.add(dateValue);
+        }
+        if (newRows.length === 0) return [];
+
+        // ถ้าข้อมูลที่เข้ามาเท่ากับ 300 ให้เก็บสะสมไว้ก่อนและรอข้อมูลรอบถัดไป (return [])
+        if (isLastChunk !== true) {
+            this.accumulatedRows.push(...newRows);
+            return [];
+        }
+
+        // ถ้าน้อยกว่า 300 ให้รวมกับข้อมูลสะสม (ถ้ามี) แล้วลบและ insert
+        const allRows = this.accumulatedRows.length > 0
+            ? [...this.accumulatedRows, ...newRows]
+            : newRows;
+        // trim อีกครั้งสำหรับข้อมูลสะสม (กันข้อมูลข้ามรอบที่อาจยังไม่ถูก trim)
+        for (let i = 0; i < allRows.length; i++) {
+            for (const key in allRows[i]) {
+                if (typeof allRows[i][key] === 'string') {
+                    allRows[i][key] = (allRows[i][key] as string).trim();
                 }
             }
         }
-        return results;
+        // clear ข้อมูลสะสม
+        this.accumulatedRows = [];
+
+        // รวมวันที่ทั้งหมดจาก allRows
+        const allDateSet = new Set<string>();
+        for (const row of allRows) {
+            if (row.date) allDateSet.add(row.date as string);
+        }
+        await this.wangdayRepo.delete({ date: In(Array.from(allDateSet)) });
+        const inserted = await this.wangdayRepo.save(allRows);
+        return inserted;
     }
 
     async getMonthlySumByWangCode(wang_code: string): Promise<{ wang_code: string, monthly: { [month: number]: number } }> {
