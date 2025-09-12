@@ -156,7 +156,7 @@ export class ShoppingCartService {
   }
 
   async checkPromotionReward(mem_code: string, priceOption: string) {
-    // โหลด cart พร้อม product
+    // 1) โหลด cart พร้อม product
     const cart = await this.shoppingCartRepo.find({
       where: { mem_code },
       relations: { product: true },
@@ -164,21 +164,22 @@ export class ShoppingCartService {
 
     const numberOfMonth = new Date().getMonth() + 1;
 
-    // กรองเฉพาะที่ spc_checked === true
+    // ✅ นับเฉพาะที่ถูกเช็ค
     const checkedCart = cart.filter((item) => item.spc_checked);
 
-    // 1) คำนวณยอดรวม
+    // 2) คำนวณยอดรวมตาม priceOption + โปรรายสินค้า
     const totalSumPrice = checkedCart.reduce((sum, item) => {
       if (!item.product) return sum;
 
-      const ratioMap = new Map([
+      const ratioMap = new Map<string, number>([
         [item.product.pro_unit1, item.product.pro_ratio1],
         [item.product.pro_unit2, item.product.pro_ratio2],
         [item.product.pro_unit3, item.product.pro_ratio3],
       ]);
+
       const ratio = ratioMap.get(item.spc_unit) ?? 1;
 
-      const totalAmount = checkedCart
+      const totalAmountSameCode = checkedCart
         .filter((c) => c.pro_code === item.pro_code)
         .reduce(
           (s, sc) =>
@@ -188,7 +189,7 @@ export class ShoppingCartService {
 
       const isPromo =
         item.product.pro_promotion_month === numberOfMonth &&
-        totalAmount >= (item.product.pro_promotion_amount ?? 0);
+        totalAmountSameCode >= (item.product.pro_promotion_amount ?? 0);
 
       const unitPrice =
         priceOption === 'A'
@@ -206,59 +207,91 @@ export class ShoppingCartService {
       return sum + price;
     }, 0);
 
-    // 2) โหลด promotions
+    // 3) โหลด promotions + tiers + rewards
     const promotions = await this.promotionRepo.find({
       where: { status: true },
       relations: { tiers: { rewards: { giftProduct: true } } },
     });
 
-    // 3) คำนวณ reward ที่ควรมี
-    const shouldHave: Array<{ pro_code: string; unit: string; qty: number }> =
-      [];
+    // 4) คำนวณ reward ที่ "ควรมี" ด้วยกลยุทธ์ greedy (ใหญ่ก่อน)
+    //    - ใช้ remaining หักด้วย tier ใหญ่ก่อน แล้วค่อยไล่ tier เล็ก
+    //    - รวมของซ้ำ (pro_code+unit) จากหลาย tier/หลายโปร เป็นจำนวนเดียว
+    const shouldHaveMap = new Map<
+      string,
+      { pro_code: string; unit: string; qty: number }
+    >();
 
     for (const promo of promotions) {
-      const tiers = [...promo.tiers].sort(
-        (a, b) => a.min_amount - b.min_amount,
+      // เรียง tier จาก "มาก -> น้อย"
+      const tiersDesc = [...promo.tiers].sort(
+        (a, b) => b.min_amount - a.min_amount,
       );
-      const passed = tiers.filter((t) => totalSumPrice >= t.min_amount);
-      if (!passed.length) continue;
 
-      const rewardTiers = [passed[passed.length - 1]];
+      let remaining = totalSumPrice;
 
-      for (const tier of rewardTiers) {
-        const multiplier = Math.floor(totalSumPrice / tier.min_amount);
+      for (const tier of tiersDesc) {
+        const minAmt = Number(tier.min_amount);
+        if (!minAmt || remaining < minAmt) continue;
+
+        // 👉 จำนวนชุดของ tier นี้จาก "ยอดคงเหลือ" (ไม่ใช่จากยอดรวมทั้งหมด)
+        const count = Math.floor(remaining / minAmt);
+        if (count <= 0) continue;
+
+        // สะสม reward ของ tier นี้ตาม count
         for (const rw of tier.rewards) {
-          if (!rw.giftProduct?.pro_code) continue;
-          shouldHave.push({
-            pro_code: rw.giftProduct.pro_code,
-            unit: rw.unit,
-            qty: rw.qty * multiplier,
-          });
+          const code = rw.giftProduct?.pro_code;
+          if (!code) continue;
+
+          const key = `${code}|${rw.unit}`;
+          const addQty = (rw.qty ?? 0) * count;
+
+          if (shouldHaveMap.has(key)) {
+            const cur = shouldHaveMap.get(key)!;
+            cur.qty += addQty;
+            shouldHaveMap.set(key, cur);
+          } else {
+            shouldHaveMap.set(key, {
+              pro_code: code,
+              unit: rw.unit,
+              qty: addQty,
+            });
+          }
         }
+
+        // หักยอดคงเหลือตาม tier นี้
+        remaining -= count * minAmt;
+
+        // ถ้าต่ำกว่าทีร์เล็กสุดแล้ว จะหลุดลูปเองในรอบต่อๆ ไป
       }
     }
 
-    // 4) sync reward ใน cart
+    const shouldHave = Array.from(shouldHaveMap.values());
+
+    // 5) sync reward ใน cart
     const rewardInCart = cart.filter((c) => c.is_reward);
 
-    // ลบ reward ที่ไม่ควรมี
-    const toRemove = rewardInCart.filter(
-      (r) =>
-        !shouldHave.some(
-          (s) => s.pro_code === r.pro_code && s.unit === r.spc_unit,
-        ),
-    );
+    // 5.1 ลบ reward ที่ไม่ควรมีแล้ว
+    const toRemove = rewardInCart.filter((r) => {
+      const key = `${r.pro_code}|${r.spc_unit}`;
+      return !shouldHaveMap.has(key);
+    });
     if (toRemove.length) {
       await this.shoppingCartRepo.remove(toRemove);
     }
 
-    // เพิ่ม/อัปเดต reward
+    // 5.2 เพิ่ม/อัปเดตจำนวนให้ตรง shouldHave
+    // ทำ map ของ reward ใน cart เพื่อค้นหาเร็วขึ้น
+    const rewardCartMap = new Map<string, (typeof rewardInCart)[number]>();
+    for (const r of rewardInCart) {
+      rewardCartMap.set(`${r.pro_code}|${r.spc_unit}`, r);
+    }
+
     for (const s of shouldHave) {
-      const found = rewardInCart.find(
-        (r) => r.pro_code === s.pro_code && r.spc_unit === s.unit,
-      );
+      const key = `${s.pro_code}|${s.unit}`;
+      const found = rewardCartMap.get(key);
 
       if (!found) {
+        // ยังไม่มี -> insert
         await this.shoppingCartRepo.save({
           pro_code: s.pro_code,
           mem_code,
@@ -268,7 +301,8 @@ export class ShoppingCartService {
           is_reward: true,
           spc_datetime: new Date(),
         });
-      } else if (found.spc_amount !== s.qty) {
+      } else if (Number(found.spc_amount) !== Number(s.qty)) {
+        // มีแล้วแต่จำนวนไม่ตรง -> update
         await this.shoppingCartRepo.update(
           { spc_id: found.spc_id },
           { spc_amount: s.qty, spc_datetime: new Date() },
@@ -521,9 +555,7 @@ export class ShoppingCartService {
     }
   }
 
-  async getProFreebie(
-    memCode: string,
-  ): Promise<
+  async getProFreebie(memCode: string): Promise<
     {
       spc_id: number;
       spc_amount: number;
