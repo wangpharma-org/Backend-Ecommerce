@@ -5,7 +5,6 @@ import {
   OneToMany,
   ManyToOne,
   JoinColumn,
-  Index,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { CreditorEntity } from '../products/creditor.entity';

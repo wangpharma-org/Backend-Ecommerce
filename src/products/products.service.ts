@@ -4,6 +4,7 @@ import { Brackets, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
+import { CreditorEntity } from './creditor.entity';
 
 interface OrderItem {
   pro_code: string;
@@ -16,9 +17,77 @@ export class ProductsService {
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(CreditorEntity)
+    private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
   ) {}
+
+  async addCreditor(data: { creditor_code: string; creditor_name: string }) {
+    try {
+      const newCreditor = this.creditorRepo.create(data);
+      await this.creditorRepo.save(newCreditor);
+    } catch (error) {
+      console.error('Error creating creditor:', error);
+      throw new Error('Error creating creditor');
+    }
+  }
+
+  async getProductByCreditor(creditor_code: string) {
+    try {
+      const qb = this.productRepo.createQueryBuilder('product');
+
+      const data = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_genericname',
+        ])
+        .where('product.creditor_code = :creditor_code', { creditor_code })
+        .andWhere('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
+        .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
+        .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+        .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+        .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+        .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+        .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .andWhere('product.pro_priceA > 0')
+        .andWhere('product.pro_priceB > 0')
+        .andWhere('product.pro_priceC > 0')
+        .getMany();
+
+      return data;
+    } catch (error) {
+      console.error('Error in getProductByCreditor', error);
+      throw error;
+    }
+  }
+
+  async getProductForKeySearch() {
+    try {
+      const qb = this.productRepo.createQueryBuilder('product');
+      const data = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+        ])
+        .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
+        .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+        .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+        .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+        .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+        .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .getMany();
+      return data;
+    } catch (error) {
+      console.error('Error in getProductByCreditor', error);
+      throw error;
+    }
+  }
 
   async getProductOne(pro_code: string) {
     try {

@@ -276,9 +276,25 @@ export class AppController {
     return await this.productsService.listFree();
   }
 
+  // @UseGuards(JwtAuthGuard)
+  // @Post('/ecom/products/upload-product-flashsale')
+  // async uploadProductFlashSale(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Body() data: { productCode: string; quantity: number }[],
+  // ) {
+  //   const permission = req.user.permission;
+  //   console.log('permission', permission);
+  //   if (permission === true) {
+  //     return await this.productsService.uploadProductFlashSale(data);
+  //   } else {
+  //     throw new Error('You not have Permission to Accesss');
+  //   }
+  // }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-add-cart')
   async addProductCart(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       mem_code: string;
@@ -287,39 +303,62 @@ export class AppController {
       amount: number;
     },
   ) {
-    console.log(data);
-    return await this.shoppingCartService.addProductCart(data);
+    const priceCondition = req.user.price_option ?? 'C';
+    const payload: {
+      mem_code: string;
+      pro_code: string;
+      pro_unit: string;
+      amount: number;
+      priceCondition: string;
+    } = { ...data, priceCondition };
+    console.log(payload);
+    return await this.shoppingCartService.addProductCart(payload);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-check-all-cart')
   async checkProductCartAll(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       mem_code: string;
       type: string;
     },
   ) {
+    const priceOption = req.user.price_option ?? 'C';
+    const payload: {
+      mem_code: string;
+      type: string;
+      priceOption: string;
+    } = { ...data, priceOption };
     console.log(data);
-    return await this.shoppingCartService.checkedProductCartAll(data);
+    return await this.shoppingCartService.checkedProductCartAll(payload);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-delete-cart')
   async deleteProductCart(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       mem_code: string;
       pro_code: string;
     },
   ) {
+    const priceOption = req.user.price_option ?? 'C';
+    const payload: {
+      mem_code: string;
+      pro_code: string;
+      priceOption: string;
+    } = { ...data, priceOption };
     console.log(data);
-    return await this.shoppingCartService.handleDeleteCart(data);
+    return await this.shoppingCartService.handleDeleteCart(payload);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-check-cart')
   async checkProductCart(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       mem_code: string;
@@ -328,7 +367,14 @@ export class AppController {
     },
   ) {
     console.log(data);
-    return await this.shoppingCartService.checkedProductCart(data);
+    const priceOption = req.user.price_option ?? 'C';
+    const payload: {
+      mem_code: string;
+      pro_code: string;
+      type: string;
+      priceOption: string;
+    } = { ...data, priceOption };
+    return await this.shoppingCartService.checkedProductCart(payload);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -402,17 +448,24 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/add-tier')
+  @UseInterceptors(FileInterceptor('file'))
   async addTier(
+    @UploadedFile() file: Express.Multer.File,
     @Body()
     data: {
       promo_id: number;
       tier_name: string;
       min_amount: number;
       description?: string;
-      tier_postter?: string;
     },
   ) {
-    return this.promotionService.addTierToPromotion(data);
+    return this.promotionService.addTierToPromotion({
+      promo_id: data.promo_id,
+      tier_name: data.tier_name,
+      min_amount: data.min_amount,
+      description: data.description,
+      file,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -442,8 +495,6 @@ export class AppController {
     data: {
       tier_id: number;
       product_gcode: string;
-      qty: number;
-      unit: string;
     },
   ) {
     return this.promotionService.createCondition(data);
@@ -482,8 +533,79 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/creditor/:creditor_code')
+  async getProductByCreditor(@Param('creditor_code') creditor_code: string) {
+    return this.productsService.getProductByCreditor(creditor_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch')
+  async getProductForKeySearch() {
+    return this.productsService.getProductForKeySearch();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/tiers/:tier_id')
+  async getTierByID(@Param('tier_id') tier_id: number) {
+    return this.promotionService.getTierOneById(tier_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/reward/delete')
   async deletePromotionReward(@Body() data: { reward_id: number }) {
     return this.promotionService.deleteReward(data.reward_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/update/promotion')
+  async updatePromotion(
+    @Body()
+    data: {
+      promo_id: number;
+      promo_name?: string;
+      start_date?: Date;
+      end_date?: Date;
+      status?: boolean;
+    },
+  ) {
+    return this.promotionService.updatePromotion(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/update/edit-reward')
+  async editReward(
+    @Body()
+    data: {
+      reward_id: number;
+      qty: number;
+      unit: string;
+    },
+  ) {
+    return this.promotionService.editReward(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/get-tier-for-customer')
+  async getTierAll() {
+    return this.promotionService.getAllTiers();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/get-tier-products-all')
+  async getTierProducts() {
+    return this.promotionService.getAllTiersProduct();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/get-tier-product-for-customer')
+  async getProductTier(@Body() data: { tier_id: number; mem_code: string }) {
+    return this.promotionService.tierProducts(data);
+  }
+
+  @Post('/ecom/promotion/creditor/add-creditor')
+  async addCreditor(
+    @Body() data: { creditor_code: string; creditor_name: string },
+  ) {
+    return this.productsService.addCreditor(data);
   }
 }

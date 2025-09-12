@@ -4,7 +4,6 @@ import {
   Column,
   JoinColumn,
   OneToMany,
-  Index,
 } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { PromotionEntity } from '../promotion/promotion.entity';

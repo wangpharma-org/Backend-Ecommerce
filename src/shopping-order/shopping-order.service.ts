@@ -79,6 +79,7 @@ export class ShoppingOrderService {
       let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
+
       await this.dataSource.transaction(async (manager) => {
         const cart: ShoppingCartEntity[] | undefined =
           await this.shoppingCartService.handleGetCartToOrder(data.mem_code);
@@ -90,6 +91,7 @@ export class ShoppingOrderService {
         const groupCartArray = groupCart(cart, 80);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
+          // ====== Create Head ======
           const head = this.shoppingHeadEntity.create({
             soh_sumprice: 0,
             member: { mem_code: data.mem_code },
@@ -106,14 +108,19 @@ export class ShoppingOrderService {
           );
           runningNumbers.push(running);
 
-          const orderSales = group.map((item) => {
+          // ====== แยกสินค้าปกติ & ของแถม ======
+          const normalItems = group.filter((item) => !item.is_reward);
+          const rewardItems = group.filter((item) => item.is_reward);
+
+          // ====== Order สำหรับสินค้าปกติ ======
+          const orderSales = normalItems.map((item) => {
             const unitRatioMap = new Map([
               [item.product.pro_unit1, item.product.pro_ratio1],
               [item.product.pro_unit2, item.product.pro_ratio2],
               [item.product.pro_unit3, item.product.pro_ratio3],
             ]);
 
-            const totalAmount = group
+            const totalAmount = normalItems
               .filter((c) => c.pro_code === item.pro_code)
               .reduce((sum, sc) => {
                 const ratio = unitRatioMap.get(sc.spc_unit) ?? 0;
@@ -150,12 +157,26 @@ export class ShoppingOrderService {
             });
           });
 
+          // ====== Order สำหรับของแถม ======
+          const orderRewards = rewardItems.map((item) =>
+            manager.create(ShoppingOrderEntity, {
+              orderHeader: { soh_running: running },
+              pro_code: item.pro_code,
+              spo_unit: item.spc_unit,
+              spo_qty: item.spc_amount,
+              spo_price_unit: 0,
+              spo_total_decimal: 0, // ✅ ของแถมราคา 0
+            }),
+          );
+
+          // ====== ยอดรวมเฉพาะสินค้าปกติ ======
           const sumprice = orderSales.reduce(
             (total, order) => total + Number(order.spo_total_decimal),
             0,
           );
           totalSumPrice += sumprice;
 
+          // ====== Handle listFree (point) ======
           if (groupIndex === groupCartArray.length - 1) {
             if (data.listFree && data.listFree.length > 0) {
               const listFree = await Promise.all(
@@ -189,7 +210,7 @@ export class ShoppingOrderService {
                 }),
               );
 
-              const saveProduct = await manager.save(
+              const saveFree = await manager.save(
                 ShoppingOrderEntity,
                 orderFree,
               );
@@ -197,27 +218,30 @@ export class ShoppingOrderService {
               await manager.update(
                 ShoppingHeadEntity,
                 { soh_id: NewHead.soh_id },
-                { soh_free: saveProduct.length },
+                { soh_free: saveFree.length },
               );
             }
           }
 
-          const saveProduct = await manager.save(
-            ShoppingOrderEntity,
-            orderSales,
-          );
+          // ====== Save Orders (รวมของแถมด้วย) ======
+          const saveProduct = await manager.save(ShoppingOrderEntity, [
+            ...orderSales,
+            ...orderRewards,
+          ]);
+
           await manager.update(
             ShoppingHeadEntity,
             { soh_id: NewHead.soh_id },
             {
               soh_listsale: saveProduct.length,
-              soh_sumprice: sumprice,
+              soh_sumprice: sumprice, // ✅ ไม่รวมของแถม
               soh_coin_after_use: pointAfterUse,
               soh_coin_recieve: sumprice * 0.01,
               soh_coin_use: sumprice * 0.01 - pointAfterUse,
             },
           );
 
+          // ====== Clear Cart ======
           for (const c of group) {
             await this.shoppingCartService.clearCheckoutCart(c.spc_id);
           }
@@ -240,7 +264,7 @@ export class ShoppingOrderService {
 
       return runningNumbers;
     } catch (error) {
-      console.log('Error: ', error);
+      console.error('Error: ', error);
     }
   }
 
