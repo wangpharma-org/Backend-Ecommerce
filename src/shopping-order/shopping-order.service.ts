@@ -256,12 +256,7 @@ export class ShoppingOrderService {
         }
       });
 
-      if (runningNumbers.length > 0) {
-        for (const run of runningNumbers) {
-          await this.sendDataToOldSystem(run);
-        }
-        return runningNumbers;
-      }
+      return runningNumbers;
     } catch (error) {
       console.log('Error: ', error);
     }
