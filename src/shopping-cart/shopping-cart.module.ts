@@ -4,10 +4,17 @@ import { ShoppingCartService } from './shopping-cart.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { ProductsModule } from '../products/products.module';
+import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
+import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ShoppingCartEntity, PromotionEntity]),
+    TypeOrmModule.forFeature([
+      ShoppingCartEntity,
+      PromotionEntity,
+      PromotionConditionEntity,
+      PromotionTierEntity,
+    ]),
     ProductsModule,
   ],
   providers: [ShoppingCartService],

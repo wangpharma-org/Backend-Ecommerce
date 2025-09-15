@@ -1,3 +1,4 @@
+import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
@@ -12,7 +13,10 @@ import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import * as AWS from 'aws-sdk';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { CodePromotionEntity } from './code-promotion.entity';
+import { AuthService } from 'src/auth/auth.service';
 
 @Injectable()
 export class PromotionService {
@@ -20,12 +24,18 @@ export class PromotionService {
   constructor(
     @InjectRepository(PromotionEntity)
     private readonly promotionRepo: Repository<PromotionEntity>,
+    @InjectRepository(CodePromotionEntity)
+    private readonly codeRepo: Repository<CodePromotionEntity>,
+    @InjectRepository(ShoppingCartEntity)
+    private readonly cartRepo: Repository<ShoppingCartEntity>,
     @InjectRepository(PromotionTierEntity)
     private readonly promotionTierRepo: Repository<PromotionTierEntity>,
     @InjectRepository(PromotionConditionEntity)
     private readonly promotionConditionRepo: Repository<PromotionConditionEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardRepo: Repository<PromotionRewardEntity>,
+    private readonly shoppingCartService: ShoppingCartService,
+    private readonly authService: AuthService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -34,13 +44,96 @@ export class PromotionService {
     });
   }
 
-  @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  //   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  @Cron(CronExpression.EVERY_30_SECONDS)
   async cronDeletePromotionOutOfDate() {
     try {
       const today = new Date();
-      await this.promotionRepo.delete({ end_date: LessThan(today) });
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const promo = await this.promotionRepo.find({
+        where: { end_date: LessThan(today) },
+      });
+      if (promo.length === 0) return;
+
+      await this.cartRepo.delete({
+        reward_expire: LessThanOrEqual(today),
+      });
+
+      await Promise.all(
+        promo.map(async (p) => {
+          await this.promotionRepo.update(p.promo_id, { status: false });
+          await this.cartRepo.update(
+            {
+              use_code: false,
+              promo_id: p.promo_id,
+            },
+            {
+              spc_checked: false,
+              reward_expire: tomorrow,
+            },
+          );
+        }),
+      );
     } catch {
       throw new Error('Something Error in Delete Promotion');
+    }
+  }
+
+  async generateCodePromotion(mem_code: string) {
+    try {
+      const member = await this.authService.fetchUserData(mem_code);
+      if (!member) {
+        throw new Error('Member not found');
+      }
+      const code_text = Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+      const newCode = this.codeRepo.create({
+        code_text,
+        mem_code,
+      });
+      await this.codeRepo.save(newCode);
+      return code_text;
+    } catch (error) {
+      console.error(error);
+      throw new Error('Failed to generate promotion code');
+    }
+  }
+
+  async checkedRewardInCartByCode(
+    code_text: string,
+    mem_code: string,
+    price_option: string,
+  ) {
+    try {
+      const code = await this.codeRepo.findOne({
+        where: { code_text },
+      });
+      if (!code) {
+        throw new Error('This code is not found');
+      }
+      if (code?.mem_code !== mem_code) {
+        throw new Error('This code is not for this member');
+      }
+      await this.cartRepo.update(
+        { mem_code, is_reward: true, spc_checked: false },
+        {
+          spc_checked: true,
+          use_code: true,
+        },
+      );
+
+      await this.codeRepo.delete(code.code_id);
+
+      await this.shoppingCartService.checkPromotionReward(
+        mem_code,
+        price_option,
+      );
+    } catch (error) {
+      console.error(error);
+      throw new Error('Failed to check reward in cart');
     }
   }
 
