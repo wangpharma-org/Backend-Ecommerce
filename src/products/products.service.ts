@@ -21,7 +21,7 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
-  ) { }
+  ) {}
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
     try {
@@ -743,24 +743,28 @@ export class ProductsService {
 
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
-      const products = await this.productRepo.createQueryBuilder('product')
+      const products = await this.productRepo
+        .createQueryBuilder('product')
         .where(
-          new Brackets(qb => {
-            qb.where('product.pro_code LIKE :keyword', { keyword: `%${keyword}%` })
-              .orWhere('product.pro_supplier LIKE :keyword', { keyword: `%${keyword}%` });
-          })
+          new Brackets((qb) => {
+            qb.where('product.pro_code LIKE :keyword', {
+              keyword: `%${keyword}%`,
+            }).orWhere('product.pro_supplier LIKE :keyword', {
+              keyword: `%${keyword}%`,
+            });
+          }),
         )
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
         .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
         .andWhere(
-          new Brackets(qb => {
+          new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })
               .andWhere('product.pro_name NOT LIKE :n2', { n2: '%โอน%' })
               .andWhere('product.pro_name NOT LIKE :n3', { n3: '%ค่า%' })
               .andWhere('product.pro_name NOT LIKE :n4', { n4: '%ขนส่ง%' })
-              .andWhere('product.pro_name NOT LIKE :n5', { n5: '%โปรโมชั่น%' })
-          })
+              .andWhere('product.pro_name NOT LIKE :n5', { n5: '%โปรโมชั่น%' });
+          }),
         )
         .select([
           'product.pro_code',

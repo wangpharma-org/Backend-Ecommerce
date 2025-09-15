@@ -31,11 +31,23 @@ export class ShoppingCartEntity {
   @Column({ default: false })
   is_reward: boolean;
 
+  @Column({ type: 'int', nullable: true, default: null })
+  promo_id: number;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  tier_id: number;
+
+  @Column({ default: false })
+  use_code: boolean;
+
   // @Column({ type: 'enum', enum: ['1', '2', '3'], nullable: true })
   // spc_unit: '1' | '2' | '3';
 
   @Column({ type: 'timestamp' })
   spc_datetime: Date;
+
+  @Column({ type: 'date', nullable: true, default: null })
+  reward_expire: Date;
 
   @Column({ type: 'text', nullable: true })
   spc_comments: string;

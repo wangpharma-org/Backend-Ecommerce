@@ -9,9 +9,12 @@ import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import axios from 'axios';
 
 @Injectable()
 export class ShoppingOrderService {
+  private readonly slackUrl =
+    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -71,9 +74,28 @@ export class ShoppingOrderService {
     paymentOptions: string;
     shippingOptions: string;
   }): Promise<string[] | undefined> {
+    let orderContext: {
+      memberCode: string;
+      priceOption: string;
+      totalPrice: number;
+      item:
+        | {
+            pro_code: string;
+            amount: number;
+            unit: string;
+            is_reward: boolean;
+          }[]
+        | null;
+    } = {
+      memberCode: data.mem_code,
+      priceOption: data.priceOption,
+      totalPrice: data.total_price,
+      item: null,
+    };
     try {
       const numberOfMonth = new Date().getMonth() + 1;
       const runningNumbers: string[] = [];
+      const allIdCartForDelete: number[] = [];
       let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
@@ -83,6 +105,12 @@ export class ShoppingOrderService {
           await this.shoppingCartService.handleGetCartToOrder(data.mem_code);
 
         if (!cart || cart.length === 0) {
+          orderContext = {
+            memberCode: data.mem_code,
+            priceOption: data.priceOption,
+            totalPrice: data.total_price,
+            item: null,
+          };
           throw new Error('Cart is empty');
         }
 
@@ -90,11 +118,12 @@ export class ShoppingOrderService {
           data.mem_code,
         );
 
-        console.log('Cart items to be processed:', cart);
-
         const groupCartArray = groupCart(cart, 80);
 
+        console.log('Grouped cart items:', groupCartArray);
+
         for (const [groupIndex, group] of groupCartArray.entries()) {
+          allIdCartForDelete.push(...group.map((c) => c.spc_id));
           const head = this.shoppingHeadEntity.create({
             soh_sumprice: 0,
             member: { mem_code: data.mem_code },
@@ -155,6 +184,7 @@ export class ShoppingOrderService {
                   String(f.spc_unit) === String(item.spc_unit) &&
                   String(f.pro_code) === String(item.pro_code),
               );
+
             console.log('Freebie check:', { isFreebie, item, checkFreebies });
             if (isFreebie) {
               price = 0.0;
@@ -198,7 +228,20 @@ export class ShoppingOrderService {
               );
 
               const sumpoint = listFree.reduce((total, order, index) => {
-                if (!order?.pro_free) throw new Error('Point Error');
+                if (!order?.pro_free) {
+                  orderContext = {
+                    memberCode: data.mem_code,
+                    priceOption: data.priceOption,
+                    totalPrice: data.total_price,
+                    item: cart.map((c) => ({
+                      pro_code: c.pro_code,
+                      amount: c.spc_amount,
+                      unit: c.spc_unit,
+                      is_reward: c.is_reward,
+                    })),
+                  };
+                  throw new Error('Point Error');
+                }
                 const amount = data.listFree?.[index].amount ?? 0;
                 const point = order?.pro_point ?? 0;
                 return total + point * amount;
@@ -208,6 +251,17 @@ export class ShoppingOrderService {
               totalSumPoint += sumpoint;
 
               if (sumpoint && totalSumPrice * 0.01 < sumpoint) {
+                orderContext = {
+                  memberCode: data.mem_code,
+                  priceOption: data.priceOption,
+                  totalPrice: data.total_price,
+                  item: cart.map((c) => ({
+                    pro_code: c.pro_code,
+                    amount: c.spc_amount,
+                    unit: c.spc_unit,
+                    is_reward: c.is_reward,
+                  })),
+                };
                 throw new Error('Point Error');
               }
 
@@ -249,13 +303,20 @@ export class ShoppingOrderService {
               soh_coin_use: sumprice * 0.01 - pointAfterUse,
             },
           );
-
-          for (const c of group) {
-            await this.shoppingCartService.clearCheckoutCart(c.spc_id);
-          }
         }
 
         if (totalSumPrice.toFixed(2) !== data.total_price.toFixed(2)) {
+          orderContext = {
+            memberCode: data.mem_code,
+            priceOption: data.priceOption,
+            totalPrice: data.total_price,
+            item: cart.map((c) => ({
+              pro_code: c.pro_code,
+              amount: c.spc_amount,
+              unit: c.spc_unit,
+              is_reward: c.is_reward,
+            })),
+          };
           throw new Error(
             `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${data.total_price}`,
           );
@@ -266,13 +327,44 @@ export class ShoppingOrderService {
           data.listFree.length > 0 &&
           totalSumPrice * 0.01 < totalSumPoint
         ) {
+          orderContext = {
+            memberCode: data.mem_code,
+            priceOption: data.priceOption,
+            totalPrice: data.total_price,
+            item: cart.map((c) => ({
+              pro_code: c.pro_code,
+              amount: c.spc_amount,
+              unit: c.spc_unit,
+              is_reward: c.is_reward,
+            })),
+          };
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
         }
       });
 
+      for (const id of allIdCartForDelete) {
+        await this.shoppingCartService.clearCheckoutCart(id);
+      }
+
       return runningNumbers;
     } catch (error) {
       console.error('Error: ', error);
+      const payload = {
+        text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${orderContext?.totalPrice || data.total_price}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
+        attachments: [
+          {
+            color: '#ff0000',
+            title: 'Order context',
+            text: '```' + JSON.stringify(orderContext, null, 2) + '```',
+          },
+        ],
+      };
+      try {
+        await axios.post(this.slackUrl, payload);
+      } catch (e) {
+        console.error('Failed to notify Slack', e);
+      }
+      throw new Error('Failed to submit order. ' + error);
     }
   }
 

@@ -6,6 +6,10 @@ import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import { CreditorEntity } from '../products/creditor.entity';
 import { PromotionService } from './promotion.service';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { CodePromotionEntity } from './code-promotion.entity';
+import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
@@ -15,7 +19,11 @@ import { PromotionService } from './promotion.service';
       PromotionConditionEntity,
       PromotionRewardEntity,
       CreditorEntity,
+      ShoppingCartEntity,
+      CodePromotionEntity,
     ]),
+    ShoppingCartModule,
+    AuthModule,
   ],
   controllers: [],
   providers: [PromotionService],
