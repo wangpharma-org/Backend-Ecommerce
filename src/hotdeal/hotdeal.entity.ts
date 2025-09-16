@@ -1,5 +1,5 @@
 import { ProductEntity } from "src/products/products.entity";
-import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToOne, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity()
 export class HotdealEntity {
@@ -7,7 +7,7 @@ export class HotdealEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @ManyToOne(() => ProductEntity, (product) => product.inHotdeals)
+    @OneToOne(() => ProductEntity, (product) => product.inHotdeals)
     @JoinColumn({ name: 'pro_code' })
     product: ProductEntity;
 
@@ -26,4 +26,4 @@ export class HotdealEntity {
 
     @Column({ length: 20, nullable: false })
     pro2_unit: string;
-}
+}   

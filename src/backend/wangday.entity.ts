@@ -8,12 +8,12 @@ export class WangDay {
   @Column()
   date: string;
 
-  @Column({ unique: true, type: 'decimal', precision: 10, scale: 2 })
+  @Column({ unique: true })
   sh_running: string;
 
   @Column()
   wang_code: string;
 
-  @Column()
+  @Column({ type: "decimal", precision: 10, scale: 2 })
   sumprice: string; //มูลค่ารวม + vat
 }

@@ -812,4 +812,9 @@ export class AppController {
     }
     return this.promotionService.generateCodePromotion(data.mem_code);
   }
+
+  @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
+  async getHotdealFromCode(@Param('pro_code') pro_code: string) {
+    return this.hotdealService.getHotdealFromCode(pro_code);
+  }
 }

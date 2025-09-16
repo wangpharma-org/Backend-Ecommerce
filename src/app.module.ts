@@ -19,6 +19,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PromotionModule } from './promotion/promotion.module';
 import { WangdayModule } from './backend/wangday.module';
 import { HotdealModule } from './hotdeal/hotdeal.module';
+import { LoggerService } from './logger/logger.service';
+import { LoggerModule } from './logger/logger.module';
 
 @Module({
   imports: [
@@ -57,8 +59,9 @@ import { HotdealModule } from './hotdeal/hotdeal.module';
     PromotionModule,
     WangdayModule,
     HotdealModule,
+    LoggerModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, LoggerService],
 })
 export class AppModule { }

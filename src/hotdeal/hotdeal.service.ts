@@ -190,4 +190,11 @@ export class HotdealService {
         }
     }
 
+    async getHotdealFromCode(pro_code: string): Promise<HotdealEntity | null> {
+        const codeHotdeal = await this.hotdealRepo.findOne({
+            where: { product: { pro_code } },
+            relations: ['product']
+        });
+        return codeHotdeal ? { ...codeHotdeal, product: codeHotdeal.product || null } : null;
+    }
 }

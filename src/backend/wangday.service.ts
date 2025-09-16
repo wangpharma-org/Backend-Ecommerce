@@ -83,25 +83,17 @@ export class WangdayService {
     }
 
     async getMonthlySumByWangCode(wang_code: string): Promise<{ wang_code: string, monthly: { [month: number]: number } }> {
-        const all = await this.wangdayRepo.find({ where: { wang_code } });
-        // Map เดือน (1-12) => ยอดรวม
-        const monthMap = new Map<number, number>();
-        for (const row of all) {
-            if (!row.date) continue;
-            // แยกเดือนจาก date (MM/DD/YYYY หรือ M/D/YYYY)
-            const month = Number((row.date as string).split('/')[0]);
-            const sum = parseFloat(row.sumprice as string) || 0;
-            if (monthMap.has(month)) {
-                monthMap.set(month, monthMap.get(month)! + sum);
-            } else {
-                monthMap.set(month, sum);
-            }
-        }
-        // สร้าง object 1-12 ถ้าเดือนไหนไม่มีข้อมูลให้เป็น 0
-        const monthly: { [month: number]: number } = {};
-        for (let m = 1; m <= 12; m++) {
-            monthly[m] = Number((monthMap.get(m) || 0).toFixed(2));
-        }
+        const result = await this.wangdayRepo.createQueryBuilder('wangday')
+            .select('wangday.wang_code', 'wang_code')
+            .addSelect('MONTH(wangday.date)', 'month')
+            .addSelect('SUM(wangday.sumprice)', 'total')
+            .where('wangday.wang_code = :wang_code', { wang_code })
+            .groupBy('MONTH(wangday.date)')
+            .getRawMany();
+        const monthly = result.reduce((acc, row) => {
+            acc[row.month] = Number(row.total);
+            return acc;
+        }, {} as { [month: number]: number });
         return { wang_code, monthly };
     }
     /**
