@@ -91,10 +91,11 @@ export class WangdayService {
             .andWhere('wangday.date IS NOT NULL')
             .groupBy('month')
             .getRawMany();
-        const monthly = result.reduce((acc, row) => {
-            acc[row.month] = Number(row.total);
-            return acc;
-        }, {} as { [month: number]: number });
+        const monthly: { [month: number]: number } = {};
+        for (let m = 1; m <= 12; m++) {
+            const found = result.find(row => Number(row.month) === m);
+            monthly[m] = found ? Number(found.total) : 0;
+        }
         return { wang_code, monthly };
     }
     /**
