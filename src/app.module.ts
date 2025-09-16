@@ -62,6 +62,6 @@ import { LoggerModule } from './logger/logger.module';
     LoggerModule,
   ],
   controllers: [AppController],
-  providers: [AppService, LoggerService],
+  providers: [AppService],
 })
 export class AppModule { }
