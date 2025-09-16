@@ -197,4 +197,14 @@ export class AuthService {
     });
     return { token: access_token };
   }
+
+  async upsertUser(data: UserEntity[]) {
+    const chunkSize = 1000;
+    await this.userRepo.manager.transaction(async (manager) => {
+      for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize);
+        await manager.getRepository(UserEntity).upsert(chunk, ['mem_code']);
+      }
+    });
+  }
 }

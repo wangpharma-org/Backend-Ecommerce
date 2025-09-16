@@ -1,5 +1,4 @@
 import { WangdayService } from './backend/wangday.service';
-import { UserEntity } from 'src/users/users.entity';
 import {
   Body,
   Controller,
@@ -28,11 +27,9 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { WangDay } from './backend/wangday.entity';
-import { WangdaySumPrice } from './backend/wangdaySumPrice.entity';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
-import { permission } from 'process';
+import { UserEntity } from 'src/users/users.entity';
 
 interface JwtPayload {
   username: string;
@@ -48,11 +45,6 @@ interface JwtPayload {
   mem_post?: string;
   mem_phone?: string;
   permission?: boolean;
-}
-interface ImportAndSumResult {
-  mem_code: string;
-  date: string;
-  sum: WangdaySumPrice | null;
 }
 
 @Controller()
@@ -816,5 +808,18 @@ export class AppController {
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
     return this.hotdealService.getHotdealFromCode(pro_code);
+  }
+
+  @Post('/ecom/update-customer-data')
+  async updateCustomerData(
+    @Body()
+    data: UserEntity[],
+  ) {
+    return this.authService.upsertUser(data);
+  }
+
+  @Get('/ecom/last-sh-running')
+  async getLastShRunning() {
+    return this.shoppingHeadService.getLastSHRunnning();
   }
 }
