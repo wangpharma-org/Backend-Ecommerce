@@ -810,13 +810,13 @@ export class AppController {
     return this.hotdealService.getHotdealFromCode(pro_code);
   }
 
-  @Post('/ecom/update-customer-data')
-  async updateCustomerData(
-    @Body()
-    data: UserEntity[],
-  ) {
-    return this.authService.upsertUser(data);
-  }
+  // @Post('/ecom/update-customer-data')
+  // async updateCustomerData(
+  //   @Body()
+  //   data: UserEntity[],
+  // ) {
+  //   return this.authService.upsertUser(data);
+  // }
 
   @Get('/ecom/last-sh-running')
   async getLastShRunning() {
