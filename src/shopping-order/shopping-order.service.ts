@@ -15,7 +15,7 @@ import { json } from 'stream/consumers';
 
 @Injectable()
 export class ShoppingOrderService {
-   private readonly slackUrl =
+  private readonly slackUrl =
     'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
@@ -29,7 +29,7 @@ export class ShoppingOrderService {
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   async sendDataToOldSystem(soh_running: string) {
     let data;
@@ -63,15 +63,15 @@ export class ShoppingOrderService {
     mem_code: string;
     total_price: number;
     listFree:
-      | [
-          {
-            pro_code: string;
-            amount: number;
-            pro_unit1: string;
-            pro_point: number;
-          },
-        ]
-      | null;
+    | [
+      {
+        pro_code: string;
+        amount: number;
+        pro_unit1: string;
+        pro_point: number;
+      },
+    ]
+    | null;
     priceOption: string;
     paymentOptions: string;
     shippingOptions: string;
@@ -183,8 +183,8 @@ export class ShoppingOrderService {
             const ratio = unitRatioMap.get(item.spc_unit) ?? 1;
             let price = isPromotionActive
               ? Number(item.spc_amount) *
-                Number(item.product.pro_priceA) *
-                ratio
+              Number(item.product.pro_priceA) *
+              ratio
               : Number(item.spc_amount) * unitPrice * ratio;
 
             const isFreebie =
@@ -359,15 +359,22 @@ export class ShoppingOrderService {
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
         }
       });
-      submitLogContext.push({ transaction: 'end', allIdCartForDeleteCount: allIdCartForDelete.length });  
+      submitLogContext.push({ transaction: 'end', allIdCartForDeleteCount: allIdCartForDelete.length });
       for (const id of allIdCartForDelete) {
-        
+
         await this.shoppingCartService.clearCheckoutCart(id);
       }
       submitOrder.info('data ', { submitLogContext });
       return runningNumbers;
     } catch (error) {
-      submitOrder.error('Error: ', error, { submitLogContext });
+      submitOrder.error('Error submitting order', {
+        error: error instanceof Error ? error.message : String(error),
+        member: orderContext?.memberCode || data.mem_code,
+        totalPrice: orderContext?.totalPrice || data.total_price,
+        priceOption: orderContext?.priceOption || data.priceOption,
+        orderContext,
+        data
+      });
       console.error('Error: ', error);
       const payload = {
         text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${orderContext?.totalPrice || data.total_price}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
