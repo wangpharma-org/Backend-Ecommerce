@@ -658,7 +658,10 @@ export class AppController {
 
   @Get('/ecom/wangday/monthly/:wang_code')
   async getWangdayMonthly(@Param('wang_code') wang_code: string) {
-    return this.wangdayService.getMonthlySumByWangCode(wang_code);
+    console.log('Get Monthly Sum for wang_code:', wang_code);
+    const result = await this.wangdayService.getMonthlySumByWangCode(wang_code);
+    console.log('Result:', result);
+    return result;
   }
   @Get('/ecom/wangsumprice/:wang_code')
   async getWangSumPrice(@Param('wang_code') wang_code: string) {
