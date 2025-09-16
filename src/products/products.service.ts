@@ -21,7 +21,7 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
-  ) {}
+  ) { }
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
     try {
@@ -795,6 +795,29 @@ export class ProductsService {
     } catch (error) {
       console.error('Error fetching all products:', error);
       throw new Error('Error fetching all products');
+    }
+  }
+
+  async updateProductFromBackOffice([{pro_code, priceA, priceB, priceC, ratio1, ratio2, ratio3, unit1, unit2, unit3, supplier}]: {pro_code: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, stock: number, supplier: string}[]): Promise<string> {
+    try {
+      const updateData: Partial<ProductEntity> = {
+        pro_priceA: priceA,
+        pro_priceB: priceB,
+        pro_priceC: priceC,
+        pro_ratio1: ratio1,
+        pro_ratio2: ratio2,
+        pro_ratio3: ratio3,
+        pro_unit1: unit1,
+        pro_unit2: unit2,
+        pro_unit3: unit3,
+        pro_supplier: supplier,
+      };
+      await this.productRepo.update({ pro_code }, updateData);
+      console.log(`Product ${pro_code} updated successfully.`);
+      return `Product ${pro_code} updated successfully.`;
+    } catch (error) {
+      console.error(`Error updating product ${pro_code}:`, error);
+      throw new Error(`Error updating product ${pro_code}`);
     }
   }
 }

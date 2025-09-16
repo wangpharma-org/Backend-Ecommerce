@@ -71,7 +71,7 @@ export class AppController {
     private readonly promotionService: PromotionService,
     private readonly wangdayService: WangdayService,
     private readonly hotdealService: HotdealService,
-  ) {}
+  ) { }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -254,15 +254,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -816,5 +816,16 @@ export class AppController {
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
     return this.hotdealService.getHotdealFromCode(pro_code);
+  }
+
+  @Post('/ecom/admin/update-product-from-back-office')
+  async updateProductFromBackOffice(@Body() body: { pro_code: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, stock: number, supplier: string }[]) {
+    try {
+      console.log('Received body:', body);
+      return this.productsService.updateProductFromBackOffice(body);
+    } catch (error) {
+      console.error('Error updating product from back office:', error);
+      throw new Error('Error updating product from back office');
+    }
   }
 }
