@@ -41,7 +41,7 @@ import { LoggerModule } from './logger/logger.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),

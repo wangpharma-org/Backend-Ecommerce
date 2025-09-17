@@ -5,6 +5,7 @@ import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
+import { group } from 'console';
 
 interface OrderItem {
   pro_code: string;
@@ -12,8 +13,25 @@ interface OrderItem {
   quantity: number;
 }
 
+interface UpdateProductInput {
+  pro_code: string;
+  pro_name: string;
+  pro_lowest_stock: number;
+  priceA: number;
+  priceB: number;
+  priceC: number;
+  ratio1: number;
+  ratio2: number;
+  ratio3: number;
+  unit1: string;
+  unit2: string;
+  unit3: string;
+  supplier: string;
+}
+
 @Injectable()
 export class ProductsService {
+  private accumulatedRows: Partial<UpdateProductInput>[] = [];
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
@@ -584,7 +602,7 @@ export class ProductsService {
               })
               .andWhere('product.pro_code NOT LIKE :prefix8', {
                 prefix8: '@M%',
-              }); 
+              });
           }),
         );
 
@@ -801,26 +819,91 @@ export class ProductsService {
     }
   }
 
-  async updateProductFromBackOffice([{pro_code, priceA, priceB, priceC, ratio1, ratio2, ratio3, unit1, unit2, unit3, supplier}]: {pro_code: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, stock: number, supplier: string}[]): Promise<string> {
+  async updateProductFromBackOffice(body: { group: { pro_code: string, pro_name: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, supplier: string, pro_lowest_stock: number }[] }, isFirstChunk: boolean, isLastChunk: boolean): Promise<string> {
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
     try {
-      const updateData: Partial<ProductEntity> = {
-        pro_priceA: priceA,
-        pro_priceB: priceB,
-        pro_priceC: priceC,
-        pro_ratio1: ratio1,
-        pro_ratio2: ratio2,
-        pro_ratio3: ratio3,
-        pro_unit1: unit1,
-        pro_unit2: unit2,
-        pro_unit3: unit3,
-        pro_supplier: supplier,
-      };
-      await this.productRepo.update({ pro_code }, updateData);
-      console.log(`Product ${pro_code} updated successfully.`);
-      return `Product ${pro_code} updated successfully.`;
+      if (isFirstChunk === true) {
+        this.accumulatedRows = [];
+      }
+      for (const item of body.group) {
+        const hasValueNonZero = v =>
+          v !== undefined && v !== null && v !== '' && Number(v) !== 0;
+        let ratio2 = 1
+        let ratio3 = 1
+
+        const ratio1 = 1
+
+        if (!item.unit2) {
+          ratio2 = 1
+        } else {
+          ratio2 = hasValueNonZero(item.ratio2)
+            ? Math.trunc(Number(item.ratio1) / Number(item.ratio2))
+            : 0;
+        }
+
+        if (!item.unit3) {
+          ratio3 = 1
+        } else {
+          ratio3 = hasValueNonZero(item.ratio3)
+            ? Math.trunc(Number(item.ratio1) / Number(item.ratio3))
+            : 0;
+        }
+
+
+
+        const updateData: Partial<ProductEntity> = {
+          pro_code: item?.pro_code,
+          pro_name: item?.pro_name || '',
+          pro_lowest_stock: item?.pro_lowest_stock || 0,
+          pro_priceA: item?.priceA || 0,
+          pro_priceB: item?.priceB || 0,
+          pro_priceC: item?.priceC || 0,
+          pro_ratio1: ratio1 || 1,
+          pro_ratio2: ratio2 || 1,
+          pro_ratio3: ratio3 || 1,
+          pro_unit1: item?.unit1 || '',
+          pro_unit2: item?.unit2 || '',
+          pro_unit3: item?.unit3 || '',
+          creditor: null,
+        };
+        // Assign creditor as entity or null if not found or error
+          if (item?.supplier) {
+            let supplierCode = item.supplier;
+            if (supplierCode.startsWith('N')) {
+              supplierCode = supplierCode.substring(1);
+            }
+            try {
+              const foundCreditor = await this.creditorRepo.findOne({ where: { creditor_code: supplierCode } });
+              if (foundCreditor) {
+                updateData.creditor = foundCreditor;
+              } else {
+                updateData.creditor = null;
+              }
+            } catch (err) {
+              updateData.creditor = null;
+            }
+          }
+        const existing = await queryRunner.manager.findOne(ProductEntity, { where: { pro_code: item?.pro_code } });
+        if (existing) {
+          await queryRunner.manager.update(ProductEntity, { pro_code: item?.pro_code }, updateData);
+        } else {
+          await queryRunner.manager.save(ProductEntity, updateData);
+        }
+      }
+      await queryRunner.commitTransaction();
+      if (isLastChunk === true) {
+        return 'success';
+      }
+      console.log(`Products updated/inserted successfully.`);
+      return `Products updated/inserted successfully.`;
     } catch (error) {
-      console.error(`Error updating product ${pro_code}:`, error);
-      throw new Error(`Error updating product ${pro_code}`);
+      await queryRunner.rollbackTransaction();
+      console.error(`Error updating/inserting products:`, error);
+      throw new Error(`Error updating/inserting products`);
+    } finally {
+      await queryRunner.release();
     }
   }
 }

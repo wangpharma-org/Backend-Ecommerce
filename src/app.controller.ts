@@ -811,10 +811,10 @@ export class AppController {
   }
 
   @Post('/ecom/admin/update-product-from-back-office')
-  async updateProductFromBackOffice(@Body() body: { pro_code: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, stock: number, supplier: string }[]) {
+  async updateProductFromBackOffice(@Body() body: { group : {pro_code: string, pro_name: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, supplier: string, pro_lowest_stock: number }[]}, isLastChunk: boolean, isFirstChunk: boolean  ) {
     try {
       console.log('Received body:', body);
-      return this.productsService.updateProductFromBackOffice(body);
+      return this.productsService.updateProductFromBackOffice({ group: body.group }, isFirstChunk, isLastChunk);
     } catch (error) {
       console.error('Error updating product from back office:', error);
       throw new Error('Error updating product from back office');
