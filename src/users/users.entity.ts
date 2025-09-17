@@ -10,6 +10,7 @@ import { EmployeeEntity } from '../employees/employees.entity';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
+import { DebtorEntity } from 'src/debtor/debtor.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -165,4 +166,7 @@ export class UserEntity {
 
   @Column({ length: 150, nullable: true, default: null })
   mem_invoice_type: string;
+
+  @OneToMany(() => DebtorEntity, (debtor) => debtor.user)
+  debtors: DebtorEntity[];
 }

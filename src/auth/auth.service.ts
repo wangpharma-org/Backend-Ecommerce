@@ -198,13 +198,50 @@ export class AuthService {
     return { token: access_token };
   }
 
-  async upsertUser(data: UserEntity[]) {
-    const chunkSize = 1000;
-    await this.userRepo.manager.transaction(async (manager) => {
-      for (let i = 0; i < data.length; i += chunkSize) {
-        const chunk = data.slice(i, i + chunkSize);
-        await manager.getRepository(UserEntity).upsert(chunk, ['mem_code']);
+  async upsertUser(
+    data: {
+      mem_code: string;
+      mem_nameSite: string;
+      mem_username: string;
+      mem_password: string;
+      mem_price: string;
+      emp_saleoffice: string;
+    }[],
+  ) {
+    try {
+      const mem_code_all_user = await this.userRepo.find({
+        select: {
+          mem_code: true,
+        },
+      });
+      const mem_code_all_map = mem_code_all_user.map((m) => {
+        return m.mem_code;
+      });
+
+      for (const user of data) {
+        if (mem_code_all_map.includes(user.mem_code)) {
+          await this.userRepo.update(
+            { mem_code: user.mem_code },
+            {
+              mem_price: user.mem_price,
+              emp_saleoffice: user.emp_saleoffice,
+            },
+          );
+        } else {
+          const newUser = this.userRepo.create({
+            mem_code: user.mem_code,
+            mem_nameSite: user.mem_nameSite,
+            mem_username: user.mem_username,
+            mem_password: user.mem_password,
+            mem_price: user.mem_price,
+            emp_saleoffice: user.emp_saleoffice,
+          });
+          await this.userRepo.save(newUser);
+        }
       }
-    });
+    } catch (error) {
+      console.log(error);
+      throw new Error('Something Error in upsertUser');
+    }
   }
 }

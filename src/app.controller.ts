@@ -30,6 +30,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
+import { DebtorService } from './debtor/debtor.service';
 
 interface JwtPayload {
   username: string;
@@ -63,6 +64,7 @@ export class AppController {
     private readonly promotionService: PromotionService,
     private readonly wangdayService: WangdayService,
     private readonly hotdealService: HotdealService,
+    private readonly debtorService: DebtorService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -813,13 +815,40 @@ export class AppController {
   @Post('/ecom/update-customer-data')
   async updateCustomerData(
     @Body()
-    data: UserEntity[],
+    data: {
+      mem_code: string;
+      mem_nameSite: string;
+      mem_username: string;
+      mem_password: string;
+      mem_price: string;
+      emp_saleoffice: string;
+    }[],
   ) {
+    console.log(data);
     return this.authService.upsertUser(data);
   }
 
   @Get('/ecom/last-sh-running')
   async getLastShRunning() {
     return this.shoppingHeadService.getLastSHRunnning();
+  }
+
+  @Post('/ecom/upload-debtor')
+  async uploadDebtor(
+    @Body()
+    data: {
+      mem_code: string;
+      billing_slip_id: string;
+      payment_schedule_date: string;
+      billing_amount: number;
+    }[],
+  ) {
+    console.log(data);
+    return this.debtorService.updateDebtor(data);
+  }
+
+  @Delete('/ecom/clear-debtor')
+  async clearDebtor() {
+    return this.debtorService.clearData();
   }
 }
