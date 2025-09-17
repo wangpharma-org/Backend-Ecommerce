@@ -52,6 +52,9 @@ export class ShoppingCartEntity {
   @Column({ type: 'text', nullable: true })
   spc_comments: string;
 
+  @Column({ default: false })
+  hotdeal_free: boolean;
+
   @ManyToOne(() => UserEntity, (member) => member.shoppingCartItems)
   @JoinColumn({ name: 'mem_code' }) // Using ID for relation
   member: UserEntity;

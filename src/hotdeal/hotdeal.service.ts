@@ -169,7 +169,7 @@ export class HotdealService {
         return Number(spc_amount) * Number(found.ratio);
     }
 
-    async saveCartProduct(body: { mem_code: string, pro2_code: string, pro2_unit: string, pro2_amount: string, priceCondition: string, is_reward: boolean }[]) {
+    async saveCartProduct(body: { mem_code: string, pro2_code: string, pro2_unit: string, pro2_amount: string, priceCondition: string, hotdeal_free: boolean }[]) {
         console.log('Saving cart product:', body);
         try {
             return await Promise.all(
@@ -180,7 +180,8 @@ export class HotdealService {
                         pro_unit: item.pro2_unit,
                         amount: Number(item.pro2_amount),
                         priceCondition: item.priceCondition,
-                        is_reward: item.is_reward ?? true,
+                        is_reward: false,
+                        hotdeal_free: true,
                     })
                 )
             );

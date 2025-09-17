@@ -119,8 +119,8 @@ export class ShoppingOrderService {
           throw new Error('Cart is empty');
         }
 
-        const checkFreebies = await this.shoppingCartService.getProFreebie(
-          data.mem_code,
+        const checkFreebies = await this.shoppingCartService.getProFreebieHotdeal(
+          data.mem_code
         );
 
         const groupCartArray = groupCart(cart, 80);

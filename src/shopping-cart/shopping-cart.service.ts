@@ -32,6 +32,7 @@ export interface ShoppingCart {
   pro_promotion_month: number;
   pro_promotion_amount: number;
   is_reward: boolean;
+  hotdeal_free: boolean;
 }
 
 interface RawProductCart {
@@ -54,6 +55,7 @@ interface RawProductCart {
   spc_unit: string;
   spc_checked: number;
   is_reward: boolean | number;
+  hotdeal_free: boolean;  
 }
 
 // Define a DTO for the return type
@@ -140,6 +142,7 @@ export class ShoppingCartService {
     amount: number;
     priceCondition: string;
     is_reward: boolean;
+    hotdeal_free: boolean;
   }): Promise<ShoppingProductCart[]> {
     try {
       await this.shoppingCartRepo.save({
@@ -148,8 +151,9 @@ export class ShoppingCartService {
         spc_unit: data.pro_unit,
         spc_amount: data.amount,
         spc_price: 0, // ถ้าต้องมีราคา default
-        is_reward: true, // สินค้าปกติ
+        is_reward: false, // สินค้าปกติ
         spc_datetime: new Date(),
+        hotdeal_free: true,
       });
       return await this.getProductCart(data.mem_code);
     } catch (error) {
@@ -618,6 +622,7 @@ export class ShoppingCartService {
           'cart.spc_unit AS spc_unit',
           'cart.spc_checked AS spc_checked',
           'cart.is_reward AS is_reward',
+          'cart.hotdeal_free AS hotdeal_free',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -654,6 +659,7 @@ export class ShoppingCartService {
           is_reward: !!row.is_reward,
           pro_promotion_month: row.pro_promotion_month,
           pro_promotion_amount: row.pro_promotion_amount,
+          hotdeal_free: row.hotdeal_free || false,
         });
       }
 
@@ -716,12 +722,12 @@ export class ShoppingCartService {
     }
   }
 
-  async getProFreebie(memCode: string): Promise<
+  async getProFreebieHotdeal(memCode: string): Promise<
     {
       spc_id: number;
       spc_amount: number;
       spc_unit: string;
-      is_reward: boolean;
+      hotdeal_free: boolean;
       pro_code: string;
     }[]
   > {
@@ -730,7 +736,7 @@ export class ShoppingCartService {
       const freebies = await this.shoppingCartRepo.find({
         where: {
           mem_code: memCode,
-          is_reward: true,
+          hotdeal_free: true,
         },
       });
       return freebies;

@@ -751,15 +751,11 @@ export class AppController {
         pro2_unit: string;
         pro2_amount: string;
         priceCondition: string;
-        is_reward: boolean;
+        hotdeal_free:boolean;
       }[];
     },
   ) {
     console.log('body:', body);
-    // if (!Array.isArray(body)) {
-    //   throw new Error('Body must be an array of freebies');
-    // }
-    // Map body.hotDeal to the expected structure for saveCartProduct
     const cartProducts = body.hotDeal.map(
       (item: {
         mem_code: string;
@@ -767,14 +763,14 @@ export class AppController {
         pro2_unit: string;
         pro2_amount: string;
         priceCondition: string;
-        is_reward: boolean;
+        hotdeal_free: boolean;
       }) => ({
         mem_code: item.mem_code,
         pro2_code: item.pro2_code,
         pro2_unit: item.pro2_unit,
         pro2_amount: item.pro2_amount,
         priceCondition: item.priceCondition,
-        is_reward: true,
+        hotdeal_free: true
       }),
     );
     return this.hotdealService.saveCartProduct(cartProducts);
