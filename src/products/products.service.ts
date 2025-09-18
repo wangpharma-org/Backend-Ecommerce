@@ -5,12 +5,30 @@ import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
+import { LogFileEntity } from 'src/backend/logFile.entity';
+import { BackendService } from 'src/backend/backend.service';
 
 interface OrderItem {
   pro_code: string;
   unit: string;
   quantity: number;
 }
+
+// interface UpdateProductInput {
+//   pro_code: string;
+//   pro_name: string;
+//   pro_lowest_stock: number;
+//   priceA: number;
+//   priceB: number;
+//   priceC: number;
+//   ratio1: number;
+//   ratio2: number;
+//   ratio3: number;
+//   unit1: string;
+//   unit2: string;
+//   unit3: string;
+//   supplier: string;
+// }
 
 @Injectable()
 export class ProductsService {
@@ -21,6 +39,7 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
+    private readonly backendService: BackendService,
   ) {}
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
@@ -900,6 +919,141 @@ export class ProductsService {
     } catch (error) {
       console.error('Error fetching all products:', error);
       throw new Error('Error fetching all products');
+    }
+  }
+
+  async updateProductFromBackOffice(body: {
+    group: {
+      pro_code: string;
+      pro_name: string;
+      priceA: number;
+      priceB: number;
+      priceC: number;
+      ratio1: number;
+      ratio2: number;
+      ratio3: number;
+      unit1: string;
+      unit2: string;
+      unit3: string;
+      supplier: string;
+      pro_lowest_stock: number;
+    }[];
+    filename: string;
+  }): Promise<string> {
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      for (const item of body.group) {
+        const hasValueNonZero = (v) =>
+          v !== undefined && v !== null && v !== '' && Number(v) !== 0;
+        let ratio2 = 1;
+        let ratio3 = 1;
+
+        const ratio1 = 1;
+
+        if (!item.unit2) {
+          ratio2 = 1;
+        } else {
+          ratio2 = hasValueNonZero(item.ratio2)
+            ? Math.trunc(Number(item.ratio1) / Number(item.ratio2))
+            : 0;
+        }
+
+        if (!item.unit3) {
+          ratio3 = 1;
+        } else {
+          ratio3 = hasValueNonZero(item.ratio3)
+            ? Math.trunc(Number(item.ratio1) / Number(item.ratio3))
+            : 0;
+        }
+
+        const updateData: Partial<ProductEntity> = {
+          pro_code: item?.pro_code,
+          pro_name: item?.pro_name || '',
+          pro_lowest_stock: item?.pro_lowest_stock || 0,
+          pro_priceA: item?.priceA || 0,
+          pro_priceB: item?.priceB || 0,
+          pro_priceC: item?.priceC || 0,
+          pro_ratio1: ratio1 || 1,
+          pro_ratio2: ratio2 || 1,
+          pro_ratio3: ratio3 || 1,
+          pro_unit1: item?.unit1 || '',
+          pro_unit2: item?.unit2 || '',
+          pro_unit3: item?.unit3 || '',
+          creditor: null,
+        };
+        // Assign creditor as entity or null if not found or error
+        if (item?.supplier) {
+          let supplierCode = item.supplier;
+          if (supplierCode.startsWith('N')) {
+            supplierCode = supplierCode.substring(1);
+          }
+          try {
+            const foundCreditor = await this.creditorRepo.findOne({
+              where: { creditor_code: supplierCode },
+            });
+            if (foundCreditor) {
+              updateData.creditor = foundCreditor;
+            } else {
+              updateData.creditor = null;
+            }
+          } catch {
+            updateData.creditor = null;
+          }
+        }
+        const existing = await queryRunner.manager.findOne(ProductEntity, {
+          where: { pro_code: item?.pro_code },
+        });
+        if (existing) {
+          await queryRunner.manager.update(
+            ProductEntity,
+            { pro_code: item?.pro_code },
+            updateData,
+          );
+        } else {
+          await queryRunner.manager.save(ProductEntity, updateData);
+        }
+      }
+      await queryRunner.manager.update(
+        LogFileEntity,
+        { feature: `UpdateProduct` },
+        {
+          filename: body.filename,
+          uploadedAt: new Date(),
+        },
+      );
+      await queryRunner.commitTransaction();
+      console.log(`Products updated/inserted successfully.`);
+      return `Products updated/inserted successfully.`;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(`Error updating/inserting products:`, error);
+      throw new Error(`Error updating/inserting products`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async updateStock(body: {
+    group: { pro_code: string; stock: number }[];
+    filename: string;
+  }): Promise<string> {
+    try {
+      for (const item of body.group) {
+        await this.productRepo.update(
+          { pro_code: item.pro_code },
+          { pro_stock: item.stock },
+        );
+      }
+      await this.backendService.updateLogFile(
+        { feature: 'UpdateStock' },
+        { filename: body.filename, uploadedAt: new Date() },
+      );
+      return 'Stock updated successfully';
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      throw new Error('Error updating stock');
     }
   }
 }

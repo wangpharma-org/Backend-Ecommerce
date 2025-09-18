@@ -5,6 +5,8 @@ import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ProductListner } from './product.listener';
 import { CreditorEntity } from './creditor.entity';
+import { LogFileEntity } from 'src/backend/logFile.entity';
+import { BackendModule } from 'src/backend/backend.module';
 
 @Module({
   imports: [
@@ -12,7 +14,9 @@ import { CreditorEntity } from './creditor.entity';
       ProductEntity,
       ProductPharmaEntity,
       CreditorEntity,
+      LogFileEntity,
     ]),
+    BackendModule,
   ],
   providers: [ProductsService],
   controllers: [ProductListner],

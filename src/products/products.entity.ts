@@ -124,6 +124,9 @@ export class ProductEntity {
   @Column({ default: false })
   is_detect_amount: boolean;
 
+  @Column({ type: 'bigint', default: 0 })
+  pro_lowest_stock: number;
+
   @Column({ default: 0 })
   pro_sale_amount: number;
 
@@ -132,7 +135,7 @@ export class ProductEntity {
     onDelete: 'SET NULL',
   })
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
-  creditor: CreditorEntity;
+  creditor: CreditorEntity | null;
 
   @OneToOne(() => ProductPharmaEntity, (pharma) => pharma.product)
   pharmaDetails: ProductPharmaEntity;
