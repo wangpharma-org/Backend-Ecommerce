@@ -1,4 +1,4 @@
-import { WangdayService } from './backend/wangday.service';
+import { WangdayService } from './wangday/wangday.service';
 import {
   Body,
   Controller,
@@ -30,6 +30,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
+import { BackendService } from './backend/backend.service';
 
 interface JwtPayload {
   username: string;
@@ -63,7 +64,8 @@ export class AppController {
     private readonly promotionService: PromotionService,
     private readonly wangdayService: WangdayService,
     private readonly hotdealService: HotdealService,
-  ) { }
+    private readonly backendService: BackendService,
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -246,7 +248,8 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
+      | 
+      [
         {
           pro_code: string;
           amount: number;
@@ -658,11 +661,11 @@ export class AppController {
   }
 
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
-  async searchProductMain(@Param('keyword') keyword: string | '') {
+  async searchProductMain(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
   @Post('/ecom/admin/hotdeal/search-product-freebie/:keyword')
-  async searchProductFreebie(@Param('keyword') keyword: string | '') {
+  async searchProductFreebie(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
   @UseGuards(JwtAuthGuard)
@@ -811,10 +814,36 @@ export class AppController {
   }
 
   @Post('/ecom/admin/update-product-from-back-office')
-  async updateProductFromBackOffice(@Body() body: { group : {pro_code: string, pro_name: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, supplier: string, pro_lowest_stock: number }[]}, isLastChunk: boolean, isFirstChunk: boolean  ) {
+  async updateProductFromBackOffice(
+    @Body()
+    body: {
+      group: {
+        pro_code: string;
+        pro_name: string;
+        priceA: number;
+        priceB: number;
+        priceC: number;
+        ratio1: number;
+        ratio2: number;
+        ratio3: number;
+        unit1: string;
+        unit2: string;
+        unit3: string;
+        supplier: string;
+        pro_lowest_stock: number;
+      }[];
+      filename: string;
+    },
+  ) {
     try {
-      console.log('Received body:', body);
-      return this.productsService.updateProductFromBackOffice({ group: body.group }, isFirstChunk, isLastChunk);
+      // console.log('Received body:', {
+      //   group: body.group,
+      // });
+      console.log(body.filename);
+      return this.productsService.updateProductFromBackOffice({
+        group: body.group,
+        filename: body.filename,
+      });
     } catch (error) {
       console.error('Error updating product from back office:', error);
       throw new Error('Error updating product from back office');
@@ -832,5 +861,29 @@ export class AppController {
   @Get('/ecom/last-sh-running')
   async getLastShRunning() {
     return this.shoppingHeadService.getLastSHRunnning();
+  }
+
+  @Post('/ecom/admin/update-stock-from-back-office')
+  async updateStockFromBackOffice(
+    @Body()
+    body: {
+      group: { pro_code: string; stock: number }[];
+      filename: string;
+    },
+  ) {
+    try {
+      console.log('Received body for stock update:', body);
+      return await this.productsService.updateStock(body);
+    } catch (error) {
+      console.error('Error updating stock from back office:', error);
+      throw new Error('Error updating stock from back office');
+    }
+  }
+  @Get('/ecom/fileLog/:feature')
+  async getFileLog(@Param('feature') feature: string) {
+    const fileLogs = await this.backendService.getFeatured({
+      featured: feature,
+    });
+    return fileLogs;
   }
 }

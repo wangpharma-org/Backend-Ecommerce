@@ -17,10 +17,10 @@ import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PromotionModule } from './promotion/promotion.module';
-import { WangdayModule } from './backend/wangday.module';
+import { WangdayModule } from './wangday/wangday.module';
 import { HotdealModule } from './hotdeal/hotdeal.module';
-import { LoggerService } from './logger/logger.service';
 import { LoggerModule } from './logger/logger.module';
+import { BackendModule } from './backend/backend.module';
 
 @Module({
   imports: [
@@ -60,8 +60,9 @@ import { LoggerModule } from './logger/logger.module';
     WangdayModule,
     HotdealModule,
     LoggerModule,
+    BackendModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

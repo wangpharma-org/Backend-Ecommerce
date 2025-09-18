@@ -5,7 +5,8 @@ import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
-import { group } from 'console';
+import { LogFileEntity } from 'src/backend/logFile.entity';
+import { BackendService } from 'src/backend/backend.service';
 
 interface OrderItem {
   pro_code: string;
@@ -13,25 +14,24 @@ interface OrderItem {
   quantity: number;
 }
 
-interface UpdateProductInput {
-  pro_code: string;
-  pro_name: string;
-  pro_lowest_stock: number;
-  priceA: number;
-  priceB: number;
-  priceC: number;
-  ratio1: number;
-  ratio2: number;
-  ratio3: number;
-  unit1: string;
-  unit2: string;
-  unit3: string;
-  supplier: string;
-}
+// interface UpdateProductInput {
+//   pro_code: string;
+//   pro_name: string;
+//   pro_lowest_stock: number;
+//   priceA: number;
+//   priceB: number;
+//   priceC: number;
+//   ratio1: number;
+//   ratio2: number;
+//   ratio3: number;
+//   unit1: string;
+//   unit2: string;
+//   unit3: string;
+//   supplier: string;
+// }
 
 @Injectable()
 export class ProductsService {
-  private accumulatedRows: Partial<UpdateProductInput>[] = [];
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
@@ -39,7 +39,8 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
-  ) { }
+    private readonly backendService: BackendService,
+  ) {}
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
     try {
@@ -819,24 +820,38 @@ export class ProductsService {
     }
   }
 
-  async updateProductFromBackOffice(body: { group: { pro_code: string, pro_name: string, priceA: number, priceB: number, priceC: number, ratio1: number, ratio2: number, ratio3: number, unit1: string, unit2: string, unit3: string, supplier: string, pro_lowest_stock: number }[] }, isFirstChunk: boolean, isLastChunk: boolean): Promise<string> {
+  async updateProductFromBackOffice(body: {
+    group: {
+      pro_code: string;
+      pro_name: string;
+      priceA: number;
+      priceB: number;
+      priceC: number;
+      ratio1: number;
+      ratio2: number;
+      ratio3: number;
+      unit1: string;
+      unit2: string;
+      unit3: string;
+      supplier: string;
+      pro_lowest_stock: number;
+    }[];
+    filename: string;
+  }): Promise<string> {
     const queryRunner = this.productRepo.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      if (isFirstChunk === true) {
-        this.accumulatedRows = [];
-      }
       for (const item of body.group) {
-        const hasValueNonZero = v =>
+        const hasValueNonZero = (v) =>
           v !== undefined && v !== null && v !== '' && Number(v) !== 0;
-        let ratio2 = 1
-        let ratio3 = 1
+        let ratio2 = 1;
+        let ratio3 = 1;
 
-        const ratio1 = 1
+        const ratio1 = 1;
 
         if (!item.unit2) {
-          ratio2 = 1
+          ratio2 = 1;
         } else {
           ratio2 = hasValueNonZero(item.ratio2)
             ? Math.trunc(Number(item.ratio1) / Number(item.ratio2))
@@ -844,14 +859,12 @@ export class ProductsService {
         }
 
         if (!item.unit3) {
-          ratio3 = 1
+          ratio3 = 1;
         } else {
           ratio3 = hasValueNonZero(item.ratio3)
             ? Math.trunc(Number(item.ratio1) / Number(item.ratio3))
             : 0;
         }
-
-
 
         const updateData: Partial<ProductEntity> = {
           pro_code: item?.pro_code,
@@ -869,33 +882,46 @@ export class ProductsService {
           creditor: null,
         };
         // Assign creditor as entity or null if not found or error
-          if (item?.supplier) {
-            let supplierCode = item.supplier;
-            if (supplierCode.startsWith('N')) {
-              supplierCode = supplierCode.substring(1);
-            }
-            try {
-              const foundCreditor = await this.creditorRepo.findOne({ where: { creditor_code: supplierCode } });
-              if (foundCreditor) {
-                updateData.creditor = foundCreditor;
-              } else {
-                updateData.creditor = null;
-              }
-            } catch (err) {
+        if (item?.supplier) {
+          let supplierCode = item.supplier;
+          if (supplierCode.startsWith('N')) {
+            supplierCode = supplierCode.substring(1);
+          }
+          try {
+            const foundCreditor = await this.creditorRepo.findOne({
+              where: { creditor_code: supplierCode },
+            });
+            if (foundCreditor) {
+              updateData.creditor = foundCreditor;
+            } else {
               updateData.creditor = null;
             }
+          } catch {
+            updateData.creditor = null;
           }
-        const existing = await queryRunner.manager.findOne(ProductEntity, { where: { pro_code: item?.pro_code } });
+        }
+        const existing = await queryRunner.manager.findOne(ProductEntity, {
+          where: { pro_code: item?.pro_code },
+        });
         if (existing) {
-          await queryRunner.manager.update(ProductEntity, { pro_code: item?.pro_code }, updateData);
+          await queryRunner.manager.update(
+            ProductEntity,
+            { pro_code: item?.pro_code },
+            updateData,
+          );
         } else {
           await queryRunner.manager.save(ProductEntity, updateData);
         }
       }
+      await queryRunner.manager.update(
+        LogFileEntity,
+        { feature: `UpdateProduct` },
+        {
+          filename: body.filename,
+          uploadedAt: new Date(),
+        },
+      );
       await queryRunner.commitTransaction();
-      if (isLastChunk === true) {
-        return 'success';
-      }
       console.log(`Products updated/inserted successfully.`);
       return `Products updated/inserted successfully.`;
     } catch (error) {
@@ -904,6 +930,28 @@ export class ProductsService {
       throw new Error(`Error updating/inserting products`);
     } finally {
       await queryRunner.release();
+    }
+  }
+
+  async updateStock(body: {
+    group: { pro_code: string; stock: number }[];
+    filename: string;
+  }): Promise<string> {
+    try {
+      for (const item of body.group) {
+        await this.productRepo.update(
+          { pro_code: item.pro_code },
+          { pro_stock: item.stock },
+        );
+      }
+      await this.backendService.updateLogFile(
+        { feature: 'UpdateStock' },
+        { filename: body.filename, uploadedAt: new Date() },
+      );
+      return 'Stock updated successfully';
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      throw new Error('Error updating stock');
     }
   }
 }

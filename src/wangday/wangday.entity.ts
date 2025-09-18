@@ -1,6 +1,6 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity({ name: "wangday", database: "ecommerce_db_backend" })
+@Entity({ name: 'wangday', database: 'ecommerce_db_backend' })
 export class WangDay {
   @PrimaryGeneratedColumn()
   id: number;
@@ -14,6 +14,6 @@ export class WangDay {
   @Column()
   wang_code: string;
 
-  @Column({ type: "decimal", precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
   sumprice: string; //มูลค่ารวม + vat
 }
