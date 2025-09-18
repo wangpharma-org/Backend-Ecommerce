@@ -88,4 +88,14 @@ export class FavoriteService {
       throw new Error('Error Something in getListFavorite');
     }
   }
+
+  async getCountFavorite(mem_code: string): Promise<number> {
+    try {
+      return await this.favoriteRepo.count({
+        where: { member: { mem_code } },
+      });
+    } catch {
+      throw new Error('Error Something in getCountFavorite');
+    }
+  }
 }

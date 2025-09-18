@@ -848,6 +848,7 @@ export class AppController {
     return this.shoppingHeadService.getLastSHRunnning();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/upload-debtor')
   async uploadDebtor(
     @Body()
@@ -862,13 +863,21 @@ export class AppController {
     return this.debtorService.updateDebtor(data);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('/ecom/clear-debtor')
   async clearDebtor() {
     return this.debtorService.clearData();
   }
 
-  @Get('/ecom/test')
-  async test() {
-    await this.shoppingOrderService.countSaleAmount();
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/debtor/:mem_code')
+  async getDebtor(@Param('mem_code') mem_code: string) {
+    return await this.debtorService.getAllDebtors(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/favorite/count/:mem_code')
+  async getCountFavorite(@Param('mem_code') mem_code: string) {
+    return await this.favoriteService.getCountFavorite(mem_code);
   }
 }
