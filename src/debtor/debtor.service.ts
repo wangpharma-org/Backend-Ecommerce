@@ -44,4 +44,24 @@ export class DebtorService {
       throw new Error('Failed to clear debtor data');
     }
   }
+
+  async getAllDebtors(mem_code: string) {
+    try {
+      return await this.debtorRepo
+        .createQueryBuilder('debtor')
+        .innerJoin('debtor.user', 'user', 'user.mem_code = :mem_code', {
+          mem_code,
+        })
+        .select([
+          'debtor.debtor_id',
+          'debtor.billing_slip_id',
+          'debtor.payment_schedule_date',
+          'debtor.billing_amount',
+        ])
+        .orderBy('debtor.billing_slip_id', 'DESC')
+        .getMany();
+    } catch {
+      throw new Error('Failed to get debtor data');
+    }
+  }
 }

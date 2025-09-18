@@ -427,6 +427,7 @@ export class ProductsService {
     category: number;
     offset: number;
     mem_code: string;
+    sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const monthNumber = new Date().getMonth() + 1;
@@ -495,6 +496,50 @@ export class ProductsService {
           }),
         );
 
+      if (data.sort_by && data.category === 8) {
+        switch (data.sort_by) {
+          case 1:
+            qb.orderBy('product.pro_stock', 'DESC');
+            break;
+          case 2:
+            qb.orderBy('product.pro_stock', 'ASC');
+            break;
+          case 3:
+            qb.orderBy('product.pro_point', 'DESC');
+            break;
+          case 4:
+            qb.orderBy('product.pro_point', 'ASC');
+            break;
+          case 5:
+            qb.orderBy('product.pro_sale_amount', 'DESC');
+            break;
+          default:
+            qb.orderBy('product.pro_name', 'ASC');
+        }
+      } else if (data.sort_by) {
+        switch (data.sort_by) {
+          case 1:
+            qb.orderBy('product.pro_stock', 'DESC');
+            break;
+          case 2:
+            qb.orderBy('product.pro_stock', 'ASC');
+            break;
+          case 3:
+            qb.orderBy('product.pro_priceA', 'DESC');
+            break;
+          case 4:
+            qb.orderBy('product.pro_priceA', 'ASC');
+            break;
+          case 5:
+            qb.orderBy('product.pro_sale_amount', 'DESC');
+            break;
+          default:
+            qb.orderBy('product.pro_name', 'ASC');
+        }
+      } else {
+        qb.orderBy('product.pro_name', 'ASC');
+      }
+
       const totalCount = await qb.getCount();
       const products = await qb
         .take(30)
@@ -512,6 +557,8 @@ export class ProductsService {
           'product.pro_point',
           'product.pro_promotion_amount',
           'product.pro_promotion_month',
+          'product.pro_sale_amount',
+          'product.pro_stock',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -529,6 +576,7 @@ export class ProductsService {
     keyword: string;
     offset: number;
     mem_code: string;
+    sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const qb = this.productRepo
@@ -584,9 +632,33 @@ export class ProductsService {
               })
               .andWhere('product.pro_code NOT LIKE :prefix8', {
                 prefix8: '@M%',
-              }); 
+              });
           }),
         );
+
+      if (data.sort_by) {
+        switch (data.sort_by) {
+          case 1:
+            qb.orderBy('product.pro_stock', 'DESC');
+            break;
+          case 2:
+            qb.orderBy('product.pro_stock', 'ASC');
+            break;
+          case 3:
+            qb.orderBy('product.pro_priceA', 'DESC');
+            break;
+          case 4:
+            qb.orderBy('product.pro_priceA', 'ASC');
+            break;
+          case 5:
+            qb.orderBy('product.pro_sale_amount', 'DESC');
+            break;
+          default:
+            qb.orderBy('product.pro_name', 'ASC');
+        }
+      } else {
+        qb.orderBy('product.pro_name', 'ASC');
+      }
 
       const totalCount = await qb.getCount();
       const products = await qb
@@ -602,6 +674,8 @@ export class ProductsService {
           'product.pro_unit1',
           'product.pro_unit2',
           'product.pro_unit3',
+          'product.pro_sale_amount',
+          'product.pro_stock',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -616,12 +690,36 @@ export class ProductsService {
     }
   }
 
-  async listFree() {
+  async listFree(sort_by?: string) {
+    console.log('sort_by', sort_by);
     try {
+      let order: Record<string, 'ASC' | 'DESC'>;
+
+      switch (sort_by) {
+        case '1':
+          order = { pro_stock: 'DESC' };
+          break;
+        case '2':
+          order = { pro_stock: 'ASC' };
+          break;
+        case '3':
+          order = { pro_point: 'DESC' };
+          break;
+        case '4':
+          order = { pro_point: 'ASC' };
+          break;
+        case '5':
+          order = { pro_sale_amount: 'DESC' };
+          break;
+        default:
+          order = { pro_name: 'ASC' };
+      }
+
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
           pro_stock: MoreThan(0),
+          pro_point: MoreThan(0),
         },
         select: {
           pro_code: true,
@@ -629,8 +727,12 @@ export class ProductsService {
           pro_point: true,
           pro_imgmain: true,
           pro_unit1: true,
+          pro_sale_amount: true,
+          pro_stock: true,
         },
+        order,
       });
+
       return data;
     } catch (error) {
       console.error('Error free products:', error);
