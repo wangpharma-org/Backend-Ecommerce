@@ -21,7 +21,7 @@ interface CountSale {
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl =
-    'https://hooks.slack.com/services/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';
+    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -457,6 +457,7 @@ export class ShoppingOrderService {
         ],
       };
       try {
+        console.log('Slack Url: ', this.slackUrl);
         await axios.post(this.slackUrl, payload);
       } catch (e) {
         console.error('Failed to notify Slack', e);
