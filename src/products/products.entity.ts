@@ -124,6 +124,9 @@ export class ProductEntity {
   @Column({ default: false })
   is_detect_amount: boolean;
 
+  @Column({ type: 'bigint', default: 0 })
+  pro_lowest_stock: number;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',

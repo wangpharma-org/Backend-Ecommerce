@@ -55,7 +55,7 @@ interface RawProductCart {
   spc_unit: string;
   spc_checked: number;
   is_reward: boolean | number;
-  hotdeal_free: boolean;  
+  hotdeal_free: boolean;
 }
 
 // Define a DTO for the return type

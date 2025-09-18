@@ -19,7 +19,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PromotionModule } from './promotion/promotion.module';
 import { WangdayModule } from './backend/wangday.module';
 import { HotdealModule } from './hotdeal/hotdeal.module';
-import { LoggerService } from './logger/logger.service';
 import { LoggerModule } from './logger/logger.module';
 
 @Module({
@@ -41,7 +40,7 @@ import { LoggerModule } from './logger/logger.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
@@ -64,4 +63,4 @@ import { LoggerModule } from './logger/logger.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

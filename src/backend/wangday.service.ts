@@ -85,10 +85,10 @@ export class WangdayService {
     async getMonthlySumByWangCode(wang_code: string): Promise<{ wang_code: string, monthly: { [month: number]: number } }> {
         const result = await this.wangdayRepo.createQueryBuilder('wangday')
             .select('wangday.wang_code', 'wang_code')
-            .addSelect("SUBSTRING_INDEX(wangday.datewangDay, '/', 1)", 'month')
+            .addSelect("SUBSTRING_INDEX(wangday.date, '/', 1)", 'month')
             .addSelect('SUM(wangday.sumprice)', 'total')
             .where('wangday.wang_code = :wang_code', { wang_code })
-            .andWhere('wangday.datewangDay IS NOT NULL')
+            .andWhere('wangday.date IS NOT NULL')
             .groupBy('month')
             .getRawMany();
         const monthly: { [month: number]: number } = {};

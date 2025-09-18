@@ -1,63 +1,62 @@
 import { Injectable } from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
 import { In, Repository } from 'typeorm';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 export interface HotdealInput {
-    pro_code: string;
-    pro1_amount: string;
-    pro1_unit: string;
-    pro2_code: string;
-    pro2_amount: string;
-    pro2_unit: string;
+  pro_code: string;
+  pro1_amount: string;
+  pro1_unit: string;
+  pro2_code: string;
+  pro2_amount: string;
+  pro2_unit: string;
 }
 
 @Injectable()
 export class HotdealService {
-    constructor(
-        @InjectRepository(HotdealEntity)
-        private readonly hotdealRepo: Repository<HotdealEntity>,
-        private readonly productService: ProductsService,
-        private readonly cartService: ShoppingCartService
-    ) { }
+  constructor(
+    @InjectRepository(HotdealEntity)
+    private readonly hotdealRepo: Repository<HotdealEntity>,
+    private readonly productService: ProductsService,
+    private readonly cartService: ShoppingCartService,
+  ) {}
+  // addProductCart
 
-    // addProductCart
+  async searchProduct(keyword: string) {
+    return this.productService.searchByCodeOrSupplier(keyword);
+  }
 
-    async searchProduct(keyword: string | '') {
-        return this.productService.searchByCodeOrSupplier(keyword);
-    }
+  async saveHotdeal(datainput: HotdealInput): Promise<HotdealEntity | null> {
+    const hotdeal = this.hotdealRepo.create({
+      pro1_amount: datainput.pro1_amount,
+      pro1_unit: datainput.pro1_unit,
+      pro2_amount: datainput.pro2_amount,
+      pro2_unit: datainput.pro2_unit,
+      product: { pro_code: datainput.pro_code },
+      product2: { pro_code: datainput.pro2_code },
+    });
+    return this.hotdealRepo.save(hotdeal);
+  }
 
-    async saveHotdeal(datainput: HotdealInput): Promise<HotdealEntity | null> {
-        const hotdeal = this.hotdealRepo.create({
-            pro1_amount: datainput.pro1_amount,
-            pro1_unit: datainput.pro1_unit,
-            pro2_amount: datainput.pro2_amount,
-            pro2_unit: datainput.pro2_unit,
-            product: { pro_code: datainput.pro_code },
-            product2: { pro_code: datainput.pro2_code }
-        });
-        return this.hotdealRepo.save(hotdeal);
-    }
-
-    async getAllHotdealsWithProductNames() {
-        const hotdeals = await this.hotdealRepo.find({
-            relations: ['product', 'product2'],
-            order: { id: 'DESC' }
-        });
-        // map เฉพาะชื่อสินค้าออกมา
-        return hotdeals.map(hotdeal => ({
-            id: hotdeal.id,
-            pro_code: hotdeal.product?.pro_code || null,
-            pro2_code: hotdeal.product2?.pro_code || null,
-            pro1_amount: hotdeal.pro1_amount,
-            pro1_unit: hotdeal.pro1_unit,
-            pro2_amount: hotdeal.pro2_amount,
-            pro2_unit: hotdeal.pro2_unit,
-            pro_name: hotdeal.product?.pro_name || null,
-            pro2_name: hotdeal.product2?.pro_name || null
-        }));
-    }
+  async getAllHotdealsWithProductNames() {
+    const hotdeals = await this.hotdealRepo.find({
+      relations: ['product', 'product2'],
+      order: { id: 'DESC' },
+    });
+    // map เฉพาะชื่อสินค้าออกมา
+    return hotdeals.map((hotdeal) => ({
+      id: hotdeal.id,
+      pro_code: hotdeal.product?.pro_code || null,
+      pro2_code: hotdeal.product2?.pro_code || null,
+      pro1_amount: hotdeal.pro1_amount,
+      pro1_unit: hotdeal.pro1_unit,
+      pro2_amount: hotdeal.pro2_amount,
+      pro2_unit: hotdeal.pro2_unit,
+      pro_name: hotdeal.product?.pro_name || null,
+      pro2_name: hotdeal.product2?.pro_name || null,
+    }));
+  }
 
     async deleteHotdeal(id: number): Promise<{ message: string }> {
         const result = await this.hotdealRepo.delete(id);
@@ -135,7 +134,7 @@ export class HotdealService {
 
 
     async getHotdealsByProCodes(proCodes: string[]): Promise<{ id: number, product: { pro_code: string } | null, pro1_amount: string, pro1_unit: string, product2: { pro_code: string } | null, pro2_amount: string, pro2_unit: string }[]> {
-        if (!proCodes || proCodes.length === 0) return [];
+    if (!proCodes || proCodes.length === 0) return [];
         const hotdeals = await this.hotdealRepo.find({
             where: proCodes.map(code => ({ product: { pro_code: In([code]) } })),
             relations: ['product', 'product2'],

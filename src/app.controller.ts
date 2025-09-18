@@ -669,11 +669,11 @@ export class AppController {
   }
 
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
-  async searchProductMain(@Param('keyword') keyword: string | '') {
+  async searchProductMain(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
   @Post('/ecom/admin/hotdeal/search-product-freebie/:keyword')
-  async searchProductFreebie(@Param('keyword') keyword: string | '') {
+  async searchProductFreebie(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
   @UseGuards(JwtAuthGuard)
@@ -751,7 +751,7 @@ export class AppController {
         pro2_unit: string;
         pro2_amount: string;
         priceCondition: string;
-        hotdeal_free:boolean;
+        hotdeal_free: boolean;
       }[];
     },
   ) {
@@ -770,7 +770,7 @@ export class AppController {
         pro2_unit: item.pro2_unit,
         pro2_amount: item.pro2_amount,
         priceCondition: item.priceCondition,
-        hotdeal_free: true
+        hotdeal_free: true,
       }),
     );
     return this.hotdealService.saveCartProduct(cartProducts);
