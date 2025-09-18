@@ -178,9 +178,12 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/favorite/:mem_code')
-  async getListFavorite(@Param('mem_code') mem_code: string) {
+  async getListFavorite(
+    @Param('mem_code') mem_code: string,
+    @Query('sort_by') sort_by?: string,
+  ) {
     console.log('get data favorite');
-    return await this.favoriteService.getListFavorite(mem_code);
+    return await this.favoriteService.getListFavorite(mem_code, sort_by);
   }
 
   @Post('/ecom/flashsale/get-list')
@@ -197,7 +200,10 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/delete')
-  async deleteFavorite(@Body() data: { fav_id: number; mem_code: string }) {
+  async deleteFavorite(
+    @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
+  ) {
+    console.log(data);
     return await this.favoriteService.deleteFavorite(data);
   }
 
@@ -212,7 +218,13 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/search-products')
   async searchProducts(
-    @Body() data: { keyword: string; offset: number; mem_code: string },
+    @Body()
+    data: {
+      keyword: string;
+      offset: number;
+      mem_code: string;
+      sort_by?: number;
+    },
   ) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
@@ -227,6 +239,7 @@ export class AppController {
       offset: number;
       category: number;
       mem_code: string;
+      sort_by?: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -279,9 +292,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('/ecom/product-coin')
-  async productCoin() {
-    return await this.productsService.listFree();
+  @Get('/ecom/product-coin/:sortBy')
+  async productCoin(@Param('sortBy') sort_by: string) {
+    return await this.productsService.listFree(sort_by);
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -602,7 +615,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/get-tier-product-for-customer')
-  async getProductTier(@Body() data: { tier_id: number; mem_code: string }) {
+  async getProductTier(
+    @Body() data: { tier_id: number; mem_code: string; sort_by?: number },
+  ) {
     return this.promotionService.tierProducts(data);
   }
 
@@ -850,5 +865,10 @@ export class AppController {
   @Delete('/ecom/clear-debtor')
   async clearDebtor() {
     return this.debtorService.clearData();
+  }
+
+  @Get('/ecom/test')
+  async test() {
+    await this.shoppingOrderService.countSaleAmount();
   }
 }
