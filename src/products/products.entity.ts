@@ -130,6 +130,9 @@ export class ProductEntity {
   @Column({ default: 0 })
   pro_sale_amount: number;
 
+  @Column({ default: 0 })
+  order_quantity: number;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',

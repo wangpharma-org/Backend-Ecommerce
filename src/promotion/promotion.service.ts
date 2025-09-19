@@ -178,6 +178,8 @@ export class PromotionService {
               pro_promotion_month: true,
               pro_stock: true,
               pro_sale_amount: true,
+              order_quantity: true,
+              pro_lowest_stock: true,
               inCarts: {
                 mem_code: true,
                 spc_amount: true,

@@ -185,6 +185,9 @@ export class ProductsService {
           'product.pro_unit2',
           'product.pro_unit3',
           'product.pro_promotion_amount',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -350,6 +353,9 @@ export class ProductsService {
           'product.pro_promotion_month',
           'product.pro_promotion_amount',
           'product.pro_keysearch',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'pharma.pro_code',
           'pharma.pp_properties',
           'pharma.pp_properties',
@@ -432,6 +438,9 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
         ])
         .getMany();
       return products;
@@ -578,6 +587,8 @@ export class ProductsService {
           'product.pro_promotion_month',
           'product.pro_sale_amount',
           'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -695,6 +706,8 @@ export class ProductsService {
           'product.pro_unit3',
           'product.pro_sale_amount',
           'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -937,6 +950,7 @@ export class ProductsService {
       unit3: string;
       supplier: string;
       pro_lowest_stock: number;
+      order_quantity: number;
     }[];
     filename: string;
   }): Promise<string> {
@@ -982,6 +996,7 @@ export class ProductsService {
           pro_unit2: item?.unit2 || '',
           pro_unit3: item?.unit3 || '',
           creditor: null,
+          order_quantity: item.order_quantity || 0,
         };
         // Assign creditor as entity or null if not found or error
         if (item?.supplier) {
