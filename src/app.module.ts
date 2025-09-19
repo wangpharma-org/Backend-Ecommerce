@@ -17,10 +17,11 @@ import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PromotionModule } from './promotion/promotion.module';
-import { WangdayModule } from './backend/wangday.module';
+import { WangdayModule } from './wangday/wangday.module';
 import { HotdealModule } from './hotdeal/hotdeal.module';
-import { LoggerService } from './logger/logger.service';
 import { LoggerModule } from './logger/logger.module';
+import { BackendModule } from './backend/backend.module';
+import { DebtorModule } from './debtor/debtor.module';
 
 @Module({
   imports: [
@@ -42,7 +43,7 @@ import { LoggerModule } from './logger/logger.module';
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
         synchronize: false,
-        // migrationsRun: true,
+        migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
     }),
@@ -60,8 +61,10 @@ import { LoggerModule } from './logger/logger.module';
     WangdayModule,
     HotdealModule,
     LoggerModule,
+    BackendModule,
+    DebtorModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

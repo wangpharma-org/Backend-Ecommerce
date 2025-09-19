@@ -1,4 +1,4 @@
-import { WangdayService } from './backend/wangday.service';
+import { WangdayService } from './wangday/wangday.service';
 import {
   Body,
   Controller,
@@ -30,6 +30,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
+import { BackendService } from './backend/backend.service';
+import { DebtorService } from './debtor/debtor.service';
 
 interface JwtPayload {
   username: string;
@@ -63,6 +65,8 @@ export class AppController {
     private readonly promotionService: PromotionService,
     private readonly wangdayService: WangdayService,
     private readonly hotdealService: HotdealService,
+    private readonly backendService: BackendService,
+    private readonly debtorService: DebtorService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -176,9 +180,12 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/favorite/:mem_code')
-  async getListFavorite(@Param('mem_code') mem_code: string) {
+  async getListFavorite(
+    @Param('mem_code') mem_code: string,
+    @Query('sort_by') sort_by?: string,
+  ) {
     console.log('get data favorite');
-    return await this.favoriteService.getListFavorite(mem_code);
+    return await this.favoriteService.getListFavorite(mem_code, sort_by);
   }
 
   @Post('/ecom/flashsale/get-list')
@@ -195,7 +202,10 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/delete')
-  async deleteFavorite(@Body() data: { fav_id: number; mem_code: string }) {
+  async deleteFavorite(
+    @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
+  ) {
+    console.log(data);
     return await this.favoriteService.deleteFavorite(data);
   }
 
@@ -210,7 +220,13 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/search-products')
   async searchProducts(
-    @Body() data: { keyword: string; offset: number; mem_code: string },
+    @Body()
+    data: {
+      keyword: string;
+      offset: number;
+      mem_code: string;
+      sort_by?: number;
+    },
   ) {
     console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
@@ -225,6 +241,7 @@ export class AppController {
       offset: number;
       category: number;
       mem_code: string;
+      sort_by?: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -246,15 +263,16 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | 
+      [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -277,9 +295,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('/ecom/product-coin')
-  async productCoin() {
-    return await this.productsService.listFree();
+  @Get('/ecom/product-coin/:sortBy')
+  async productCoin(@Param('sortBy') sort_by: string) {
+    return await this.productsService.listFree(sort_by);
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -600,7 +618,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/get-tier-product-for-customer')
-  async getProductTier(@Body() data: { tier_id: number; mem_code: string }) {
+  async getProductTier(
+    @Body() data: { tier_id: number; mem_code: string; sort_by?: number },
+  ) {
     return this.promotionService.tierProducts(data);
   }
 
@@ -658,11 +678,11 @@ export class AppController {
   }
 
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
-  async searchProductMain(@Param('keyword') keyword: string | '') {
+  async searchProductMain(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
   @Post('/ecom/admin/hotdeal/search-product-freebie/:keyword')
-  async searchProductFreebie(@Param('keyword') keyword: string | '') {
+  async searchProductFreebie(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
   @UseGuards(JwtAuthGuard)
@@ -810,16 +830,118 @@ export class AppController {
     return this.hotdealService.getHotdealFromCode(pro_code);
   }
 
-  // @Post('/ecom/update-customer-data')
-  // async updateCustomerData(
-  //   @Body()
-  //   data: UserEntity[],
-  // ) {
-  //   return this.authService.upsertUser(data);
-  // }
+  @Post('/ecom/admin/update-product-from-back-office')
+  async updateProductFromBackOffice(
+    @Body()
+    body: {
+      group: {
+        pro_code: string;
+        pro_name: string;
+        priceA: number;
+        priceB: number;
+        priceC: number;
+        ratio1: number;
+        ratio2: number;
+        ratio3: number;
+        unit1: string;
+        unit2: string;
+        unit3: string;
+        supplier: string;
+        pro_lowest_stock: number;
+      }[];
+      filename: string;
+    },
+  ) {
+    try {
+      // console.log('Received body:', {
+      //   group: body.group,
+      // });
+      console.log(body.filename);
+      return this.productsService.updateProductFromBackOffice({
+        group: body.group,
+        filename: body.filename,
+      });
+    } catch (error) {
+      console.error('Error updating product from back office:', error);
+      throw new Error('Error updating product from back office');
+    }
+  }
+
+  @Post('/ecom/update-customer-data')
+  async updateCustomerData(
+    @Body()
+    data: {
+      mem_code: string;
+      mem_nameSite: string;
+      mem_username: string;
+      mem_password: string;
+      mem_price: string;
+      emp_saleoffice: string;
+    }[],
+  ) {
+    console.log(data);
+    return this.authService.upsertUser(data);
+  }
 
   @Get('/ecom/last-sh-running')
   async getLastShRunning() {
     return this.shoppingHeadService.getLastSHRunnning();
+  }
+
+  @Post('/ecom/admin/update-stock-from-back-office')
+  async updateStockFromBackOffice(
+    @Body()
+    body: {
+      group: { pro_code: string; stock: number }[];
+      filename: string;
+    },
+  ) {
+    try {
+      console.log('Received body for stock update:', body);
+      return await this.productsService.updateStock(body);
+    } catch (error) {
+      console.error('Error updating stock from back office:', error);
+      throw new Error('Error updating stock from back office');
+    }
+  }
+  @Get('/ecom/fileLog/:feature')
+  async getFileLog(@Param('feature') feature: string) {
+    const fileLogs = await this.backendService.getFeatured({
+      featured: feature,
+    });
+    return fileLogs;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/upload-debtor')
+  async uploadDebtor(
+    @Body()
+    data: {
+      mem_code: string;
+      billing_slip_id: string;
+      payment_schedule_date: string;
+      billing_amount: number;
+    }[],
+  ) {
+    console.log(data);
+    return this.debtorService.updateDebtor(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/clear-debtor')
+  async clearDebtor() {
+    return this.debtorService.clearData();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/debtor/:mem_code')
+  async getDebtor(@Param('mem_code') mem_code: string) {
+    return await this.debtorService.getAllDebtors(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/favorite/count/:mem_code')
+  async getCountFavorite(@Param('mem_code') mem_code: string) {
+    return await this.favoriteService.getCountFavorite(mem_code);
   }
 }
