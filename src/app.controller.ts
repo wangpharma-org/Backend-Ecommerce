@@ -945,4 +945,10 @@ export class AppController {
   async getCountFavorite(@Param('mem_code') mem_code: string) {
     return await this.favoriteService.getCountFavorite(mem_code);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/product/keysearch-all')
+  async getKeySearch() {
+    return await this.productsService.keySearchProducts();
+  }
 }

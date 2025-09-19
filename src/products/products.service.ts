@@ -1071,4 +1071,60 @@ export class ProductsService {
       throw new Error('Error updating stock');
     }
   }
+
+  async keySearchProducts() {
+    try {
+      const qb = this.productRepo
+        .createQueryBuilder('product')
+        .where('product.pro_priceA != 0')
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+              .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix3', {
+                prefix3: 'ส่งเสริม%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix4', {
+                prefix4: 'รีเบท%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+              .andWhere('product.pro_name NOT LIKE :prefix6', {
+                prefix6: '/%',
+              })
+              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+              .andWhere('product.pro_stock > :stock', { stock: 0 })
+              .andWhere('product.pro_name NOT LIKE :prefix7', {
+                prefix7: 'ค่า%',
+              })
+              .andWhere('product.pro_code NOT LIKE :prefix8', {
+                prefix8: '@M%',
+              });
+          }),
+        );
+
+      const products = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_nameSale',
+          'product.pro_nameEN',
+          'product.pro_keysearch',
+        ])
+        .getMany();
+      console.log(products);
+      return products;
+    } catch (error) {
+      console.error('Error searching products:', error);
+      throw new Error('Error searching products');
+    }
+  }
 }
