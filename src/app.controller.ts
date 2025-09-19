@@ -848,6 +848,7 @@ export class AppController {
         unit3: string;
         supplier: string;
         pro_lowest_stock: number;
+        order_quantity: number;
       }[];
       filename: string;
     },
