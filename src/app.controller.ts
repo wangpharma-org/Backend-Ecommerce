@@ -32,6 +32,7 @@ import { PromotionService } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
+import { LotService } from './lot/lot.service';
 
 interface JwtPayload {
   username: string;
@@ -67,6 +68,7 @@ export class AppController {
     private readonly hotdealService: HotdealService,
     private readonly backendService: BackendService,
     private readonly debtorService: DebtorService,
+    private readonly lotService: LotService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -263,16 +265,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | 
-      [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -950,5 +951,20 @@ export class AppController {
   @Get('/ecom/product/keysearch-all')
   async getKeySearch() {
     return await this.productsService.keySearchProducts();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/lot/add-lots')
+  async addLots(
+    @Body()
+    data: {
+      lot: string;
+      mfg: string;
+      exp: string;
+      pro_code: string;
+    }[],
+  ) {
+    console.log(data);
+    return this.lotService.addLots(data);
   }
 }

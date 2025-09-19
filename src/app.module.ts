@@ -22,6 +22,7 @@ import { HotdealModule } from './hotdeal/hotdeal.module';
 import { LoggerModule } from './logger/logger.module';
 import { BackendModule } from './backend/backend.module';
 import { DebtorModule } from './debtor/debtor.module';
+import { LotModule } from './lot/lot.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { DebtorModule } from './debtor/debtor.module';
     LoggerModule,
     BackendModule,
     DebtorModule,
+    LotModule,
   ],
   controllers: [AppController],
   providers: [AppService],
