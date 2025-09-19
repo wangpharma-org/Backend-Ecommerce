@@ -22,6 +22,14 @@ export interface ShoppingProductCart {
   pro_promotion_month: number;
   pro_promotion_amount: number;
   shopping_cart: ShoppingCart[];
+  lots: LotItem[];
+}
+
+export interface LotItem {
+  lot_id: number;
+  lot: string;
+  mfg: string;
+  exp: string;
 }
 
 export interface ShoppingCart {
@@ -49,6 +57,11 @@ interface RawProductCart {
   pro_ratio3: number;
   pro_promotion_month: number;
   pro_promotion_amount: number;
+  lot_id: number;
+  lot: string;
+  mfg: string;
+  exp: string;
+  lot_pro_code: string;
   spc_id: number;
   spc_amount: string;
   spc_unit: string;
@@ -597,6 +610,7 @@ export class ShoppingCartService {
       const raw: RawProductCart[] = await this.shoppingCartRepo
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')
+        .leftJoinAndSelect('product.lot', 'lot')
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
           'product.pro_code AS pro_code',
@@ -613,6 +627,11 @@ export class ShoppingCartService {
           'product.pro_ratio3 AS pro_ratio3',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.pro_promotion_amount AS pro_promotion_amount',
+          'lot.lot_id AS lot_id',
+          'lot.lot AS lot',
+          'lot.mfg AS mfg',
+          'lot.exp AS exp',
+          'lot.pro_code AS lot_pro_code',
           'cart.spc_id AS spc_id',
           'cart.spc_amount AS spc_amount',
           'cart.spc_unit AS spc_unit',
@@ -644,8 +663,18 @@ export class ShoppingCartService {
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
             shopping_cart: [],
+            lots: [],
           };
         }
+        if (row.lot_id) {
+          grouped[code].lots.push({
+            lot_id: row.lot_id,
+            lot: row.lot,
+            mfg: row.mfg,
+            exp: row.exp,
+          });
+        }
+
         grouped[code].shopping_cart.push({
           spc_id: row.spc_id,
           spc_amount: row.spc_amount,
