@@ -16,6 +16,7 @@ import { CreditorEntity } from './creditor.entity';
 import { PromotionConditionEntity } from '../promotion/promotion-condition.entity';
 import { PromotionRewardEntity } from '../promotion/promotion-reward.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
+import { LotEntity } from 'src/lot/lot.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -130,6 +131,9 @@ export class ProductEntity {
   @Column({ default: 0 })
   pro_sale_amount: number;
 
+  @Column({ default: 0 })
+  order_quantity: number;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',
@@ -142,6 +146,9 @@ export class ProductEntity {
 
   @OneToMany(() => ShoppingCartEntity, (cart) => cart.product)
   inCarts: ShoppingCartEntity[];
+
+  @OneToMany(() => LotEntity, (lot) => lot.product)
+  lot: LotEntity[];
 
   @OneToMany(() => FlashSaleEntity, (cart) => cart.product)
   flashsale: FlashSaleEntity[];

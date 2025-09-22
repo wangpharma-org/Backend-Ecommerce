@@ -79,6 +79,8 @@ export class FavoriteService {
         'product.pro_stock',
         'product.pro_point',
         'product.pro_sale_amount',
+        'product.pro_lowest_stock',
+        'product.order_quantity',
       ]);
 
       const data = await qb.getMany();
