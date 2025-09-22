@@ -17,9 +17,12 @@ import { BannerModule } from './banner/banner.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PromotionModule } from './promotion/promotion.module';
-import { WangdayModule } from './backend/wangday.module';
+import { WangdayModule } from './wangday/wangday.module';
 import { HotdealModule } from './hotdeal/hotdeal.module';
 import { LoggerModule } from './logger/logger.module';
+import { BackendModule } from './backend/backend.module';
+import { DebtorModule } from './debtor/debtor.module';
+import { LotModule } from './lot/lot.module';
 
 @Module({
   imports: [
@@ -59,6 +62,9 @@ import { LoggerModule } from './logger/logger.module';
     WangdayModule,
     HotdealModule,
     LoggerModule,
+    BackendModule,
+    DebtorModule,
+    LotModule,
   ],
   controllers: [AppController],
   providers: [AppService],

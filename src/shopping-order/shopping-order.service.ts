@@ -11,12 +11,17 @@ import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
 import { submitOrder } from 'src/logger/submitOrder.logger';
-import { json } from 'stream/consumers';
+import { Cron } from '@nestjs/schedule';
+
+interface CountSale {
+  pro_code: string;
+  order_count: number;
+}
 
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl =
-    'https://hooks.slack.com/services/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';
+    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -29,7 +34,30 @@ export class ShoppingOrderService {
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
     private readonly dataSource: DataSource,
-  ) { }
+  ) {}
+
+  @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  async countSaleAmount() {
+    try {
+      const result: CountSale[] = await this.shoppingOrderRepo
+        .createQueryBuilder('o')
+        .select('o.pro_code', 'pro_code')
+        .addSelect('COUNT(*)', 'order_count')
+        .groupBy('o.pro_code')
+        .getRawMany();
+
+      await Promise.all(
+        result.map(async (item) => {
+          await this.productEntity.update(
+            { pro_code: item.pro_code },
+            { pro_sale_amount: item.order_count },
+          );
+        }),
+      );
+    } catch {
+      throw new Error('Something Error in countSaleAmount');
+    }
+  }
 
   async sendDataToOldSystem(soh_running: string) {
     let data;
@@ -63,15 +91,15 @@ export class ShoppingOrderService {
     mem_code: string;
     total_price: number;
     listFree:
-    | [
-      {
-        pro_code: string;
-        amount: number;
-        pro_unit1: string;
-        pro_point: number;
-      },
-    ]
-    | null;
+      | [
+          {
+            pro_code: string;
+            amount: number;
+            pro_unit1: string;
+            pro_point: number;
+          },
+        ]
+      | null;
     priceOption: string;
     paymentOptions: string;
     shippingOptions: string;
@@ -81,13 +109,13 @@ export class ShoppingOrderService {
       priceOption: string;
       totalPrice: number;
       item:
-      | {
-        pro_code: string;
-        amount: number;
-        unit: string;
-        is_reward: boolean;
-      }[]
-      | null;
+        | {
+            pro_code: string;
+            amount: number;
+            unit: string;
+            is_reward: boolean;
+          }[]
+        | null;
     } = {
       memberCode: data.mem_code,
       priceOption: data.priceOption,
@@ -96,7 +124,10 @@ export class ShoppingOrderService {
     };
     let submitLogContext: Array<{ [mem_code: string]: any }> = [];
     try {
-      submitLogContext.push({ mem_code: data.mem_code, body: JSON.stringify(data) });
+      submitLogContext.push({
+        mem_code: data.mem_code,
+        body: JSON.stringify(data),
+      });
       const numberOfMonth = new Date().getMonth() + 1;
       const runningNumbers: string[] = [];
       const allIdCartForDelete: number[] = [];
@@ -156,7 +187,9 @@ export class ShoppingOrderService {
               [item.product.pro_unit2, item.product.pro_ratio2],
               [item.product.pro_unit3, item.product.pro_ratio3],
             ]);
-            submitLogContext.push({ unitRatioMap: Array.from(unitRatioMap.entries()) });
+            submitLogContext.push({
+              unitRatioMap: Array.from(unitRatioMap.entries()),
+            });
 
             const totalAmount = normalItems
               .filter((c) => c.pro_code === item.pro_code)
@@ -169,7 +202,14 @@ export class ShoppingOrderService {
             const isPromotionActive =
               item.product.pro_promotion_month === numberOfMonth &&
               totalAmount >= (item.product.pro_promotion_amount ?? 0);
-            submitLogContext.push({ isPromotionActive, forProCode: item.pro_code, pro_promotion_month: item.product.pro_promotion_month, currentMonth: numberOfMonth, totalAmount, pro_promotion_amount: item.product.pro_promotion_amount });
+            submitLogContext.push({
+              isPromotionActive,
+              forProCode: item.pro_code,
+              pro_promotion_month: item.product.pro_promotion_month,
+              currentMonth: numberOfMonth,
+              totalAmount,
+              pro_promotion_amount: item.product.pro_promotion_amount,
+            });
 
             const unitPrice =
               data.priceOption === 'A'
@@ -183,8 +223,8 @@ export class ShoppingOrderService {
             const ratio = unitRatioMap.get(item.spc_unit) ?? 1;
             let price = isPromotionActive
               ? Number(item.spc_amount) *
-              Number(item.product.pro_priceA) *
-              ratio
+                Number(item.product.pro_priceA) *
+                ratio
               : Number(item.spc_amount) * unitPrice * ratio;
 
             const isFreebie =
@@ -199,7 +239,11 @@ export class ShoppingOrderService {
             if (isFreebie) {
               price = 0.0;
             }
-            submitLogContext.push({ calculatedPrice: price, isFreebie, forProCode: item.pro_code });
+            submitLogContext.push({
+              calculatedPrice: price,
+              isFreebie,
+              forProCode: item.pro_code,
+            });
             submitLogContext.push({ Success: true, forProCode: item.pro_code });
             return manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
@@ -221,7 +265,11 @@ export class ShoppingOrderService {
               spo_total_decimal: 0,
             }),
           );
-          submitLogContext.push({ orderSalesCount: orderSales.length, orderRewardsCount: orderRewards.length, forOrder: running });
+          submitLogContext.push({
+            orderSalesCount: orderSales.length,
+            orderRewardsCount: orderRewards.length,
+            forOrder: running,
+          });
 
           const sumprice = orderSales.reduce(
             (total, order) => total + Number(order.spo_total_decimal),
@@ -253,12 +301,18 @@ export class ShoppingOrderService {
                       is_reward: c.is_reward,
                     })),
                   };
-                  submitLogContext.push({ freebieError: 'No pro_free defined', forProCode: data.listFree?.[index].pro_code });
+                  submitLogContext.push({
+                    freebieError: 'No pro_free defined',
+                    forProCode: data.listFree?.[index].pro_code,
+                  });
                   throw new Error('Point Error');
                 }
                 const amount = data.listFree?.[index].amount ?? 0;
                 const point = order?.pro_point ?? 0;
-                submitLogContext.push({ calculatingPoint: point * amount, forProCode: order.pro_code });
+                submitLogContext.push({
+                  calculatingPoint: point * amount,
+                  forProCode: order.pro_code,
+                });
                 return total + point * amount;
               }, 0);
 
@@ -277,7 +331,12 @@ export class ShoppingOrderService {
                     is_reward: c.is_reward,
                   })),
                 };
-                submitLogContext.push({ freebieError: 'Insufficient points for freebies', totalSumPrice, totalSumPoint, forProCode: data.listFree?.map(f => f.pro_code).join(', ') });
+                submitLogContext.push({
+                  freebieError: 'Insufficient points for freebies',
+                  totalSumPrice,
+                  totalSumPoint,
+                  forProCode: data.listFree?.map((f) => f.pro_code).join(', '),
+                });
                 throw new Error('Point Error');
               }
 
@@ -294,7 +353,10 @@ export class ShoppingOrderService {
                 ShoppingOrderEntity,
                 orderFree,
               );
-              submitLogContext.push({ savedFreebiesCount: saveFree.length, forOrder: running });
+              submitLogContext.push({
+                savedFreebiesCount: saveFree.length,
+                forOrder: running,
+              });
               await manager.update(
                 ShoppingHeadEntity,
                 { soh_id: NewHead.soh_id },
@@ -307,7 +369,10 @@ export class ShoppingOrderService {
             ...orderSales,
             ...orderRewards,
           ]);
-          submitLogContext.push({ savedProductsCount: saveProduct.length, forOrder: running });
+          submitLogContext.push({
+            savedProductsCount: saveProduct.length,
+            forOrder: running,
+          });
           await manager.update(
             ShoppingHeadEntity,
             { soh_id: NewHead.soh_id },
@@ -333,7 +398,10 @@ export class ShoppingOrderService {
               is_reward: c.is_reward,
             })),
           };
-          submitLogContext.push({ totalSumPrice, expectedTotalPrice: data.total_price });
+          submitLogContext.push({
+            totalSumPrice,
+            expectedTotalPrice: data.total_price,
+          });
           throw new Error(
             `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${data.total_price}`,
           );
@@ -359,9 +427,11 @@ export class ShoppingOrderService {
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
         }
       });
-      submitLogContext.push({ transaction: 'end', allIdCartForDeleteCount: allIdCartForDelete.length });
+      submitLogContext.push({
+        transaction: 'end',
+        allIdCartForDeleteCount: allIdCartForDelete.length,
+      });
       for (const id of allIdCartForDelete) {
-
         await this.shoppingCartService.clearCheckoutCart(id);
       }
       submitOrder.info('data ', { submitLogContext });
@@ -373,7 +443,7 @@ export class ShoppingOrderService {
         totalPrice: orderContext?.totalPrice || data.total_price,
         priceOption: orderContext?.priceOption || data.priceOption,
         orderContext,
-        data
+        data,
       });
       console.error('Error: ', error);
       const payload = {
@@ -387,6 +457,7 @@ export class ShoppingOrderService {
         ],
       };
       try {
+        console.log('Slack Url: ', this.slackUrl);
         await axios.post(this.slackUrl, payload);
       } catch (e) {
         console.error('Failed to notify Slack', e);
@@ -411,7 +482,7 @@ export class ShoppingOrderService {
         .leftJoin('order.orderHeader', 'header')
         .where('header.mem_code = :memCode', { memCode })
         .andWhere(
-          '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)'
+          '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)',
         )
         .orderBy('header.soh_datetime', 'DESC')
         .take(20)
@@ -426,6 +497,9 @@ export class ShoppingOrderService {
           'product.pro_unit1',
           'product.pro_unit2',
           'product.pro_unit3',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'header.soh_datetime',
           'cart.spc_id',
           'cart.spc_amount',

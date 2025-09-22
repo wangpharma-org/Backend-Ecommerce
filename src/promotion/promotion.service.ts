@@ -44,7 +44,7 @@ export class PromotionService {
     });
   }
 
-  //   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  // @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   @Cron(CronExpression.EVERY_30_SECONDS)
   async cronDeletePromotionOutOfDate() {
     try {
@@ -137,7 +137,12 @@ export class PromotionService {
     }
   }
 
-  async tierProducts(data: { tier_id: number; mem_code: string }) {
+  async tierProducts(data: {
+    tier_id: number;
+    mem_code: string;
+    sort_by?: number;
+  }) {
+    console.log(data);
     try {
       const tier = await this.promotionTierRepo.findOne({
         where: {
@@ -171,6 +176,10 @@ export class PromotionService {
               pro_unit3: true,
               pro_promotion_amount: true,
               pro_promotion_month: true,
+              pro_stock: true,
+              pro_sale_amount: true,
+              order_quantity: true,
+              pro_lowest_stock: true,
               inCarts: {
                 mem_code: true,
                 spc_amount: true,
@@ -193,6 +202,28 @@ export class PromotionService {
             ) ?? [],
         },
       }));
+
+      if (tier?.conditions) {
+        tier.conditions = tier.conditions.sort((a, b) => {
+          if (data.sort_by) {
+            switch (data.sort_by) {
+              case 1:
+                return b.product.pro_stock - a.product.pro_stock;
+              case 2:
+                return a.product.pro_stock - b.product.pro_stock;
+              case 3:
+                return b.product.pro_priceA - a.product.pro_priceA;
+              case 4:
+                return a.product.pro_priceA - b.product.pro_priceA;
+              case 5:
+                return b.product.pro_sale_amount - a.product.pro_sale_amount;
+              default:
+                return a.product.pro_name.localeCompare(b.product.pro_name);
+            }
+          }
+          return a.product.pro_name.localeCompare(b.product.pro_name);
+        });
+      }
 
       return tier;
     } catch {

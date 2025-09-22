@@ -3,11 +3,13 @@ import { WangdayService } from './wangday.service';
 import { WangDay } from './wangday.entity';
 import { TypeOrmModule } from '@nestjs/typeorm/dist/typeorm.module';
 import { WangdaySumPrice } from './wangdaySumPrice.entity';
-import {  ProductEntity } from '../products/products.entity';
+import { ProductEntity } from '../products/products.entity';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([WangDay, WangdaySumPrice, ProductEntity])],
-    exports: [WangdayService],
-    providers: [WangdayService]
+  imports: [
+    TypeOrmModule.forFeature([WangDay, WangdaySumPrice, ProductEntity]),
+  ],
+  exports: [WangdayService],
+  providers: [WangdayService],
 })
-export class WangdayModule { }
+export class WangdayModule {}

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { ShoppingHeadEntity } from './shopping-head.entity';
 import { Repository } from 'typeorm';
 import { AllOrderByMemberRes } from './types/AllOrderByMemberRes.type';
@@ -150,6 +149,19 @@ export class ShoppingHeadService {
     } catch (error) {
       console.error('Error get Order fail:', error);
       throw new Error(`Error get Order fail`);
+    }
+  }
+
+  async getLastSHRunnning(): Promise<string | null> {
+    try {
+      const lastOrder = await this.shoppingHeadRepo.findOne({
+        where: {},
+        order: { soh_running: 'DESC' },
+      });
+      return lastOrder ? lastOrder.soh_running : null;
+    } catch (error) {
+      console.error('Error fetching last soh_running:', error);
+      throw new Error('Error fetching last soh_running');
     }
   }
 }

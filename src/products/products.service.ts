@@ -5,12 +5,30 @@ import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
+import { LogFileEntity } from 'src/backend/logFile.entity';
+import { BackendService } from 'src/backend/backend.service';
 
 interface OrderItem {
   pro_code: string;
   unit: string;
   quantity: number;
 }
+
+// interface UpdateProductInput {
+//   pro_code: string;
+//   pro_name: string;
+//   pro_lowest_stock: number;
+//   priceA: number;
+//   priceB: number;
+//   priceC: number;
+//   ratio1: number;
+//   ratio2: number;
+//   ratio3: number;
+//   unit1: string;
+//   unit2: string;
+//   unit3: string;
+//   supplier: string;
+// }
 
 @Injectable()
 export class ProductsService {
@@ -21,6 +39,7 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
+    private readonly backendService: BackendService,
   ) {}
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
@@ -166,6 +185,9 @@ export class ProductsService {
           'product.pro_unit2',
           'product.pro_unit3',
           'product.pro_promotion_amount',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -331,6 +353,9 @@ export class ProductsService {
           'product.pro_promotion_month',
           'product.pro_promotion_amount',
           'product.pro_keysearch',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'pharma.pro_code',
           'pharma.pp_properties',
           'pharma.pp_properties',
@@ -413,6 +438,9 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_unit1',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
         ])
         .getMany();
       return products;
@@ -427,6 +455,7 @@ export class ProductsService {
     category: number;
     offset: number;
     mem_code: string;
+    sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const monthNumber = new Date().getMonth() + 1;
@@ -495,6 +524,50 @@ export class ProductsService {
           }),
         );
 
+      if (data.sort_by && data.category === 8) {
+        switch (data.sort_by) {
+          case 1:
+            qb.orderBy('product.pro_stock', 'DESC');
+            break;
+          case 2:
+            qb.orderBy('product.pro_stock', 'ASC');
+            break;
+          case 3:
+            qb.orderBy('product.pro_point', 'DESC');
+            break;
+          case 4:
+            qb.orderBy('product.pro_point', 'ASC');
+            break;
+          case 5:
+            qb.orderBy('product.pro_sale_amount', 'DESC');
+            break;
+          default:
+            qb.orderBy('product.pro_name', 'ASC');
+        }
+      } else if (data.sort_by) {
+        switch (data.sort_by) {
+          case 1:
+            qb.orderBy('product.pro_stock', 'DESC');
+            break;
+          case 2:
+            qb.orderBy('product.pro_stock', 'ASC');
+            break;
+          case 3:
+            qb.orderBy('product.pro_priceA', 'DESC');
+            break;
+          case 4:
+            qb.orderBy('product.pro_priceA', 'ASC');
+            break;
+          case 5:
+            qb.orderBy('product.pro_sale_amount', 'DESC');
+            break;
+          default:
+            qb.orderBy('product.pro_name', 'ASC');
+        }
+      } else {
+        qb.orderBy('product.pro_name', 'ASC');
+      }
+
       const totalCount = await qb.getCount();
       const products = await qb
         .take(30)
@@ -512,6 +585,10 @@ export class ProductsService {
           'product.pro_point',
           'product.pro_promotion_amount',
           'product.pro_promotion_month',
+          'product.pro_sale_amount',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -529,6 +606,7 @@ export class ProductsService {
     keyword: string;
     offset: number;
     mem_code: string;
+    sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const qb = this.productRepo
@@ -581,9 +659,36 @@ export class ProductsService {
               .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
               .andWhere('product.pro_name NOT LIKE :prefix7', {
                 prefix7: 'ค่า%',
+              })
+              .andWhere('product.pro_code NOT LIKE :prefix8', {
+                prefix8: '@M%',
               });
           }),
         );
+
+      if (data.sort_by) {
+        switch (data.sort_by) {
+          case 1:
+            qb.orderBy('product.pro_stock', 'DESC');
+            break;
+          case 2:
+            qb.orderBy('product.pro_stock', 'ASC');
+            break;
+          case 3:
+            qb.orderBy('product.pro_priceA', 'DESC');
+            break;
+          case 4:
+            qb.orderBy('product.pro_priceA', 'ASC');
+            break;
+          case 5:
+            qb.orderBy('product.pro_sale_amount', 'DESC');
+            break;
+          default:
+            qb.orderBy('product.pro_name', 'ASC');
+        }
+      } else {
+        qb.orderBy('product.pro_name', 'ASC');
+      }
 
       const totalCount = await qb.getCount();
       const products = await qb
@@ -599,6 +704,10 @@ export class ProductsService {
           'product.pro_unit1',
           'product.pro_unit2',
           'product.pro_unit3',
+          'product.pro_sale_amount',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -613,12 +722,36 @@ export class ProductsService {
     }
   }
 
-  async listFree() {
+  async listFree(sort_by?: string) {
+    console.log('sort_by', sort_by);
     try {
+      let order: Record<string, 'ASC' | 'DESC'>;
+
+      switch (sort_by) {
+        case '1':
+          order = { pro_stock: 'DESC' };
+          break;
+        case '2':
+          order = { pro_stock: 'ASC' };
+          break;
+        case '3':
+          order = { pro_point: 'DESC' };
+          break;
+        case '4':
+          order = { pro_point: 'ASC' };
+          break;
+        case '5':
+          order = { pro_sale_amount: 'DESC' };
+          break;
+        default:
+          order = { pro_name: 'ASC' };
+      }
+
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
           pro_stock: MoreThan(0),
+          pro_point: MoreThan(0),
         },
         select: {
           pro_code: true,
@@ -626,8 +759,12 @@ export class ProductsService {
           pro_point: true,
           pro_imgmain: true,
           pro_unit1: true,
+          pro_sale_amount: true,
+          pro_stock: true,
         },
+        order,
       });
+
       return data;
     } catch (error) {
       console.error('Error free products:', error);
@@ -795,6 +932,199 @@ export class ProductsService {
     } catch (error) {
       console.error('Error fetching all products:', error);
       throw new Error('Error fetching all products');
+    }
+  }
+
+  async updateProductFromBackOffice(body: {
+    group: {
+      pro_code: string;
+      pro_name: string;
+      priceA: number;
+      priceB: number;
+      priceC: number;
+      ratio1: number;
+      ratio2: number;
+      ratio3: number;
+      unit1: string;
+      unit2: string;
+      unit3: string;
+      supplier: string;
+      pro_lowest_stock: number;
+      order_quantity: number;
+    }[];
+    filename: string;
+  }): Promise<string> {
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      for (const item of body.group) {
+        const hasValueNonZero = (v) =>
+          v !== undefined && v !== null && v !== '' && Number(v) !== 0;
+        let ratio2 = 1;
+        let ratio3 = 1;
+
+        const ratio1 = 1;
+
+        if (!item.unit2) {
+          ratio2 = 1;
+        } else {
+          ratio2 = hasValueNonZero(item.ratio2)
+            ? Math.trunc(Number(item.ratio1) / Number(item.ratio2))
+            : 0;
+        }
+
+        if (!item.unit3) {
+          ratio3 = 1;
+        } else {
+          ratio3 = hasValueNonZero(item.ratio3)
+            ? Math.trunc(Number(item.ratio1) / Number(item.ratio3))
+            : 0;
+        }
+
+        const updateData: Partial<ProductEntity> = {
+          pro_code: item?.pro_code,
+          pro_name: item?.pro_name || '',
+          pro_lowest_stock: item?.pro_lowest_stock || 0,
+          pro_priceA: item?.priceA || 0,
+          pro_priceB: item?.priceB || 0,
+          pro_priceC: item?.priceC || 0,
+          pro_ratio1: ratio1 || 1,
+          pro_ratio2: ratio2 || 1,
+          pro_ratio3: ratio3 || 1,
+          pro_unit1: item?.unit1 || '',
+          pro_unit2: item?.unit2 || '',
+          pro_unit3: item?.unit3 || '',
+          creditor: null,
+          order_quantity: item.order_quantity || 0,
+        };
+        // Assign creditor as entity or null if not found or error
+        if (item?.supplier) {
+          let supplierCode = item.supplier;
+          if (supplierCode.startsWith('N')) {
+            supplierCode = supplierCode.substring(1);
+          }
+          try {
+            const foundCreditor = await this.creditorRepo.findOne({
+              where: { creditor_code: supplierCode },
+            });
+            if (foundCreditor) {
+              updateData.creditor = foundCreditor;
+            } else {
+              updateData.creditor = null;
+            }
+          } catch {
+            updateData.creditor = null;
+          }
+        }
+        const existing = await queryRunner.manager.findOne(ProductEntity, {
+          where: { pro_code: item?.pro_code },
+        });
+        if (existing) {
+          await queryRunner.manager.update(
+            ProductEntity,
+            { pro_code: item?.pro_code },
+            updateData,
+          );
+        } else {
+          await queryRunner.manager.save(ProductEntity, updateData);
+        }
+      }
+      await queryRunner.manager.update(
+        LogFileEntity,
+        { feature: `UpdateProduct` },
+        {
+          filename: body.filename,
+          uploadedAt: new Date(),
+        },
+      );
+      await queryRunner.commitTransaction();
+      console.log(`Products updated/inserted successfully.`);
+      return `Products updated/inserted successfully.`;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(`Error updating/inserting products:`, error);
+      throw new Error(`Error updating/inserting products`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async updateStock(body: {
+    group: { pro_code: string; stock: number }[];
+    filename: string;
+  }): Promise<string> {
+    try {
+      for (const item of body.group) {
+        await this.productRepo.update(
+          { pro_code: item.pro_code },
+          { pro_stock: item.stock },
+        );
+      }
+      await this.backendService.updateLogFile(
+        { feature: 'UpdateStock' },
+        { filename: body.filename, uploadedAt: new Date() },
+      );
+      return 'Stock updated successfully';
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      throw new Error('Error updating stock');
+    }
+  }
+
+  async keySearchProducts() {
+    try {
+      const qb = this.productRepo
+        .createQueryBuilder('product')
+        .where('product.pro_priceA != 0')
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+              .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix3', {
+                prefix3: 'ส่งเสริม%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix4', {
+                prefix4: 'รีเบท%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+              .andWhere('product.pro_name NOT LIKE :prefix6', {
+                prefix6: '/%',
+              })
+              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+              .andWhere('product.pro_stock > :stock', { stock: 0 })
+              .andWhere('product.pro_name NOT LIKE :prefix7', {
+                prefix7: 'ค่า%',
+              })
+              .andWhere('product.pro_code NOT LIKE :prefix8', {
+                prefix8: '@M%',
+              });
+          }),
+        );
+
+      const products = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_nameSale',
+          'product.pro_nameEN',
+          'product.pro_keysearch',
+        ])
+        .getMany();
+      console.log(products);
+      return products;
+    } catch (error) {
+      console.error('Error searching products:', error);
+      throw new Error('Error searching products');
     }
   }
 }
