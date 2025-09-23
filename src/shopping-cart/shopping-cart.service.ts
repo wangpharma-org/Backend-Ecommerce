@@ -740,11 +740,18 @@ export class ShoppingCartService {
 
   async clearFreebieCart(mem_code: string, pro2_code: string): Promise<void> {
     try {
-      console.log('Clearing freebie cart items for mem_code:', mem_code);
-      await this.shoppingCartRepo.delete({
-        mem_code: mem_code,
-        pro_code: pro2_code,
+      const products = await this.shoppingCartRepo.find({
+        where: {
+          mem_code: mem_code,
+          pro_code: pro2_code,
+          hotdeal_free: true,
+        },
       });
+      for (const item of products) {
+        await this.shoppingCartRepo.delete({ spc_id: item.spc_id });
+      }
+      console.log('Cleared freebie cart items for', mem_code, pro2_code);
+      // console.log('Deleted', products.length, 'freebie cart items for', mem_code, pro2_code);
     } catch (error) {
       console.error('Error clearing freebie cart items:', error);
       throw new Error('Error in clearFreebieCart');

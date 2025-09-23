@@ -1120,7 +1120,7 @@ export class ProductsService {
           'product.pro_keysearch',
         ])
         .getMany();
-      console.log(products);
+      // console.log(products);
       return products;
     } catch (error) {
       console.error('Error searching products:', error);

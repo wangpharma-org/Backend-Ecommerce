@@ -238,7 +238,7 @@ export class HotdealService {
       pro2_unit: string;
       pro2_amount: string;
       priceCondition: string;
-      is_reward: boolean;
+      hotdeal_free: boolean;
     }[],
   ) {
     console.log('Saving cart product:', body);
@@ -252,9 +252,8 @@ export class HotdealService {
               pro_unit: item.pro2_unit,
               amount: Number(item.pro2_amount),
               priceCondition: item.priceCondition,
-              is_reward:
-                typeof item.is_reward === 'boolean' ? item.is_reward : true,
               hotdeal_free: true,
+              is_reward: false,
             });
           } catch (err: unknown) {
             console.error('Error adding product to cart (HotDeal):', err);

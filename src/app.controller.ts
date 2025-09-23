@@ -647,20 +647,54 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/wangday/import')
   async importWangday(
-    @Body() body: { data: any[]; isLastChunk: boolean; isFirstChunk: boolean },
+    @Body()
+    body: {
+      data: {
+        date: string;
+        sh_running: string;
+        wang_code: string;
+        sumprice: string;
+      }[];
+      isLastChunk: boolean;
+      isFirstChunk: boolean;
+      fileName: string;
+    },
   ) {
     try {
       // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
-      const rows = (body.data || []).map((item) => ({
-        date: item['วันที่'],
-        sh_running: item['เลขที่ใบกำกับ'],
-        wang_code: item['รหัสลูกค้า'],
-        sumprice: item['ยอดเงินสุทธิ']?.toString(),
-      }));
+      const rows = (body.data || []).map((item) => {
+        // console.log('Mapping item:', item);
+        const row = item as {
+          วันที่?: number | string;
+          เลขที่ใบกำกับ?: string;
+          รหัสลูกค้า?: string;
+          ยอดเงินสุทธิ?: number | string;
+        };
+        let dateValue: string | undefined = '';
+        if (typeof row['วันที่'] === 'string') {
+          dateValue = row['วันที่'];
+        } else if (typeof row['วันที่'] === 'number') {
+          dateValue = String(row['วันที่']);
+        }
+        return {
+          date: dateValue,
+          sh_running:
+            typeof row['เลขที่ใบกำกับ'] === 'string'
+              ? row['เลขที่ใบกำกับ']
+              : '',
+          wang_code:
+            typeof row['รหัสลูกค้า'] === 'string' ? row['รหัสลูกค้า'] : '',
+          sumprice:
+            row['ยอดเงินสุทธิ'] !== undefined
+              ? String(row['ยอดเงินสุทธิ'])
+              : '',
+        };
+      });
       const imported = await this.wangdayService.importFromExcel(
         rows,
         body.isLastChunk,
         body.isFirstChunk,
+        body.fileName,
       );
       return 'Successful' + imported.length;
     } catch (error) {
@@ -789,12 +823,14 @@ export class AppController {
     return this.hotdealService.saveCartProduct(cartProducts);
   }
 
-  @Delete('/ecom/hotdeal/delete-all')
+  @Delete('/ecom/hotdeal/delete-clear-freebies')
   async deleteAllHotdeals(
-    @Body('mem_code') mem_code: string,
-    @Body('pro2_code') pro2_code: string,
+    @Body() body: { mem_code: string; pro2_code: string },
   ) {
-    return this.shoppingCartService.clearFreebieCart(mem_code, pro2_code);
+    return this.shoppingCartService.clearFreebieCart(
+      body.mem_code,
+      body.pro2_code,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
