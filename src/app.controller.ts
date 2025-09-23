@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { WangdayService } from './wangday/wangday.service';
 import {
   Body,
