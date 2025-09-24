@@ -566,6 +566,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-flashsale')
+  async getProductForKeySearchForFlashSale() {
+    return this.productsService.getProductForKeySearchForFlashSale();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tiers/:tier_id')
   async getTierByID(@Param('tier_id') tier_id: number) {
     return this.promotionService.getTierOneById(tier_id);
@@ -966,5 +972,49 @@ export class AppController {
   ) {
     console.log(data);
     return this.lotService.addLots(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/add-flashsale')
+  async addDailyFlashsale(
+    @Body()
+    data: {
+      promotion_name: string;
+      date: string;
+      time_start: string;
+      time_end: string;
+      is_active: boolean;
+    },
+  ) {
+    console.log(data);
+    return await this.flashsaleService.addFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/add-product')
+  async addProductToDailyFlashsale(
+    @Body()
+    data: {
+      promotion_id: number;
+      pro_code: string;
+      limit: number;
+    },
+  ) {
+    console.log(data);
+    return await this.flashsaleService.addProductToFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/daily-flashsale/list')
+  async getAllDailyFlashsales() {
+    return await this.flashsaleService.getAllFlashSales();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/daily-flashsale/products/:promotion_id')
+  async getProductsInDailyFlashsale(
+    @Param('promotion_id') promotion_id: number,
+  ) {
+    return await this.flashsaleService.getProductsInFlashSale(promotion_id);
   }
 }
