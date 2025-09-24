@@ -33,6 +33,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
+import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 
 interface JwtPayload {
   username: string;
@@ -69,6 +70,7 @@ export class AppController {
     private readonly backendService: BackendService,
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
+    private readonly newArrivalsService: NewArrivalsService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -966,5 +968,49 @@ export class AppController {
   ) {
     console.log(data);
     return this.lotService.addLots(data);
+  }
+
+  @Post('/ecom/new-arrivals')
+  async NewArrivals(
+    @Body()
+    data: {
+      pro_code: string;
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+    }[],
+  ) {
+    type N = {
+      product: { pro_code: string };
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+    };
+    try {
+      const results: N[] = [];
+      console.log('Received body for new arrivals:', data);
+      for (const item of data) {
+        const result = await this.newArrivalsService.addNewArrival(
+          item.pro_code,
+          item.LOT,
+          item.MFG,
+          item.EXP,
+          item.createdAt,
+        );
+        results.push(result);
+      }
+      return results;
+    } catch (error) {
+      console.error('Error adding new arrivals:', error);
+      throw new Error('Error adding new arrivals');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/new-arrivals/list/:mem_code')
+  async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
+    return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
   }
 }
