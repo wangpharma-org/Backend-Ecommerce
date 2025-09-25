@@ -48,4 +48,19 @@ export class UsersService {
       throw new Error('Error updating user');
     }
   }
+
+  async findOneByMemCode(mem_code: string): Promise<UserEntity> {
+    try {
+      const user = await this.userRepo.findOne({
+        where: { mem_code: mem_code },
+      });
+      console.log('User found by mem_code:', user);
+      if (!user) {
+        throw new Error('User not found');
+      }
+      return user;
+    } catch {
+      throw new Error('Error retrieving user by mem_code');
+    }
+  }
 }

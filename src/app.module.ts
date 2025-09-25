@@ -23,6 +23,7 @@ import { LoggerModule } from './logger/logger.module';
 import { BackendModule } from './backend/backend.module';
 import { DebtorModule } from './debtor/debtor.module';
 import { LotModule } from './lot/lot.module';
+import { EditAddressModule } from './edit-address/edit-address.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { LotModule } from './lot/lot.module';
     BackendModule,
     DebtorModule,
     LotModule,
+    EditAddressModule,
   ],
   controllers: [AppController],
   providers: [AppService],
