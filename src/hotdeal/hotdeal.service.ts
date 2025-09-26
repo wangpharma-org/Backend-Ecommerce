@@ -23,7 +23,11 @@ export class HotdealService {
     private readonly cartService: ShoppingCartService,
   ) {}
 
-  // addProductCart
+  async find(pro_code: string): Promise<HotdealEntity | null> {
+    return await this.hotdealRepo.findOne({
+      where: { product: { pro_code } },
+    });
+  }
 
   async searchProduct(keyword: string) {
     return this.productService.searchByCodeOrSupplier(keyword);
@@ -273,13 +277,108 @@ export class HotdealService {
     }
   }
 
-  async getHotdealFromCode(pro_code: string): Promise<HotdealEntity | null> {
-    const codeHotdeal = await this.hotdealRepo.findOne({
+  async getHotdealFromCode(pro_code: string): Promise<HotdealEntity | null> {  
+    return this.hotdealRepo.findOne({
       where: { product: { pro_code } },
-      relations: ['product'],
     });
-    return codeHotdeal
-      ? { ...codeHotdeal, product: codeHotdeal.product || null }
-      : null;
+  }
+
+  async checkProductHotDeal(itemInCart: {
+    pro_code: string;
+    spc_id: number;
+    spc_amount: number;
+    spc_unit: string;
+}[]): Promise<{ pro_code: string; status: string; error?: string }[]> {
+    try {
+    const results: { pro_code: string; status: string; error?: string }[] = [];
+
+    // Loop ผ่าน array ของ itemInCart
+    for (const item of itemInCart) {
+      console.log('Checking item:', item);
+      
+      const productInCart = await this.hotdealRepo.findOne({
+        where: { product: { pro_code: item.pro_code } },
+        relations: ['product2'],
+      });
+
+      if (productInCart) {
+        // console.log('productInCart:', productInCart);
+        
+        // เช็คเงื่อนไขที่ 1: จำนวนที่สั่ง >= pro1_amount และ unit ตรงกัน
+                if (
+          Number(item.spc_amount) >= Number(productInCart.pro1_amount) &&
+          item.spc_unit === productInCart.pro1_unit
+        ) {
+          console.log('Condition 1 passed for:', item.pro_code);
+          
+          // ตรวจสอบว่ามีข้อมูลของแถม (product2) หรือไม่
+          if (!productInCart.product2 || !productInCart.product2.pro_code) {
+            results.push({
+              pro_code: item.pro_code,
+              status: 'Error',
+              error: 'สินค้านี้ควรได้รับของแถม แต่ไม่พบข้อมูลของแถมในระบบ'
+            });
+            continue; // ข้ามไปรายการถัดไป
+          }
+          
+          // ตรวจสอบว่ามีข้อมูล pro2_amount และ pro2_unit หรือไม่
+          if (!productInCart.pro2_amount || !productInCart.pro2_unit) {
+            results.push({
+              pro_code: item.pro_code,
+              status: 'Error',
+              error: 'ข้อมูลจำนวนหรือหน่วยของแถมไม่ครบถ้วน'
+            });
+            continue;
+          }
+          
+          // เช็คเงื่อนไขที่ 2: จำนวนที่สั่ง === pro2_amount และ unit ตรงกัน
+          if (
+            Number(item.spc_amount) === Number(productInCart.pro2_amount) &&
+            item.spc_unit === productInCart.pro2_unit
+          ) {
+            console.log('Condition 2 passed for:', item.pro_code);
+            
+            // คำนวณจำนวนครั้งที่ได้รับของแถม
+            const multiplier = Math.ceil(
+              Number(item.spc_amount) / Number(productInCart.pro1_amount),
+            );
+            
+            if (multiplier === Number(productInCart.pro1_amount)) {
+              results.push({
+                pro_code: item.pro_code,
+                status: 'Match'
+              });
+            } else {
+                results.push({
+                pro_code: item.pro_code,
+                status: 'Partial Match'
+              });
+            }
+          } else {
+            results.push({
+              pro_code: item.pro_code,
+              status: 'Eligible but not exact'
+            });
+          }
+        } else {
+          results.push({
+            pro_code: item.pro_code,
+            status: 'Not eligible'
+          });
+        }
+      } else {
+        // ไม่มี hotdeal สำหรับสินค้านี้
+        results.push({
+          pro_code: item.pro_code,
+          status: 'No hotdeal'
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Error checking hot deal products:', error);
+    throw new Error('Error in checkProductHotDeal');
+  }
   }
 }

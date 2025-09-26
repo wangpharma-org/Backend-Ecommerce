@@ -865,7 +865,7 @@ export class AppController {
 
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
-    return this.hotdealService.getHotdealFromCode(pro_code);
+    return await this.hotdealService.getHotdealFromCode(pro_code);
   }
 
   @Post('/ecom/admin/update-product-from-back-office')
@@ -1047,5 +1047,19 @@ export class AppController {
   @Get('/ecom/new-arrivals/list/:mem_code')
   async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
     return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/hotdeal/checkhotdeal')
+  async checkProductHotDeal(
+    @Body('itemInCart')
+    itemInCart: {
+      pro_code: string;
+      spc_id: number;
+      spc_amount: number;
+      spc_unit: string;
+    }[],
+  ) {
+    return this.hotdealService.checkProductHotDeal(itemInCart);
   }
 }
