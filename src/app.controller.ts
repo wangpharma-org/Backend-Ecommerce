@@ -33,6 +33,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
+import { ModalContentService } from './modalmain/modalmain.service';
 
 interface JwtPayload {
   username: string;
@@ -69,6 +70,7 @@ export class AppController {
     private readonly backendService: BackendService,
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
+    private readonly modalContentService: ModalContentService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -966,5 +968,24 @@ export class AppController {
   ) {
     console.log(data);
     return this.lotService.addLots(data);
+  }
+
+  @Post('/ecom/admin/modal-content/save')
+  async SaveModalContent(
+    @Body()
+    body: {
+      id: number;
+      title: string;
+      content?: string;
+      show: boolean;
+    },
+  ) {
+    console.log(body);
+    return this.modalContentService.SaveModalContent(body);
+  }
+
+  @Get('/ecom/admin/modal-content/get')
+  async GetModalContent() {
+    return this.modalContentService.GetModalContent();
   }
 }
