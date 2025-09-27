@@ -36,6 +36,7 @@ import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
 import { EditAddressService } from './edit-address/edit-address.service';
 import { EditAddress } from './edit-address/edit-address.entity';
+import { ModalContentService } from './modalmain/modalmain.service';
 
 interface JwtPayload {
   username: string;
@@ -73,6 +74,7 @@ export class AppController {
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
     private readonly editAddressService: EditAddressService,
+    private readonly modalContentService: ModalContentService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -1015,5 +1017,24 @@ export class AppController {
   @Get('/ecom/address/:mem_code')
   async getAddressByUser(@Param('mem_code') mem_code: string) {
     return await this.editAddressService.getAddressesByUser(mem_code);
+  }
+
+  @Post('/ecom/admin/modal-content/save')
+  async SaveModalContent(
+    @Body()
+    body: {
+      id: number;
+      title: string;
+      content?: string;
+      show: boolean;
+    },
+  ) {
+    console.log(body);
+    return this.modalContentService.SaveModalContent(body);
+  }
+
+  @Get('/ecom/admin/modal-content/get')
+  async GetModalContent() {
+    return this.modalContentService.GetModalContent();
   }
 }

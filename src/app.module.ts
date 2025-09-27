@@ -24,6 +24,7 @@ import { BackendModule } from './backend/backend.module';
 import { DebtorModule } from './debtor/debtor.module';
 import { LotModule } from './lot/lot.module';
 import { EditAddressModule } from './edit-address/edit-address.module';
+import { ModalmainModule } from './modalmain/modalmain.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { EditAddressModule } from './edit-address/edit-address.module';
     DebtorModule,
     LotModule,
     EditAddressModule,
+    ModalmainModule,
   ],
   controllers: [AppController],
   providers: [AppService],
