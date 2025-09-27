@@ -25,6 +25,7 @@ import { DebtorModule } from './debtor/debtor.module';
 import { LotModule } from './lot/lot.module';
 import { EditAddressModule } from './edit-address/edit-address.module';
 import { ModalmainModule } from './modalmain/modalmain.module';
+import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 
 @Module({
@@ -70,6 +71,7 @@ import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
     LotModule,
     EditAddressModule,
     ModalmainModule,
+    InvisibleProductModule,
     NewArrivalsModule,
   ],
   controllers: [AppController],

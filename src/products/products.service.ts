@@ -108,10 +108,43 @@ export class ProductsService {
     }
   }
 
+  async getProductForKeySearchForFlashSale() {
+    try {
+      const qb = this.productRepo.createQueryBuilder('product');
+      const data = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_imgmain',
+        ])
+        .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
+        .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
+        .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+        .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+        .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+        .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+        .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .getMany();
+      return data;
+    } catch (error) {
+      console.error('Error in getProductByCreditor', error);
+      throw error;
+    }
+  }
+
   async getProductOne(pro_code: string) {
     try {
       // console.log('getProductOne', pro_code);
       const dataProduct = await this.productRepo.findOne({
+        relations: {
+          flashsale: {
+            flashsale: true,
+          },
+        },
         where: {
           pro_code: pro_code,
         },
@@ -330,6 +363,8 @@ export class ProductsService {
           'favorite.mem_code = :mem_code',
           { mem_code: data.mem_code },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -363,6 +398,12 @@ export class ProductsService {
           'pharma.pp_caution',
           'pharma.pp_suggestion',
           'favorite.fav_id',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
         .getOne();
@@ -458,7 +499,11 @@ export class ProductsService {
     sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      console.log('searchCategoryProducts Data : ', data);
+      const now = new Date();
       const monthNumber = new Date().getMonth() + 1;
+      const currentDate = now.toISOString().split('T')[0];
+      const currentTime = now.toTimeString().split(' ')[0];
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -467,6 +512,8 @@ export class ProductsService {
           'cart.mem_code = :memCode',
           { memCode: data.mem_code },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -497,6 +544,7 @@ export class ProductsService {
               .andWhere('product.pro_name NOT LIKE :prefix3', {
                 prefix3: 'ส่งเสริม%',
               })
+              .andWhere('product.invisible_id IS NULL')
               .andWhere('product.pro_name NOT LIKE :prefix4', {
                 prefix4: 'รีเบท%',
               })
@@ -515,6 +563,11 @@ export class ProductsService {
             } else if (data.category === 7) {
               qb.andWhere('product.pro_promotion_month = :month', {
                 month: monthNumber,
+              });
+            } else if (data.category === 9) {
+              qb.andWhere('fs.date = :date', { date: currentDate });
+              qb.andWhere(':nowTime BETWEEN fs.time_start AND fs.time_end', {
+                nowTime: currentTime,
               });
             } else {
               qb.andWhere('product.pro_category = :category', {
@@ -593,6 +646,12 @@ export class ProductsService {
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .getMany();
       return { products, totalCount };
@@ -617,6 +676,8 @@ export class ProductsService {
           'cart.mem_code = :memCode',
           { memCode: data.mem_code },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -644,6 +705,7 @@ export class ProductsService {
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
               .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.invisible_id IS NULL')
               .andWhere('product.pro_name NOT LIKE :prefix3', {
                 prefix3: 'ส่งเสริม%',
               })
@@ -712,9 +774,14 @@ export class ProductsService {
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .getMany();
-      console.log(products);
       return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
@@ -1120,7 +1187,6 @@ export class ProductsService {
           'product.pro_keysearch',
         ])
         .getMany();
-      console.log(products);
       return products;
     } catch (error) {
       console.error('Error searching products:', error);
@@ -1128,3 +1194,4 @@ export class ProductsService {
     }
   }
 }
+export { ProductEntity };
