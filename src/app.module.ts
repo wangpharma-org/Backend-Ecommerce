@@ -23,6 +23,7 @@ import { LoggerModule } from './logger/logger.module';
 import { BackendModule } from './backend/backend.module';
 import { DebtorModule } from './debtor/debtor.module';
 import { LotModule } from './lot/lot.module';
+import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { LotModule } from './lot/lot.module';
     BackendModule,
     DebtorModule,
     LotModule,
+    InvisibleProductModule,
   ],
   controllers: [AppController],
   providers: [AppService],

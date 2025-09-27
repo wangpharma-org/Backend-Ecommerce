@@ -40,8 +40,8 @@ export class ShoppingCartEntity {
   @Column({ default: false })
   use_code: boolean;
 
-  @Column({ type: 'date', default: null, nullable: true })
-  flashsale_end: Date;
+  @Column({ type: 'datetime', default: null, nullable: true })
+  flashsale_end: string;
 
   // @Column({ type: 'enum', enum: ['1', '2', '3'], nullable: true })
   // spc_unit: '1' | '2' | '3';

@@ -140,6 +140,11 @@ export class ProductsService {
     try {
       // console.log('getProductOne', pro_code);
       const dataProduct = await this.productRepo.findOne({
+        relations: {
+          flashsale: {
+            flashsale: true,
+          },
+        },
         where: {
           pro_code: pro_code,
         },
@@ -358,6 +363,8 @@ export class ProductsService {
           'favorite.mem_code = :mem_code',
           { mem_code: data.mem_code },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -391,6 +398,12 @@ export class ProductsService {
           'pharma.pp_caution',
           'pharma.pp_suggestion',
           'favorite.fav_id',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
         .getOne();
@@ -486,7 +499,11 @@ export class ProductsService {
     sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      console.log('searchCategoryProducts Data : ', data);
+      const now = new Date();
       const monthNumber = new Date().getMonth() + 1;
+      const currentDate = now.toISOString().split('T')[0];
+      const currentTime = now.toTimeString().split(' ')[0];
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -495,6 +512,8 @@ export class ProductsService {
           'cart.mem_code = :memCode',
           { memCode: data.mem_code },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -543,6 +562,11 @@ export class ProductsService {
             } else if (data.category === 7) {
               qb.andWhere('product.pro_promotion_month = :month', {
                 month: monthNumber,
+              });
+            } else if (data.category === 9) {
+              qb.andWhere('fs.date = :date', { date: currentDate });
+              qb.andWhere(':nowTime BETWEEN fs.time_start AND fs.time_end', {
+                nowTime: currentTime,
               });
             } else {
               qb.andWhere('product.pro_category = :category', {
@@ -621,6 +645,12 @@ export class ProductsService {
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .getMany();
       return { products, totalCount };
@@ -645,6 +675,8 @@ export class ProductsService {
           'cart.mem_code = :memCode',
           { memCode: data.mem_code },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -740,9 +772,14 @@ export class ProductsService {
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .getMany();
-      console.log(products);
       return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
@@ -1148,7 +1185,6 @@ export class ProductsService {
           'product.pro_keysearch',
         ])
         .getMany();
-      console.log(products);
       return products;
     } catch (error) {
       console.error('Error searching products:', error);
@@ -1156,3 +1192,4 @@ export class ProductsService {
     }
   }
 }
+export { ProductEntity };

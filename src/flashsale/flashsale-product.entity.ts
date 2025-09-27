@@ -13,13 +13,14 @@ export class FlashSaleProductsEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ nullable: true, default: null })
-  limit: number;
+  @Column({ nullable: true, default: null, type: 'int' })
+  limit: number | null;
 
   @ManyToOne(() => FlashSaleEntity, (flashSale) => flashSale.flashsaleProducts)
   @JoinColumn({ name: 'promotion_id' })
   flashsale: FlashSaleEntity;
 
   @ManyToOne(() => ProductEntity, (product) => product.flashsale)
+  @JoinColumn({ name: 'pro_code' })
   product: ProductEntity;
 }

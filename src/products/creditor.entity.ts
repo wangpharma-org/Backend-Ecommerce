@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { PromotionEntity } from '../promotion/promotion.entity';
+import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity';
 
 @Entity({ name: 'creditor' })
 export class CreditorEntity {
@@ -25,4 +26,7 @@ export class CreditorEntity {
 
   @OneToMany(() => PromotionEntity, (promotion) => promotion.creditor)
   promotions: PromotionEntity[];
+
+  @OneToMany(() => InvisibleEntity, (invisible) => invisible.creditor)
+  invisibleCreditor: InvisibleEntity[];
 }
