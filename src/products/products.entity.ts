@@ -17,6 +17,7 @@ import { PromotionConditionEntity } from '../promotion/promotion-condition.entit
 import { PromotionRewardEntity } from '../promotion/promotion-reward.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { LotEntity } from 'src/lot/lot.entity';
+import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -167,4 +168,7 @@ export class ProductEntity {
 
   @OneToMany(() => HotdealEntity, (hotdeal) => hotdeal.product)
   inHotdeals: HotdealEntity[];
+
+  @OneToMany(() => NewArrival, (newArrival) => newArrival.product)
+  newArrivals: NewArrival[];
 }
