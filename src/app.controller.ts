@@ -35,6 +35,7 @@ import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
 import { EditAddressService } from './edit-address/edit-address.service';
+import { EditAddress } from './edit-address/edit-address.entity';
 import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
