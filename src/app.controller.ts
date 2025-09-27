@@ -33,6 +33,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
+import { InvisibleProductService } from './invisible-product/invisible-product.service';
 
 interface JwtPayload {
   username: string;
@@ -69,6 +70,7 @@ export class AppController {
     private readonly backendService: BackendService,
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
+    private readonly invisibleService: InvisibleProductService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -1087,5 +1089,59 @@ export class AppController {
   ) {
     console.log(data);
     return await this.flashsaleService.EditFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/invisible-product/add-invisible-topic')
+  async addInvisibleTopic(
+    @Body()
+    data: {
+      invisible_name: string;
+      date_start: string;
+      date_end: string;
+      creditor_code: string;
+    },
+  ) {
+    console.log(data);
+    return await this.invisibleService.addInvisibleTopic(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/invisible-product/get-invisible-topic-all')
+  async getInvisibleTopic() {
+    return await this.invisibleService.handleGetInvisibleTopics();
+  }
+
+  @Get('/ecom/invisible/product/creditor/:creditor_code')
+  async getInvisibleProductByCreditor(
+    @Param('creditor_code') creditor_code: string,
+  ) {
+    return this.productsService.getProductByCreditor(creditor_code);
+  }
+
+  @Get('/ecom/invisible/product/creditor/list/:invisible_id')
+  async getInvisibleProductByInvisibleID(
+    @Param('invisible_id') invisible_id: number,
+  ) {
+    return this.invisibleService.handleGetInvisibleProducts(invisible_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/invisible-product/add-product')
+  async addInvisibleProduct(
+    @Body()
+    data: {
+      invisible_id: number;
+      pro_code: string;
+    },
+  ) {
+    console.log(data);
+    return await this.invisibleService.updateProductInvisible(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/invisible-product/delete-product')
+  async deleteInvisibleProduct(@Body('pro_code') pro_code: string) {
+    return await this.invisibleService.removeProductInvisible(pro_code);
   }
 }

@@ -21,7 +21,6 @@ export class CreditorEntity {
   creditor_name: string;
 
   @OneToMany(() => ProductEntity, (product) => product)
-  @JoinColumn({ name: 'creditor_code' })
   product: ProductEntity;
 
   @OneToMany(() => PromotionEntity, (promotion) => promotion.creditor)

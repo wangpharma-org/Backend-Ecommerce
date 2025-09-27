@@ -544,6 +544,7 @@ export class ProductsService {
               .andWhere('product.pro_name NOT LIKE :prefix3', {
                 prefix3: 'ส่งเสริม%',
               })
+              .andWhere('product.invisible_id IS NULL')
               .andWhere('product.pro_name NOT LIKE :prefix4', {
                 prefix4: 'รีเบท%',
               })
@@ -704,6 +705,7 @@ export class ProductsService {
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
               .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.invisible_id IS NULL')
               .andWhere('product.pro_name NOT LIKE :prefix3', {
                 prefix3: 'ส่งเสริม%',
               })

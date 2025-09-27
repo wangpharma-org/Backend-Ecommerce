@@ -24,7 +24,7 @@ export class InvisibleEntity {
   date_end: string;
 
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.invisibleCreditor)
-  @JoinColumn({ name: 'creditor_id' })
+  @JoinColumn({ name: 'creditor_code' })
   creditor: CreditorEntity;
 
   @OneToMany(() => ProductEntity, (product) => product.invisibleProduct)
