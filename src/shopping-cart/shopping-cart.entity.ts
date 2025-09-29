@@ -41,7 +41,7 @@ export class ShoppingCartEntity {
   use_code: boolean;
 
   @Column({ type: 'datetime', default: null, nullable: true })
-  flashsale_end: string;
+  flashsale_end: string | null;
 
   // @Column({ type: 'enum', enum: ['1', '2', '3'], nullable: true })
   // spc_unit: '1' | '2' | '3';

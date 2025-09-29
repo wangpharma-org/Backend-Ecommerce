@@ -21,7 +21,7 @@ interface CountSale {
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl =
-    'https://hooks.slack.com/services/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';
+    'https://hooks.slack.com/services/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';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -211,7 +211,9 @@ export class ShoppingOrderService {
               pro_promotion_amount: item.product.pro_promotion_amount,
             });
 
-            const isFlashSale = new Date(item.flashsale_end) >= new Date();
+            const isFlashSale = item.flashsale_end
+              ? new Date(item.flashsale_end) >= new Date()
+              : false;
 
             const unitPrice =
               data.priceOption === 'A'

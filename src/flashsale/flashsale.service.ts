@@ -296,6 +296,19 @@ export class FlashsaleService {
             flashsale_end: flashsale.date + ' ' + flashsale.time_end,
           },
         );
+      } else {
+        await this.shoppingCartRepo.update(
+          {
+            pro_code: In(
+              flashsale?.flashsaleProducts.map(
+                (item) => item.product.pro_code,
+              ) || [],
+            ),
+          },
+          {
+            flashsale_end: null,
+          },
+        );
       }
     } catch (error) {
       console.log(`${Date()} Error Something in changeStatus`);
