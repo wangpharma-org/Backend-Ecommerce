@@ -18,6 +18,7 @@ import { PromotionRewardEntity } from '../promotion/promotion-reward.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { LotEntity } from 'src/lot/lot.entity';
 import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity';
+import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -172,4 +173,7 @@ export class ProductEntity {
   @ManyToOne(() => InvisibleEntity, (invisible) => invisible.products)
   @JoinColumn({ name: 'invisible_id' })
   invisibleProduct: InvisibleEntity;
+
+  @OneToMany(() => NewArrival, (newArrival) => newArrival.product)
+  newArrivals: NewArrival[];
 }

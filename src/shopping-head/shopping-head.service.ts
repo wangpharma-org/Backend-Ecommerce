@@ -10,6 +10,7 @@ export interface ShoppingHead {
   soh_sumprice: number;
   soh_datetime: string; // หรือ Date ถ้าเป็น object
   soh_coin_recieve: number;
+  address: string;
   details: ShoppingOrder[];
 }
 

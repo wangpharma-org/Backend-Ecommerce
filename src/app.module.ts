@@ -23,7 +23,10 @@ import { LoggerModule } from './logger/logger.module';
 import { BackendModule } from './backend/backend.module';
 import { DebtorModule } from './debtor/debtor.module';
 import { LotModule } from './lot/lot.module';
+import { EditAddressModule } from './edit-address/edit-address.module';
+import { ModalmainModule } from './modalmain/modalmain.module';
 import { InvisibleProductModule } from './invisible-product/invisible-product.module';
+import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 
 @Module({
   imports: [
@@ -66,7 +69,10 @@ import { InvisibleProductModule } from './invisible-product/invisible-product.mo
     BackendModule,
     DebtorModule,
     LotModule,
+    EditAddressModule,
+    ModalmainModule,
     InvisibleProductModule,
+    NewArrivalsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
