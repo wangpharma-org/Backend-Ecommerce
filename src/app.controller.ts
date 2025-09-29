@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -33,7 +34,11 @@ import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
+import { EditAddressService } from './edit-address/edit-address.service';
+import { EditAddress } from './edit-address/edit-address.entity';
+import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
+import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 
 interface JwtPayload {
   username: string;
@@ -71,6 +76,9 @@ export class AppController {
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
     private readonly invisibleService: InvisibleProductService,
+    private readonly editAddressService: EditAddressService,
+    private readonly modalContentService: ModalContentService,
+    private readonly newArrivalsService: NewArrivalsService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -279,6 +287,7 @@ export class AppController {
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
+      addressed: string; // แก้ไขตรงนี้
     },
   ) {
     console.log('data in controller:', data);
@@ -1151,5 +1160,112 @@ export class AppController {
     return await this.invisibleService.deleteInvisibleTopic(
       Number(invisible_id),
     );
+  }
+
+  @Post('/ecom/new-arrivals')
+  async NewArrivals(
+    @Body()
+    data: {
+      pro_code: string;
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+    }[],
+  ) {
+    type N = {
+      product: { pro_code: string };
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+    };
+    try {
+      const results: N[] = [];
+      console.log('Received body for new arrivals:', data);
+      for (const item of data) {
+        const result = await this.newArrivalsService.addNewArrival(
+          item.pro_code,
+          item.LOT,
+          item.MFG,
+          item.EXP,
+          item.createdAt,
+        );
+        results.push(result);
+      }
+      return results;
+    } catch (error) {
+      console.error('Error adding new arrivals:', error);
+      throw new Error('Error adding new arrivals');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/new-arrivals/list/:mem_code')
+  async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
+    return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Post('/ecom/address/edit-address/:addressId')
+  async editAddress(@Param('addressId') addressId: number) {
+    console.log(addressId);
+    return this.editAddressService.getAddressById(addressId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/address/create-address')
+  async createAddress(
+    @Body()
+    addressData: {
+      name?: string;
+      fullName: string;
+      mem_address?: string;
+      mem_village?: string;
+      mem_alley?: string;
+      mem_road?: string;
+      mem_province: string;
+      mem_amphur: string;
+      mem_tumbon: string;
+      mem_post: string;
+      phoneNumber: string;
+      Note?: string;
+      defaults?: boolean;
+      mem_code: string;
+    },
+  ) {
+    console.log(addressData);
+    return this.editAddressService.createAddress(addressData);
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Put('/ecom/address/update-address/:id')
+  async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
+    console.log(address);
+    return this.editAddressService.updateAddress(id, address);
+  }
+
+  @Get('/ecom/address/:mem_code')
+  async getAddressByUser(@Param('mem_code') mem_code: string) {
+    return await this.editAddressService.getAddressesByUser(mem_code);
+  }
+
+  @Post('/ecom/admin/modal-content/save')
+  async SaveModalContent(
+    @Body()
+    body: {
+      id: number;
+      title: string;
+      content?: string;
+      show: boolean;
+    },
+  ) {
+    console.log(body);
+    return this.modalContentService.SaveModalContent(body);
+  }
+
+  @Get('/ecom/admin/modal-content/get')
+  async GetModalContent() {
+    return this.modalContentService.GetModalContent();
   }
 }
