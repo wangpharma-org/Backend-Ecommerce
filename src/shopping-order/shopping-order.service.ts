@@ -20,8 +20,7 @@ interface CountSale {
 
 @Injectable()
 export class ShoppingOrderService {
-  private readonly slackUrl =
-    'https://hooks.slack.com/services/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';
+  private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
