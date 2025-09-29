@@ -38,9 +38,14 @@ export class BackendService {
 
     if (existingLog) {
       existingLog.filename = data.filename;
+      existingLog.uploadedAt = new Date();
       return await this.logfileRepository.save(existingLog);
     } else {
-      const newLog = this.logfileRepository.create(data);
+      const newLog = this.logfileRepository.create({
+        feature: data.feature,
+        filename: data.filename,
+        uploadedAt: new Date(),
+      });
       return await this.logfileRepository.save(newLog);
     }
   }
