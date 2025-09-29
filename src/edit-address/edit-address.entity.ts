@@ -45,7 +45,7 @@ export class EditAddress {
   @Column({ length: 100, nullable: false })
   phoneNumber: string;
 
-  @Column({ length: 100, nullable: false })
+  @Column({ length: 100, nullable: true })
   Note: string;
 
   @Column({ default: false })
