@@ -1144,4 +1144,12 @@ export class AppController {
   async deleteInvisibleProduct(@Body('pro_code') pro_code: string) {
     return await this.invisibleService.removeProductInvisible(pro_code);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/invisible-product/delete-topic')
+  async deleteInvisibleTopic(@Body('invisible_id') invisible_id: string) {
+    return await this.invisibleService.deleteInvisibleTopic(
+      Number(invisible_id),
+    );
+  }
 }

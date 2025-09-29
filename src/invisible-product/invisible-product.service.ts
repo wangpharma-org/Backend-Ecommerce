@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InvisibleEntity } from './invisible-product.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { ProductEntity } from 'src/products/products.entity';
 import { CreditorEntity } from 'src/products/creditor.entity';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class InvisibleProductService {
@@ -113,6 +114,54 @@ export class InvisibleProductService {
       console.log(`${Date()} Error Something in handleGetInvisibleProducts`);
       console.log(error);
       throw new Error('Error Something in handleGetInvisibleProducts');
+    }
+  }
+//   @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron('0 0 * * *')
+  async deleteInvisibleTopicWithExpired() {
+    try {
+      const expiredInvisibles = await this.invisibleRepo.find({
+        where: { date_end: LessThan(new Date().toISOString()) },
+      });
+
+      for (const invisible of expiredInvisibles) {
+        await this.productRepo.update(
+          { invisibleProduct: { invisible_id: invisible.invisible_id } },
+          { invisibleProduct: { invisible_id: undefined } },
+        );
+        await this.invisibleRepo.delete(invisible.invisible_id);
+      }
+    } catch (error) {
+      console.log(
+        `${Date()} Error Something in deleteInvisibleTopicWithExpired`,
+      );
+      console.log(error);
+      throw new Error('Error Something in deleteInvisibleTopicWithExpired');
+    }
+  }
+
+  async deleteInvisibleTopic(invisible_id: number) {
+    try {
+      const invisible = await this.invisibleRepo.findOne({
+        where: { invisible_id },
+      });
+
+      if (!invisible) {
+        throw new NotFoundException(
+          `ไม่พบ invisible_id ${invisible_id} ในระบบ`,
+        );
+      }
+
+      await this.productRepo.update(
+        { invisibleProduct: { invisible_id } },
+        { invisibleProduct: { invisible_id: undefined } },
+      );
+
+      return await this.invisibleRepo.delete(invisible_id);
+    } catch (error) {
+      console.log(`${Date()} Error Something in deleteInvisibleTopic`);
+      console.log(error);
+      throw new Error('Error Something in deleteInvisibleTopic');
     }
   }
 }
