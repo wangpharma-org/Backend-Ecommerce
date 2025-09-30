@@ -241,6 +241,7 @@ export class ShoppingOrderService {
             if (isFreebie) {
               price = 0.0;
             }
+
             submitLogContext.push({
               calculatedPrice: price,
               isFreebie,

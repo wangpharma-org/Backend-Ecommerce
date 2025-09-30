@@ -6,6 +6,7 @@ import { ShoppingCartEntity } from './shopping-cart.entity';
 import { ProductsModule } from '../products/products.module';
 import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
+import { HotdealModule } from 'src/hotdeal/hotdeal.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
       PromotionTierEntity,
     ]),
     ProductsModule,
+    HotdealModule,
   ],
   providers: [ShoppingCartService],
   exports: [ShoppingCartService],

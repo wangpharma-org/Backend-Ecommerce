@@ -4,7 +4,6 @@ import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
 import { In, Repository } from 'typeorm';
-import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 export interface HotdealInput {
   pro_code: string;
   pro1_amount: string;
@@ -20,12 +19,20 @@ export class HotdealService {
     @InjectRepository(HotdealEntity)
     private readonly hotdealRepo: Repository<HotdealEntity>,
     private readonly productService: ProductsService,
-    private readonly cartService: ShoppingCartService,
-  ) {}
+  ) { }
 
   async find(pro_code: string): Promise<HotdealEntity | null> {
     return await this.hotdealRepo.findOne({
       where: { product: { pro_code } },
+      relations: ['product', 'product2'],
+      select: {
+        product: {
+          pro_code: true
+        },
+        product2: {
+          pro_code: true
+        }
+      }
     });
   }
 
@@ -109,19 +116,19 @@ export class HotdealService {
         const pickFields = (p: ProductType | null | undefined) =>
           p
             ? {
-                pro_code: p.pro_code,
-                pro_name: p.pro_name,
-                pro_priceA: p.pro_priceA,
-                pro_priceB: p.pro_priceB,
-                pro_priceC: p.pro_priceC,
-                pro_imgmain: p.pro_imgmain,
-                pro_ratio1: p.pro_ratio1,
-                pro_ratio2: p.pro_ratio2,
-                pro_ratio3: p.pro_ratio3,
-                pro_unit1: p.pro_unit1,
-                pro_unit2: p.pro_unit2,
-                pro_unit3: p.pro_unit3,
-              }
+              pro_code: p.pro_code,
+              pro_name: p.pro_name,
+              pro_priceA: p.pro_priceA,
+              pro_priceB: p.pro_priceB,
+              pro_priceC: p.pro_priceC,
+              pro_imgmain: p.pro_imgmain,
+              pro_ratio1: p.pro_ratio1,
+              pro_ratio2: p.pro_ratio2,
+              pro_ratio3: p.pro_ratio3,
+              pro_unit1: p.pro_unit1,
+              pro_unit2: p.pro_unit2,
+              pro_unit3: p.pro_unit3,
+            }
             : null;
         return {
           id: hotdeal.id,
@@ -138,44 +145,64 @@ export class HotdealService {
   }
 
   async checkHotdealMatch(
-    mem_code: string,
     pro_code: string,
     shopping_cart: {
       pro1_unit: string;
       pro1_amount: string;
     },
   ): Promise<
-    { pro_code: string; match: boolean; countFreeBies: string } | undefined
+    { pro_code: string; match: boolean; countFreeBies: string; amountInHotdeal: number } | undefined
   > {
     try {
       const found = await this.hotdealRepo.findOne({
         where: { product: { pro_code } },
         relations: ['product'],
       });
+      console.log('Found hotdeal:', found?.product.pro_code);
+      console.log('Raw shopping_cart input:', shopping_cart);
+      console.log('Raw hotdeal data:', {
+        pro1_amount: found?.pro1_amount,
+        pro1_unit: found?.pro1_unit
+      });
+      
       const fromFrontend = await this.convertToSmallestUnit(
         pro_code,
         shopping_cart.pro1_amount,
         shopping_cart.pro1_unit,
       );
+      console.log('Converted frontend amount:', fromFrontend);
+      
       const fromDatabase = await this.convertToSmallestUnit(
         pro_code,
         found?.pro1_amount ?? '',
         found?.pro1_unit ?? '',
       );
+      console.log('Converted database amount:', fromDatabase);
+      
       let match = false;
       if (found) {
         const amountInCart = fromFrontend ?? 0;
         const amountInHotdeal = fromDatabase ?? 0;
+        const cal = Math.floor(amountInCart / amountInHotdeal);
+        
+        console.log('Final calculation:');
+        console.log('- amountInCart:', amountInCart);
+        console.log('- amountInHotdeal:', amountInHotdeal);
+        console.log('- division result:', amountInCart / amountInHotdeal);
+        console.log('- Math.floor result:', cal);
+        console.log('- cal >= 1?', cal >= 1);
+        
         if (
           amountInHotdeal > 0 &&
-          Math.floor(amountInCart / amountInHotdeal) >= 1
+          cal >= 1
         ) {
           match = true;
         }
         return {
           pro_code,
           match,
-          countFreeBies: Math.floor(amountInCart / amountInHotdeal).toString(),
+          countFreeBies: cal.toString(),
+          amountInHotdeal
         };
       }
       return undefined;
@@ -236,48 +263,47 @@ export class HotdealService {
     return Number(spc_amount) * Number(found.ratio);
   }
 
-  async saveCartProduct(
-    body: {
-      mem_code: string;
-      pro2_code: string;
-      pro2_unit: string;
-      pro2_amount: string;
-      priceCondition: string;
-      hotdeal_free: boolean;
-    }[],
-  ) {
-    console.log('Saving cart product:', body);
-    try {
-      return await Promise.all(
-        body.map(async (item) => {
-          try {
-            return await this.cartService.addProductCartHotDeal({
-              mem_code: item.mem_code,
-              pro_code: item.pro2_code,
-              pro_unit: item.pro2_unit,
-              amount: Number(item.pro2_amount),
-              priceCondition: item.priceCondition,
-              hotdeal_free: true,
-              is_reward: false,
-            });
-          } catch (err: unknown) {
-            console.error('Error adding product to cart (HotDeal):', err);
-            let errorMessage = 'Unknown error';
-            if (err && typeof err === 'object' && 'message' in err) {
-              errorMessage =
-                (err as { message?: string }).message ?? 'Unknown error';
-            }
-            return { error: errorMessage, item };
-          }
-        }),
-      );
-    } catch (error) {
-      console.error('Error saving cart product:', error);
-      throw new Error('Error saving cart product');
-    }
-  }
+  // async saveCartProduct(
+  //   body: {
+  //     mem_code: string;
+  //     pro2_code: string;
+  //     pro2_unit: string;
+  //     pro2_amount: string;
+  //     priceCondition: string;
+  //     hotdeal_free: boolean;
+  //   }[],
+  // ) {
+  //   console.log('Saving cart product:', body);
+  //   try {
+  //     return await Promise.all(
+  //       body.map(async (item) => {
+  //         try {
+  //           return await this.cartService.addProductCartHotDeal({
+  //             mem_code: item.mem_code,
+  //             pro_code: item.pro2_code,
+  //             pro_unit: item.pro2_unit,
+  //             amount: Number(item.pro2_amount),
+  //             priceCondition: item.priceCondition,
+  //             hotdeal_free: true,
+  //           });
+  //         } catch (err: unknown) {
+  //           console.error('Error adding product to cart (HotDeal):', err);
+  //           let errorMessage = 'Unknown error';
+  //           if (err && typeof err === 'object' && 'message' in err) {
+  //             errorMessage =
+  //               (err as { message?: string }).message ?? 'Unknown error';
+  //           }
+  //           return { error: errorMessage, item };
+  //         }
+  //       }),
+  //     );
+  //   } catch (error) {
+  //     console.error('Error saving cart product:', error);
+  //     throw new Error('Error saving cart product');
+  //   }
+  // }
 
-  async getHotdealFromCode(pro_code: string): Promise<HotdealEntity | null> {  
+  async getHotdealFromCode(pro_code: string): Promise<HotdealEntity | null> {
     return this.hotdealRepo.findOne({
       where: { product: { pro_code } },
     });
@@ -288,97 +314,99 @@ export class HotdealService {
     spc_id: number;
     spc_amount: number;
     spc_unit: string;
-}[]): Promise<{ pro_code: string; status: string; error?: string }[]> {
+  }[]): Promise<{ pro_code: string; status: string; error?: string }[]> {
     try {
-    const results: { pro_code: string; status: string; error?: string }[] = [];
+      const results: { pro_code: string; status: string; error?: string }[] = [];
 
-    // Loop ผ่าน array ของ itemInCart
-    for (const item of itemInCart) {
-      console.log('Checking item:', item);
-      
-      const productInCart = await this.hotdealRepo.findOne({
-        where: { product: { pro_code: item.pro_code } },
-        relations: ['product2'],
-      });
+      // Loop ผ่าน array ของ itemInCart
+      for (const item of itemInCart) {
+        console.log('Checking item:', item);
 
-      if (productInCart) {
-        // console.log('productInCart:', productInCart);
-        
-        // เช็คเงื่อนไขที่ 1: จำนวนที่สั่ง >= pro1_amount และ unit ตรงกัน
-                if (
-          Number(item.spc_amount) >= Number(productInCart.pro1_amount) &&
-          item.spc_unit === productInCart.pro1_unit
-        ) {
-          console.log('Condition 1 passed for:', item.pro_code);
-          
-          // ตรวจสอบว่ามีข้อมูลของแถม (product2) หรือไม่
-          if (!productInCart.product2 || !productInCart.product2.pro_code) {
-            results.push({
-              pro_code: item.pro_code,
-              status: 'Error',
-              error: 'สินค้านี้ควรได้รับของแถม แต่ไม่พบข้อมูลของแถมในระบบ'
-            });
-            continue; // ข้ามไปรายการถัดไป
-          }
-          
-          // ตรวจสอบว่ามีข้อมูล pro2_amount และ pro2_unit หรือไม่
-          if (!productInCart.pro2_amount || !productInCart.pro2_unit) {
-            results.push({
-              pro_code: item.pro_code,
-              status: 'Error',
-              error: 'ข้อมูลจำนวนหรือหน่วยของแถมไม่ครบถ้วน'
-            });
-            continue;
-          }
-          
-          // เช็คเงื่อนไขที่ 2: จำนวนที่สั่ง === pro2_amount และ unit ตรงกัน
+        const productInCart = await this.hotdealRepo.findOne({
+          where: { product: { pro_code: item.pro_code } },
+          relations: ['product2'],
+        });
+
+        if (productInCart) {
+          // console.log('productInCart:', productInCart);
+
+          // เช็คเงื่อนไขที่ 1: จำนวนที่สั่ง >= pro1_amount และ unit ตรงกัน
           if (
-            Number(item.spc_amount) === Number(productInCart.pro2_amount) &&
-            item.spc_unit === productInCart.pro2_unit
+            Number(item.spc_amount) >= Number(productInCart.pro1_amount) &&
+            item.spc_unit === productInCart.pro1_unit
           ) {
-            console.log('Condition 2 passed for:', item.pro_code);
-            
-            // คำนวณจำนวนครั้งที่ได้รับของแถม
-            const multiplier = Math.ceil(
-              Number(item.spc_amount) / Number(productInCart.pro1_amount),
-            );
-            
-            if (multiplier === Number(productInCart.pro1_amount)) {
+            console.log('Condition 1 passed for:', item.pro_code);
+
+            // ตรวจสอบว่ามีข้อมูลของแถม (product2) หรือไม่
+            if (!productInCart.product2 || !productInCart.product2.pro_code) {
               results.push({
                 pro_code: item.pro_code,
-                status: 'Match'
+                status: 'Error',
+                error: 'สินค้านี้ควรได้รับของแถม แต่ไม่พบข้อมูลของแถมในระบบ'
               });
-            } else {
-                results.push({
+              continue; // ข้ามไปรายการถัดไป
+            }
+
+            // ตรวจสอบว่ามีข้อมูล pro2_amount และ pro2_unit หรือไม่
+            if (!productInCart.pro2_amount || !productInCart.pro2_unit) {
+              results.push({
                 pro_code: item.pro_code,
-                status: 'Partial Match'
+                status: 'Error',
+                error: 'ข้อมูลจำนวนหรือหน่วยของแถมไม่ครบถ้วน'
+              });
+              continue;
+            }
+
+            // เช็คเงื่อนไขที่ 2: จำนวนที่สั่ง === pro2_amount และ unit ตรงกัน
+            if (
+              Number(item.spc_amount) === Number(productInCart.pro2_amount) &&
+              item.spc_unit === productInCart.pro2_unit
+            ) {
+              console.log('Condition 2 passed for:', item.pro_code);
+
+              // คำนวณจำนวนครั้งที่ได้รับของแถม
+              const multiplier = Math.ceil(
+                Number(item.spc_amount) / Number(productInCart.pro1_amount),
+              );
+
+              if (multiplier === Number(productInCart.pro1_amount)) {
+                results.push({
+                  pro_code: item.pro_code,
+                  status: 'Match'
+                });
+              } else {
+                results.push({
+                  pro_code: item.pro_code,
+                  status: 'Partial Match'
+                });
+              }
+            } else {
+              results.push({
+                pro_code: item.pro_code,
+                status: 'Eligible but not exact'
               });
             }
           } else {
             results.push({
               pro_code: item.pro_code,
-              status: 'Eligible but not exact'
+              status: 'Not eligible'
             });
           }
         } else {
+          // ไม่มี hotdeal สำหรับสินค้านี้
           results.push({
             pro_code: item.pro_code,
-            status: 'Not eligible'
+            status: 'No hotdeal'
           });
         }
-      } else {
-        // ไม่มี hotdeal สำหรับสินค้านี้
-        results.push({
-          pro_code: item.pro_code,
-          status: 'No hotdeal'
-        });
       }
-    }
 
-    return results;
-  } catch (error) {
-    console.error('Error checking hot deal products:', error);
-    throw new Error('Error in checkProductHotDeal');
+      return results;
+    } catch (error) {
+      console.error('Error checking hot deal products:', error);
+      throw new Error('Error in checkProductHotDeal');
+    }
   }
-  }
+
 }
+

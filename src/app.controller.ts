@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -339,7 +340,13 @@ export class AppController {
       amount: number;
       priceCondition: string;
       is_reward: boolean;
-    } = { ...data, priceCondition, is_reward: data.pro_freebie > 0 };
+      hotdeal_free: boolean;
+    } = {
+      ...data,
+      priceCondition,
+      is_reward: data.pro_freebie > 0,
+      hotdeal_free: data.pro_freebie > 0,
+    };
     console.log(payload);
     return await this.shoppingCartService.addProductCart(payload);
   }
@@ -758,29 +765,30 @@ export class AppController {
     @Body()
     body: {
       hotDeal: Array<{
-        mem_code: string;
         pro_code: string;
         shopping_cart: Array<{ pro1_unit: string; pro1_amount: string }>;
       }>;
     },
   ) {
-    const allResults = await Promise.all(
-      (body.hotDeal || []).map(async (deal) => {
-        const results = await Promise.all(
-          (deal.shopping_cart || []).map((item) =>
-            this.hotdealService.checkHotdealMatch(
-              deal.mem_code,
-              deal.pro_code,
-              item,
+    try {
+      const allResults = await Promise.all(
+        (body.hotDeal || []).map(async (deal) => {
+          const results = await Promise.all(
+            (deal.shopping_cart || []).map((item) =>
+              this.hotdealService.checkHotdealMatch(deal.pro_code, item),
             ),
-          ),
-        );
-        // filter เฉพาะตัวที่เจอ pro_code
-        return results.filter(Boolean);
-      }),
-    );
-    // flatten array
-    return allResults.flat();
+          );
+          // filter เฉพาะตัวที่เจอ pro_code
+          return results.filter(Boolean);
+        }),
+      );
+      // flatten array
+      console.log('allResults:', allResults);
+      return allResults.flat();
+    } catch (error) {
+      console.error('Error in checkHotdealMatch:', error);
+      throw new Error('Error checking hotdeal match');
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -789,41 +797,41 @@ export class AppController {
     return this.hotdealService.getHotdealsByProCodes(body.proCodes);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/hotdeal/save-freebies')
-  async saveFreebies(
-    @Body()
-    body: {
-      hotDeal: {
-        mem_code: string;
-        pro2_code: string;
-        pro2_unit: string;
-        pro2_amount: string;
-        priceCondition: string;
-        hotdeal_free: boolean;
-      }[];
-    },
-  ) {
-    console.log('body:', body);
-    const cartProducts = body.hotDeal.map(
-      (item: {
-        mem_code: string;
-        pro2_code: string;
-        pro2_unit: string;
-        pro2_amount: string;
-        priceCondition: string;
-        hotdeal_free: boolean;
-      }) => ({
-        mem_code: item.mem_code,
-        pro2_code: item.pro2_code,
-        pro2_unit: item.pro2_unit,
-        pro2_amount: item.pro2_amount,
-        priceCondition: item.priceCondition,
-        hotdeal_free: true,
-      }),
-    );
-    return this.hotdealService.saveCartProduct(cartProducts);
-  }
+  // @UseGuards(JwtAuthGuard)
+  // @Post('/ecom/hotdeal/save-freebies')
+  // async saveFreebies(
+  //   @Body()
+  //   body: {
+  //     hotDeal: {
+  //       mem_code: string;
+  //       pro2_code: string;
+  //       pro2_unit: string;
+  //       pro2_amount: string;
+  //       priceCondition: string;
+  //       hotdeal_free: boolean;
+  //     }[];
+  //   },
+  // ) {
+  //   console.log('body:', body);
+  //   const cartProducts = body.hotDeal.map(
+  //     (item: {
+  //       mem_code: string;
+  //       pro2_code: string;
+  //       pro2_unit: string;
+  //       pro2_amount: string;
+  //       priceCondition: string;
+  //       hotdeal_free: boolean;
+  //     }) => ({
+  //       mem_code: item.mem_code,
+  //       pro2_code: item.pro2_code,
+  //       pro2_unit: item.pro2_unit,
+  //       pro2_amount: item.pro2_amount,
+  //       priceCondition: item.priceCondition,
+  //       hotdeal_free: true,
+  //     }),
+  //   );
+  //   return this.hotdealService.saveCartProduct(cartProducts);
+  // }
 
   @Delete('/ecom/hotdeal/delete-clear-freebies')
   async deleteAllHotdeals(
@@ -1049,17 +1057,33 @@ export class AppController {
     return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/hotdeal/checkhotdeal')
-  async checkProductHotDeal(
-    @Body('itemInCart')
-    itemInCart: {
-      pro_code: string;
-      spc_id: number;
-      spc_amount: number;
-      spc_unit: string;
-    }[],
-  ) {
-    return this.hotdealService.checkProductHotDeal(itemInCart);
+  // @UseGuards(JwtAuthGuard)
+  // @Post('/ecom/hotdeal/checkhotdeal')
+  // async checkProductHotDeal(
+  //   @Body('itemInCart')
+  //   itemInCart: {
+  //     pro_code: string;
+  //     spc_id: number;
+  //     spc_amount: number;
+  //     spc_unit: string;
+  //   }[],
+  // ) {
+  //   return this.hotdealService.checkProductHotDeal(itemInCart);
+  // }
+  @Get('/ecom/hotdeal/find/:pro_code')
+  find(@Param('pro_code') pro_code: string): Promise<any> {
+    return this.hotdealService.find(pro_code);
+  }
+
+  @Put('/ecom/hotdeal/edit_freebie')
+  update(
+    @Body()
+    body: {
+      mem_code: string;
+      Item: { pro_code: string; spc_amount: number }[];
+    },
+  ): Promise<any> {
+    console.log(body);
+    return this.shoppingCartService.updateHotdeal(body);
   }
 }

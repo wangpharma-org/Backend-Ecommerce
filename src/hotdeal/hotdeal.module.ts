@@ -9,7 +9,6 @@ import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
   imports: [
     TypeOrmModule.forFeature([HotdealEntity]),
     ProductsModule,
-    forwardRef(() => ShoppingCartModule), // ใช้ forwardRef เพื่อแก้ปัญหา circular dependency
   ],
   exports: [HotdealService],
   providers: [HotdealService],

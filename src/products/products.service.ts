@@ -715,6 +715,7 @@ export class ProductsService {
         ])
         .getMany();
       console.log(products);
+      console.log("qb", qb.getSql());
       return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
@@ -894,6 +895,7 @@ export class ProductsService {
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
         .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
+        .andWhere('product.pro_code NOT LIKE :at3', { at3: '%@%' })
         .andWhere(
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })
