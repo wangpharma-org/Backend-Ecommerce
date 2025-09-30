@@ -24,6 +24,9 @@ export interface ShoppingProductCart {
   shopping_cart: ShoppingCart[];
   lots: LotItem[];
   flashsale_limit?: number;
+  flashsale_time_end?: string;
+  flashsale_time_start?: string;
+  flashsale_date?: string;
 }
 
 export interface LotItem {
@@ -76,6 +79,9 @@ interface RawProductCart {
   is_reward: boolean | number;
   flashsale_end?: string;
   flashsale_limit?: number;
+  flashsale_time_end?: string;
+  flashsale_time_start?: string;
+  flashsale_date?: string;
 }
 
 // Define a DTO for the return type
@@ -627,6 +633,7 @@ export class ShoppingCartService {
         .leftJoinAndSelect('cart.product', 'product')
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
+        .leftJoinAndSelect('fs.flashsale', 'flashsale')
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
           'product.pro_code AS pro_code',
@@ -656,6 +663,9 @@ export class ShoppingCartService {
           'cart.flashsale_end AS flashsale_end',
           'fs.promotion_id AS promotion_id',
           'fs.limit AS flashsale_limit',
+          'flashsale.date AS flashsale_date',
+          'flashsale.time_start AS flashsale_time_start',
+          'flashsale.time_end AS flashsale_time_end',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -682,6 +692,9 @@ export class ShoppingCartService {
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
             flashsale_limit: row.flashsale_limit,
+            flashsale_time_end: row.flashsale_time_end,
+            flashsale_time_start: row.flashsale_time_start,
+            flashsale_date: row.flashsale_date,
             shopping_cart: [],
             lots: [],
           };
