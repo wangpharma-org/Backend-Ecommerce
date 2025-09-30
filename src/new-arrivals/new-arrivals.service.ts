@@ -70,11 +70,13 @@ export class NewArrivalsService {
       )
       .groupBy('product.pro_code')
       .addGroupBy('newArrival.id')
+      .addGroupBy('newArrival.createdAt')
       .addGroupBy('cart.spc_id')
       .addGroupBy('cart.spc_amount')
       .addGroupBy('cart.spc_unit')
       .addGroupBy('cart.mem_code')
       .orderBy('newArrival.createdAt', 'DESC')
+      .addOrderBy('newArrival.id', 'DESC')
       .take(30)
       .select([
         'newArrival.id',
