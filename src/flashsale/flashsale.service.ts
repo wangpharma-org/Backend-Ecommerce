@@ -212,8 +212,11 @@ export class FlashsaleService {
   async getFlashSale(limit: number, mem_code: string) {
     try {
       const now = new Date();
-      const currentDate = now.toISOString().split('T')[0];
+      const currentDate = now.toLocaleDateString('sv-SE');
       const currentTime = now.toTimeString().split(' ')[0];
+
+      console.log('Current Date:', currentDate);
+      console.log('Current Time:', currentTime);
 
       const data = await this.flashSaleRepo
         .createQueryBuilder('flash')
