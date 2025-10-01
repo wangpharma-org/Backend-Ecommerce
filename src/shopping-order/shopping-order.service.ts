@@ -102,7 +102,7 @@ export class ShoppingOrderService {
     priceOption: string;
     paymentOptions: string;
     shippingOptions: string;
-    addressed: string; // ← ส่งมาเป็น string
+    addressed: string | null; // ← ส่งมาเป็น string
   }): Promise<string[] | undefined> {
     let orderContext: {
       memberCode: string;
@@ -166,7 +166,7 @@ export class ShoppingOrderService {
             member: { mem_code: data.mem_code },
             soh_payment_type: data.paymentOptions,
             soh_shipping_type: data.shippingOptions,
-            editAddress: data.addressed,
+            editAddress: data.addressed ?? undefined,
           });
 
           const NewHead = await manager.save(ShoppingHeadEntity, head);

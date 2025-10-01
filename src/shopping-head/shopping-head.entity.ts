@@ -76,6 +76,6 @@ export class ShoppingHeadEntity {
   @OneToMany(() => ShoppingOrderEntity, (detail) => detail.orderHeader)
   details: ShoppingOrderEntity[];
 
-  @Column({ type: 'json', nullable: false })
+  @Column({ type: 'json', nullable: true, default: null })
   editAddress: string;
 }
