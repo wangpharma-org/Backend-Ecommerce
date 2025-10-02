@@ -27,6 +27,7 @@ import { EditAddressModule } from './edit-address/edit-address.module';
 import { ModalmainModule } from './modalmain/modalmain.module';
 import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
+import { FixFreeModule } from './fix-free/fix-free.module';
 
 @Module({
   imports: [
@@ -47,7 +48,7 @@ import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: false,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
@@ -73,6 +74,7 @@ import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
     ModalmainModule,
     InvisibleProductModule,
     NewArrivalsModule,
+    FixFreeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
