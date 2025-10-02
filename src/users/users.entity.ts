@@ -11,6 +11,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
 import { DebtorEntity } from 'src/debtor/debtor.entity';
+import { EditAddress } from 'src/edit-address/edit-address.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -169,4 +170,7 @@ export class UserEntity {
 
   @OneToMany(() => DebtorEntity, (debtor) => debtor.user)
   debtors: DebtorEntity[];
+
+  @OneToMany(() => EditAddress, (editAddress) => editAddress.user)
+  editAddresses: EditAddress[];
 }

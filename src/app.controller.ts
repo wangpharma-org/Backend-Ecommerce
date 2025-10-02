@@ -34,6 +34,10 @@ import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
+import { EditAddressService } from './edit-address/edit-address.service';
+import { EditAddress } from './edit-address/edit-address.entity';
+import { ModalContentService } from './modalmain/modalmain.service';
+import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 
 interface JwtPayload {
@@ -71,6 +75,9 @@ export class AppController {
     private readonly backendService: BackendService,
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
+    private readonly invisibleService: InvisibleProductService,
+    private readonly editAddressService: EditAddressService,
+    private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
   ) {}
 
@@ -280,6 +287,7 @@ export class AppController {
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
+      addressed: string; // แก้ไขตรงนี้
     },
   ) {
     console.log('data in controller:', data);
@@ -330,6 +338,7 @@ export class AppController {
       pro_unit: string;
       amount: number;
       pro_freebie: number;
+      flashsale_end: string;
     },
   ) {
     const priceCondition = req.user.price_option ?? 'C';
@@ -340,6 +349,7 @@ export class AppController {
       amount: number;
       priceCondition: string;
       is_reward: boolean;
+      flashsale_end: string;
       hotdeal_free: boolean;
     } = {
       ...data,
@@ -572,6 +582,12 @@ export class AppController {
   @Get('/ecom/promotion/product/keysearch')
   async getProductForKeySearch() {
     return this.productsService.getProductForKeySearch();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-flashsale')
+  async getProductForKeySearchForFlashSale() {
+    return this.productsService.getProductForKeySearchForFlashSale();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1011,6 +1027,244 @@ export class AppController {
   ) {
     console.log(data);
     return this.lotService.addLots(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/add-flashsale')
+  async addDailyFlashsale(
+    @Body()
+    data: {
+      promotion_name: string;
+      date: string;
+      time_start: string;
+      time_end: string;
+      is_active: boolean;
+    },
+  ) {
+    console.log(data);
+    return await this.flashsaleService.addFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/add-product')
+  async addProductToDailyFlashsale(
+    @Body()
+    data: {
+      promotion_id: number;
+      pro_code: string;
+      limit: number;
+    },
+  ) {
+    console.log(data);
+    return await this.flashsaleService.addProductToFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/daily-flashsale/list')
+  async getAllDailyFlashsales() {
+    return await this.flashsaleService.getAllFlashSales();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/daily-flashsale/products/:promotion_id')
+  async getProductsInDailyFlashsale(
+    @Param('promotion_id') promotion_id: number,
+  ) {
+    return await this.flashsaleService.getProductsInFlashSale(promotion_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/daily-flashsale/delete-product')
+  async deleteProductDailyFlashsale(@Body('id') id: number) {
+    return await this.flashsaleService.deleteProduct(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/edit-product')
+  async editProductInDailyFlashSale(
+    @Body() data: { id: number; limit: number },
+  ) {
+    return await this.flashsaleService.editProductInFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/get-flashsale')
+  async getFlashsaleByDate(@Body() data: { limit: number; mem_code: string }) {
+    return await this.flashsaleService.getFlashSale(data.limit, data.mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/change-status')
+  async changeStatusDailyFlashsale(
+    @Body() data: { id: number; is_active: boolean },
+  ) {
+    console.log(data);
+    return await this.flashsaleService.changeStatus({
+      promotion_id: data.id,
+      is_active: data.is_active,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/daily-flashsale/delete-flashsale')
+  async deleteDailyFlashsale(@Body('id') id: number) {
+    return await this.flashsaleService.deleteFlashSale(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/upload-log-file')
+  async uploadLogFile(@Body() data: { feature: string; filename: string }) {
+    return await this.backendService.upsertFileLog({
+      feature: data.feature,
+      filename: data.filename,
+    });
+  }
+
+  @Get('/ecom/get-upload-log-file/:feature')
+  async getUploadLogFile(@Param('feature') feature: string) {
+    return await this.backendService.getLogfile(feature);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/daily-flashsale/edit-flashsale')
+  async editDailyFlashsale(
+    @Body()
+    data: {
+      promotion_id: number;
+      promotion_name: string;
+      date: string;
+      time_start: string;
+      time_end: string;
+      is_active: boolean;
+    },
+  ) {
+    console.log(data);
+    return await this.flashsaleService.EditFlashSale(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/invisible-product/add-invisible-topic')
+  async addInvisibleTopic(
+    @Body()
+    data: {
+      invisible_name: string;
+      date_start: string;
+      date_end: string;
+      creditor_code: string;
+    },
+  ) {
+    console.log(data);
+    return await this.invisibleService.addInvisibleTopic(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/invisible-product/get-invisible-topic-all')
+  async getInvisibleTopic() {
+    return await this.invisibleService.handleGetInvisibleTopics();
+  }
+
+  @Get('/ecom/invisible/product/creditor/:creditor_code')
+  async getInvisibleProductByCreditor(
+    @Param('creditor_code') creditor_code: string,
+  ) {
+    return this.productsService.getProductByCreditor(creditor_code);
+  }
+
+  @Get('/ecom/invisible/product/creditor/list/:invisible_id')
+  async getInvisibleProductByInvisibleID(
+    @Param('invisible_id') invisible_id: number,
+  ) {
+    return this.invisibleService.handleGetInvisibleProducts(invisible_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/invisible-product/add-product')
+  async addInvisibleProduct(
+    @Body()
+    data: {
+      invisible_id: number;
+      pro_code: string;
+    },
+  ) {
+    console.log(data);
+    return await this.invisibleService.updateProductInvisible(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/invisible-product/delete-product')
+  async deleteInvisibleProduct(@Body('pro_code') pro_code: string) {
+    return await this.invisibleService.removeProductInvisible(pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/invisible-product/delete-topic')
+  async deleteInvisibleTopic(@Body('invisible_id') invisible_id: string) {
+    return await this.invisibleService.deleteInvisibleTopic(
+      Number(invisible_id),
+    );
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Post('/ecom/address/edit-address/:addressId')
+  async editAddress(@Param('addressId') addressId: number) {
+    console.log(addressId);
+    return this.editAddressService.getAddressById(addressId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/address/create-address')
+  async createAddress(
+    @Body()
+    addressData: {
+      name?: string;
+      fullName: string;
+      mem_address?: string;
+      mem_village?: string;
+      mem_alley?: string;
+      mem_road?: string;
+      mem_province: string;
+      mem_amphur: string;
+      mem_tumbon: string;
+      mem_post: string;
+      phoneNumber: string;
+      Note?: string;
+      defaults?: boolean;
+      mem_code: string;
+    },
+  ) {
+    console.log(addressData);
+    return this.editAddressService.createAddress(addressData);
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Put('/ecom/address/update-address/:id')
+  async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
+    console.log(address);
+    return this.editAddressService.updateAddress(id, address);
+  }
+
+  @Get('/ecom/address/:mem_code')
+  async getAddressByUser(@Param('mem_code') mem_code: string) {
+    return await this.editAddressService.getAddressesByUser(mem_code);
+  }
+
+  @Post('/ecom/admin/modal-content/save')
+  async SaveModalContent(
+    @Body()
+    body: {
+      id: number;
+      title: string;
+      content?: string;
+      show: boolean;
+    },
+  ) {
+    console.log(body);
+    return this.modalContentService.SaveModalContent(body);
+  }
+
+  @Get('/ecom/admin/modal-content/get')
+  async GetModalContent() {
+    return this.modalContentService.GetModalContent();
   }
 
   @Post('/ecom/new-arrivals')
