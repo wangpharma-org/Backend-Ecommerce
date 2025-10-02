@@ -39,6 +39,7 @@ import { EditAddress } from './edit-address/edit-address.entity';
 import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
+import { FixFreeService } from './fix-free/fix-free.service';
 
 interface JwtPayload {
   username: string;
@@ -79,6 +80,7 @@ export class AppController {
     private readonly editAddressService: EditAddressService,
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
+    private readonly fixFreeService: FixFreeService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -1267,5 +1269,45 @@ export class AppController {
   @Get('/ecom/admin/modal-content/get')
   async GetModalContent() {
     return this.modalContentService.GetModalContent();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/product-free/all')
+  async getAllProductFree() {
+    try {
+      return await this.fixFreeService.getAllProductFree();
+    } catch {
+      throw new Error('Error getting all free products');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/add')
+  async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
+    try {
+      return await this.fixFreeService.addProductFree(data);
+    } catch {
+      throw new Error('Error adding free product');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/product-free/delete')
+  async deleteProductFree(@Body() data: { pro_code: string }) {
+    try {
+      return await this.fixFreeService.removeProductFree(data.pro_code);
+    } catch {
+      throw new Error('Error deleting free product');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/edit')
+  async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
+    try {
+      return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
+    } catch {
+      throw new Error('Error editing free product');
+    }
   }
 }

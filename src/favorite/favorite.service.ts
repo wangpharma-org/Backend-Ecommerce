@@ -46,6 +46,12 @@ export class FavoriteService {
       const qb = this.favoriteRepo
         .createQueryBuilder('fav')
         .leftJoinAndSelect('fav.product', 'product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :memCode',
+          { memCode: mem_code },
+        )
         .where('fav.member.mem_code = :mem_code', { mem_code });
 
       switch (sort_by) {
@@ -78,9 +84,16 @@ export class FavoriteService {
         'product.pro_priceC',
         'product.pro_stock',
         'product.pro_point',
+        'product.pro_unit1',
+        'product.pro_unit2',
+        'product.pro_unit3',
         'product.pro_sale_amount',
         'product.pro_lowest_stock',
         'product.order_quantity',
+        'cart.spc_id',
+        'cart.spc_amount',
+        'cart.spc_unit',
+        'cart.mem_code',
       ]);
 
       const data = await qb.getMany();
