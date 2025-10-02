@@ -11,12 +11,14 @@ import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
-import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+import { FlashSaleProductsEntity } from 'src/flashsale/flashsale-product.entity';
 import { CreditorEntity } from './creditor.entity';
 import { PromotionConditionEntity } from '../promotion/promotion-condition.entity';
 import { PromotionRewardEntity } from '../promotion/promotion-reward.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { LotEntity } from 'src/lot/lot.entity';
+import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity';
+import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -150,8 +152,8 @@ export class ProductEntity {
   @OneToMany(() => LotEntity, (lot) => lot.product)
   lot: LotEntity[];
 
-  @OneToMany(() => FlashSaleEntity, (cart) => cart.product)
-  flashsale: FlashSaleEntity[];
+  @OneToMany(() => FlashSaleProductsEntity, (flashsale) => flashsale.product)
+  flashsale: FlashSaleProductsEntity[];
 
   @OneToMany(() => FavoriteEntity, (favorite) => favorite.product)
   inFavorite: FavoriteEntity[];
@@ -167,4 +169,11 @@ export class ProductEntity {
 
   @OneToMany(() => HotdealEntity, (hotdeal) => hotdeal.product)
   inHotdeals: HotdealEntity[];
+
+  @ManyToOne(() => InvisibleEntity, (invisible) => invisible.products)
+  @JoinColumn({ name: 'invisible_id' })
+  invisibleProduct: InvisibleEntity;
+
+  @OneToMany(() => NewArrival, (newArrival) => newArrival.product)
+  newArrivals: NewArrival[];
 }

@@ -20,8 +20,7 @@ interface CountSale {
 
 @Injectable()
 export class ShoppingOrderService {
-  private readonly slackUrl =
-    'https://hooks.slack.com/services/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';
+  private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -103,6 +102,7 @@ export class ShoppingOrderService {
     priceOption: string;
     paymentOptions: string;
     shippingOptions: string;
+    addressed: string | null; // ← ส่งมาเป็น string
   }): Promise<string[] | undefined> {
     let orderContext: {
       memberCode: string;
@@ -122,7 +122,7 @@ export class ShoppingOrderService {
       totalPrice: data.total_price,
       item: null,
     };
-    let submitLogContext: Array<{ [mem_code: string]: any }> = [];
+    const submitLogContext: Array<{ [mem_code: string]: any }> = [];
     try {
       submitLogContext.push({
         mem_code: data.mem_code,
@@ -166,6 +166,7 @@ export class ShoppingOrderService {
             member: { mem_code: data.mem_code },
             soh_payment_type: data.paymentOptions,
             soh_shipping_type: data.shippingOptions,
+            editAddress: data.addressed ?? undefined,
           });
 
           const NewHead = await manager.save(ShoppingHeadEntity, head);
@@ -211,6 +212,10 @@ export class ShoppingOrderService {
               pro_promotion_amount: item.product.pro_promotion_amount,
             });
 
+            const isFlashSale = item.flashsale_end
+              ? new Date(item.flashsale_end) >= new Date()
+              : false;
+
             const unitPrice =
               data.priceOption === 'A'
                 ? Number(item.product.pro_priceA)
@@ -221,11 +226,12 @@ export class ShoppingOrderService {
                     : 0;
 
             const ratio = unitRatioMap.get(item.spc_unit) ?? 1;
-            let price = isPromotionActive
-              ? Number(item.spc_amount) *
-                Number(item.product.pro_priceA) *
-                ratio
-              : Number(item.spc_amount) * unitPrice * ratio;
+            let price =
+              isPromotionActive || isFlashSale
+                ? Number(item.spc_amount) *
+                  Number(item.product.pro_priceA) *
+                  ratio
+                : Number(item.spc_amount) * unitPrice * ratio;
 
             const isFreebie =
               Array.isArray(checkFreebies) &&
@@ -479,6 +485,8 @@ export class ShoppingOrderService {
           'cart.mem_code = :memCode',
           { memCode },
         )
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
         .leftJoin('order.orderHeader', 'header')
         .where('header.mem_code = :memCode', { memCode })
         .andWhere(
@@ -500,11 +508,19 @@ export class ShoppingOrderService {
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'product.pro_promotion_month',
+          'product.pro_promotion_amount',
           'header.soh_datetime',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
           'cart.mem_code',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
         ])
         .getMany();
 
@@ -522,6 +538,7 @@ export class ShoppingOrderService {
     }
   }
 }
+
 function groupCart(
   cart: ShoppingCartEntity[],
   limit: number,

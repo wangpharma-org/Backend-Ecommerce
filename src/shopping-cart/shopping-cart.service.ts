@@ -23,6 +23,10 @@ export interface ShoppingProductCart {
   pro_promotion_amount: number;
   shopping_cart: ShoppingCart[];
   lots: LotItem[];
+  flashsale_limit?: number;
+  flashsale_time_end?: string;
+  flashsale_time_start?: string;
+  flashsale_date?: string;
 }
 
 export interface LotItem {
@@ -40,6 +44,12 @@ export interface ShoppingCart {
   pro_promotion_month: number;
   pro_promotion_amount: number;
   is_reward: boolean;
+  flashsale_end?: string;
+}
+
+export interface FlashSale {
+  promotion_id: number;
+  limit: number;
 }
 
 interface RawProductCart {
@@ -67,6 +77,11 @@ interface RawProductCart {
   spc_unit: string;
   spc_checked: number;
   is_reward: boolean | number;
+  flashsale_end?: string;
+  flashsale_limit?: number;
+  flashsale_time_end?: string;
+  flashsale_time_start?: string;
+  flashsale_date?: string;
 }
 
 // Define a DTO for the return type
@@ -98,54 +113,6 @@ export class ShoppingCartService {
     private readonly productsService: ProductsService,
   ) {}
 
-  async addProductCart(data: {
-    mem_code: string;
-    pro_code: string;
-    pro_unit: string;
-    amount: number;
-    priceCondition: string;
-    is_reward: boolean;
-  }): Promise<ShoppingProductCart[]> {
-    try {
-      const existing = await this.shoppingCartRepo.findOne({
-        where: {
-          mem_code: data.mem_code,
-          pro_code: data.pro_code,
-          spc_unit: data.pro_unit,
-        },
-      });
-
-      if (existing) {
-        const newAmount = Number(existing.spc_amount) + data.amount;
-        if (newAmount > 0) {
-          await this.shoppingCartRepo.update(
-            { spc_id: existing.spc_id },
-            { spc_amount: newAmount, spc_datetime: new Date() },
-          );
-        } else {
-          await this.shoppingCartRepo.delete({ spc_id: existing.spc_id });
-        }
-      } else {
-        await this.shoppingCartRepo.save({
-          pro_code: data.pro_code,
-          mem_code: data.mem_code,
-          spc_unit: data.pro_unit,
-          spc_amount: data.amount,
-          spc_price: 0,
-          is_reward: false,
-          spc_datetime: new Date(),
-        });
-      }
-
-      await this.checkPromotionReward(data.mem_code, data.priceCondition);
-
-      return await this.getProductCart(data.mem_code);
-    } catch (error) {
-      console.error('Error saving product cart:', error);
-      throw new Error('Error in Add product Cart');
-    }
-  }
-
   async addProductCartHotDeal(data: {
     mem_code: string;
     pro_code: string;
@@ -164,6 +131,60 @@ export class ShoppingCartService {
         is_reward: true, // สินค้าปกติ
         spc_datetime: new Date(),
       });
+      return await this.getProductCart(data.mem_code);
+    } catch (error) {
+      console.error('Error saving product cart:', error);
+      throw new Error('Error in Add product Cart');
+    }
+  }
+
+  async addProductCart(data: {
+    mem_code: string;
+    pro_code: string;
+    pro_unit: string;
+    amount: number;
+    priceCondition: string;
+    is_reward: boolean;
+    flashsale_end?: string;
+  }): Promise<ShoppingProductCart[]> {
+    try {
+      const existing = await this.shoppingCartRepo.findOne({
+        where: {
+          mem_code: data.mem_code,
+          pro_code: data.pro_code,
+          spc_unit: data.pro_unit,
+        },
+      });
+
+      if (existing) {
+        const newAmount = Number(existing.spc_amount) + data.amount;
+        if (newAmount > 0) {
+          await this.shoppingCartRepo.update(
+            { spc_id: existing.spc_id },
+            {
+              spc_amount: newAmount,
+              spc_datetime: new Date(),
+              flashsale_end: data.flashsale_end ?? undefined,
+            },
+          );
+        } else {
+          await this.shoppingCartRepo.delete({ spc_id: existing.spc_id });
+        }
+      } else {
+        await this.shoppingCartRepo.save({
+          pro_code: data.pro_code,
+          mem_code: data.mem_code,
+          spc_unit: data.pro_unit,
+          spc_amount: data.amount,
+          spc_price: 0,
+          is_reward: false,
+          spc_datetime: new Date(),
+          flashsale_end: data.flashsale_end ?? undefined,
+        });
+      }
+
+      await this.checkPromotionReward(data.mem_code, data.priceCondition);
+
       return await this.getProductCart(data.mem_code);
     } catch (error) {
       console.error('Error saving product cart:', error);
@@ -611,6 +632,8 @@ export class ShoppingCartService {
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')
         .leftJoinAndSelect('product.lot', 'lot')
+        .leftJoinAndSelect('product.flashsale', 'fs')
+        .leftJoinAndSelect('fs.flashsale', 'flashsale')
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
           'product.pro_code AS pro_code',
@@ -637,6 +660,12 @@ export class ShoppingCartService {
           'cart.spc_unit AS spc_unit',
           'cart.spc_checked AS spc_checked',
           'cart.is_reward AS is_reward',
+          'cart.flashsale_end AS flashsale_end',
+          'fs.promotion_id AS promotion_id',
+          'fs.limit AS flashsale_limit',
+          'flashsale.date AS flashsale_date',
+          'flashsale.time_start AS flashsale_time_start',
+          'flashsale.time_end AS flashsale_time_end',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -662,28 +691,43 @@ export class ShoppingCartService {
             pro_ratio3: row.pro_ratio3,
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
+            flashsale_limit: row.flashsale_limit,
+            flashsale_time_end: row.flashsale_time_end,
+            flashsale_time_start: row.flashsale_time_start,
+            flashsale_date: row.flashsale_date,
             shopping_cart: [],
             lots: [],
           };
         }
+
         if (row.lot_id) {
-          grouped[code].lots.push({
-            lot_id: row.lot_id,
-            lot: row.lot,
-            mfg: row.mfg,
-            exp: row.exp,
-          });
+          const exists = grouped[code].lots.some(
+            (l) => l.lot_id === row.lot_id,
+          );
+          if (!exists) {
+            grouped[code].lots.push({
+              lot_id: row.lot_id,
+              lot: row.lot,
+              mfg: row.mfg,
+              exp: row.exp,
+            });
+          }
         }
 
-        grouped[code].shopping_cart.push({
-          spc_id: row.spc_id,
-          spc_amount: row.spc_amount,
-          spc_checked: row.spc_checked,
-          spc_unit: row.spc_unit,
-          is_reward: !!row.is_reward,
-          pro_promotion_month: row.pro_promotion_month,
-          pro_promotion_amount: row.pro_promotion_amount,
-        });
+        if (
+          !grouped[code].shopping_cart.find((sc) => sc.spc_id === row.spc_id)
+        ) {
+          grouped[code].shopping_cart.push({
+            spc_id: row.spc_id,
+            spc_amount: row.spc_amount,
+            spc_checked: row.spc_checked,
+            spc_unit: row.spc_unit,
+            is_reward: !!row.is_reward,
+            flashsale_end: row.flashsale_end,
+            pro_promotion_month: row.pro_promotion_month,
+            pro_promotion_amount: row.pro_promotion_amount,
+          });
+        }
       }
 
       const totalSmallestUnit = await Promise.all(
