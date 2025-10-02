@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -33,6 +34,8 @@ import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
 import { LotService } from './lot/lot.service';
+import { UsersService } from './users/users.service';
+import { ChangePasswordService } from './change-password/change-password.service';
 
 interface JwtPayload {
   username: string;
@@ -69,6 +72,8 @@ export class AppController {
     private readonly backendService: BackendService,
     private readonly debtorService: DebtorService,
     private readonly lotService: LotService,
+    private readonly usersService: UsersService,
+    private readonly changePasswordService: ChangePasswordService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -966,5 +971,47 @@ export class AppController {
   ) {
     console.log(data);
     return this.lotService.addLots(data);
+  }
+  // ==== OTP for change password flow ==== //
+  // // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/password/check-email/:username')
+  // async checkEmail(
+  //   @Param('username') username: string,
+  // ): Promise<{ email: string | null }> {
+  //   const email = await this.usersService.checkEmail(username);
+  //   return { email };
+  // }
+
+  // @UseGuards(JwtAuthGuard)
+  // @Post('/ecom/password/send-otp')
+  // async sendEmailCode(
+  //   @Body('username') mem_username: string,
+  // ): Promise<{ email: string | null; emailSent: boolean }> {
+  //   console.log('mem_username', mem_username);
+  //   return this.changePasswordService.sendOtp({ mem_username });
+  // }
+  // ==== OTP for change password flow ==== //
+
+  @Put('/ecom/password/change-password')
+  async changePassword(
+    @Body()
+    body: {
+      mem_username: string;
+      new_password: string;
+      old_password: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    return this.changePasswordService.CheckOldPasswordAndUpdatePassword(body);
+  }
+
+  @Put('/ecom/password/reset-password')
+  async resetPassword(
+    @Body()
+    body: {
+      mem_username: string;
+      new_password: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    return this.changePasswordService.forgotPasswordUpdate(body);
   }
 }
