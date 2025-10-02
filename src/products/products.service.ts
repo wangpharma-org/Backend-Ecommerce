@@ -499,11 +499,11 @@ export class ProductsService {
     sort_by?: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
-      console.log('searchCategoryProducts Data : ', data);
       const now = new Date();
-      const monthNumber = new Date().getMonth() + 1;
+      const monthNumber = now.getMonth() + 1;
       const currentDate = now.toISOString().split('T')[0];
       const currentTime = now.toTimeString().split(' ')[0];
+
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -513,69 +513,81 @@ export class ProductsService {
           { memCode: data.mem_code },
         )
         .leftJoinAndSelect('product.flashsale', 'fsp')
-        .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .where('product.pro_priceA != 0')
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name LIKE :keyword', {
-              keyword: `%${data.keyword}%`,
-            })
-              .orWhere('product.pro_keysearch LIKE :keyword', {
+        .leftJoinAndSelect('fsp.flashsale', 'fs');
+
+      if (data.category === 8) {
+        qb.where('product.pro_free = :free', { free: true })
+          .andWhere('product.pro_point > :point', { point: 0 })
+          .andWhere('product.pro_stock > :stock', { stock: 0 });
+      } else {
+        qb.where('product.pro_priceA != 0')
+          .andWhere(
+            new Brackets((qb) => {
+              qb.where('product.pro_name LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })
-              .orWhere('product.pro_barcode1 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                .orWhere('product.pro_keysearch LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_barcode1 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_barcode2 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_barcode3 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_code LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                });
+            }),
+          )
+          .andWhere(
+            new Brackets((qb) => {
+              qb.where('product.pro_name NOT LIKE :prefix1', {
+                prefix1: 'ฟรี%',
               })
-              .orWhere('product.pro_barcode2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_code LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              });
-          }),
-        )
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
-              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
-              .andWhere('product.pro_name NOT LIKE :prefix3', {
-                prefix3: 'ส่งเสริม%',
-              })
-              .andWhere('product.invisible_id IS NULL')
-              .andWhere('product.pro_name NOT LIKE :prefix4', {
-                prefix4: 'รีเบท%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
-              .andWhere('product.pro_name NOT LIKE :prefix6', {
-                prefix6: '/%',
-              })
-              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
-              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
-              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
-              .andWhere('product.pro_name NOT LIKE :prefix7', {
-                prefix7: 'ค่า%',
-              });
-            if (data.category === 8) {
-              qb.andWhere('product.pro_free = :free', { free: true });
-            } else if (data.category === 7) {
-              qb.andWhere('product.pro_promotion_month = :month', {
-                month: monthNumber,
-              });
-            } else if (data.category === 9) {
-              qb.andWhere('fs.date = :date', { date: currentDate });
-              qb.andWhere(':nowTime BETWEEN fs.time_start AND fs.time_end', {
-                nowTime: currentTime,
-              });
-            } else {
-              qb.andWhere('product.pro_category = :category', {
-                category: data.category,
-              });
-            }
-          }),
-        );
+                .andWhere('product.pro_name NOT LIKE :prefix2', {
+                  prefix2: '@%',
+                })
+                .andWhere('product.pro_name NOT LIKE :prefix3', {
+                  prefix3: 'ส่งเสริม%',
+                })
+                .andWhere('product.invisible_id IS NULL')
+                .andWhere('product.pro_name NOT LIKE :prefix4', {
+                  prefix4: 'รีเบท%',
+                })
+                .andWhere('product.pro_name NOT LIKE :prefix5', {
+                  prefix5: '-%',
+                })
+                .andWhere('product.pro_name NOT LIKE :prefix6', {
+                  prefix6: '/%',
+                })
+                .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+                .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+                .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+                .andWhere('product.pro_name NOT LIKE :prefix7', {
+                  prefix7: 'ค่า%',
+                });
+
+              if (data.category === 7) {
+                qb.andWhere('product.pro_promotion_month = :month', {
+                  month: monthNumber,
+                });
+              } else if (data.category === 9) {
+                qb.andWhere('fs.date = :date', { date: currentDate });
+                qb.andWhere(':nowTime BETWEEN fs.time_start AND fs.time_end', {
+                  nowTime: currentTime,
+                });
+              } else {
+                qb.andWhere('product.pro_category = :category', {
+                  category: data.category,
+                });
+              }
+            }),
+          );
+      }
 
       if (data.sort_by && data.category === 8) {
         switch (data.sort_by) {
@@ -654,6 +666,7 @@ export class ProductsService {
           'fs.date',
         ])
         .getMany();
+
       return { products, totalCount };
     } catch (error) {
       console.error('Error searching products:', error);
