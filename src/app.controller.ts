@@ -769,10 +769,12 @@ export class AppController {
   async getAllHotdealsSimple(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('mem_code') mem_code?: string,
   ) {
     return this.hotdealService.getAllHotdealsWithProductDetail(
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
+      mem_code,
     );
   }
 

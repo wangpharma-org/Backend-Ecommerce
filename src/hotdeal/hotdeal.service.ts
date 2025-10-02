@@ -83,64 +83,110 @@ export class HotdealService {
     return this.hotdealRepo.find({ order: { id: 'DESC' } });
   }
 
-  async getAllHotdealsWithProductDetail(limit?: number, offset?: number) {
-    const hotdeals = await this.hotdealRepo.find({
-      order: { id: 'DESC' },
-      relations: ['product', 'product2'],
-      take: limit,
-      skip: offset,
-    });
-    const result = await Promise.all(
-      hotdeals.map(async (hotdeal) => {
-        const product = hotdeal.product
-          ? await this.productService.getProductOne(hotdeal.product.pro_code)
-          : null;
-        const product2 = hotdeal.product2
-          ? await this.productService.getProductOne(hotdeal.product2.pro_code)
-          : null;
-        type ProductType = {
-          pro_code: string;
-          pro_name: string;
-          pro_priceA: number;
-          pro_priceB: number;
-          pro_priceC: number;
-          pro_imgmain: string;
-          pro_ratio1: number;
-          pro_ratio2: number;
-          pro_ratio3: number;
-          pro_unit1: string;
-          pro_unit2: string;
-          pro_unit3: string;
-        };
+  async getAllHotdealsWithProductDetail(
+    limit?: number,
+    offset?: number,
+    mem_code?: string,
+  ) {
+    const query = this.hotdealRepo
+      .createQueryBuilder('hotdeal')
+      .leftJoinAndSelect('hotdeal.product', 'product')
+      .leftJoinAndSelect('hotdeal.product2', 'product2')
+      .orderBy('hotdeal.id', 'DESC');
 
-        const pickFields = (p: ProductType | null | undefined) =>
-          p
-            ? {
-              pro_code: p.pro_code,
-              pro_name: p.pro_name,
-              pro_priceA: p.pro_priceA,
-              pro_priceB: p.pro_priceB,
-              pro_priceC: p.pro_priceC,
-              pro_imgmain: p.pro_imgmain,
-              pro_ratio1: p.pro_ratio1,
-              pro_ratio2: p.pro_ratio2,
-              pro_ratio3: p.pro_ratio3,
-              pro_unit1: p.pro_unit1,
-              pro_unit2: p.pro_unit2,
-              pro_unit3: p.pro_unit3,
+    // ถ้ามี mem_code ให้ join กับ shopping_cart
+    if (mem_code) {
+      console.log('Debug - mem_code provided:', mem_code);
+      query
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :mem_code',
+          { mem_code },
+        )
+        .leftJoinAndSelect(
+          'product2.inCarts',
+          'cart2',
+          'cart2.mem_code = :mem_code',
+          { mem_code },
+        );
+    }
+
+    if (limit) {
+      query.take(limit);
+    }
+    if (offset) {
+      query.skip(offset);
+    }
+
+    const hotdeals = await query.getMany();
+
+    console.log('Debug - Hotdeals count:', hotdeals.length);
+    if (mem_code && hotdeals.length > 0) {
+      console.log('Debug - First hotdeal product cart:', hotdeals[0].product?.inCarts);
+      console.log('Debug - First hotdeal product2 cart:', hotdeals[0].product2?.inCarts);
+    }
+
+    // ปรับปรุงการ map โดยใช้ข้อมูลจาก query ที่ join มาแล้ว
+    const result = hotdeals.map((hotdeal) => {
+      type ProductType = {
+        pro_code: string;
+        pro_name: string;
+        pro_priceA: number;
+        pro_priceB: number;
+        pro_priceC: number;
+        pro_imgmain: string;
+        pro_ratio1: number;
+        pro_ratio2: number;
+        pro_ratio3: number;
+        pro_unit1: string;
+        pro_unit2: string;
+        pro_unit3: string;
+        pro_stock: number;
+        order_quantity: number;
+        pro_lowest_stock: number;
+        inCarts?: any[];
+      };
+
+      const pickProductFields = (product: ProductType | null | undefined) =>
+        product
+          ? {
+              pro_code: product.pro_code,
+              pro_name: product.pro_name,
+              pro_priceA: product.pro_priceA,
+              pro_priceB: product.pro_priceB,
+              pro_priceC: product.pro_priceC,
+              pro_imgmain: product.pro_imgmain,
+              pro_ratio1: product.pro_ratio1,
+              pro_ratio2: product.pro_ratio2,
+              pro_ratio3: product.pro_ratio3,
+              pro_unit1: product.pro_unit1,
+              pro_unit2: product.pro_unit2,
+              pro_unit3: product.pro_unit3,
+              pro_stock: product.pro_stock,
+              order_quantity: product.order_quantity,
+              pro_lowest_stock: product.pro_lowest_stock,
             }
-            : null;
-        return {
-          id: hotdeal.id,
-          pro1_amount: hotdeal.pro1_amount,
-          pro1_unit: hotdeal.pro1_unit,
-          pro2_amount: hotdeal.pro2_amount,
-          pro2_unit: hotdeal.pro2_unit,
-          product: pickFields(product),
-          product2: pickFields(product2),
-        };
-      }),
-    );
+          : null;
+
+      return {
+        id: hotdeal.id,
+        pro1_amount: hotdeal.pro1_amount,
+        pro1_unit: hotdeal.pro1_unit,
+        pro2_amount: hotdeal.pro2_amount,
+        pro2_unit: hotdeal.pro2_unit,
+        product: pickProductFields(hotdeal.product as ProductType),
+        product2: pickProductFields(hotdeal.product2 as ProductType),
+        // เพิ่มข้อมูล shopping_cart ถ้ามี
+        shopping_cart: mem_code
+          ? {
+              product_cart: (hotdeal.product as ProductType)?.inCarts || [],
+              product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
+            }
+          : "ไม่เจอข้อมูล",
+      };
+    });
+
     return result;
   }
 

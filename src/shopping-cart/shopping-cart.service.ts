@@ -123,9 +123,9 @@ export class ShoppingCartService {
     pro_unit: string;
     amount: number;
     priceCondition: string;
-    is_reward: boolean;
+    // is_reward: boolean;
     flashsale_end?: string;
-    hotdeal_free: boolean;
+    // hotdeal_free: boolean;
   }): Promise<ShoppingProductCart[]> {
     try {
       const existing = await this.shoppingCartRepo.findOne({
@@ -180,20 +180,20 @@ export class ShoppingCartService {
           hotdeal_free: false,
         });
       }
-      if (data.hotdeal_free === false) {
-        console.log('Check Promotion');
-        await this.checkPromotionReward(data.mem_code, data.priceCondition);
-      }
-      if (data.is_reward === false) {
-        console.log('Check Hotdeal');
-        await this.checkHotdealByProCode(
-          data.mem_code,
-          data.pro_code,
-          data.pro_unit,
-          data.amount,
-          data.priceCondition,
-        );
-      }
+      // if (data.hotdeal_free === false) {
+      console.log('Check Promotion');
+      await this.checkPromotionReward(data.mem_code, data.priceCondition);
+      // }
+      // if (data.is_reward === false) {
+      console.log('Check Hotdeal');
+      await this.checkHotdealByProCode(
+        data.mem_code,
+        data.pro_code,
+        data.pro_unit,
+        data.amount,
+        data.priceCondition,
+      );
+      // }
 
       return await this.getProductCart(data.mem_code);
     } catch (error) {
