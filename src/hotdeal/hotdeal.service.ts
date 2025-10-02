@@ -192,10 +192,7 @@ export class HotdealService {
 
   async checkHotdealMatch(
     pro_code: string,
-    shopping_cart: {
-      pro1_unit: string;
-      pro1_amount: string;
-    },
+    shopping_cart: Array<{ pro1_unit: string; pro1_amount: string }>
   ): Promise<
     { pro_code: string; match: boolean; countFreeBies: string; amountInHotdeal: number } | undefined
   > {
@@ -210,12 +207,15 @@ export class HotdealService {
         pro1_amount: found?.pro1_amount,
         pro1_unit: found?.pro1_unit
       });
-      
-      const fromFrontend = await this.convertToSmallestUnit(
-        pro_code,
-        shopping_cart.pro1_amount,
-        shopping_cart.pro1_unit,
-      );
+      let fromFrontend = 0;
+      for (let i = 0; i < shopping_cart.length; i++) {
+        const convertedFrontend = await this.convertToSmallestUnit(
+          pro_code,
+          shopping_cart[i].pro1_amount,
+          shopping_cart[i].pro1_unit,
+        );
+        fromFrontend += convertedFrontend ?? 0;
+      }
       console.log('Converted frontend amount:', fromFrontend);
       
       const fromDatabase = await this.convertToSmallestUnit(

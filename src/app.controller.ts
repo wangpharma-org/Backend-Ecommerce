@@ -791,18 +791,17 @@ export class AppController {
     try {
       const allResults = await Promise.all(
         (body.hotDeal || []).map(async (deal) => {
-          const results = await Promise.all(
-            (deal.shopping_cart || []).map((item) =>
-              this.hotdealService.checkHotdealMatch(deal.pro_code, item),
-            ),
+          const results = await this.hotdealService.checkHotdealMatch(
+            deal.pro_code,
+            deal.shopping_cart,
           );
           // filter เฉพาะตัวที่เจอ pro_code
-          return results.filter(Boolean);
+          return results;
         }),
       );
       // flatten array
       console.log('allResults:', allResults);
-      return allResults.flat();
+      return allResults.flat().filter(Boolean);
     } catch (error) {
       console.error('Error in checkHotdealMatch:', error);
       throw new Error('Error checking hotdeal match');
