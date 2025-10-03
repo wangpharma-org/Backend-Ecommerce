@@ -1284,30 +1284,18 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/add')
   async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
-    try {
-      return await this.fixFreeService.addProductFree(data);
-    } catch {
-      throw new Error('Error adding free product');
-    }
+    return await this.fixFreeService.addProductFree(data);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/product-free/delete')
   async deleteProductFree(@Body() data: { pro_code: string }) {
-    try {
-      return await this.fixFreeService.removeProductFree(data.pro_code);
-    } catch {
-      throw new Error('Error deleting free product');
-    }
+    return await this.fixFreeService.removeProductFree(data.pro_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/edit')
   async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
-    try {
-      return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
-    } catch {
-      throw new Error('Error editing free product');
-    }
+    return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
   }
 }
