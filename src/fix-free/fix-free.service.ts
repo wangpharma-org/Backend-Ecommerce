@@ -87,6 +87,7 @@ export class FixFreeService {
           pro_name: true,
           pro_point: true,
           pro_imgmain: true,
+          pro_stock: true,
         },
       });
     } catch {

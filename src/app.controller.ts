@@ -296,24 +296,7 @@ export class AppController {
       addressed: string;
     },
   ) {
-    console.log('data in controller:', data);
-    if (data.emp_code) {
-      const checkRepeat =
-        await this.shoppingOrderService.checkRepeatEmpCodeInTenMinute(
-          data.emp_code,
-        );
-      console.log('checkRepeat', checkRepeat);
-      if (checkRepeat) {
-        throw new HttpException(
-          { success: false, message: 'Invalid Emp Code' },
-          400,
-        );
-      } else {
-        return await this.shoppingOrderService.submitOrder(data, ip);
-      }
-    } else {
-      return await this.shoppingOrderService.submitOrder(data);
-    }
+    return await this.shoppingOrderService.submitOrder(data);
   }
 
   @UseGuards(JwtAuthGuard)

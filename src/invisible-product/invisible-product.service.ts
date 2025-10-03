@@ -114,12 +114,15 @@ export class InvisibleProductService {
       throw new Error('Error Something in handleGetInvisibleProducts');
     }
   }
-//   @Cron(CronExpression.EVERY_30_SECONDS)
+  //   @Cron(CronExpression.EVERY_30_SECONDS)
   @Cron('0 0 * * *')
   async deleteInvisibleTopicWithExpired() {
     try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       const expiredInvisibles = await this.invisibleRepo.find({
-        where: { date_end: LessThan(new Date().toISOString()) },
+        where: { date_end: LessThan(today.toISOString()) },
       });
 
       for (const invisible of expiredInvisibles) {
