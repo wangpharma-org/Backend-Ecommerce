@@ -237,6 +237,8 @@ export class HotdealService {
         console.log('- division result:', amountInCart / amountInHotdeal);
         console.log('- Math.floor result:', cal);
         console.log('- cal >= 1?', cal >= 1);
+        const hotdealFreebies = found?.pro2_amount ? Math.floor(cal * Number(found.pro2_amount)) : 0;
+        console.log('- hotdealFreebies:', hotdealFreebies);
         
         if (
           amountInHotdeal > 0 &&
@@ -247,7 +249,7 @@ export class HotdealService {
         return {
           pro_code,
           match,
-          countFreeBies: cal.toString(),
+          countFreeBies: hotdealFreebies.toString(),
           amountInHotdeal
         };
       }

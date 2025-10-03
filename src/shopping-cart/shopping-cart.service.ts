@@ -920,6 +920,16 @@ export class ShoppingCartService {
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
       const hotdeal = await this.hotdealService.find(pro_code);
+      const hotdealMatch = await this.hotdealService.checkHotdealMatch(
+        pro_code,
+        [
+          {
+            pro1_unit: pro_unit,
+            pro1_amount: amount.toString(),
+          },
+        ],
+      );
+      console.log('hotdealMatch', hotdealMatch);
       console.log('hotdeal', hotdeal);
       if (hotdeal && hotdeal.product2?.pro_code) {
         console.log('amount', amount);
@@ -945,7 +955,7 @@ export class ShoppingCartService {
           mem_code: mem_code ?? '',
           pro_code: hotdeal.product2.pro_code,
           pro_unit: hotdeal.pro2_unit ?? '',
-          amount: 0,
+          amount: Number(hotdealMatch?.amountInHotdeal),
           priceCondition: priceCondition,
           hotdeal_free: true,
         });
@@ -953,118 +963,6 @@ export class ShoppingCartService {
     } catch (error) {
       console.error('Error in checkHotdealByProCode:', error);
       return null;
-    }
-  }
-
-  async updateHotdeal(body: {
-    mem_code: string;
-    Item: {
-      pro_code: string;
-      spc_amount: number;
-    }[];
-  }): Promise<any> {
-    try {
-      const { mem_code, Item } = body;
-      console.log('Update Hotdeal:', body);
-
-      const results: Array<{
-        pro_code: string;
-        action: string;
-        message: string;
-      }> = [];
-
-      // เช็คและลบสินค้าแถมที่ไม่มี pro_code ต้นฉบับ
-      const freebieItems = await this.shoppingCartRepo.find({
-        where: {
-          mem_code: mem_code,
-          hotdeal_free: true,
-        },
-      });
-
-      const itemsToDelete: typeof freebieItems = [];
-
-      for (const freebie of freebieItems) {
-        // หา hotdeal ที่มี product2.pro_code ตรงกับ freebie.pro_code
-        let hasMatchingProCode = false;
-
-        for (const item of Item) {
-          const hotdeal = await this.hotdealService.find(item.pro_code);
-          if (hotdeal?.product2?.pro_code === freebie.pro_code) {
-            hasMatchingProCode = true;
-            break;
-          }
-        }
-
-        // ถ้าไม่มี pro_code ต้นฉบับใน Item list ให้ลบ freebie
-        if (!hasMatchingProCode) {
-          itemsToDelete.push(freebie);
-        }
-      }
-
-      // Loop ผ่าน Item ทุกตัว
-      for (const item of Item) {
-        const findHotdeal = await this.hotdealService.find(item.pro_code);
-        console.log('Processing item:', item);
-        console.log('Found hotdeal:', findHotdeal);
-
-        // เช็คว่า spc_amount เป็น 0 หรือไม่
-        if (item.spc_amount === 0) {
-          // ถ้าเป็น 0 ให้ลบข้อมูลออกจากตาราง
-          await this.shoppingCartRepo.delete({
-            mem_code: mem_code,
-            pro_code: findHotdeal?.product2.pro_code,
-            hotdeal_free: true,
-          });
-          console.log(
-            'Hotdeal deleted due to zero amount for pro_code:',
-            item.pro_code,
-          );
-          results.push({
-            pro_code: item.pro_code,
-            action: 'deleted',
-            message: 'Hotdeal deleted successfully',
-          });
-        } else {
-          // ถ้าไม่เป็น 0 ให้อัปเดตตามปกติ
-          await this.shoppingCartRepo.update(
-            {
-              mem_code: mem_code,
-              pro_code: findHotdeal?.product2.pro_code,
-              hotdeal_free: true,
-            },
-            {
-              spc_amount: item.spc_amount,
-            },
-          );
-          console.log(
-            'Hotdeal updated successfully for pro_code:',
-            item.pro_code,
-          );
-          console.log('Updated spc_amount to:', item.spc_amount);
-          results.push({
-            pro_code: item.pro_code,
-            action: 'updated',
-            message: 'Hotdeal updated successfully',
-          });
-        }
-      }
-
-      // ลบสินค้าแถมที่ไม่มี pro_code ต้นฉบับ
-      if (itemsToDelete.length > 0) {
-        await this.shoppingCartRepo.remove(itemsToDelete);
-        console.log(
-          'Removed orphaned freebie items:',
-          itemsToDelete.map((item) => item.pro_code),
-        );
-      }
-
-      return {
-        message: 'All hotdeal items processed successfully',
-        results: results,
-      };
-    } catch (error) {
-      console.error('Error updating hotdeal:', error);
-      throw new Error('Error in updateHotdeal');
     }
   }
 }

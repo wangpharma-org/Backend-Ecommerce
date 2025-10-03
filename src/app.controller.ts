@@ -1312,33 +1312,8 @@ export class AppController {
     return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
   }
 
-  // @UseGuards(JwtAuthGuard)
-  // @Post('/ecom/hotdeal/checkhotdeal')
-  // async checkProductHotDeal(
-  //   @Body('itemInCart')
-  //   itemInCart: {
-  //     pro_code: string;
-  //     spc_id: number;
-  //     spc_amount: number;
-  //     spc_unit: string;
-  //   }[],
-  // ) {
-  //   return this.hotdealService.checkProductHotDeal(itemInCart);
-  // }
   @Get('/ecom/hotdeal/find/:pro_code')
   find(@Param('pro_code') pro_code: string): Promise<any> {
     return this.hotdealService.find(pro_code);
-  }
-
-  @Put('/ecom/hotdeal/edit_freebie')
-  update(
-    @Body()
-    body: {
-      mem_code: string;
-      Item: { pro_code: string; spc_amount: number }[];
-    },
-  ): Promise<any> {
-    console.log(body);
-    return this.shoppingCartService.updateHotdeal(body);
   }
 }
