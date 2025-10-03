@@ -1108,7 +1108,6 @@ export class AppController {
     @Body()
     data: {
       invisible_name: string;
-      date_start: string;
       date_end: string;
       creditor_code: string;
     },
