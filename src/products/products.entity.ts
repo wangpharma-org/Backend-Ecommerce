@@ -149,6 +149,12 @@ export class ProductEntity {
   @Column({ nullable: true })
   pro_drugmain4: string;
 
+  @Column({ nullable: true, type: 'varchar' })
+  pro_nameTH: string;
+
+  @Column({ nullable: true, type: 'varchar' })
+  pro_nameMain: string;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',
