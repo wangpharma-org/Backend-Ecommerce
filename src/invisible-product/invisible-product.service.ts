@@ -19,7 +19,6 @@ export class InvisibleProductService {
 
   async addInvisibleTopic(data: {
     invisible_name: string;
-    date_start: string;
     date_end: string;
     creditor_code: string;
   }) {
@@ -36,7 +35,6 @@ export class InvisibleProductService {
 
       const invisible = this.invisibleRepo.create({
         invisible_name: data.invisible_name,
-        date_start: data.date_start,
         date_end: data.date_end,
         creditor,
       });
