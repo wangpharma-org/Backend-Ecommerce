@@ -120,6 +120,7 @@ export class ProductsService {
           'product.pro_unit2',
           'product.pro_unit3',
           'product.pro_imgmain',
+          'product.pro_stock',
         ])
         .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
         .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
