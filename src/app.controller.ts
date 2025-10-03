@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
+  Ip,
   Param,
   Post,
   Put,
@@ -272,8 +274,10 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/submit-order')
   async submitOrder(
+    @Ip() ip: string,
     @Body()
     data: {
+      emp_code?: string;
       mem_code: string;
       total_price: number;
       listFree:
@@ -289,11 +293,27 @@ export class AppController {
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
-      addressed: string; // แก้ไขตรงนี้
+      addressed: string;
     },
   ) {
     console.log('data in controller:', data);
-    return await this.shoppingOrderService.submitOrder(data);
+    if (data.emp_code) {
+      const checkRepeat =
+        await this.shoppingOrderService.checkRepeatEmpCodeInTenMinute(
+          data.emp_code,
+        );
+      console.log('checkRepeat', checkRepeat);
+      if (checkRepeat) {
+        throw new HttpException(
+          { success: false, message: 'Invalid Emp Code' },
+          400,
+        );
+      } else {
+        return await this.shoppingOrderService.submitOrder(data, ip);
+      }
+    } else {
+      return await this.shoppingOrderService.submitOrder(data);
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1296,5 +1316,10 @@ export class AppController {
   @Post('/ecom/product-free/edit')
   async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
     return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
+  }
+
+  @Get('/ip')
+  getIP(@Ip() ip: string) {
+    return { ip };
   }
 }

@@ -541,6 +541,24 @@ export class ProductsService {
                 })
                 .orWhere('product.pro_code LIKE :keyword', {
                   keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_nameMain LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain2 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain3 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain4 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_nameTH LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
                 });
             }),
           )
@@ -701,6 +719,9 @@ export class ProductsService {
               .orWhere('product.pro_keysearch LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })
+              .orWhere('product.pro_nameEN LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
               .orWhere('product.pro_barcode1 LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })
@@ -711,6 +732,24 @@ export class ProductsService {
                 keyword: `%${data.keyword}%`,
               })
               .orWhere('product.pro_code LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_nameMain LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain2 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain3 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain4 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_nameTH LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               });
           }),
