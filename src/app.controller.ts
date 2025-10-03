@@ -1272,25 +1272,41 @@ export class AppController {
   async GetModalContent() {
     return this.modalContentService.GetModalContent();
   }
-  // ==== OTP for change password flow ==== //
-  // // @UseGuards(JwtAuthGuard)
-  // @Get('/ecom/password/check-email/:username')
-  // async checkEmail(
-  //   @Param('username') username: string,
-  // ): Promise<{ email: string | null }> {
-  //   const email = await this.usersService.checkEmail(username);
-  //   return { email };
-  // }
 
   // @UseGuards(JwtAuthGuard)
-  // @Post('/ecom/password/send-otp')
-  // async sendEmailCode(
-  //   @Body('username') mem_username: string,
-  // ): Promise<{ email: string | null; emailSent: boolean }> {
-  //   console.log('mem_username', mem_username);
-  //   return this.changePasswordService.sendOtp({ mem_username });
-  // }
-  // ==== OTP for change password flow ==== //
+  @Get('/ecom/password/check-email/:mem_code')
+  async checkEmail(@Param('mem_code') mem_code: string): Promise<{
+    RefKey?: string;
+    email?: boolean;
+    success: boolean;
+    message: string;
+  }> {
+    const result = await this.changePasswordService.CheckMember(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/request-otp')
+  async requestOtp(@Body('mem_code') mem_code: string): Promise<{
+    valid: boolean;
+    message: string;
+    remainingTime?: number;
+  }> {
+    const result = await this.changePasswordService.CheckTimeRequest(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/validate-otp')
+  async validateOtp(
+    @Body()
+    data: {
+      mem_code: string;
+      otp: string;
+      timeNow: string;
+    },
+  ): Promise<{ valid: boolean; message: string; block?: boolean }> {
+    const result = await this.changePasswordService.validateOtp(data);
+    return result;
+  }
 
   @Put('/ecom/password/change-password')
   async changePassword(
