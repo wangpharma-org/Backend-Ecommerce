@@ -701,6 +701,9 @@ export class ProductsService {
               .orWhere('product.pro_keysearch LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })
+              .orWhere('product.pro_nameEN LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
               .orWhere('product.pro_barcode1 LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })

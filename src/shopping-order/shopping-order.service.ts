@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
@@ -12,6 +12,7 @@ import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
 import { submitOrder } from 'src/logger/submitOrder.logger';
 import { Cron } from '@nestjs/schedule';
+import { SaleLogEntity } from './salelog-order.entity';
 
 interface CountSale {
   pro_code: string;
@@ -33,6 +34,8 @@ export class ShoppingOrderService {
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
     private readonly dataSource: DataSource,
+    @InjectRepository(SaleLogEntity)
+    private readonly saleLogEntity: Repository<SaleLogEntity>,
   ) {}
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
@@ -86,24 +89,48 @@ export class ShoppingOrderService {
     }
   }
 
-  async submitOrder(data: {
-    mem_code: string;
-    total_price: number;
-    listFree:
-      | [
-          {
-            pro_code: string;
-            amount: number;
-            pro_unit1: string;
-            pro_point: number;
-          },
-        ]
-      | null;
-    priceOption: string;
-    paymentOptions: string;
-    shippingOptions: string;
-    addressed: string | null; // ← ส่งมาเป็น string
-  }): Promise<string[] | undefined> {
+  async checkRepeatEmpCodeInTenMinute(emp_code: string): Promise<boolean> {
+    try {
+      const latestLog = await this.saleLogEntity.findOne({
+        where: { emp_code },
+        order: { log_date: 'DESC' },
+      });
+
+      if (!latestLog) {
+        return false;
+      }
+
+      const diffMs = Date.now() - latestLog.log_date.getTime();
+      const diffMinutes = diffMs / (1000 * 60);
+
+      return diffMinutes < 10;
+    } catch {
+      throw new BadRequestException('Something Error Please try again');
+    }
+  }
+
+  async submitOrder(
+    data: {
+      emp_code?: string;
+      mem_code: string;
+      total_price: number;
+      listFree:
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
+      priceOption: string;
+      paymentOptions: string;
+      shippingOptions: string;
+      addressed: string | null;
+    },
+    ip?: string,
+  ): Promise<string[] | undefined> {
     let orderContext: {
       memberCode: string;
       priceOption: string;
@@ -388,6 +415,7 @@ export class ShoppingOrderService {
               soh_coin_after_use: pointAfterUse,
               soh_coin_recieve: sumprice * 0.01,
               soh_coin_use: sumprice * 0.01 - pointAfterUse,
+              emp_code: data.emp_code?.trim() ?? null,
             },
           );
         }
@@ -441,6 +469,17 @@ export class ShoppingOrderService {
         await this.shoppingCartService.clearCheckoutCart(id);
       }
       submitOrder.info('data ', { submitLogContext });
+      if (data.emp_code) {
+        const raw = this.saleLogEntity.create({
+          sh_running: runningNumbers.join(', '),
+          spo_total_decimal: data.total_price,
+          emp_code: data.emp_code?.trim(),
+          ip_address: ip ?? '',
+          mem_code: data.mem_code,
+          log_date: new Date(),
+        });
+        await this.saleLogEntity.save(raw);
+      }
       return runningNumbers;
     } catch (error) {
       submitOrder.error('Error submitting order', {
