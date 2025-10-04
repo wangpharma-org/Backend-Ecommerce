@@ -337,7 +337,7 @@ export class AppController {
       pro_code: string;
       pro_unit: string;
       amount: number;
-      pro_freebie: number;
+      // pro_freebie: number;
       flashsale_end: string;
     },
   ) {
@@ -348,14 +348,12 @@ export class AppController {
       pro_unit: string;
       amount: number;
       priceCondition: string;
-      is_reward: boolean;
+      // is_reward: boolean;
       flashsale_end: string;
-      hotdeal_free: boolean;
+      // hotdeal_free: boolean;
     } = {
       ...data,
       priceCondition,
-      is_reward: data.pro_freebie > 0,
-      hotdeal_free: data.pro_freebie > 0,
     };
     console.log(payload);
     return await this.shoppingCartService.addProductCart(payload);

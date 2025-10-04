@@ -123,9 +123,7 @@ export class ShoppingCartService {
     pro_unit: string;
     amount: number;
     priceCondition: string;
-    // is_reward: boolean;
     flashsale_end?: string;
-    // hotdeal_free: boolean;
   }): Promise<ShoppingProductCart[]> {
     try {
       const existing = await this.shoppingCartRepo.findOne({
@@ -133,6 +131,7 @@ export class ShoppingCartService {
           mem_code: data.mem_code,
           pro_code: data.pro_code,
           spc_unit: data.pro_unit,
+          spc_comments: '',
         },
       });
 
@@ -177,23 +176,21 @@ export class ShoppingCartService {
           is_reward: false,
           spc_datetime: new Date(),
           flashsale_end: data.flashsale_end ?? undefined,
+          spc_comments: '',
           hotdeal_free: false,
         });
       }
-      // if (data.hotdeal_free === false) {
+
       console.log('Check Promotion');
       await this.checkPromotionReward(data.mem_code, data.priceCondition);
-      // }
-      // if (data.is_reward === false) {
+
       console.log('Check Hotdeal');
       await this.checkHotdealByProCode(
         data.mem_code,
         data.pro_code,
         data.pro_unit,
         data.amount,
-        data.priceCondition,
       );
-      // }
 
       return await this.getProductCart(data.mem_code);
     } catch (error) {
@@ -207,8 +204,8 @@ export class ShoppingCartService {
     pro_code: string;
     pro_unit: string;
     amount: number;
-    priceCondition: string;
     hotdeal_free: boolean;
+    spc_comments: string;
   }): Promise<ShoppingProductCart[]> {
     try {
       await this.shoppingCartRepo.save({
@@ -218,6 +215,7 @@ export class ShoppingCartService {
         spc_amount: data.amount,
         spc_price: 0, // ถ้าต้องมีราคา default
         hotdeal_free: true,
+        spc_comments: data.spc_comments,
         spc_datetime: new Date(),
       });
       return await this.getProductCart(data.mem_code);
@@ -916,20 +914,30 @@ export class ShoppingCartService {
     pro_code: string,
     pro_unit: string,
     amount: number,
-    priceCondition: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
+      const existingCart = await this.shoppingCartRepo.findOne({
+        where: {
+          mem_code: mem_code,
+          pro_code: pro_code,
+          spc_unit: pro_unit,
+        },
+      });
+
       const hotdeal = await this.hotdealService.find(pro_code);
       const hotdealMatch = await this.hotdealService.checkHotdealMatch(
         pro_code,
         [
           {
             pro1_unit: pro_unit,
-            pro1_amount: amount.toString(),
+            pro1_amount: String(
+              existingCart ? Number(existingCart.spc_amount) : 0,
+            ),
           },
         ],
       );
-      console.log('hotdealMatch', hotdealMatch);
+      console.log('amount.toString(),', amount.toString());
+      console.log('hotdealMatchInServiceCart', hotdealMatch);
       console.log('hotdeal', hotdeal);
       if (hotdeal && hotdeal.product2?.pro_code) {
         console.log('amount', amount);
@@ -940,13 +948,31 @@ export class ShoppingCartService {
           where: {
             mem_code: mem_code,
             pro_code: hotdeal.product2.pro_code,
+            spc_comments: `hotdeal_${hotdeal.product.pro_code}`,
             hotdeal_free: true,
           },
         });
 
         // ถ้ามีแล้วให้ข้าม (return แค่ cart ปัจจุบัน)
         if (existingFreebie) {
-          console.log('Hotdeal freebie already exists, skipping add');
+          console.log(
+            'Hotdeal freebie already exists for pro_code:',
+            hotdeal.product2.pro_code,
+          );
+          await this.shoppingCartRepo.update(
+            {
+              mem_code: existingFreebie.mem_code,
+              pro_code: hotdeal.product2.pro_code,
+              spc_comments: `hotdeal_${hotdeal.product.pro_code}`,
+              hotdeal_free: true,
+            },
+            { spc_amount: Number(hotdealMatch?.countFreeBies) },
+          );
+          console.log(
+            'Updated hotdeal freebie amount for pro_code:',
+            hotdeal.product2.pro_code,
+            hotdealMatch?.countFreeBies,
+          );
           return await this.getProductCart(mem_code);
         }
 
@@ -955,8 +981,8 @@ export class ShoppingCartService {
           mem_code: mem_code ?? '',
           pro_code: hotdeal.product2.pro_code,
           pro_unit: hotdeal.pro2_unit ?? '',
-          amount: Number(hotdealMatch?.amountInHotdeal),
-          priceCondition: priceCondition,
+          amount: Number(hotdealMatch?.countFreeBies),
+          spc_comments: `hotdeal_${hotdeal.product.pro_code}`,
           hotdeal_free: true,
         });
       }

@@ -151,22 +151,22 @@ export class HotdealService {
       const pickProductFields = (product: ProductType | null | undefined) =>
         product
           ? {
-              pro_code: product.pro_code,
-              pro_name: product.pro_name,
-              pro_priceA: product.pro_priceA,
-              pro_priceB: product.pro_priceB,
-              pro_priceC: product.pro_priceC,
-              pro_imgmain: product.pro_imgmain,
-              pro_ratio1: product.pro_ratio1,
-              pro_ratio2: product.pro_ratio2,
-              pro_ratio3: product.pro_ratio3,
-              pro_unit1: product.pro_unit1,
-              pro_unit2: product.pro_unit2,
-              pro_unit3: product.pro_unit3,
-              pro_stock: product.pro_stock,
-              order_quantity: product.order_quantity,
-              pro_lowest_stock: product.pro_lowest_stock,
-            }
+            pro_code: product.pro_code,
+            pro_name: product.pro_name,
+            pro_priceA: product.pro_priceA,
+            pro_priceB: product.pro_priceB,
+            pro_priceC: product.pro_priceC,
+            pro_imgmain: product.pro_imgmain,
+            pro_ratio1: product.pro_ratio1,
+            pro_ratio2: product.pro_ratio2,
+            pro_ratio3: product.pro_ratio3,
+            pro_unit1: product.pro_unit1,
+            pro_unit2: product.pro_unit2,
+            pro_unit3: product.pro_unit3,
+            pro_stock: product.pro_stock,
+            order_quantity: product.order_quantity,
+            pro_lowest_stock: product.pro_lowest_stock,
+          }
           : null;
 
       return {
@@ -180,9 +180,9 @@ export class HotdealService {
         // เพิ่มข้อมูล shopping_cart ถ้ามี
         shopping_cart: mem_code
           ? {
-              product_cart: (hotdeal.product as ProductType)?.inCarts || [],
-              product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
-            }
+            product_cart: (hotdeal.product as ProductType)?.inCarts || [],
+            product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
+          }
           : "ไม่เจอข้อมูล",
       };
     });
@@ -217,20 +217,20 @@ export class HotdealService {
         fromFrontend += convertedFrontend ?? 0;
       }
       console.log('Converted frontend amount:', fromFrontend);
-      
+
       const fromDatabase = await this.convertToSmallestUnit(
         pro_code,
         found?.pro1_amount ?? '',
         found?.pro1_unit ?? '',
       );
       console.log('Converted database amount:', fromDatabase);
-      
+
       let match = false;
       if (found) {
         const amountInCart = fromFrontend ?? 0;
         const amountInHotdeal = fromDatabase ?? 0;
         const cal = Math.floor(amountInCart / amountInHotdeal);
-        
+
         console.log('Final calculation:');
         console.log('- amountInCart:', amountInCart);
         console.log('- amountInHotdeal:', amountInHotdeal);
@@ -239,7 +239,7 @@ export class HotdealService {
         console.log('- cal >= 1?', cal >= 1);
         const hotdealFreebies = found?.pro2_amount ? Math.floor(cal * Number(found.pro2_amount)) : 0;
         console.log('- hotdealFreebies:', hotdealFreebies);
-        
+
         if (
           amountInHotdeal > 0 &&
           cal >= 1
@@ -310,46 +310,6 @@ export class HotdealService {
     }
     return Number(spc_amount) * Number(found.ratio);
   }
-
-  // async saveCartProduct(
-  //   body: {
-  //     mem_code: string;
-  //     pro2_code: string;
-  //     pro2_unit: string;
-  //     pro2_amount: string;
-  //     priceCondition: string;
-  //     hotdeal_free: boolean;
-  //   }[],
-  // ) {
-  //   console.log('Saving cart product:', body);
-  //   try {
-  //     return await Promise.all(
-  //       body.map(async (item) => {
-  //         try {
-  //           return await this.cartService.addProductCartHotDeal({
-  //             mem_code: item.mem_code,
-  //             pro_code: item.pro2_code,
-  //             pro_unit: item.pro2_unit,
-  //             amount: Number(item.pro2_amount),
-  //             priceCondition: item.priceCondition,
-  //             hotdeal_free: true,
-  //           });
-  //         } catch (err: unknown) {
-  //           console.error('Error adding product to cart (HotDeal):', err);
-  //           let errorMessage = 'Unknown error';
-  //           if (err && typeof err === 'object' && 'message' in err) {
-  //             errorMessage =
-  //               (err as { message?: string }).message ?? 'Unknown error';
-  //           }
-  //           return { error: errorMessage, item };
-  //         }
-  //       }),
-  //     );
-  //   } catch (error) {
-  //     console.error('Error saving cart product:', error);
-  //     throw new Error('Error saving cart product');
-  //   }
-  // }
 
   async getHotdealFromCode(pro_code: string): Promise<HotdealEntity | null> {
     return this.hotdealRepo.findOne({
