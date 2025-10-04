@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
+  Ip,
   Param,
   Post,
   Put,
@@ -39,6 +41,7 @@ import { EditAddress } from './edit-address/edit-address.entity';
 import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
+import { FixFreeService } from './fix-free/fix-free.service';
 
 interface JwtPayload {
   username: string;
@@ -79,6 +82,7 @@ export class AppController {
     private readonly editAddressService: EditAddressService,
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
+    private readonly fixFreeService: FixFreeService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -270,8 +274,10 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/submit-order')
   async submitOrder(
+    @Ip() ip: string,
     @Body()
     data: {
+      emp_code?: string;
       mem_code: string;
       total_price: number;
       listFree:
@@ -287,10 +293,9 @@ export class AppController {
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
-      addressed: string; // แก้ไขตรงนี้
+      addressed: string;
     },
   ) {
-    console.log('data in controller:', data);
     return await this.shoppingOrderService.submitOrder(data);
   }
 
@@ -1147,7 +1152,6 @@ export class AppController {
     @Body()
     data: {
       invisible_name: string;
-      date_start: string;
       date_end: string;
       creditor_code: string;
     },
@@ -1264,6 +1268,39 @@ export class AppController {
   @Get('/ecom/admin/modal-content/get')
   async GetModalContent() {
     return this.modalContentService.GetModalContent();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/product-free/all')
+  async getAllProductFree() {
+    try {
+      return await this.fixFreeService.getAllProductFree();
+    } catch {
+      throw new Error('Error getting all free products');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/add')
+  async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
+    return await this.fixFreeService.addProductFree(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/product-free/delete')
+  async deleteProductFree(@Body() data: { pro_code: string }) {
+    return await this.fixFreeService.removeProductFree(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/edit')
+  async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
+    return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
+  }
+
+  @Get('/ip')
+  getIP(@Ip() ip: string) {
+    return { ip };
   }
 
   @Post('/ecom/new-arrivals')

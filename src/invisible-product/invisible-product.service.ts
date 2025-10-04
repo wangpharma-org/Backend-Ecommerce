@@ -19,7 +19,6 @@ export class InvisibleProductService {
 
   async addInvisibleTopic(data: {
     invisible_name: string;
-    date_start: string;
     date_end: string;
     creditor_code: string;
   }) {
@@ -36,7 +35,6 @@ export class InvisibleProductService {
 
       const invisible = this.invisibleRepo.create({
         invisible_name: data.invisible_name,
-        date_start: data.date_start,
         date_end: data.date_end,
         creditor,
       });
@@ -116,12 +114,15 @@ export class InvisibleProductService {
       throw new Error('Error Something in handleGetInvisibleProducts');
     }
   }
-//   @Cron(CronExpression.EVERY_30_SECONDS)
+  //   @Cron(CronExpression.EVERY_30_SECONDS)
   @Cron('0 0 * * *')
   async deleteInvisibleTopicWithExpired() {
     try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       const expiredInvisibles = await this.invisibleRepo.find({
-        where: { date_end: LessThan(new Date().toISOString()) },
+        where: { date_end: LessThan(today.toISOString()) },
       });
 
       for (const invisible of expiredInvisibles) {

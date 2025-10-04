@@ -60,6 +60,9 @@ export class ShoppingHeadEntity {
   @Column({ default: 0, nullable: true })
   soh_free: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  emp_code: string | null;
+
   @Column({
     type: 'decimal',
     precision: 16,
