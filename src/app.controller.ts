@@ -812,58 +812,6 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('/ecom/hotdeal/get-hotdeals-by-procodes')
-  async getHotdealsByProCodes(@Body() body: { proCodes: string[] }) {
-    return this.hotdealService.getHotdealsByProCodes(body.proCodes);
-  }
-
-  // @UseGuards(JwtAuthGuard)
-  // @Post('/ecom/hotdeal/save-freebies')
-  // async saveFreebies(
-  //   @Body()
-  //   body: {
-  //     hotDeal: {
-  //       mem_code: string;
-  //       pro2_code: string;
-  //       pro2_unit: string;
-  //       pro2_amount: string;
-  //       priceCondition: string;
-  //       hotdeal_free: boolean;
-  //     }[];
-  //   },
-  // ) {
-  //   console.log('body:', body);
-  //   const cartProducts = body.hotDeal.map(
-  //     (item: {
-  //       mem_code: string;
-  //       pro2_code: string;
-  //       pro2_unit: string;
-  //       pro2_amount: string;
-  //       priceCondition: string;
-  //       hotdeal_free: boolean;
-  //     }) => ({
-  //       mem_code: item.mem_code,
-  //       pro2_code: item.pro2_code,
-  //       pro2_unit: item.pro2_unit,
-  //       pro2_amount: item.pro2_amount,
-  //       priceCondition: item.priceCondition,
-  //       hotdeal_free: true,
-  //     }),
-  //   );
-  //   return this.hotdealService.saveCartProduct(cartProducts);
-  // }
-
-  @Delete('/ecom/hotdeal/delete-clear-freebies')
-  async deleteAllHotdeals(
-    @Body() body: { mem_code: string; pro2_code: string },
-  ) {
-    return this.shoppingCartService.clearFreebieCart(
-      body.mem_code,
-      body.pro2_code,
-    );
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/code/use')
   async useCodeForCheckReward(
     @Req() req: Request & { user: JwtPayload },

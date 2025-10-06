@@ -48,7 +48,7 @@ import { FixFreeModule } from './fix-free/fix-free.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: Boolean(configService.get<string>('SYNC') ?? false),
+        synchronize: Boolean(configService.get<string>('SYNCHRONIZE') ?? true),
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),

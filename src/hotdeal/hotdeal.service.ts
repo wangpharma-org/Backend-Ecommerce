@@ -79,10 +79,6 @@ export class HotdealService {
     throw new Error('Hotdeal not found');
   }
 
-  async getAllHotdeals(): Promise<HotdealEntity[]> {
-    return this.hotdealRepo.find({ order: { id: 'DESC' } });
-  }
-
   async getAllHotdealsWithProductDetail(
     limit?: number,
     offset?: number,
@@ -194,12 +190,12 @@ export class HotdealService {
     pro_code: string,
     shopping_cart: Array<{ pro1_unit: string; pro1_amount: string }>
   ): Promise<
-    { pro_code: string; match: boolean; countFreeBies: string; amountInHotdeal: number } | undefined
+    { pro_code: string; match: boolean; countFreeBies: string; product2: { pro_code: string , pro_name: string }; hotdeal: { pro1_amount: string; pro1_unit: string; pro2_amount: string; pro2_unit: string } } | undefined
   > {
     try {
       const found = await this.hotdealRepo.findOne({
         where: { product: { pro_code } },
-        relations: ['product'],
+        relations: ['product', 'product2'],
       });
       console.log('Found hotdeal:', found?.product.pro_code);
       console.log('Raw shopping_cart input:', shopping_cart);
@@ -228,20 +224,19 @@ export class HotdealService {
       let match = false;
       if (found) {
         const amountInCart = fromFrontend ?? 0;
-        const amountInHotdeal = fromDatabase ?? 0;
-        const cal = Math.floor(amountInCart / amountInHotdeal);
+        const cal = Math.floor(amountInCart / (fromDatabase ?? 0));
 
         console.log('Final calculation:');
         console.log('- amountInCart:', amountInCart);
-        console.log('- amountInHotdeal:', amountInHotdeal);
-        console.log('- division result:', amountInCart / amountInHotdeal);
-        console.log('- Math.floor result:', cal);
-        console.log('- cal >= 1?', cal >= 1);
+        // console.log('- amountInHotdeal:', amountInHotdeal);
+        // console.log('- division result:', amountInCart / amountInHotdeal);
+        // console.log('- Math.floor result:', cal);
+        // console.log('- cal >= 1?', cal >= 1);
         const hotdealFreebies = found?.pro2_amount ? Math.floor(cal * Number(found.pro2_amount)) : 0;
         console.log('- hotdealFreebies:', hotdealFreebies);
 
         if (
-          amountInHotdeal > 0 &&
+          (fromDatabase ?? 0) > 0 &&
           cal >= 1
         ) {
           match = true;
@@ -250,7 +245,13 @@ export class HotdealService {
           pro_code,
           match,
           countFreeBies: hotdealFreebies.toString(),
-          amountInHotdeal
+          product2: { pro_code: found.product2?.pro_code || '', pro_name: found.product2?.pro_name || '' },
+          hotdeal: {
+            pro1_amount: found.pro1_amount,
+            pro1_unit: found.pro1_unit,
+            pro2_amount: found.pro2_amount,
+            pro2_unit: found.pro2_unit,
+          },
         };
       }
       return undefined;
@@ -416,5 +417,22 @@ export class HotdealService {
     }
   }
 
+async checkHotdealProduct({pro_code}: {pro_code: string}): Promise<{pro_code: string; pro2_code: string} | null> {
+  const found = await this.hotdealRepo.findOne({
+    where: { product2: { pro_code } },
+    relations: ['product', 'product2'],
+  });
+  
+  console.log('Checking hotdeal for product code:', pro_code);
+  console.log('checkHotdealProduct found:', found);
+  
+  if (found && found.product) {
+    return { 
+      pro_code: found.product.pro_code || '',
+      pro2_code: found.product2?.pro_code || ''
+    };
+  }
+  
+  return null;
 }
-
+}

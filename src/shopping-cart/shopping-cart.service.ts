@@ -858,6 +858,8 @@ export class ShoppingCartService {
         },
       );
 
+      this.clearFreebieCart(mem_code);
+
       return result;
     } catch (error) {
       console.error('Error get product cart:', error);
@@ -865,20 +867,28 @@ export class ShoppingCartService {
     }
   }
 
-  async clearFreebieCart(mem_code: string, pro2_code: string): Promise<void> {
+  async clearFreebieCart(
+    mem_code: string,
+  ): Promise<{ pro_code: string }[] | string> {
     try {
       const products = await this.shoppingCartRepo.find({
-        where: {
-          mem_code: mem_code,
-          pro_code: pro2_code,
-          hotdeal_free: true,
-        },
+        where: { mem_code, hotdeal_free: true },
       });
+
+      const productsToRemove: { pro_code: string }[] = [];
+
       for (const item of products) {
-        await this.shoppingCartRepo.delete({ spc_id: item.spc_id });
+        const hotdeal = await this.hotdealService.checkHotdealProduct({
+          pro_code: item.pro_code,
+        });
+
+        if (!hotdeal || hotdeal.pro2_code !== item.pro_code) {
+          await this.shoppingCartRepo.delete({ spc_id: item.spc_id });
+          productsToRemove.push({ pro_code: item.pro_code });
+        }
       }
-      console.log('Cleared freebie cart items for', mem_code, pro2_code);
-      // console.log('Deleted', products.length, 'freebie cart items for', mem_code, pro2_code);
+
+      return productsToRemove.length > 0 ? productsToRemove : 'success';
     } catch (error) {
       console.error('Error clearing freebie cart items:', error);
       throw new Error('Error in clearFreebieCart');
