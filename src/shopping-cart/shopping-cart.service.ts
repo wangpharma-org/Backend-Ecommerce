@@ -135,9 +135,12 @@ export class ShoppingCartService {
         },
       });
 
+      console.log('Existing cart item:', data.flashsale_end);
+
       if (existing) {
         const newAmount = Number(existing.spc_amount) + data.amount;
         if (newAmount > 0) {
+          console.log('if', data.flashsale_end);
           await this.shoppingCartRepo.update(
             { spc_id: existing.spc_id },
             {
@@ -715,6 +718,14 @@ export class ShoppingCartService {
 
   async getProductCart(mem_code: string): Promise<ShoppingProductCart[]> {
     try {
+      // ลบสินค้าที่มีจำนวน 0 หรือน้อยกว่า
+      await this.shoppingCartRepo
+        .createQueryBuilder()
+        .delete()
+        .from(ShoppingCartEntity)
+        .where('mem_code = :mem_code', { mem_code })
+        .andWhere('spc_amount <= 0')
+        .execute();
       const raw: RawProductCart[] = await this.shoppingCartRepo
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')
@@ -858,7 +869,7 @@ export class ShoppingCartService {
         },
       );
 
-      this.clearFreebieCart(mem_code);
+      await this.clearFreebieCart(mem_code);
 
       return result;
     } catch (error) {
@@ -875,20 +886,77 @@ export class ShoppingCartService {
         where: { mem_code, hotdeal_free: true },
       });
 
-      const productsToRemove: { pro_code: string }[] = [];
+      const productsToRemove: { pro2_code: string; pro1_code: string }[] = [];
+      console.log('productsToRemove', productsToRemove);
+      for (const product of products) {
+        console.log('product.pro_code', product.pro_code);
+        console.log('product.spc_comments', product.spc_comments);
 
-      for (const item of products) {
-        const hotdeal = await this.hotdealService.checkHotdealProduct({
-          pro_code: item.pro_code,
+        // เช็คว่า spc_comments มีรูปแบบ hotdeal_{pro_code} หรือไม่
+        if (
+          !product.spc_comments ||
+          !product.spc_comments.startsWith('hotdeal_')
+        ) {
+          productsToRemove.push({
+            pro2_code: product.pro_code || '',
+            pro1_code: '',
+          });
+          console.log(
+            'Marked for removal:',
+            product.pro_code,
+            'Reason: invalid spc_comments format',
+          );
+          continue;
+        }
+
+        // ดึง pro_code ของสินค้าหลักจาก spc_comments (hotdeal_01011205 -> 01011205)
+        const mainProCode = product.spc_comments.replace('hotdeal_', '');
+        console.log('mainProCode extracted from spc_comments:', mainProCode);
+
+        // เช็คว่าสินค้าหลักนี้มี hotdeal หรือไม่
+        const hotdeal = await this.hotdealService.find(mainProCode);
+        console.log('hotdeal found:', hotdeal);
+
+        // เช็คว่าสินค้าหลักยังอยู่ในตะกร้าและถูกเลือกอยู่หรือไม่
+        const pro1InCart = await this.shoppingCartRepo.findOne({
+          where: {
+            mem_code,
+            pro_code: mainProCode,
+            spc_checked: true,
+          },
         });
 
-        if (!hotdeal || hotdeal.pro2_code !== item.pro_code) {
-          await this.shoppingCartRepo.delete({ spc_id: item.spc_id });
-          productsToRemove.push({ pro_code: item.pro_code });
+        // ถ้าไม่เจอ hotdeal หรือสินค้าหลักไม่อยู่ในตะกร้า หรือสินค้าแถมไม่ตรงกับ hotdeal
+        if (
+          !hotdeal ||
+          !pro1InCart ||
+          hotdeal.product2?.pro_code !== product.pro_code
+        ) {
+          productsToRemove.push({
+            pro2_code: product.pro_code || '',
+            pro1_code: mainProCode,
+          });
+          console.log(
+            'Marked for removal:',
+            product.pro_code,
+            'Reason: hotdeal not found or main product not in cart or product mismatch',
+          );
         }
       }
 
-      return productsToRemove.length > 0 ? productsToRemove : 'success';
+      if (productsToRemove.length > 0) {
+        const pro2Codes = productsToRemove.map((p) => p.pro2_code);
+        const pro1Codes = productsToRemove.map((p) => p.pro1_code);
+        await this.shoppingCartRepo.delete({
+          mem_code,
+          pro_code: In(pro2Codes),
+          spc_comments: In(pro1Codes.map((code) => `hotdeal_${code}`)),
+          hotdeal_free: true,
+        });
+      }
+      return productsToRemove.length > 0
+        ? productsToRemove.map((p) => ({ pro_code: p.pro2_code }))
+        : 'success';
     } catch (error) {
       console.error('Error clearing freebie cart items:', error);
       throw new Error('Error in clearFreebieCart');
@@ -946,6 +1014,22 @@ export class ShoppingCartService {
           },
         ],
       );
+      if (hotdealMatch?.match === false) {
+        // ถ้าไม่ตรงกับเงื่อนไข ให้ลบสินค้าแถม (hotdeal_free = true) ออกด้วย
+        if (hotdeal && hotdeal.product2?.pro_code) {
+          await this.shoppingCartRepo.delete({
+            mem_code: mem_code,
+            pro_code: hotdeal.product2.pro_code,
+            hotdeal_free: true,
+          });
+          console.log(
+            'Removed hotdeal freebie for pro_code:',
+            hotdeal.product2.pro_code,
+            'due to unmatched condition',
+          );
+        }
+        return await this.getProductCart(mem_code);
+      }
       console.log('amount.toString(),', amount.toString());
       console.log('hotdealMatchInServiceCart', hotdealMatch);
       console.log('hotdeal', hotdeal);

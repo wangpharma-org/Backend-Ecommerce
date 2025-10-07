@@ -417,14 +417,14 @@ export class HotdealService {
     }
   }
 
-async checkHotdealProduct({pro_code}: {pro_code: string}): Promise<{pro_code: string; pro2_code: string} | null> {
+async checkHotdealProduct(pro_code: string): Promise<{pro_code: string; pro2_code: string} | null> {
   const found = await this.hotdealRepo.findOne({
     where: { product2: { pro_code } },
     relations: ['product', 'product2'],
   });
   
   console.log('Checking hotdeal for product code:', pro_code);
-  console.log('checkHotdealProduct found:', found);
+  console.log('checkHotdealProduct found:', found?.product?.pro_code, found?.product2?.pro_code);
   
   if (found && found.product) {
     return { 
