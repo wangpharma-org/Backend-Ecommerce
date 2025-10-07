@@ -7,6 +7,7 @@ import { ShoppingHeadEntity } from './../shopping-head/shopping-head.entity';
 import { HttpModule } from '@nestjs/axios';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
+import { SaleLogEntity } from './salelog-order.entity';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ProductEntity } from '../products/products.entity';
       ShoppingHeadEntity,
       FailedEntity,
       ProductEntity,
+      SaleLogEntity,
     ]),
     ShoppingCartModule,
     HttpModule,

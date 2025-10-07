@@ -120,6 +120,7 @@ export class ProductsService {
           'product.pro_unit2',
           'product.pro_unit3',
           'product.pro_imgmain',
+          'product.pro_stock',
         ])
         .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
         .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
@@ -540,6 +541,24 @@ export class ProductsService {
                 })
                 .orWhere('product.pro_code LIKE :keyword', {
                   keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_nameMain LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain2 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain3 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_drugmain4 LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
+                })
+                .orWhere('product.pro_nameTH LIKE :keyword', {
+                  keyword: `%${data.keyword}%`,
                 });
             }),
           )
@@ -700,6 +719,9 @@ export class ProductsService {
               .orWhere('product.pro_keysearch LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })
+              .orWhere('product.pro_nameEN LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
               .orWhere('product.pro_barcode1 LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               })
@@ -710,6 +732,24 @@ export class ProductsService {
                 keyword: `%${data.keyword}%`,
               })
               .orWhere('product.pro_code LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_nameMain LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain2 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain3 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_drugmain4 LIKE :keyword', {
+                keyword: `%${data.keyword}%`,
+              })
+              .orWhere('product.pro_nameTH LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               });
           }),
@@ -1176,6 +1216,7 @@ export class ProductsService {
               .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
               .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
               .andWhere('product.pro_stock > :stock', { stock: 0 })
+              .andWhere('product.invisible_id IS NULL')
               .andWhere('product.pro_name NOT LIKE :prefix7', {
                 prefix7: 'ค่า%',
               })

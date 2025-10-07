@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
+  Ip,
   Param,
   Post,
   Put,
@@ -272,8 +274,10 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/submit-order')
   async submitOrder(
+    @Ip() ip: string,
     @Body()
     data: {
+      emp_code?: string;
       mem_code: string;
       total_price: number;
       listFree:
@@ -289,10 +293,9 @@ export class AppController {
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
-      addressed: string; // แก้ไขตรงนี้
+      addressed: string;
     },
   ) {
-    console.log('data in controller:', data);
     return await this.shoppingOrderService.submitOrder(data);
   }
 
@@ -1108,7 +1111,6 @@ export class AppController {
     @Body()
     data: {
       invisible_name: string;
-      date_start: string;
       date_end: string;
       creditor_code: string;
     },
@@ -1284,30 +1286,23 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/add')
   async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
-    try {
-      return await this.fixFreeService.addProductFree(data);
-    } catch {
-      throw new Error('Error adding free product');
-    }
+    return await this.fixFreeService.addProductFree(data);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/product-free/delete')
   async deleteProductFree(@Body() data: { pro_code: string }) {
-    try {
-      return await this.fixFreeService.removeProductFree(data.pro_code);
-    } catch {
-      throw new Error('Error deleting free product');
-    }
+    return await this.fixFreeService.removeProductFree(data.pro_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/edit')
   async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
-    try {
-      return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
-    } catch {
-      throw new Error('Error editing free product');
-    }
+    return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
+  }
+
+  @Get('/ip')
+  getIP(@Ip() ip: string) {
+    return { ip };
   }
 }

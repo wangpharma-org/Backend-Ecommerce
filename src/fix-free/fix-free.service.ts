@@ -1,5 +1,5 @@
 import { Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ProductEntity } from 'src/products/products.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -12,6 +12,23 @@ export class FixFreeService {
 
   async addProductFree(data: { pro_code: string; pro_point: number }) {
     try {
+      const product = await this.productEntity.findOne({
+        where: {
+          pro_code: data.pro_code,
+        },
+      });
+      if (!product) {
+        throw new HttpException(
+          { success: false, message: 'Product not found' },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      if (product.pro_stock < 1) {
+        throw new HttpException(
+          { success: false, message: 'Product Stock is Invalid' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
       await this.productEntity.update(
         {
           pro_code: data.pro_code,
@@ -21,7 +38,10 @@ export class FixFreeService {
           pro_point: data.pro_point,
         },
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new Error('Something Error add Product Free');
     }
   }
@@ -67,6 +87,7 @@ export class FixFreeService {
           pro_name: true,
           pro_point: true,
           pro_imgmain: true,
+          pro_stock: true,
         },
       });
     } catch {

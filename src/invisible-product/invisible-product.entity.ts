@@ -18,9 +18,6 @@ export class InvisibleEntity {
   invisible_name: string;
 
   @Column({ type: 'date' })
-  date_start: string;
-
-  @Column({ type: 'date' })
   date_end: string;
 
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.invisibleCreditor)
