@@ -8,10 +8,11 @@ import { jwtConstants } from './constants';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { HttpModule } from '@nestjs/axios';
+import { RefreshTokenEntity } from './refresh-token.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity]),
+    TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity]),
     UsersModule,
     HttpModule,
     PassportModule,
