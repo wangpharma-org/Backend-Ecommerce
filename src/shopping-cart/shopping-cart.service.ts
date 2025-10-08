@@ -922,7 +922,6 @@ export class ShoppingCartService {
           where: {
             mem_code,
             pro_code: mainProCode,
-            spc_checked: true,
           },
         });
 
