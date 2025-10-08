@@ -718,7 +718,6 @@ export class ShoppingCartService {
 
   async getProductCart(mem_code: string): Promise<ShoppingProductCart[]> {
     try {
-      // ลบสินค้าที่มีจำนวน 0 หรือน้อยกว่า
       await this.shoppingCartRepo
         .createQueryBuilder()
         .delete()
@@ -726,6 +725,7 @@ export class ShoppingCartService {
         .where('mem_code = :mem_code', { mem_code })
         .andWhere('spc_amount <= 0')
         .execute();
+
       const raw: RawProductCart[] = await this.shoppingCartRepo
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')

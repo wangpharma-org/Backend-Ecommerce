@@ -4,6 +4,7 @@ import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
 import { In, Repository } from 'typeorm';
+
 export interface HotdealInput {
   pro_code: string;
   pro1_amount: string;
@@ -254,6 +255,7 @@ export class HotdealService {
           },
         };
       }
+      
       return undefined;
     } catch (error) {
       console.error('Error checking hotdeal match:', error);
