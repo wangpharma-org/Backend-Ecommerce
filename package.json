@@ -43,6 +43,7 @@
     "express": "^5.1.0",
     "form-data": "^4.0.4",
     "kafkajs": "^2.2.4",
+    "mailgun-js": "^0.22.0",
     "mailgun.js": "^12.1.0",
     "multer": "^2.0.2",
     "multer-s3": "^3.0.1",

@@ -19,8 +19,12 @@ export class ChangePassword {
   @Column({ length: 50 })
   exp_code: string; // เช่น 'reset_password', 'change_email' ฯลฯ
 
-  @CreateDateColumn({ type: 'timestamp' })
-  useAt: Date;
+
+  @Column({ type: 'int', default: 0 })
+  countError: number;
+
+  @Column({ type: 'enum', enum: ['pending', 'used', 'failed', 'requested'], default: 'pending' })
+  isUsed: 'pending' | 'used' | 'failed' | 'requested';
 
   @ManyToOne(() => UserEntity, (user) => user.changePasswords) // สมมติว่ามี Entity ชื่อ User
   @JoinColumn({ name: 'mem_username' })

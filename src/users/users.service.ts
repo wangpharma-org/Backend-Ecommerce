@@ -55,7 +55,7 @@ export class UsersService {
       const user = await this.userRepo.findOne({
         where: { mem_code: mem_code },
       });
-      console.log('User found by mem_code:', user);
+      console.log('User found by mem_code:', user?.mem_code);
       if (!user) {
         throw new Error('User not found');
       }
