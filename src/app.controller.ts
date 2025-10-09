@@ -1301,8 +1301,13 @@ export class AppController {
     return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
   }
 
-  @Get('/ip')
-  getIP(@Ip() ip: string) {
-    return { ip };
+  // @Get('/ip')
+  // getIP(@Ip() ip: string) {
+  //   return { ip };
+  // }
+
+  @Post('/ecom/refresh_token')
+  async refreshToken(@Body() body: { token: string }) {
+    return this.authService.refreshToken(body.token);
   }
 }
