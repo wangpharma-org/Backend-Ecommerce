@@ -9,6 +9,7 @@ import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
   imports: [
     TypeOrmModule.forFeature([HotdealEntity]),
     ProductsModule,
+    forwardRef(() => ShoppingCartModule),
   ],
   exports: [HotdealService],
   providers: [HotdealService],

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -114,6 +114,7 @@ export class ShoppingCartService {
     @InjectRepository(PromotionEntity)
     private readonly promotionRepo: Repository<PromotionEntity>,
     private readonly productsService: ProductsService,
+    @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
   ) {}
 
@@ -211,6 +212,7 @@ export class ShoppingCartService {
     spc_comments: string;
   }): Promise<ShoppingProductCart[]> {
     try {
+      console.log('Add Hotdeal Free Item:', data);
       await this.shoppingCartRepo.save({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
@@ -221,6 +223,7 @@ export class ShoppingCartService {
         spc_comments: data.spc_comments,
         spc_datetime: new Date(),
       });
+      console.log('Check Promotion for Hotdeal');
       return await this.getProductCart(data.mem_code);
     } catch (error) {
       console.error('Error saving product cart:', error);
@@ -869,7 +872,61 @@ export class ShoppingCartService {
         },
       );
 
-      await this.clearFreebieCart(mem_code);
+      const checkhotdeal = await this.shoppingCartRepo.find({
+        where: { mem_code },
+      });
+      console.log('checkhotdeal', checkhotdeal);
+
+      if (checkhotdeal.length > 0) {
+        console.log('Checking hotdeal items in cart...');
+        for (const item of checkhotdeal) {
+          console.log(
+            'Checking item:',
+            item.pro_code,
+            item.spc_unit,
+            item.spc_amount,
+          );
+          const hotdealMatch = await this.hotdealService.checkHotdealMatch(
+            item.pro_code,
+            [
+              {
+                pro1_unit: item.spc_unit,
+                pro1_amount: String(item.spc_amount),
+              },
+            ],
+          );
+          console.log('Hotdeal match result:', hotdealMatch);
+          const hotdealCartItem = await this.shoppingCartRepo.findOne({
+            where: { mem_code, pro_code: hotdealMatch?.product2?.pro_code },
+          });
+          console.log('hotdealCartItem:', hotdealCartItem);
+          if (hotdealMatch && hotdealCartItem) {
+            // เพิ่มสินค้าแถมเข้าไปในตะกร้า
+            console.log(
+              'hotdealMatch found, adding freebie to cart:',
+              hotdealMatch,
+            );
+            await this.shoppingCartRepo.update(
+              {
+                mem_code,
+                pro_code: hotdealMatch.product2.pro_code,
+                hotdeal_free: true,
+                spc_comments: `hotdeal_${hotdealMatch.pro_code}`,
+              },
+              {
+                spc_amount: Number(hotdealMatch.countFreeBies),
+              },
+            );
+            console.log(
+              `Added hotdeal freebie for pro_code: ${hotdealMatch.product2.pro_code}`,
+            );
+          }
+          continue;
+        }
+        console.log('Found hotdeal items in cart:', checkhotdeal);
+      } else {
+        console.log('No hotdeal items found in cart.');
+      }
 
       return result;
     } catch (error) {
@@ -878,87 +935,30 @@ export class ShoppingCartService {
     }
   }
 
-  async clearFreebieCart(
-    mem_code: string,
-  ): Promise<{ pro_code: string }[] | string> {
+  async removeAllCarthotdeal(pro_code: string): Promise<string> {
     try {
-      const products = await this.shoppingCartRepo.find({
-        where: { mem_code, hotdeal_free: true },
-      });
+      console.log('Removing all hotdeal cart items for pro_code:', pro_code);
 
-      const productsToRemove: { pro2_code: string; pro1_code: string }[] = [];
-      console.log('productsToRemove', productsToRemove);
-      for (const product of products) {
-        console.log('product.pro_code', product.pro_code);
-        console.log('product.spc_comments', product.spc_comments);
-
-        // เช็คว่า spc_comments มีรูปแบบ hotdeal_{pro_code} หรือไม่
-        if (
-          !product.spc_comments ||
-          !product.spc_comments.startsWith('hotdeal_')
-        ) {
-          productsToRemove.push({
-            pro2_code: product.pro_code || '',
-            pro1_code: '',
-          });
-          console.log(
-            'Marked for removal:',
-            product.pro_code,
-            'Reason: invalid spc_comments format',
-          );
-          continue;
-        }
-
-        // ดึง pro_code ของสินค้าหลักจาก spc_comments (hotdeal_01011205 -> 01011205)
-        const mainProCode = product.spc_comments.replace('hotdeal_', '');
-        console.log('mainProCode extracted from spc_comments:', mainProCode);
-
-        // เช็คว่าสินค้าหลักนี้มี hotdeal หรือไม่
-        const hotdeal = await this.hotdealService.find(mainProCode);
-        console.log('hotdeal found:', hotdeal);
-
-        // เช็คว่าสินค้าหลักยังอยู่ในตะกร้าและถูกเลือกอยู่หรือไม่
-        const pro1InCart = await this.shoppingCartRepo.findOne({
-          where: {
-            mem_code,
-            pro_code: mainProCode,
-          },
-        });
-
-        // ถ้าไม่เจอ hotdeal หรือสินค้าหลักไม่อยู่ในตะกร้า หรือสินค้าแถมไม่ตรงกับ hotdeal
-        if (
-          !hotdeal ||
-          !pro1InCart ||
-          hotdeal.product2?.pro_code !== product.pro_code
-        ) {
-          productsToRemove.push({
-            pro2_code: product.pro_code || '',
-            pro1_code: mainProCode,
-          });
-          console.log(
-            'Marked for removal:',
-            product.pro_code,
-            'Reason: hotdeal not found or main product not in cart or product mismatch',
-          );
-        }
-      }
-
-      if (productsToRemove.length > 0) {
-        const pro2Codes = productsToRemove.map((p) => p.pro2_code);
-        const pro1Codes = productsToRemove.map((p) => p.pro1_code);
-        await this.shoppingCartRepo.delete({
-          mem_code,
-          pro_code: In(pro2Codes),
-          spc_comments: In(pro1Codes.map((code) => `hotdeal_${code}`)),
+      // ดูข้อมูลก่อนลบ
+      const existingItems = await this.shoppingCartRepo.find({
+        where: {
+          pro_code: String(pro_code),
           hotdeal_free: true,
-        });
-      }
-      return productsToRemove.length > 0
-        ? productsToRemove.map((p) => ({ pro_code: p.pro2_code }))
-        : 'success';
+        },
+      });
+      console.log('Found items to delete:', existingItems);
+      console.log('Number of items found:', existingItems.length);
+
+      const result = await this.shoppingCartRepo.delete({
+        pro_code: pro_code,
+        hotdeal_free: true,
+      });
+      console.log('Delete result:', result);
+      console.log('All hotdeal cart items removed for pro_code:', pro_code);
+      return 'success';
     } catch (error) {
-      console.error('Error clearing freebie cart items:', error);
-      throw new Error('Error in clearFreebieCart');
+      console.error('Error removing all hotdeal cart items:', error);
+      throw new Error('Error in removeAllCarthotdeal');
     }
   }
 
@@ -1081,6 +1081,16 @@ export class ShoppingCartService {
       }
     } catch (error) {
       console.error('Error in checkHotdealByProCode:', error);
+      return null;
+    }
+  }
+
+  async find(pro_code: string): Promise<ShoppingCartEntity | null> {
+    try {
+      return await this.shoppingCartRepo.findOne({
+        where: { pro_code },
+      });
+    } catch {
       return null;
     }
   }

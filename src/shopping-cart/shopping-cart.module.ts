@@ -1,5 +1,5 @@
 import { PromotionEntity } from './../promotion/promotion.entity';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ShoppingCartService } from './shopping-cart.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ShoppingCartEntity } from './shopping-cart.entity';
@@ -17,7 +17,7 @@ import { HotdealModule } from 'src/hotdeal/hotdeal.module';
       PromotionTierEntity,
     ]),
     ProductsModule,
-    HotdealModule,
+    forwardRef(() => HotdealModule),
   ],
   providers: [ShoppingCartService],
   exports: [ShoppingCartService],

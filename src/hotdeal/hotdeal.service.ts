@@ -1,9 +1,10 @@
 /* eslint-disable prettier/prettier */
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
 import { In, Repository } from 'typeorm';
+import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 
 export interface HotdealInput {
   pro_code: string;
@@ -20,6 +21,8 @@ export class HotdealService {
     @InjectRepository(HotdealEntity)
     private readonly hotdealRepo: Repository<HotdealEntity>,
     private readonly productService: ProductsService,
+    @Inject(forwardRef(() => ShoppingCartService))
+    private readonly shoppingCartService: ShoppingCartService,
   ) { }
 
   async find(pro_code: string): Promise<HotdealEntity | null> {
@@ -42,6 +45,7 @@ export class HotdealService {
   }
 
   async saveHotdeal(datainput: HotdealInput): Promise<HotdealEntity | null> {
+    try {
     const hotdeal = this.hotdealRepo.create({
       pro1_amount: datainput.pro1_amount,
       pro1_unit: datainput.pro1_unit,
@@ -50,7 +54,28 @@ export class HotdealService {
       product: { pro_code: datainput.pro_code },
       product2: { pro_code: datainput.pro2_code },
     });
-    return this.hotdealRepo.save(hotdeal);
+
+    const cartItem = await this.shoppingCartService.find(hotdeal.product?.pro_code || '');
+
+    if (cartItem) {
+      console.log('Found cart item for product code:', hotdeal.product?.pro_code || '');
+      await this.shoppingCartService.addProductCartHotDeal({
+          mem_code: cartItem.mem_code,
+          pro_code: hotdeal.product2?.pro_code || '',
+          pro_unit: hotdeal.pro2_unit,
+          amount: Number(hotdeal.pro2_amount),
+          hotdeal_free: true,
+          spc_comments: `hotdeal_${hotdeal.product?.pro_code}`,
+        }
+      );
+    } else {
+      console.log('No cart item found for product code:', hotdeal.product?.pro_code || '');
+    }
+      return this.hotdealRepo.save(hotdeal);
+    } catch (error) {
+      console.error('Error saving hotdeal:', error);
+      return null;
+    }
   }
 
   async getAllHotdealsWithProductNames() {
@@ -73,11 +98,24 @@ export class HotdealService {
   }
 
   async deleteHotdeal(id: number): Promise<{ message: string }> {
-    const result = await this.hotdealRepo.delete(id);
-    if ((result.affected ?? 0) > 0) {
+    try {
+      console.log('Attempting to delete hotdeal with id:', id);
+      const hotdeal = await this.hotdealRepo.findOne({ 
+        where: { id : id },
+        relations: ['product', 'product2']
+      });
+      console.log('hotdeal', hotdeal?.product?.pro_code);
+      if (hotdeal) {
+        console.log('Deleting hotdeal for product code:', hotdeal.product?.pro_code);
+        await this.shoppingCartService.removeAllCarthotdeal(hotdeal.product2?.pro_code);
+      }
+      await this.hotdealRepo.delete(id);
+      console.log('Deleted hotdeal with id:', id);
       return { message: 'Hotdeal deleted successfully' };
+    } catch (error) {
+      console.error('Error deleting hotdeal:', error);
+      return { message: 'Error deleting hotdeal' };
     }
-    throw new Error('Hotdeal not found');
   }
 
   async getAllHotdealsWithProductDetail(

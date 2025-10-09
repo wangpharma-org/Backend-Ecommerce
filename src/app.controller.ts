@@ -747,10 +747,7 @@ export class AppController {
   async searchProductMain(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
-  @Post('/ecom/admin/hotdeal/search-product-freebie/:keyword')
-  async searchProductFreebie(@Param('keyword') keyword: string) {
-    return this.hotdealService.searchProduct(keyword);
-  }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
   async saveHotdeal(@Body() body: { dataInput: HotdealInput }) {
