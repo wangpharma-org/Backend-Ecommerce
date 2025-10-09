@@ -1299,7 +1299,7 @@ export class AppController {
   async validateOtp(
     @Body()
     data: {
-      mem_code: string;
+      mem_username: string;
       otp: string;
       timeNow: string;
     },
@@ -1325,7 +1325,7 @@ export class AppController {
         new_password: body.new_password,
         old_password: body.old_password,
       });
-    } catch (error) {
+    } catch {
       return {
         success: false,
         message: 'An error occurred while changing the password.',
