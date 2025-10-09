@@ -136,6 +136,25 @@ export class ProductEntity {
   @Column({ default: 0 })
   order_quantity: number;
 
+  // เพิ่มมาใหม่
+  @Column({ nullable: true })
+  pro_drugmain: string;
+
+  @Column({ nullable: true })
+  pro_drugmain2: string;
+
+  @Column({ nullable: true })
+  pro_drugmain3: string;
+
+  @Column({ nullable: true })
+  pro_drugmain4: string;
+
+  @Column({ nullable: true, type: 'varchar' })
+  pro_nameTH: string;
+
+  @Column({ nullable: true, type: 'varchar' })
+  pro_nameMain: string;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',

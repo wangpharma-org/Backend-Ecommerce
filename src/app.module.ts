@@ -28,6 +28,7 @@ import { ModalmainModule } from './modalmain/modalmain.module';
 import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 import { ChangePasswordModule } from './change-password/change-password.module';
+import { FixFreeModule } from './fix-free/fix-free.module';
 
 @Module({
   imports: [
@@ -48,7 +49,7 @@ import { ChangePasswordModule } from './change-password/change-password.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: configService.get<boolean>('SYNCHRONIZE'),
+        synchronize: Boolean(configService.get<string>('SYNC') ?? configService.get<boolean>('SYNCHRONIZE')),
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
@@ -75,6 +76,7 @@ import { ChangePasswordModule } from './change-password/change-password.module';
     InvisibleProductModule,
     NewArrivalsModule,
     ChangePasswordModule,
+    FixFreeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

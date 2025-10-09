@@ -50,7 +50,13 @@ export class BackendService {
     }
   }
 
-  async getLogfile(feature: string): Promise<LogFileEntity | null> {
+  async getLogfile(feature: string): Promise<LogFileEntity | null | LogFileEntity[]> {
+    if (!feature) {
+      return null;
+    }
+    if (feature === 'all') {
+      return await this.logfileRepository.find();
+    }
     return await this.logfileRepository.findOne({
       where: { feature },
     });
