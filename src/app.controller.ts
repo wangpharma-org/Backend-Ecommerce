@@ -42,6 +42,12 @@ import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 import { FixFreeService } from './fix-free/fix-free.service';
+import { ReductionInvoiceService } from './reduction-invoice/reduction-invoice.service';
+import { ReductionInvoice } from './reduction-invoice/reduction-invoice.entity';
+import type {
+  ImportDataRequestInvoice,
+  ImportDataRequestRT,
+} from './reduction-invoice/reduction-invoice.service';
 
 interface JwtPayload {
   username: string;
@@ -83,6 +89,7 @@ export class AppController {
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
     private readonly fixFreeService: FixFreeService,
+    private readonly reductionInvoiceService: ReductionInvoiceService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -1304,5 +1311,65 @@ export class AppController {
   @Get('/ip')
   getIP(@Ip() ip: string) {
     return { ip };
+  }
+
+  @Post('/ecom/reduct-invoice/add-invoice')
+  async importData(
+    @Body()
+    data: ImportDataRequestInvoice[],
+  ): Promise<{ message: string }> {
+    console.log('Received data for reduction invoice import:', data);
+    try {
+      const importedInvoices =
+        await this.reductionInvoiceService.importDataInvoice(data);
+      // console.log('Imported invoice:', importedInvoices);
+      return {
+        message: `Successfully imported ${importedInvoices.length} invoices`,
+      };
+    } catch (error) {
+      console.error('Error importing reduction invoice data:', error);
+      return { message: 'Error importing reduction invoice data' };
+    }
+  }
+
+  @Post('/ecom/reduct-invoice/add-rt')
+  async importDataRT(
+    @Body()
+    data: ImportDataRequestRT[],
+  ): Promise<{ message: string }> {
+    console.log('Received data for reduction RT import:', data);
+    try {
+      const importedRTs = await this.reductionInvoiceService.importDataRT(data);
+      // console.log('Imported RT:', importedRTs);
+      return {
+        message: `Successfully imported ${importedRTs.length} RT entries`,
+      };
+    } catch (error) {
+      console.error('Error importing reduction RT data:', error);
+      return { message: 'Error importing reduction RT data' };
+    }
+  }
+
+  // @Get('/ecom/reduct-invoice/invoice/:mem_code')
+  // async getInvoicesByMember(
+  //   @Param('mem_code') mem_code: string,
+  // ): Promise<ReductionInvoice[]> {
+  //   return this.reductionInvoiceService.getInvoicesByMember(mem_code);
+  // }
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/reduct-invoice/invoice/id/:invoice')
+  async findReductionInvoices(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('invoice') invoice: string,
+  ): Promise<ReductionInvoice | string> {
+    try {
+      console.log('Searching for invoice:', invoice);
+      const mem_code = req.user.mem_code;
+      const result = await this.reductionInvoiceService.findReductionInvoices(mem_code, invoice);
+      return result;
+    } catch (error) {
+      console.error('Error finding reduction invoices:', error);
+      return 'Error finding reduction invoices';
+    }
   }
 }
