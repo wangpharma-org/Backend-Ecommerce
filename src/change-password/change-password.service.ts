@@ -268,6 +268,9 @@ export class ChangePasswordService {
       }
 
       const otpData = await this.generate6Digit(member.mem_code);
+      if (emailUser !== member.mem_email) {
+        throw new Error('Email mismatch');
+      }
 
       console.log('OTP created:', {
         code: otpData.OTP,

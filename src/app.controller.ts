@@ -1274,7 +1274,6 @@ export class AppController {
     return this.modalContentService.GetModalContent();
   }
 
-  // @UseGuards(JwtAuthGuard)
   @Get('/ecom/password/check-email/:mem_code')
   async checkEmail(@Param('mem_code') mem_code: string): Promise<{
     RefKey?: string;
@@ -1300,7 +1299,7 @@ export class AppController {
   async validateOtp(
     @Body()
     data: {
-      mem_username: string;
+      mem_code: string;
       otp: string;
       timeNow: string;
     },
