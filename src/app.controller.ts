@@ -1388,11 +1388,6 @@ export class AppController {
     return { active_sessions_count: count };
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/session/cleanup')
-  async cleanupSessions(@Body() data: { days_old?: number }) {
-    await this.sessionsService.cleanupInactiveSessions(data.days_old ?? 30);
-    return { message: 'Cleanup completed successfully' };
   @Get('/ecom/password/check-email/:mem_code')
   async checkEmail(@Param('mem_code') mem_code: string): Promise<{
     RefKey?: string;
