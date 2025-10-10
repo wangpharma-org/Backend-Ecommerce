@@ -8,11 +8,11 @@ import {
   ManyToMany,
 } from 'typeorm';
 import { UserEntity } from 'src/users/users.entity';
-import { ReductionInvoiceRTDetail } from './reduct-invoice-rt-detail.entity';
+import { ReductionRTDetail } from './reduct-rt-detail.entity';
 import { ProductEntity } from 'src/products/products.entity';
 
 @Entity()
-export class ReductionInvoiceRT {
+export class ReductionRT {
   @PrimaryGeneratedColumn()
   RT_id: number;
 
@@ -37,20 +37,17 @@ export class ReductionInvoiceRT {
   })
   dis_price: string;
 
-  @ManyToOne(() => UserEntity, (user) => user.reductionInvoiceRTs)
+  @ManyToOne(() => UserEntity, (user) => user.reductionInvoices)
   @JoinColumn({ name: 'mem_code', referencedColumnName: 'mem_code' })
   user: UserEntity;
 
-  @OneToMany(
-    () => ReductionInvoiceRTDetail,
-    (detail) => detail.reductionInvoiceRT,
-  )
+  @OneToMany(() => ReductionRTDetail, (detail) => detail.reductionRT)
   @JoinColumn({ name: 'RT_id' })
-  details: ReductionInvoiceRTDetail[];
+  details: ReductionRTDetail[];
 
-  @ManyToMany(
-    () => ProductEntity,
-    (product) => product.reductionInvoiceRTDetails,
-  )
+  @ManyToMany(() => ProductEntity, (product) => product.reductionRTDetails)
   products: ProductEntity[];
+
+  @Column({ nullable: true })
+  comment: string;
 }

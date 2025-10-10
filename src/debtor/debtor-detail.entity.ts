@@ -5,10 +5,10 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { ReductionInvoice } from './reduction-invoice.entity';
+import { DebtorEntity } from './debtor.entity';
 
-@Entity({ name: 'reduction_invoice_detail' })
-export class ReductionInvoiceDetail {
+@Entity({ name: 'debtor_detail' })
+export class DebtorDetailEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -27,10 +27,10 @@ export class ReductionInvoiceDetail {
   @Column({ nullable: true, default: null })
   due_date: string;
 
-  @ManyToOne(
-    () => ReductionInvoice,
-    (reductionInvoice) => reductionInvoice.reducDetail,
-  )
+  @Column({ nullable: true, default: null })
+  invoice_bill_id: string;
+
+  @ManyToOne(() => DebtorEntity, (debtorEntity) => debtorEntity.debtorDetail)
   @JoinColumn({ name: 'invoice_bill_id' })
-  reductionInvoice: ReductionInvoice;
+  debtorEntity: DebtorEntity;
 }

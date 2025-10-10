@@ -12,8 +12,7 @@ import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
 import { DebtorEntity } from 'src/debtor/debtor.entity';
 import { EditAddress } from 'src/edit-address/edit-address.entity';
-import { ReductionInvoice } from 'src/reduction-invoice/reduction-invoice.entity';
-import { ReductionInvoiceRT } from 'src/reduction-invoice/reduct-invoice-rt.entity';
+import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -176,15 +175,9 @@ export class UserEntity {
   @OneToMany(() => EditAddress, (editAddress) => editAddress.user)
   editAddresses: EditAddress[];
 
-  @OneToMany(
-    () => ReductionInvoice,
-    (reductionInvoice) => reductionInvoice.user,
-  )
-  reductionInvoices: ReductionInvoice[];
+  @OneToMany(() => DebtorEntity, (reductionInvoice) => reductionInvoice.user)
+  reductionInvoices: DebtorEntity[];
 
-  @OneToMany(
-    () => ReductionInvoiceRT,
-    (reductionInvoiceRT) => reductionInvoiceRT.user,
-  )
-  reductionInvoiceRTs: ReductionInvoiceRT[];
+  @OneToMany(() => ReductionRT, (reductionRT) => reductionRT.user)
+  reductionRTs: ReductionRT[];
 }

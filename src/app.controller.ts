@@ -42,12 +42,12 @@ import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 import { FixFreeService } from './fix-free/fix-free.service';
-import { ReductionInvoiceService } from './reduction-invoice/reduction-invoice.service';
-import { ReductionInvoice } from './reduction-invoice/reduction-invoice.entity';
 import type {
   ImportDataRequestInvoice,
   ImportDataRequestRT,
-} from './reduction-invoice/reduction-invoice.service';
+} from './debtor/debtor.service';
+import { DebtorEntity } from './debtor/debtor.entity';
+import { ReductionRT } from './debtor/reduct-rt.entity';
 
 interface JwtPayload {
   username: string;
@@ -89,7 +89,7 @@ export class AppController {
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
     private readonly fixFreeService: FixFreeService,
-    private readonly reductionInvoiceService: ReductionInvoiceService,
+    // private readonly reductionInvoiceService: ReductionInvoiceService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -946,27 +946,6 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('/ecom/upload-debtor')
-  async uploadDebtor(
-    @Body()
-    data: {
-      mem_code: string;
-      billing_slip_id: string;
-      payment_schedule_date: string;
-      billing_amount: number;
-    }[],
-  ) {
-    console.log(data);
-    return this.debtorService.updateDebtor(data);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Delete('/ecom/clear-debtor')
-  async clearDebtor() {
-    return this.debtorService.clearData();
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Get('/ecom/debtor/:mem_code')
   async getDebtor(@Param('mem_code') mem_code: string) {
     return await this.debtorService.getAllDebtors(mem_code);
@@ -1320,8 +1299,7 @@ export class AppController {
   ): Promise<{ message: string }> {
     console.log('Received data for reduction invoice import:', data);
     try {
-      const importedInvoices =
-        await this.reductionInvoiceService.importDataInvoice(data);
+      const importedInvoices = await this.debtorService.importDataInvoice(data);
       // console.log('Imported invoice:', importedInvoices);
       return {
         message: `Successfully imported ${importedInvoices.length} invoices`,
@@ -1339,7 +1317,7 @@ export class AppController {
   ): Promise<{ message: string }> {
     console.log('Received data for reduction RT import:', data);
     try {
-      const importedRTs = await this.reductionInvoiceService.importDataRT(data);
+      const importedRTs = await this.debtorService.importDataRT(data);
       // console.log('Imported RT:', importedRTs);
       return {
         message: `Successfully imported ${importedRTs.length} RT entries`,
@@ -1350,26 +1328,39 @@ export class AppController {
     }
   }
 
-  // @Get('/ecom/reduct-invoice/invoice/:mem_code')
-  // async getInvoicesByMember(
-  //   @Param('mem_code') mem_code: string,
-  // ): Promise<ReductionInvoice[]> {
-  //   return this.reductionInvoiceService.getInvoicesByMember(mem_code);
-  // }
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/reduct-invoice/invoice/id/:invoice')
   async findReductionInvoices(
     @Req() req: Request & { user: JwtPayload },
     @Param('invoice') invoice: string,
-  ): Promise<ReductionInvoice | string> {
+  ): Promise<DebtorEntity | string> {
     try {
       console.log('Searching for invoice:', invoice);
       const mem_code = req.user.mem_code;
-      const result = await this.reductionInvoiceService.findReductionInvoices(mem_code, invoice);
+      console.log('Member code from token:', mem_code);
+      const result = await this.debtorService.findDebtor(mem_code, invoice);
       return result;
     } catch (error) {
       console.error('Error finding reduction invoices:', error);
       return 'Error finding reduction invoices';
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/reduct-invoice/rt/id/:rt')
+  async findReductionRTs(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('rt') rt: string,
+  ): Promise<ReductionRT | string> {
+    try {
+      console.log('Searching for RT:', rt);
+      const mem_code = req.user.mem_code;
+      console.log('Member code from token:', mem_code);
+      const result = await this.debtorService.findReductionRT(mem_code, rt);
+      return result;
+    } catch (error) {
+      console.error('Error finding reduction RTs:', error);
+      return 'Error finding reduction RTs';
     }
   }
 }

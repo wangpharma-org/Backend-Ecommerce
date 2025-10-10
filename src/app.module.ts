@@ -28,7 +28,7 @@ import { ModalmainModule } from './modalmain/modalmain.module';
 import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 import { FixFreeModule } from './fix-free/fix-free.module';
-import { ReductionInvoiceModule } from './reduction-invoice/reduction-invoice.module';
+// import { ReductionInvoiceModule } from './reduction-invoice/reduction-invoice.module';
 
 @Module({
   imports: [
@@ -76,7 +76,7 @@ import { ReductionInvoiceModule } from './reduction-invoice/reduction-invoice.mo
     InvisibleProductModule,
     NewArrivalsModule,
     FixFreeModule,
-    ReductionInvoiceModule,
+    // ReductionInvoiceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

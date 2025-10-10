@@ -1,67 +1,269 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Body } from '@nestjs/common';
 import { DebtorEntity } from './debtor.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { DebtorDetailEntity } from './debtor-detail.entity';
+import { ReductionRT } from './reduct-rt.entity';
+import { ReductionRTDetail } from './reduct-rt-detail.entity';
+
+export interface ImportDataRequestInvoice {
+  date: string;
+  invoice: string;
+  mem_code: string;
+  date_due: string;
+  total: string;
+  payment: string;
+  balance: string;
+  bill_list: {
+    date: string;
+    invoice: string;
+    price: string;
+    comments: string;
+  }[];
+}
+
+export interface ImportDataRequestRT {
+  invoice: string;
+  date: string;
+  mem_code: string;
+  pro_amount: string;
+  dis_price: string;
+  comments: string;
+  pro_list: {
+    pro_code: string;
+    pro_name: string;
+    pro_amount: string;
+    pro_unit: string;
+    pro_price_per_unit: string;
+    pro_discount: string;
+  }[];
+}
 
 @Injectable()
 export class DebtorService {
   constructor(
     @InjectRepository(DebtorEntity)
     private readonly debtorRepo: Repository<DebtorEntity>,
+    @InjectRepository(DebtorDetailEntity)
+    private readonly debtorDetailRepo: Repository<DebtorDetailEntity>,
+    @InjectRepository(ReductionRT)
+    private readonly reductionRTRepo: Repository<ReductionRT>,
+    @InjectRepository(ReductionRTDetail)
+    private readonly reductionRTDetailRepo: Repository<ReductionRTDetail>,
   ) {}
 
-  async updateDebtor(
-    data: {
-      mem_code: string;
-      billing_slip_id: string;
-      payment_schedule_date: string;
-      billing_amount: number;
-    }[],
-  ) {
+  async getAllDebtors(mem_code: string): Promise<
+    [
+      {
+        Debtor: DebtorEntity[];
+        RT: ReductionRT[];
+        totalCount: number;
+      },
+    ]
+  > {
     try {
-      await Promise.all(
-        data.map(async (item) => {
-          const debtorEntities = this.debtorRepo.create({
-            billing_slip_id: item.billing_slip_id,
-            payment_schedule_date: item.payment_schedule_date,
-            billing_amount: item.billing_amount,
-            user: { mem_code: item.mem_code },
-          });
-          await this.debtorRepo.save(debtorEntities);
-        }),
-      );
-    } catch (error) {
-      console.log(error);
-      throw new Error('Failed to update debtor data');
-    }
-  }
-
-  async clearData() {
-    try {
-      await this.debtorRepo.clear();
-    } catch (error) {
-      console.log(error);
-      throw new Error('Failed to clear debtor data');
-    }
-  }
-
-  async getAllDebtors(mem_code: string) {
-    try {
-      return await this.debtorRepo
-        .createQueryBuilder('debtor')
-        .innerJoin('debtor.user', 'user', 'user.mem_code = :mem_code', {
-          mem_code,
-        })
-        .select([
-          'debtor.debtor_id',
-          'debtor.billing_slip_id',
-          'debtor.payment_schedule_date',
-          'debtor.billing_amount',
-        ])
-        .orderBy('debtor.billing_slip_id', 'DESC')
-        .getMany();
+      console.log('Fetching all debtors for mem_code:', mem_code);
+      const debtors = await this.debtorRepo.find({
+        where: {
+          mem_code: mem_code,
+        },
+      });
+      console.log('Debtors:', debtors); // เพิ่มบรรทัดนี้เพื่อตรวจสอบค่า debtors
+      const reductionRTs = await this.reductionRTRepo.find({
+        where: {
+          mem_code: mem_code,
+        },
+      });
+      const totalCount = reductionRTs.length + debtors.length;
+      console.log('ReductionRTs:', reductionRTs); // เพิ่มบรรทัดนี้เพื่อตรวจสอบค่า reductionRTs
+      return [{ Debtor: debtors, RT: reductionRTs, totalCount }];
     } catch {
       throw new Error('Failed to get debtor data');
+    }
+  }
+
+  async importDataInvoice(
+    @Body() data: ImportDataRequestInvoice[],
+  ): Promise<DebtorEntity[]> {
+    try {
+      const importedInvoices: DebtorEntity[] = [];
+
+      // ลบข้อมูลอย่างปลอดภัย - ลบ child ก่อน parent
+      console.log('Clearing existing data...');
+
+      // Method 1: ใช้ Query Builder เพื่อลบข้อมูลทั้งหมด
+      await this.debtorDetailRepo.createQueryBuilder().delete().execute();
+      await this.debtorRepo.createQueryBuilder().delete().execute();
+
+      console.log('Data cleared successfully');
+
+      for (const item of data) {
+        // แยกข้อมูล header และ detail
+        const { bill_list, ...reductionInvoiceData } = item;
+
+        console.log(
+          'Processing reduction invoice:',
+          reductionInvoiceData.mem_code,
+        );
+
+        const cleanedData = {
+          date: reductionInvoiceData.date,
+          billing_slip_id: reductionInvoiceData.invoice,
+          mem_code: reductionInvoiceData.mem_code,
+          payment_schedule_date: reductionInvoiceData.date_due,
+          total: reductionInvoiceData.total,
+          payment: reductionInvoiceData.payment,
+          balance: reductionInvoiceData.balance,
+        };
+
+        const newReductionInvoice = this.debtorRepo.create(cleanedData);
+
+        const savedReductionInvoice =
+          await this.debtorRepo.save(newReductionInvoice);
+
+        if (bill_list && bill_list.length > 0) {
+          const reductionInvoiceDetails = bill_list.map((detail) =>
+            this.debtorDetailRepo.create({
+              date: detail.date,
+              price: detail.price,
+              sh_running: detail.comments,
+              invoice: detail.invoice,
+              due_date: item.date_due,
+              invoice_bill_id: String(savedReductionInvoice.debtor_id),
+            }),
+          );
+          await this.debtorDetailRepo.save(reductionInvoiceDetails);
+        }
+        console.log(
+          'Imported reduction invoice:',
+          savedReductionInvoice.billing_slip_id,
+        );
+        importedInvoices.push(savedReductionInvoice);
+      }
+      return importedInvoices;
+    } catch (error) {
+      console.error('Error importing reduction invoice data:', error);
+      throw new Error(
+        `Failed to import reduction invoice: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async importDataRT(@Body() data: ImportDataRequestRT[]) {
+    try {
+      const importedRTs: ReductionRT[] = [];
+
+      // ลบข้อมูลอย่างปลอดภัย - ลบ child ก่อน parent
+      console.log('Clearing existing data...');
+
+      // Method 1: ใช้ Query Builder เพื่อลบข้อมูลทั้งหมด
+      await this.reductionRTDetailRepo.createQueryBuilder().delete().execute();
+      await this.reductionRTRepo.createQueryBuilder().delete().execute();
+
+      console.log('Data cleared successfully');
+
+      for (const item of data) {
+        // แยกข้อมูล header และ detail
+        const { pro_list, ...reductionInvoiceRTData } = item;
+
+        console.log(
+          'Processing reduction invoice RT:',
+          reductionInvoiceRTData.mem_code,
+        );
+
+        const cleanedData = {
+          invoice: reductionInvoiceRTData.invoice,
+          date: reductionInvoiceRTData.date,
+          mem_code: reductionInvoiceRTData.mem_code, // ระบุ mem_code ชัดเจน
+          pro_amount: reductionInvoiceRTData.pro_amount,
+          dis_price: reductionInvoiceRTData.dis_price,
+          comment: reductionInvoiceRTData.comments,
+        };
+
+        const newReductionInvoiceRT = this.reductionRTRepo.create(cleanedData);
+
+        const savedReductionInvoiceRT = await this.reductionRTRepo.save(
+          newReductionInvoiceRT,
+        );
+
+        console.log(
+          'Saved ReductionInvoiceRT:',
+          savedReductionInvoiceRT.comment,
+        );
+
+        if (pro_list && pro_list.length > 0) {
+          const reductionInvoiceRTDetails = pro_list.map((detail) =>
+            this.reductionRTDetailRepo.create({
+              reductionRT: savedReductionInvoiceRT, // เชื่อม relationship
+              product: {
+                pro_code: detail.pro_code,
+                pro_name: detail.pro_name,
+              },
+              pro_amount: detail.pro_amount,
+              pro_unit: detail.pro_unit,
+              pro_price_per_unit: detail.pro_price_per_unit,
+              pro_discount: detail.pro_discount,
+            }),
+          );
+          await this.reductionRTDetailRepo.save(reductionInvoiceRTDetails);
+        }
+        console.log(
+          'Imported reduction invoice RT:',
+          savedReductionInvoiceRT.invoice,
+        );
+        importedRTs.push(savedReductionInvoiceRT);
+      }
+      return importedRTs;
+    } catch (error) {
+      console.error('Error importing reduction invoice RT data:', error);
+      throw new Error(
+        `Failed to import reduction invoice RT: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async findDebtor(
+    mem_code: string,
+    invoice: string,
+  ): Promise<DebtorEntity | string> {
+    try {
+      console.log('Finding debtor for invoice:', invoice);
+      const result = await this.debtorRepo.findOne({
+        where: { billing_slip_id: invoice, mem_code: mem_code },
+        relations: ['debtorDetail'],
+      });
+      console.log('Found reduction invoice:', result);
+      return result || 'Error finding reduction invoices';
+    } catch (error) {
+      console.error('Error finding reduction invoices:', error);
+      return 'Error finding reduction invoices';
+    }
+  }
+
+  async findReductionRT(
+    mem_code: string,
+    invoice: string,
+  ): Promise<ReductionRT | string> {
+    try {
+      console.log('Finding reduction RT for invoice:', invoice);
+      const result = await this.reductionRTRepo.findOne({
+        where: { invoice: invoice, mem_code: mem_code },
+        relations: ['details', 'details.product'],
+        select: {
+          details: {
+            pro_amount: true,
+            pro_unit: true,
+            pro_price_per_unit: true,
+            pro_discount: true,
+            product: { pro_code: true, pro_name: true },
+          },
+        },
+      });
+      console.log('Found reduction RT:', result);
+      return result || 'Error finding reduction RT';
+    } catch (error) {
+      console.error('Error finding reduction RT:', error);
+      return 'Error finding reduction RT';
     }
   }
 }

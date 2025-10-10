@@ -5,11 +5,11 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { ReductionInvoiceRT } from './reduct-invoice-rt.entity';
+import { ReductionRT } from './reduct-rt.entity';
 import { ProductEntity } from 'src/products/products.entity';
 
 @Entity()
-export class ReductionInvoiceRTDetail {
+export class ReductionRTDetail {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -31,14 +31,11 @@ export class ReductionInvoiceRTDetail {
   })
   pro_discount: string;
 
-  @ManyToOne(() => ReductionInvoiceRT, (reductionRT) => reductionRT.details)
+  @ManyToOne(() => ReductionRT, (reductionRT) => reductionRT.details)
   @JoinColumn({ name: 'RT_id', referencedColumnName: 'RT_id' })
-  reductionInvoiceRT: ReductionInvoiceRT;
+  reductionRT: ReductionRT;
 
-  @ManyToOne(
-    () => ProductEntity,
-    (product) => product.reductionInvoiceRTDetails,
-  )
+  @ManyToOne(() => ProductEntity, (product) => product.reductionRTDetails)
   @JoinColumn({ name: 'pro_code', referencedColumnName: 'pro_code' })
   product: ProductEntity;
 }

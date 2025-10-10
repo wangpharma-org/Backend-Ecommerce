@@ -20,8 +20,8 @@ import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { LotEntity } from 'src/lot/lot.entity';
 import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity';
 import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
-import { ReductionInvoiceRTDetail } from 'src/reduction-invoice/reduct-invoice-rt-detail.entity';
-import { ReductionInvoiceRT } from 'src/reduction-invoice/reduct-invoice-rt.entity';
+import { ReductionRT } from 'src/debtor/reduct-rt.entity';
+import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -200,11 +200,11 @@ export class ProductEntity {
   newArrivals: NewArrival[];
 
   @OneToMany(
-    () => ReductionInvoiceRTDetail,
+    () => ReductionRTDetail,
     (reductionRTDetail) => reductionRTDetail.product,
   )
-  reductionInvoiceRTDetails: ReductionInvoiceRTDetail[];
+  reductionRTDetails: ReductionRTDetail[];
 
-  @ManyToMany(() => ReductionInvoiceRT, (reductionRT) => reductionRT.products)
-  reductionInvoiceRTTs: ReductionInvoiceRT[];
+  @ManyToMany(() => ReductionRT, (reductionRT) => reductionRT.products)
+  reductionRTs: ReductionRT[];
 }
