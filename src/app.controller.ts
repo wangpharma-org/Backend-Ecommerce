@@ -750,9 +750,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
-  async saveHotdeal(@Body() body: { dataInput: HotdealInput }) {
+  async saveHotdeal(@Body() body: { data: HotdealInput }) {
     console.log(body);
-    return this.hotdealService.saveHotdeal(body.dataInput);
+    return this.hotdealService.saveHotdeal(body.data);
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')

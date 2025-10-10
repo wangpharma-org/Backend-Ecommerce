@@ -65,7 +65,7 @@ export class HotdealService {
           pro_unit: hotdeal.pro2_unit,
           amount: Number(hotdeal.pro2_amount),
           hotdeal_free: true,
-          spc_comments: `hotdeal_${hotdeal.product?.pro_code}`,
+          hotdeal_promain: hotdeal.product.pro_code,
         }
         );
       } else {

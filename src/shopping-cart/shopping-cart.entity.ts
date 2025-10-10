@@ -55,6 +55,9 @@ export class ShoppingCartEntity {
   @Column({ type: 'text', nullable: true })
   spc_comments: string;
 
+  @Column({ type: 'text', nullable: true })
+  hotdeal_promain: string;
+
   @Column({ default: false })
   hotdeal_free: boolean;
 
