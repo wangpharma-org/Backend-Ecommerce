@@ -46,20 +46,20 @@ export class HotdealService {
 
   async saveHotdeal(datainput: HotdealInput): Promise<HotdealEntity | null> {
     try {
-    const hotdeal = this.hotdealRepo.create({
-      pro1_amount: datainput.pro1_amount,
-      pro1_unit: datainput.pro1_unit,
-      pro2_amount: datainput.pro2_amount,
-      pro2_unit: datainput.pro2_unit,
-      product: { pro_code: datainput.pro_code },
-      product2: { pro_code: datainput.pro2_code },
-    });
+      const hotdeal = this.hotdealRepo.create({
+        pro1_amount: datainput.pro1_amount,
+        pro1_unit: datainput.pro1_unit,
+        pro2_amount: datainput.pro2_amount,
+        pro2_unit: datainput.pro2_unit,
+        product: { pro_code: datainput.pro_code },
+        product2: { pro_code: datainput.pro2_code },
+      });
 
-    const cartItem = await this.shoppingCartService.find(hotdeal.product?.pro_code || '');
+      const cartItem = await this.shoppingCartService.find(hotdeal.product?.pro_code || '');
 
-    if (cartItem) {
-      console.log('Found cart item for product code:', hotdeal.product?.pro_code || '');
-      await this.shoppingCartService.addProductCartHotDeal({
+      if (cartItem) {
+        console.log('Found cart item for product code:', hotdeal.product?.pro_code || '');
+        await this.shoppingCartService.addProductCartHotDeal({
           mem_code: cartItem.mem_code,
           pro_code: hotdeal.product2?.pro_code || '',
           pro_unit: hotdeal.pro2_unit,
@@ -67,10 +67,10 @@ export class HotdealService {
           hotdeal_free: true,
           spc_comments: `hotdeal_${hotdeal.product?.pro_code}`,
         }
-      );
-    } else {
-      console.log('No cart item found for product code:', hotdeal.product?.pro_code || '');
-    }
+        );
+      } else {
+        console.log('No cart item found for product code:', hotdeal.product?.pro_code || '');
+      }
       return this.hotdealRepo.save(hotdeal);
     } catch (error) {
       console.error('Error saving hotdeal:', error);
@@ -100,8 +100,8 @@ export class HotdealService {
   async deleteHotdeal(id: number): Promise<{ message: string }> {
     try {
       console.log('Attempting to delete hotdeal with id:', id);
-      const hotdeal = await this.hotdealRepo.findOne({ 
-        where: { id : id },
+      const hotdeal = await this.hotdealRepo.findOne({
+        where: { id: id },
         relations: ['product', 'product2']
       });
       console.log('hotdeal', hotdeal?.product?.pro_code);
@@ -229,7 +229,7 @@ export class HotdealService {
     pro_code: string,
     shopping_cart: Array<{ pro1_unit: string; pro1_amount: string }>
   ): Promise<
-    { pro_code: string; match: boolean; countFreeBies: string; product2: { pro_code: string , pro_name: string }; hotdeal: { pro1_amount: string; pro1_unit: string; pro2_amount: string; pro2_unit: string } } | undefined
+    { pro_code: string; match: boolean; countFreeBies: string; product2: { pro_code: string, pro_name: string }; hotdeal: { pro1_amount: string; pro1_unit: string; pro2_amount: string; pro2_unit: string } } | undefined
   > {
     try {
       const found = await this.hotdealRepo.findOne({
@@ -293,7 +293,7 @@ export class HotdealService {
           },
         };
       }
-      
+
       return undefined;
     } catch (error) {
       console.error('Error checking hotdeal match:', error);
@@ -457,22 +457,22 @@ export class HotdealService {
     }
   }
 
-async checkHotdealProduct(pro_code: string): Promise<{pro_code: string; pro2_code: string} | null> {
-  const found = await this.hotdealRepo.findOne({
-    where: { product2: { pro_code } },
-    relations: ['product', 'product2'],
-  });
-  
-  console.log('Checking hotdeal for product code:', pro_code);
-  console.log('checkHotdealProduct found:', found?.product?.pro_code, found?.product2?.pro_code);
-  
-  if (found && found.product) {
-    return { 
-      pro_code: found.product.pro_code || '',
-      pro2_code: found.product2?.pro_code || ''
-    };
+  async checkHotdealProduct(pro_code: string): Promise<{ pro_code: string; pro2_code: string } | null> {
+    const found = await this.hotdealRepo.findOne({
+      where: { product2: { pro_code } },
+      relations: ['product', 'product2'],
+    });
+
+    console.log('Checking hotdeal for product code:', pro_code);
+    console.log('checkHotdealProduct found:', found?.product?.pro_code, found?.product2?.pro_code);
+
+    if (found && found.product) {
+      return {
+        pro_code: found.product.pro_code || '',
+        pro2_code: found.product2?.pro_code || ''
+      };
+    }
+
+    return null;
   }
-  
-  return null;
-}
 }
