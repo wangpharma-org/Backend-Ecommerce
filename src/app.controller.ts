@@ -41,6 +41,8 @@ import { EditAddress } from './edit-address/edit-address.entity';
 import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
+import { UsersService } from './users/users.service';
+import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
 import { SessionsService } from './sessions/sessions.service';
 
@@ -85,6 +87,8 @@ export class AppController {
     private readonly newArrivalsService: NewArrivalsService,
     private readonly fixFreeService: FixFreeService,
     private readonly sessionsService: SessionsService,
+    private readonly usersService: UsersService,
+    private readonly changePasswordService: ChangePasswordService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -846,6 +850,7 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
+    console.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -1388,5 +1393,75 @@ export class AppController {
   async cleanupSessions(@Body() data: { days_old?: number }) {
     await this.sessionsService.cleanupInactiveSessions(data.days_old ?? 30);
     return { message: 'Cleanup completed successfully' };
+  @Get('/ecom/password/check-email/:mem_code')
+  async checkEmail(@Param('mem_code') mem_code: string): Promise<{
+    RefKey?: string;
+    email?: boolean;
+    success: boolean;
+    message: string;
+  }> {
+    const result = await this.changePasswordService.CheckMember(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/request-otp')
+  async requestOtp(@Body('mem_code') mem_code: string): Promise<{
+    valid: boolean;
+    message: string;
+    remainingTime?: number;
+  }> {
+    const result = await this.changePasswordService.CheckTimeRequest(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/validate-otp')
+  async validateOtp(
+    @Body()
+    data: {
+      mem_username: string;
+      otp: string;
+      timeNow: string;
+    },
+  ): Promise<{ valid: boolean; message: string; block?: boolean }> {
+    const result = await this.changePasswordService.validateOtp(data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/password/change-password')
+  async changePassword(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    body: {
+      new_password: string;
+      old_password: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const mem_username = req.user.username;
+      return this.changePasswordService.CheckOldPasswordAndUpdatePassword({
+        mem_username: mem_username,
+        new_password: body.new_password,
+        old_password: body.old_password,
+      });
+    } catch {
+      return {
+        success: false,
+        message: 'An error occurred while changing the password.',
+      };
+    }
+  }
+
+  @Put('/ecom/password/reset-password')
+  async resetPassword(
+    @Body()
+    body: {
+      mem_username: string;
+      new_password: string;
+      otp: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    console.log(body);
+    return this.changePasswordService.forgotPasswordUpdate(body);
   }
 }

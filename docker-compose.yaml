@@ -1,44 +1,40 @@
 version: '3.8'
 services:
-  db-ecommerce-services:
+
+  db-ecommerce-services-demo:
     image: mysql:8.0
-    container_name: ecommerce-db
-    environment:
-      MYSQL_DATABASE: ecommerce-db
+    container_name: ecommerce-db-backend
+    environment:  
+      MYSQL_DATABASE: ecommerce-db-backend
       MYSQL_USER: admin
       MYSQL_PASSWORD: password
       MYSQL_ROOT_PASSWORD: password
     ports:
-      - "3310:3306"
+      - "3311:3306"
     volumes:
-      - db-ecommerce-data:/var/lib/mysql
-
-
-  db-ecommerce-services-1.7:
-    image: mysql:8.0
-    container_name: ecommerce-db-production-test-1.7
+      - db-ecommerce-db-backend:/var/lib/mysql
+  
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
     environment:
-      MYSQL_DATABASE: ecommerce-db
-      MYSQL_USER: admin
-      MYSQL_PASSWORD: password
-      MYSQL_ROOT_PASSWORD: password
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "3312:3306"
-    volumes:
-      - db-ecommerce-data:/var/lib/mysql
+      - '2181:2181'
 
-  # db-ecommerce-services-demo:
-  #   image: mysql:8.0
-  #   container_name: ecommerce-db-backend
-  #   environment:  
-  #     MYSQL_DATABASE: ecommerce-db-backend
-  #     MYSQL_USER: admin
-  #     MYSQL_PASSWORD: password
-  #     MYSQL_ROOT_PASSWORD: password
-  #   ports:
-  #     - "3311:3306"
-  #   volumes:
-  #     - db-ecommerce-db-backend:/var/lib/mysql
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - '9092:9092'
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
 volumes:
   db-ecommerce-data:
