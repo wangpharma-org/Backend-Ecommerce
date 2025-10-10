@@ -44,6 +44,7 @@ import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 import { UsersService } from './users/users.service';
 import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
+import { SessionsService } from './sessions/sessions.service';
 
 interface JwtPayload {
   username: string;
@@ -85,6 +86,7 @@ export class AppController {
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
     private readonly fixFreeService: FixFreeService,
+    private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
   ) {}
@@ -1316,6 +1318,81 @@ export class AppController {
     return this.authService.refreshToken(body.token);
   }
 
+  // Session Management APIs
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/create')
+  async createSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      session_token: string;
+      ip_address?: string;
+      user_agent?: string;
+      device_type?: string;
+    },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.sessionsService.createSession(
+      mem_code,
+      data.session_token,
+      data.ip_address,
+      data.user_agent,
+      data.device_type,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/active/:session_token')
+  async getActiveSession(@Param('session_token') session_token: string) {
+    return await this.sessionsService.findActiveSession(session_token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/user-sessions/:mem_code')
+  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+    return await this.sessionsService.findUserActiveSessions(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/session/update-activity/:session_token')
+  async updateSessionActivity(@Param('session_token') session_token: string) {
+    await this.sessionsService.updateLastActivity(session_token);
+    return { message: 'Session activity updated successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout')
+  async logoutSession(@Body() data: { session_token: string }) {
+    await this.sessionsService.logoutSession(data.session_token);
+    return { message: 'Logout successful' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout-all')
+  async logoutAllSessions(@Body() data: { mem_code: string }) {
+    await this.sessionsService.logoutAllUserSessions(data.mem_code);
+    return { message: 'All sessions logged out successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/validate/:session_token')
+  async validateSession(@Param('session_token') session_token: string) {
+    const isValid = await this.sessionsService.isSessionValid(session_token);
+    return { is_valid: isValid };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/count/:mem_code')
+  async countActiveSessions(@Param('mem_code') mem_code: string) {
+    const count = await this.sessionsService.countUserActiveSessions(mem_code);
+    return { active_sessions_count: count };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/cleanup')
+  async cleanupSessions(@Body() data: { days_old?: number }) {
+    await this.sessionsService.cleanupInactiveSessions(data.days_old ?? 30);
+    return { message: 'Cleanup completed successfully' };
   @Get('/ecom/password/check-email/:mem_code')
   async checkEmail(@Param('mem_code') mem_code: string): Promise<{
     RefKey?: string;

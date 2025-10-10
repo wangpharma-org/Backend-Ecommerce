@@ -29,6 +29,7 @@ import { InvisibleProductModule } from './invisible-product/invisible-product.mo
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 import { ChangePasswordModule } from './change-password/change-password.module';
 import { FixFreeModule } from './fix-free/fix-free.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { FixFreeModule } from './fix-free/fix-free.module';
     NewArrivalsModule,
     ChangePasswordModule,
     FixFreeModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
