@@ -28,6 +28,7 @@ import { ModalmainModule } from './modalmain/modalmain.module';
 import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 import { FixFreeModule } from './fix-free/fix-free.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { FixFreeModule } from './fix-free/fix-free.module';
     InvisibleProductModule,
     NewArrivalsModule,
     FixFreeModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
