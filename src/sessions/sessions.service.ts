@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserSessionsEntity } from './sessions.entity';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class SessionsService {
@@ -10,7 +11,6 @@ export class SessionsService {
     private readonly sessionsRepository: Repository<UserSessionsEntity>,
   ) {}
 
-  // สร้าง session ใหม่เมื่อ user login
   async createSession(
     memCode: string,
     sessionToken: string,
@@ -32,7 +32,6 @@ export class SessionsService {
     return await this.sessionsRepository.save(session);
   }
 
-  // ค้นหา session ที่ active โดยใช้ session token
   async findActiveSession(
     sessionToken: string,
   ): Promise<UserSessionsEntity | null> {
@@ -45,7 +44,6 @@ export class SessionsService {
     });
   }
 
-  // ค้นหา session ทั้งหมดของ user ที่ active
   async findUserActiveSessions(memCode: string): Promise<UserSessionsEntity[]> {
     return await this.sessionsRepository.find({
       where: {
@@ -58,7 +56,6 @@ export class SessionsService {
     });
   }
 
-  // อัพเดทเวลาการใช้งานล่าสุด
   async updateLastActivity(sessionToken: string): Promise<void> {
     await this.sessionsRepository.update(
       { session_token: sessionToken, is_active: true },
@@ -66,7 +63,6 @@ export class SessionsService {
     );
   }
 
-  // Logout session เดียว
   async logoutSession(sessionToken: string): Promise<void> {
     await this.sessionsRepository.update(
       { session_token: sessionToken },
@@ -77,7 +73,6 @@ export class SessionsService {
     );
   }
 
-  // Logout session ทั้งหมดของ user
   async logoutAllUserSessions(memCode: string): Promise<void> {
     await this.sessionsRepository.update(
       { mem_code: memCode, is_active: true },
@@ -88,7 +83,7 @@ export class SessionsService {
     );
   }
 
-  // ลบ session ที่หมดอายุหรือไม่ active (สำหรับ cleanup)
+  @Cron('0 0 * * *')
   async cleanupInactiveSessions(daysOld: number = 30): Promise<void> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
@@ -101,13 +96,11 @@ export class SessionsService {
       .execute();
   }
 
-  // ตรวจสอบว่า session ยังใช้งานได้หรือไม่
   async isSessionValid(sessionToken: string): Promise<boolean> {
     const session = await this.findActiveSession(sessionToken);
     return session !== null;
   }
 
-  // นับจำนวน session ที่ active ของ user
   async countUserActiveSessions(memCode: string): Promise<number> {
     return await this.sessionsRepository.count({
       where: {
