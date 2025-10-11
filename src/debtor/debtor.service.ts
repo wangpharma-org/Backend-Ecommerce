@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { DebtorDetailEntity } from './debtor-detail.entity';
 import { ReductionRT } from './reduct-rt.entity';
 import { ReductionRTDetail } from './reduct-rt-detail.entity';
+import { Cron } from '@nestjs/schedule';
 
 export interface ImportDataRequestInvoice {
   date: string;
@@ -264,6 +265,105 @@ export class DebtorService {
     } catch (error) {
       console.error('Error finding reduction RT:', error);
       return 'Error finding reduction RT';
+    }
+  }
+
+  @Cron('0 2 * * *', { timeZone: 'Asia/Bangkok' })
+  async dailyCleanupExpiredInvoices() {
+    try {
+      console.log('Running daily cleanup for expired invoices...');
+
+      // สร้างวันที่ 90 วันที่แล้วในรูปแบบ YYYY-MM-DD
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      // แปลงเป็น YYYY-MM-DD format เพื่อให้ตรงกับ database
+      const dateString = ninetyDaysAgo.toISOString().split('T')[0]; // "2024-07-17"
+
+      console.log('Checking for invoices older than:', dateString);
+
+      const expiredInvoices = await this.debtorRepo
+        .createQueryBuilder('invoice')
+        .where('invoice.date < :date', { date: dateString })
+        .getMany();
+
+      console.log(`Found ${expiredInvoices.length} expired invoices`);
+
+      if (expiredInvoices.length > 0) {
+        console.log(
+          'Expired invoices:',
+          expiredInvoices.map((inv) => ({
+            billing_slip_id: inv.billing_slip_id,
+            date: inv.date,
+            mem_code: inv.mem_code,
+          })),
+        );
+
+        // ลบ details ก่อน
+        for (const invoice of expiredInvoices) {
+          console.log(
+            'Cleaning up details for invoice:',
+            invoice.billing_slip_id,
+          );
+          await this.debtorDetailRepo.delete({
+            debtorEntity: { debtor_id: invoice.debtor_id },
+          });
+        }
+
+        console.log(
+          `Successfully cleaned up ${expiredInvoices.length} expired invoices`,
+        );
+      }
+    } catch (error) {
+      console.error('Error in daily cleanup:', error);
+    }
+  }
+
+  @Cron('0 3 * * *', { timeZone: 'Asia/Bangkok' })
+  async dailyCleanupOldRTs() {
+    try {
+      console.log('Running daily cleanup for old Reduction RTs...');
+
+      // สร้างวันที่ 90 วันที่แล้วในรูปแบบ YYYY-MM-DD
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      // แปลงเป็น YYYY-MM-DD format เพื่อให้ตรงกับ database
+      const dateString = ninetyDaysAgo.toISOString().split('T')[0]; // "2024-07-17"
+
+      console.log('Checking for Reduction RTs older than:', dateString);
+
+      const oldRTs = await this.reductionRTRepo
+        .createQueryBuilder('rt')
+        .where('rt.date < :date', { date: dateString })
+        .getMany();
+
+      console.log(`Found ${oldRTs.length} old Reduction RTs`);
+
+      if (oldRTs.length > 0) {
+        console.log(
+          'Old Reduction RTs:',
+          oldRTs.map((rt) => ({
+            invoice: rt.invoice,
+            date: rt.date,
+            mem_code: rt.mem_code,
+          })),
+        );
+
+        // ลบ details ก่อน
+        for (const rt of oldRTs) {
+          console.log('Cleaning up details for RT:', rt.invoice);
+          await this.reductionRTDetailRepo.delete({
+            reductionRT: { RT_id: rt.RT_id },
+          });
+        }
+
+        console.log(
+          `Successfully cleaned up ${oldRTs.length} old Reduction RTs`,
+        );
+      }
+    } catch (error) {
+      console.error('Error in daily cleanup of Reduction RTs:', error);
     }
   }
 }
