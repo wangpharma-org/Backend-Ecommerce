@@ -221,7 +221,7 @@ export class AuthService {
     }
   }
 
-  async signin(data: {
+  async   signin(data: {
     username: string;
     password: string;
   }): Promise<SigninResponse> {
@@ -230,6 +230,10 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
     const passwordMatch = await bcrypt.compare(data.password, user.mem_password);
+    console.log('Password match:', passwordMatch);
+    console.log('User mem_password (hashed):', user.mem_password);
+    console.log('Provided password (plain):', data.password);
+
     if (user && passwordMatch === false) {
       throw new UnauthorizedException('Invalid password');
     }
