@@ -14,13 +14,13 @@ export class DebtorEntity {
   @PrimaryGeneratedColumn()
   debtor_id: number;
 
-  @Column()
+  @Column({ nullable: false })
   billing_slip_id: string;
 
-  @Column()
+  @Column({ nullable: false })
   payment_schedule_date: string;
 
-  @Column()
+  @Column({ nullable: false })
   total: string;
 
   @Column({ nullable: true, default: null })
@@ -44,4 +44,7 @@ export class DebtorEntity {
     (debtorDetail) => debtorDetail.debtorEntity,
   )
   debtorDetail: DebtorDetailEntity[];
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  created_at: Date;
 }

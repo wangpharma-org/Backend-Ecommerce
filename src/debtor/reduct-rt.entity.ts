@@ -16,13 +16,13 @@ export class ReductionRT {
   @PrimaryGeneratedColumn()
   RT_id: number;
 
-  @Column({ nullable: true, default: null })
+  @Column({ nullable: false, default: null })
   invoice: string;
 
-  @Column({ nullable: true, default: null })
+  @Column({ nullable: false, default: null })
   date: string;
 
-  @Column({ nullable: true, default: null })
+  @Column({ nullable: false, default: null })
   mem_code: string;
 
   @Column({ type: 'text', nullable: true, default: null })
@@ -32,7 +32,7 @@ export class ReductionRT {
     type: 'decimal',
     precision: 10,
     scale: 2,
-    nullable: true,
+    nullable: false,
     default: null,
   })
   dis_price: string;
