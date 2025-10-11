@@ -90,7 +90,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
-  ) { }
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {

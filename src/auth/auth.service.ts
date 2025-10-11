@@ -189,7 +189,7 @@ export class AuthService {
       const mem_code_all_user = await this.userRepo.find({
         select: {
           mem_code: true,
-        } ,
+        },
       });
       const mem_code_all_map = mem_code_all_user.map((m) => {
         return m.mem_code;
@@ -242,7 +242,7 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
       price_option: user.mem_price ?? '',
       mem_address: user.mem_address ?? '',
-      mem_village: user.mem_village ?? '',  
+      mem_village: user.mem_village ?? '',
       mem_alley: user.mem_alley ?? '',
       mem_tumbon: user.mem_tumbon ?? '',
       mem_amphur: user.mem_amphur ?? '',

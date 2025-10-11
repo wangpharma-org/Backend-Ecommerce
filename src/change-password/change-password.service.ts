@@ -500,7 +500,7 @@ export class ChangePasswordService {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
       console.error('Error updating password:', errorMessage);
-      return { success: false, message: errorMessage }; 
+      return { success: false, message: errorMessage };
     }
   }
 
