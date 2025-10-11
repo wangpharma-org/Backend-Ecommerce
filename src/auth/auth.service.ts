@@ -9,6 +9,7 @@ import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import * as dayjs from 'dayjs';
+import * as bcrypt from 'bcrypt'; 
 
 export interface SigninResponse {
   token: string;
@@ -184,10 +185,11 @@ export class AuthService {
     }[],
   ) {
     try {
+      const saltOrRounds = 8;
       const mem_code_all_user = await this.userRepo.find({
         select: {
           mem_code: true,
-        },
+        } ,
       });
       const mem_code_all_map = mem_code_all_user.map((m) => {
         return m.mem_code;
@@ -203,11 +205,12 @@ export class AuthService {
             },
           );
         } else {
+          const hashedPassword = await bcrypt.hash(user.mem_password, saltOrRounds);
           const newUser = this.userRepo.create({
             mem_code: user.mem_code,
             mem_nameSite: user.mem_nameSite,
             mem_username: user.mem_username,
-            mem_password: user.mem_password,
+            mem_password: hashedPassword,
             mem_price: user.mem_price,
             emp_saleoffice: user.emp_saleoffice,
           });
@@ -226,8 +229,12 @@ export class AuthService {
   }): Promise<SigninResponse> {
     console.log('data in auth service:', data);
     const user = await this.userService.findOne(data.username);
-    if (user && user.mem_password !== data.password) {
-      throw new UnauthorizedException();
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const passwordMatch = await bcrypt.compare(data.password, user.mem_password);
+    if (user && passwordMatch === false) {
+      throw new UnauthorizedException('Invalid password');
     }
     const payload = {
       username: user.mem_username,
@@ -235,7 +242,7 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
       price_option: user.mem_price ?? '',
       mem_address: user.mem_address ?? '',
-      mem_village: user.mem_village ?? '',
+      mem_village: user.mem_village ?? '',  
       mem_alley: user.mem_alley ?? '',
       mem_tumbon: user.mem_tumbon ?? '',
       mem_amphur: user.mem_amphur ?? '',
@@ -311,6 +318,24 @@ export class AuthService {
       console.log('refresh error: ', error);
       throw new Error('Refresh token expired');
       // throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  async hashpassword() {
+    try {
+      const saltOrRounds = 8;
+      const data = await this.userRepo.find({
+        select: { mem_code: true, mem_password: true }
+      });
+      for (const user of data) {
+        if (user.mem_password && user.mem_password.length < 60) {
+          const hashedPassword = await bcrypt.hash(user.mem_password, saltOrRounds);
+          await this.userRepo.update({ mem_code: user.mem_code }, { mem_password: hashedPassword });
+        }
+      }
+    } catch (error) {
+      console.log(error);
+      throw new Error('Error in hashpassword');
     }
   }
 }

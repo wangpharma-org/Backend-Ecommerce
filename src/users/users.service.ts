@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { UserEntity } from './users.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
 
 
 @Injectable()
@@ -88,11 +89,13 @@ export class UsersService {
     hashedPassword: string,
   ): Promise<boolean> {
     try {
-      const isMatch = plainPassword === hashedPassword;
-      console.log('Comparing passwords:', plainPassword, hashedPassword);
+      const isMatch = await bcrypt.compare(plainPassword, hashedPassword);
+      console.log('Comparing passwords - Plain:', plainPassword);
+      console.log('Comparing passwords - Hash:', hashedPassword);
       console.log('Password comparison result:', isMatch);
       return isMatch;
-    } catch {
+    } catch (error) {
+      console.error('Error comparing passwords:', error);
       throw new Error('Error comparing passwords');
     }
   }

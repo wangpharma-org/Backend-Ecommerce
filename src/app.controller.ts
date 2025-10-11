@@ -45,6 +45,7 @@ import { UsersService } from './users/users.service';
 import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
 import { SessionsService } from './sessions/sessions.service';
+import passport from 'passport';
 
 interface JwtPayload {
   username: string;
@@ -89,7 +90,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
-  ) {}
+  ) { }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -287,15 +288,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -1458,5 +1459,14 @@ export class AppController {
   ): Promise<{ success: boolean; message: string }> {
     console.log(body);
     return this.changePasswordService.forgotPasswordUpdate(body);
+  }
+
+  @Post('/ecom/hash-password')
+  async hashpassword(@Body() body: { username: string, password: string }) {
+    if (body.password !== 'iamadmin101'|| body.username !== 'dontscamme') {
+      return this.authService.hashpassword();
+    } else {
+      return { message: 'You not have Permission to Accesss' };
+    }
   }
 }

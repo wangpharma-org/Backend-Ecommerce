@@ -22,7 +22,7 @@ export class UserEntity {
   @Column({ length: 30 })
   mem_username: string;
 
-  @Column({ length: 30 })
+  @Column({ length: 80 })
   mem_password: string;
 
   @Column({ length: 255, nullable: true, default: null })
