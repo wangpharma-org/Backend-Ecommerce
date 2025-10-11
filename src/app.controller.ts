@@ -1292,6 +1292,7 @@ export class AppController {
     return { ip };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/reduct-invoice/add-invoice')
   async importData(
     @Body()
@@ -1310,6 +1311,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/reduct-invoice/add-rt')
   async importDataRT(
     @Body()
