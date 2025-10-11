@@ -50,7 +50,7 @@ import { SessionsModule } from './sessions/sessions.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: configService.get<boolean>('SYNCHRONIZE'),
+        synchronize: configService.get<boolean>('SYNCHRONIZE') ?? false,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
