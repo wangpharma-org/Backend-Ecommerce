@@ -1,10 +1,4 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  JoinColumn,
-  OneToMany,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { PromotionEntity } from '../promotion/promotion.entity';
 import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity';

@@ -41,6 +41,8 @@ import { EditAddress } from './edit-address/edit-address.entity';
 import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
+import { UsersService } from './users/users.service';
+import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
 import type {
   ImportDataRequestInvoice,
@@ -48,6 +50,7 @@ import type {
 } from './debtor/debtor.service';
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
+import { SessionsService } from './sessions/sessions.service';
 
 interface JwtPayload {
   username: string;
@@ -89,7 +92,9 @@ export class AppController {
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
     private readonly fixFreeService: FixFreeService,
-    // private readonly reductionInvoiceService: ReductionInvoiceService,
+    private readonly sessionsService: SessionsService,
+    private readonly usersService: UsersService,
+    private readonly changePasswordService: ChangePasswordService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -249,6 +254,7 @@ export class AppController {
       offset: number;
       mem_code: string;
       sort_by?: number;
+      limit: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -265,6 +271,7 @@ export class AppController {
       category: number;
       mem_code: string;
       sort_by?: number;
+      limit: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -851,6 +858,7 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
+    console.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -1287,9 +1295,156 @@ export class AppController {
     return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
   }
 
-  @Get('/ip')
-  getIP(@Ip() ip: string) {
-    return { ip };
+  // @Get('/ip')
+  // getIP(@Ip() ip: string) {
+  //   return { ip };
+  // }
+
+  @Post('/ecom/refresh_token')
+  async refreshToken(@Body() body: { token: string }) {
+    return this.authService.refreshToken(body.token);
+  }
+
+  // Session Management APIs
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/create')
+  async createSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      session_token: string;
+      ip_address?: string;
+      user_agent?: string;
+      device_type?: string;
+    },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.sessionsService.createSession(
+      mem_code,
+      data.session_token,
+      data.ip_address,
+      data.user_agent,
+      data.device_type,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/active/:session_token')
+  async getActiveSession(@Param('session_token') session_token: string) {
+    return await this.sessionsService.findActiveSession(session_token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/user-sessions/:mem_code')
+  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+    return await this.sessionsService.findUserActiveSessions(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/session/update-activity/:session_token')
+  async updateSessionActivity(@Param('session_token') session_token: string) {
+    await this.sessionsService.updateLastActivity(session_token);
+    return { message: 'Session activity updated successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout')
+  async logoutSession(@Body() data: { session_token: string }) {
+    await this.sessionsService.logoutSession(data.session_token);
+    return { message: 'Logout successful' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout-all')
+  async logoutAllSessions(@Body() data: { mem_code: string }) {
+    await this.sessionsService.logoutAllUserSessions(data.mem_code);
+    return { message: 'All sessions logged out successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/validate/:session_token')
+  async validateSession(@Param('session_token') session_token: string) {
+    const isValid = await this.sessionsService.isSessionValid(session_token);
+    return { is_valid: isValid };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/count/:mem_code')
+  async countActiveSessions(@Param('mem_code') mem_code: string) {
+    const count = await this.sessionsService.countUserActiveSessions(mem_code);
+    return { active_sessions_count: count };
+  }
+
+  @Get('/ecom/password/check-email/:mem_code')
+  async checkEmail(@Param('mem_code') mem_code: string): Promise<{
+    RefKey?: string;
+    email?: boolean;
+    success: boolean;
+    message: string;
+  }> {
+    const result = await this.changePasswordService.CheckMember(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/request-otp')
+  async requestOtp(@Body('mem_code') mem_code: string): Promise<{
+    valid: boolean;
+    message: string;
+    remainingTime?: number;
+  }> {
+    const result = await this.changePasswordService.CheckTimeRequest(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/validate-otp')
+  async validateOtp(
+    @Body()
+    data: {
+      mem_username: string;
+      otp: string;
+      timeNow: string;
+    },
+  ): Promise<{ valid: boolean; message: string; block?: boolean }> {
+    const result = await this.changePasswordService.validateOtp(data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/password/change-password')
+  async changePassword(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    body: {
+      new_password: string;
+      old_password: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const mem_username = req.user.username;
+      return this.changePasswordService.CheckOldPasswordAndUpdatePassword({
+        mem_username: mem_username,
+        new_password: body.new_password,
+        old_password: body.old_password,
+      });
+    } catch {
+      return {
+        success: false,
+        message: 'An error occurred while changing the password.',
+      };
+    }
+  }
+
+  @Put('/ecom/password/reset-password')
+  async resetPassword(
+    @Body()
+    body: {
+      mem_username: string;
+      new_password: string;
+      otp: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    console.log(body);
+    return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
   @UseGuards(JwtAuthGuard)

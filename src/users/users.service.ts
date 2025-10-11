@@ -3,6 +3,7 @@ import { UserEntity } from './users.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -17,7 +18,7 @@ export class UsersService {
           mem_username: username,
         },
       });
-      console.log('User found:', user);
+      console.log('User found:', user?.mem_code);
       if (!user) {
         throw new Error('User not found');
       } else {
@@ -54,13 +55,45 @@ export class UsersService {
       const user = await this.userRepo.findOne({
         where: { mem_code: mem_code },
       });
-      console.log('User found by mem_code:', user);
+      console.log('User found by mem_code:', user?.mem_code);
       if (!user) {
         throw new Error('User not found');
       }
       return user;
     } catch {
       throw new Error('Error retrieving user by mem_code');
+    }
+  }
+
+  async checkEmail(username: string): Promise<string | null> {
+    try {
+      const user = await this.userRepo.findOne({
+        where: { mem_username: username },
+        select: ['mem_email'], // เลือกเฉพาะฟิลด์ mem_email
+      });
+      console.log(
+        'Email found for user',
+        username,
+        ':',
+        user ? user.mem_email : null,
+      );
+      return user ? user.mem_email : null;
+    } catch {
+      throw new Error('Error retrieving email');
+    }
+  }
+
+  async comparePassword(
+    plainPassword: string,
+    hashedPassword: string,
+  ): Promise<boolean> {
+    try {
+      const isMatch = plainPassword === hashedPassword;
+      console.log('Comparing passwords:', plainPassword, hashedPassword);
+      console.log('Password comparison result:', isMatch);
+      return isMatch;
+    } catch {
+      throw new Error('Error comparing passwords');
     }
   }
 }

@@ -13,6 +13,7 @@ import { FavoriteEntity } from '../favorite/favorite.entity';
 import { DebtorEntity } from 'src/debtor/debtor.entity';
 import { EditAddress } from 'src/edit-address/edit-address.entity';
 import { ReductionRT } from 'src/debtor/reduct-rt.entity';
+import { ChangePassword } from 'src/change-password/change-password.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -180,4 +181,6 @@ export class UserEntity {
 
   @OneToMany(() => ReductionRT, (reductionRT) => reductionRT.user)
   reductionRTs: ReductionRT[];
+  @OneToMany(() => ChangePassword, (changePassword) => changePassword.user)
+  changePasswords: ChangePassword[];
 }
