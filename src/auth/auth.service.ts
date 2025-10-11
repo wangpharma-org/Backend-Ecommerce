@@ -327,7 +327,7 @@ export class AuthService {
         select: { mem_code: true, mem_password: true }
       });
       for (const user of data) {
-        if (user.mem_password && user.mem_password.length < 60) {
+        if (user.mem_password && user.mem_password !== null && user.mem_password.trim() !== '' && user.mem_password.length < 60) {
           const hashedPassword = await bcrypt.hash(user.mem_password, SALT_ROUNDS);
           await this.userRepo.update({ mem_code: user.mem_code }, { mem_password: hashedPassword });
         }

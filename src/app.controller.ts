@@ -1465,10 +1465,10 @@ export class AppController {
 
   @Post('/ecom/hash-password')
   async hashpassword(@Body() body: { username: string, password: string }) {
-    if (body.password !== 'iamadmin101'|| body.username !== 'dontscamme') {
+    if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
       return this.authService.hashpassword();
     } else {
-      return { message: 'You not have Permission to Accesss' };
+      return { message: 'You do not have permission to access this endpoint' };
     }
   }
 }
