@@ -998,6 +998,7 @@ export class ProductsService {
   //   }
   // }
 
+  // ตรวจสอบแล้ว
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
       const products = await this.productRepo

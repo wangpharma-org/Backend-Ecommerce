@@ -150,13 +150,9 @@ export class ShoppingCartService {
             },
           );
         } else {
-          // เช็คว่าสินค้านี้มี hotdeal หรือไม่ก่อนลบ
           const hotdeal = await this.hotdealService.find(data.pro_code);
-
-          // ลบสินค้าต้นฉบับ
           await this.shoppingCartRepo.delete({ spc_id: existing.spc_id });
 
-          // ถ้ามี hotdeal ให้ลบสินค้าแถม (hotdeal_free = true) ออกด้วย
           if (hotdeal && hotdeal.product2?.pro_code) {
             await this.shoppingCartRepo.delete({
               mem_code: data.mem_code,
@@ -192,7 +188,6 @@ export class ShoppingCartService {
         data.mem_code,
         data.pro_code,
         data.pro_unit,
-        data.amount,
       );
 
       return await this.getProductCart(data.mem_code);
@@ -936,25 +931,11 @@ export class ShoppingCartService {
 
   async removeAllCarthotdeal(pro_code: string): Promise<string> {
     try {
-      console.log('Removing all hotdeal cart items for pro_code:', pro_code);
-
-      // ดูข้อมูลก่อนลบ
-      const existingItems = await this.shoppingCartRepo.find({
-        where: {
-          pro_code: String(pro_code),
-          hotdeal_free: true,
-        },
-      });
-      console.log('Found items to delete:', existingItems);
-      console.log('Number of items found:', existingItems.length);
-
-      const result = await this.shoppingCartRepo.delete({
-        pro_code: pro_code,
+      await this.shoppingCartRepo.delete({
+        hotdeal_promain: pro_code,
         hotdeal_free: true,
       });
-      console.log('Delete result:', result);
-      console.log('All hotdeal cart items removed for pro_code:', pro_code);
-      return 'success';
+      return 'Remove All Cart Hotdeal Cart Success';
     } catch (error) {
       console.error('Error removing all hotdeal cart items:', error);
       throw new Error('Error in removeAllCarthotdeal');
@@ -989,7 +970,6 @@ export class ShoppingCartService {
     mem_code: string,
     pro_code: string,
     pro_unit: string,
-    amount: number,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
       const existingCart = await this.shoppingCartRepo.findOne({
@@ -1013,7 +993,6 @@ export class ShoppingCartService {
         ],
       );
       if (hotdealMatch?.match === false) {
-        // ถ้าไม่ตรงกับเงื่อนไข ให้ลบสินค้าแถม (hotdeal_free = true) ออกด้วย
         if (hotdeal && hotdeal.product2?.pro_code) {
           await this.shoppingCartRepo.delete({
             mem_code: mem_code,
@@ -1028,47 +1007,29 @@ export class ShoppingCartService {
         }
         return await this.getProductCart(mem_code);
       }
-      console.log('amount.toString(),', amount.toString());
-      console.log('hotdealMatchInServiceCart', hotdealMatch);
-      console.log('hotdeal', hotdeal);
       if (hotdeal && hotdeal.product2?.pro_code) {
-        console.log('amount', amount);
-        console.log('pro_unit', pro_unit);
-
-        // เช็คว่ามีสินค้าแถม (hotdeal_free) อยู่ในตะกร้าแล้วหรือยัง
         const existingFreebie = await this.shoppingCartRepo.findOne({
           where: {
             mem_code: mem_code,
             pro_code: hotdeal.product2.pro_code,
-            spc_comments: `hotdeal_${hotdeal.product.pro_code}`,
+            hotdeal_promain: hotdeal.product.pro_code,
             hotdeal_free: true,
           },
         });
 
-        // ถ้ามีแล้วให้ข้าม (return แค่ cart ปัจจุบัน)
         if (existingFreebie) {
-          console.log(
-            'Hotdeal freebie already exists for pro_code:',
-            hotdeal.product2.pro_code,
-          );
           await this.shoppingCartRepo.update(
             {
               mem_code: existingFreebie.mem_code,
               pro_code: hotdeal.product2.pro_code,
-              spc_comments: `hotdeal_${hotdeal.product.pro_code}`,
+              hotdeal_promain: hotdeal.product.pro_code,
               hotdeal_free: true,
             },
             { spc_amount: Number(hotdealMatch?.countFreeBies) },
           );
-          console.log(
-            'Updated hotdeal freebie amount for pro_code:',
-            hotdeal.product2.pro_code,
-            hotdealMatch?.countFreeBies,
-          );
           return await this.getProductCart(mem_code);
         }
 
-        // ถ้ายังไม่มีให้เพิ่ม
         return await this.addProductCartHotDeal({
           mem_code: mem_code ?? '',
           pro_code: hotdeal.product2.pro_code,
@@ -1084,9 +1045,9 @@ export class ShoppingCartService {
     }
   }
 
-  async find(pro_code: string): Promise<ShoppingCartEntity | null> {
+  async find(pro_code: string): Promise<ShoppingCartEntity[] | null> {
     try {
-      return await this.shoppingCartRepo.findOne({
+      return await this.shoppingCartRepo.find({
         where: { pro_code },
       });
     } catch {

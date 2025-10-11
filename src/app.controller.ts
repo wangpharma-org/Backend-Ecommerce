@@ -759,10 +759,11 @@ export class AppController {
   async getAllHotdeals() {
     return this.hotdealService.getAllHotdealsWithProductNames();
   }
+
   @UseGuards(JwtAuthGuard)
-  @Delete('/ecom/admin/hotdeal/delete/:id')
-  async deleteHotdeal(@Param('id') id: number) {
-    return this.hotdealService.deleteHotdeal(id);
+  @Delete('/ecom/admin/hotdeal/delete')
+  async deleteHotdeal(@Body() data: { id: number; pro_code: string }) {
+    return this.hotdealService.deleteHotdeal(data.id, data.pro_code);
   }
 
   @Get('/ecom/hotdeal/simple-list')
@@ -782,10 +783,10 @@ export class AppController {
   async checkHotdealMatch(
     @Body()
     body: {
-      hotDeal: Array<{
+      hotDeal: {
         pro_code: string;
-        shopping_cart: Array<{ pro1_unit: string; pro1_amount: string }>;
-      }>;
+        shopping_cart: { pro1_unit: string; pro1_amount: string }[];
+      }[];
     },
   ) {
     try {
