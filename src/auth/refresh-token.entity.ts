@@ -9,8 +9,5 @@ export class RefreshTokenEntity {
   refresh_token: string;
 
   @Column()
-  expire: Date;
-
-  @Column()
   mem_code: string;
 }
