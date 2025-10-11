@@ -90,9 +90,6 @@ export class UsersService {
   ): Promise<boolean> {
     try {
       const isMatch = await bcrypt.compare(plainPassword, hashedPassword);
-      console.log('Comparing passwords - Plain:', plainPassword);
-      console.log('Comparing passwords - Hash:', hashedPassword);
-      console.log('Password comparison result:', isMatch);
       return isMatch;
     } catch (error) {
       console.error('Error comparing passwords:', error);

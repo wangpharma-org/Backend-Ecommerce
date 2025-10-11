@@ -4,7 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ChangePassword } from './change-password.entity';
 import { UsersService } from 'src/users/users.service';
 import { HttpService } from '@nestjs/axios'; // เพิ่ม HttpService
-import * as bcrypt from 'bcrypt'; // เปิดใช้แล้ว
+import * as bcrypt from 'bcrypt';
+import { SALT_ROUNDS } from '../constants/app.constants'; // เปิดใช้แล้ว
 
 interface MailgunMessageData {
   from: string;
@@ -488,8 +489,7 @@ export class ChangePasswordService {
         throw new Error('Old password is incorrect');
       }
       try {
-        const saltOrRounds = 10;
-        user.mem_password = await bcrypt.hash(data.new_password, saltOrRounds);
+        user.mem_password = await bcrypt.hash(data.new_password, SALT_ROUNDS);
         await this.usersService.update(user.mem_username, user);
       } catch (hashError) {
         console.error('Error hashing/updating password:', hashError);
@@ -500,7 +500,7 @@ export class ChangePasswordService {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
       console.error('Error updating password:', errorMessage);
-      return { success: false, message: errorMessage };
+      return { success: false, message: errorMessage }; 
     }
   }
 
@@ -527,8 +527,7 @@ export class ChangePasswordService {
           throw new Error(otpValidation.message);
         }
 
-        const saltOrRounds = 10;
-        user.mem_password = await bcrypt.hash(data.new_password, saltOrRounds);
+        user.mem_password = await bcrypt.hash(data.new_password, SALT_ROUNDS);
         await this.usersService.update(user.mem_username, user);
       } catch (hashError) {
         console.error('Error hashing/updating password:', hashError);

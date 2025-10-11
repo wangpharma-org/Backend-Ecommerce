@@ -9,7 +9,8 @@ import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import * as dayjs from 'dayjs';
-import * as bcrypt from 'bcrypt'; 
+import * as bcrypt from 'bcrypt';
+import { SALT_ROUNDS } from '../constants/app.constants'; 
 
 export interface SigninResponse {
   token: string;
@@ -185,7 +186,6 @@ export class AuthService {
     }[],
   ) {
     try {
-      const saltOrRounds = 8;
       const mem_code_all_user = await this.userRepo.find({
         select: {
           mem_code: true,
@@ -205,7 +205,7 @@ export class AuthService {
             },
           );
         } else {
-          const hashedPassword = await bcrypt.hash(user.mem_password, saltOrRounds);
+          const hashedPassword = await bcrypt.hash(user.mem_password, SALT_ROUNDS);
           const newUser = this.userRepo.create({
             mem_code: user.mem_code,
             mem_nameSite: user.mem_nameSite,
@@ -323,13 +323,12 @@ export class AuthService {
 
   async hashpassword() {
     try {
-      const saltOrRounds = 8;
       const data = await this.userRepo.find({
         select: { mem_code: true, mem_password: true }
       });
       for (const user of data) {
         if (user.mem_password && user.mem_password.length < 60) {
-          const hashedPassword = await bcrypt.hash(user.mem_password, saltOrRounds);
+          const hashedPassword = await bcrypt.hash(user.mem_password, SALT_ROUNDS);
           await this.userRepo.update({ mem_code: user.mem_code }, { mem_password: hashedPassword });
         }
       }
