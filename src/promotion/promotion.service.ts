@@ -44,8 +44,8 @@ export class PromotionService {
     });
   }
 
-  // @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
+  // @Cron(CronExpression.EVERY_30_SECONDS)
   async cronDeletePromotionOutOfDate() {
     try {
       const today = new Date();

@@ -27,7 +27,9 @@ import { EditAddressModule } from './edit-address/edit-address.module';
 import { ModalmainModule } from './modalmain/modalmain.module';
 import { InvisibleProductModule } from './invisible-product/invisible-product.module';
 import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
+import { ChangePasswordModule } from './change-password/change-password.module';
 import { FixFreeModule } from './fix-free/fix-free.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -74,7 +76,9 @@ import { FixFreeModule } from './fix-free/fix-free.module';
     ModalmainModule,
     InvisibleProductModule,
     NewArrivalsModule,
+    ChangePasswordModule,
     FixFreeModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
