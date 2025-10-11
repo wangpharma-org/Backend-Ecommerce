@@ -498,6 +498,7 @@ export class ProductsService {
     offset: number;
     mem_code: string;
     sort_by?: number;
+    limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const now = new Date();
@@ -654,7 +655,7 @@ export class ProductsService {
 
       const totalCount = await qb.getCount();
       const products = await qb
-        .take(30)
+        .take(data.limit)
         .skip(data.offset)
         .select([
           'product.pro_code',
@@ -698,6 +699,7 @@ export class ProductsService {
     offset: number;
     mem_code: string;
     sort_by?: number;
+    limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const qb = this.productRepo
@@ -807,7 +809,7 @@ export class ProductsService {
 
       const totalCount = await qb.getCount();
       const products = await qb
-        .take(30)
+        .take(data.limit)
         .skip(data.offset)
         .select([
           'product.pro_code',

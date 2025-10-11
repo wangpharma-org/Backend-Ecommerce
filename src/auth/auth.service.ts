@@ -248,7 +248,7 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
     };
     const access_token = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
+      expiresIn: '6m',
     });
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
       secret: process.env.ACCESS_TOKEN_SECRET,
@@ -264,6 +264,7 @@ export class AuthService {
 
   async refreshToken(refresh_token: string) {
     try {
+      console.log(refresh_token);
       const existingToken = await this.refreshTokenRepo.findOne({
         where: { refresh_token: refresh_token },
       });
@@ -319,7 +320,8 @@ export class AuthService {
       } else {
         throw new UnauthorizedException('Invalid refresh token');
       }
-    } catch {
+    } catch (error) {
+      console.log(error);
       throw new Error('Refresh token expired');
       // throw new UnauthorizedException('Invalid refresh token');
     }

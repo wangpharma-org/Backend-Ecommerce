@@ -248,6 +248,7 @@ export class AppController {
       offset: number;
       mem_code: string;
       sort_by?: number;
+      limit: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -264,6 +265,7 @@ export class AppController {
       category: number;
       mem_code: string;
       sort_by?: number;
+      limit: number;
     },
   ) {
     console.log('data in controller:', data);
