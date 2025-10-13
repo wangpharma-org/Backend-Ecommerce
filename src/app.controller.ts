@@ -41,7 +41,10 @@ import { EditAddress } from './edit-address/edit-address.entity';
 import { ModalContentService } from './modalmain/modalmain.service';
 import { InvisibleProductService } from './invisible-product/invisible-product.service';
 import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
+import { UsersService } from './users/users.service';
+import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
+import { SessionsService } from './sessions/sessions.service';
 
 interface JwtPayload {
   username: string;
@@ -83,6 +86,9 @@ export class AppController {
     private readonly modalContentService: ModalContentService,
     private readonly newArrivalsService: NewArrivalsService,
     private readonly fixFreeService: FixFreeService,
+    private readonly sessionsService: SessionsService,
+    private readonly usersService: UsersService,
+    private readonly changePasswordService: ChangePasswordService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -242,6 +248,7 @@ export class AppController {
       offset: number;
       mem_code: string;
       sort_by?: number;
+      limit: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -258,6 +265,7 @@ export class AppController {
       category: number;
       mem_code: string;
       sort_by?: number;
+      limit: number;
     },
   ) {
     console.log('data in controller:', data);
@@ -342,7 +350,7 @@ export class AppController {
       pro_code: string;
       pro_unit: string;
       amount: number;
-      pro_freebie: number;
+      // pro_freebie: number;
       flashsale_end: string;
     },
   ) {
@@ -353,9 +361,13 @@ export class AppController {
       pro_unit: string;
       amount: number;
       priceCondition: string;
-      is_reward: boolean;
+      // is_reward: boolean;
       flashsale_end: string;
-    } = { ...data, priceCondition, is_reward: data.pro_freebie > 0 };
+      // hotdeal_free: boolean;
+    } = {
+      ...data,
+      priceCondition,
+    };
     console.log(payload);
     return await this.shoppingCartService.addProductCart(payload);
   }
@@ -671,20 +683,54 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/wangday/import')
   async importWangday(
-    @Body() body: { data: any[]; isLastChunk: boolean; isFirstChunk: boolean },
+    @Body()
+    body: {
+      data: {
+        date: string;
+        sh_running: string;
+        wang_code: string;
+        sumprice: string;
+      }[];
+      isLastChunk: boolean;
+      isFirstChunk: boolean;
+      fileName: string;
+    },
   ) {
     try {
       // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
-      const rows = (body.data || []).map((item) => ({
-        date: item['วันที่'],
-        sh_running: item['เลขที่ใบกำกับ'],
-        wang_code: item['รหัสลูกค้า'],
-        sumprice: item['ยอดเงินสุทธิ']?.toString(),
-      }));
+      const rows = (body.data || []).map((item) => {
+        // console.log('Mapping item:', item);
+        const row = item as {
+          วันที่?: number | string;
+          เลขที่ใบกำกับ?: string;
+          รหัสลูกค้า?: string;
+          ยอดเงินสุทธิ?: number | string;
+        };
+        let dateValue: string | undefined = '';
+        if (typeof row['วันที่'] === 'string') {
+          dateValue = row['วันที่'];
+        } else if (typeof row['วันที่'] === 'number') {
+          dateValue = String(row['วันที่']);
+        }
+        return {
+          date: dateValue,
+          sh_running:
+            typeof row['เลขที่ใบกำกับ'] === 'string'
+              ? row['เลขที่ใบกำกับ']
+              : '',
+          wang_code:
+            typeof row['รหัสลูกค้า'] === 'string' ? row['รหัสลูกค้า'] : '',
+          sumprice:
+            row['ยอดเงินสุทธิ'] !== undefined
+              ? String(row['ยอดเงินสุทธิ'])
+              : '',
+        };
+      });
       const imported = await this.wangdayService.importFromExcel(
         rows,
         body.isLastChunk,
         body.isFirstChunk,
+        body.fileName,
       );
       return 'Successful' + imported.length;
     } catch (error) {
@@ -695,7 +741,10 @@ export class AppController {
 
   @Get('/ecom/wangday/monthly/:wang_code')
   async getWangdayMonthly(@Param('wang_code') wang_code: string) {
-    return this.wangdayService.getMonthlySumByWangCode(wang_code);
+    console.log('Get Monthly Sum for wang_code:', wang_code);
+    const result = await this.wangdayService.getMonthlySumByWangCode(wang_code);
+    console.log('Result:', result);
+    return result;
   }
   @Get('/ecom/wangsumprice/:wang_code')
   async getWangSumPrice(@Param('wang_code') wang_code: string) {
@@ -706,35 +755,35 @@ export class AppController {
   async searchProductMain(@Param('keyword') keyword: string) {
     return this.hotdealService.searchProduct(keyword);
   }
-  @Post('/ecom/admin/hotdeal/search-product-freebie/:keyword')
-  async searchProductFreebie(@Param('keyword') keyword: string) {
-    return this.hotdealService.searchProduct(keyword);
-  }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
-  async saveHotdeal(@Body() body: { dataInput: HotdealInput }) {
+  async saveHotdeal(@Body() body: { data: HotdealInput }) {
     console.log(body);
-    return this.hotdealService.saveHotdeal(body.dataInput);
+    return this.hotdealService.saveHotdeal(body.data);
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')
   async getAllHotdeals() {
     return this.hotdealService.getAllHotdealsWithProductNames();
   }
+
   @UseGuards(JwtAuthGuard)
-  @Delete('/ecom/admin/hotdeal/delete/:id')
-  async deleteHotdeal(@Param('id') id: number) {
-    return this.hotdealService.deleteHotdeal(id);
+  @Delete('/ecom/admin/hotdeal/delete')
+  async deleteHotdeal(@Body() data: { id: number; pro_code: string }) {
+    return this.hotdealService.deleteHotdeal(data.id, data.pro_code);
   }
 
   @Get('/ecom/hotdeal/simple-list')
   async getAllHotdealsSimple(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('mem_code') mem_code?: string,
   ) {
     return this.hotdealService.getAllHotdealsWithProductDetail(
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
+      mem_code,
     );
   }
 
@@ -742,84 +791,30 @@ export class AppController {
   async checkHotdealMatch(
     @Body()
     body: {
-      hotDeal: Array<{
-        mem_code: string;
-        pro_code: string;
-        shopping_cart: Array<{ pro1_unit: string; pro1_amount: string }>;
-      }>;
-    },
-  ) {
-    const allResults = await Promise.all(
-      (body.hotDeal || []).map(async (deal) => {
-        const results = await Promise.all(
-          (deal.shopping_cart || []).map((item) =>
-            this.hotdealService.checkHotdealMatch(
-              deal.mem_code,
-              deal.pro_code,
-              item,
-            ),
-          ),
-        );
-        // filter เฉพาะตัวที่เจอ pro_code
-        return results.filter(Boolean);
-      }),
-    );
-    // flatten array
-    return allResults.flat();
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/hotdeal/get-hotdeals-by-procodes')
-  async getHotdealsByProCodes(@Body() body: { proCodes: string[] }) {
-    return this.hotdealService.getHotdealsByProCodes(body.proCodes);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/hotdeal/save-freebies')
-  async saveFreebies(
-    @Body()
-    body: {
       hotDeal: {
-        mem_code: string;
-        pro2_code: string;
-        pro2_unit: string;
-        pro2_amount: string;
-        priceCondition: string;
-        is_reward: boolean;
+        pro_code: string;
+        shopping_cart: { pro1_unit: string; pro1_amount: string }[];
       }[];
     },
   ) {
-    console.log('body:', body);
-    // if (!Array.isArray(body)) {
-    //   throw new Error('Body must be an array of freebies');
-    // }
-    // Map body.hotDeal to the expected structure for saveCartProduct
-    const cartProducts = body.hotDeal.map(
-      (item: {
-        mem_code: string;
-        pro2_code: string;
-        pro2_unit: string;
-        pro2_amount: string;
-        priceCondition: string;
-        is_reward: boolean;
-      }) => ({
-        mem_code: item.mem_code,
-        pro2_code: item.pro2_code,
-        pro2_unit: item.pro2_unit,
-        pro2_amount: item.pro2_amount,
-        priceCondition: item.priceCondition,
-        is_reward: true,
-      }),
-    );
-    return this.hotdealService.saveCartProduct(cartProducts);
-  }
-
-  @Delete('/ecom/hotdeal/delete-all')
-  async deleteAllHotdeals(
-    @Body('mem_code') mem_code: string,
-    @Body('pro2_code') pro2_code: string,
-  ) {
-    return this.shoppingCartService.clearFreebieCart(mem_code, pro2_code);
+    try {
+      const allResults = await Promise.all(
+        (body.hotDeal || []).map(async (deal) => {
+          const results = await this.hotdealService.checkHotdealMatch(
+            deal.pro_code,
+            deal.shopping_cart,
+          );
+          // filter เฉพาะตัวที่เจอ pro_code
+          return results;
+        }),
+      );
+      // flatten array
+      console.log('allResults:', allResults);
+      return allResults.flat().filter(Boolean);
+    } catch (error) {
+      console.error('Error in checkHotdealMatch:', error);
+      throw new Error('Error checking hotdeal match');
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -844,6 +839,7 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
+    console.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -852,7 +848,7 @@ export class AppController {
 
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
-    return this.hotdealService.getHotdealFromCode(pro_code);
+    return await this.hotdealService.getHotdealFromCode(pro_code);
   }
 
   @Post('/ecom/admin/update-product-from-back-office')
@@ -1166,50 +1162,6 @@ export class AppController {
     );
   }
 
-  @Post('/ecom/new-arrivals')
-  async NewArrivals(
-    @Body()
-    data: {
-      pro_code: string;
-      LOT: string;
-      MFG: string;
-      EXP: string;
-      createdAt: Date;
-    }[],
-  ) {
-    type N = {
-      product: { pro_code: string };
-      LOT: string;
-      MFG: string;
-      EXP: string;
-      createdAt: Date;
-    };
-    try {
-      const results: N[] = [];
-      console.log('Received body for new arrivals:', data);
-      for (const item of data) {
-        const result = await this.newArrivalsService.addNewArrival(
-          item.pro_code,
-          item.LOT,
-          item.MFG,
-          item.EXP,
-          item.createdAt,
-        );
-        results.push(result);
-      }
-      return results;
-    } catch (error) {
-      console.error('Error adding new arrivals:', error);
-      throw new Error('Error adding new arrivals');
-    }
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/new-arrivals/list/:mem_code')
-  async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
-    return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
-  }
-
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/edit-address/:addressId')
   async editAddress(@Param('addressId') addressId: number) {
@@ -1301,8 +1253,204 @@ export class AppController {
     return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
   }
 
-  @Get('/ip')
-  getIP(@Ip() ip: string) {
-    return { ip };
+  // @Get('/ip')
+  // getIP(@Ip() ip: string) {
+  //   return { ip };
+  // }
+
+  @Post('/ecom/refresh_token')
+  async refreshToken(@Body() body: { token: string }) {
+    return this.authService.refreshToken(body.token);
+  }
+
+  // Session Management APIs
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/create')
+  async createSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      session_token: string;
+      ip_address?: string;
+      user_agent?: string;
+      device_type?: string;
+    },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.sessionsService.createSession(
+      mem_code,
+      data.session_token,
+      data.ip_address,
+      data.user_agent,
+      data.device_type,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/active/:session_token')
+  async getActiveSession(@Param('session_token') session_token: string) {
+    return await this.sessionsService.findActiveSession(session_token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/user-sessions/:mem_code')
+  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+    return await this.sessionsService.findUserActiveSessions(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/session/update-activity/:session_token')
+  async updateSessionActivity(@Param('session_token') session_token: string) {
+    await this.sessionsService.updateLastActivity(session_token);
+    return { message: 'Session activity updated successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout')
+  async logoutSession(@Body() data: { session_token: string }) {
+    await this.sessionsService.logoutSession(data.session_token);
+    return { message: 'Logout successful' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout-all')
+  async logoutAllSessions(@Body() data: { mem_code: string }) {
+    await this.sessionsService.logoutAllUserSessions(data.mem_code);
+    return { message: 'All sessions logged out successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/validate/:session_token')
+  async validateSession(@Param('session_token') session_token: string) {
+    const isValid = await this.sessionsService.isSessionValid(session_token);
+    return { is_valid: isValid };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/session/count/:mem_code')
+  async countActiveSessions(@Param('mem_code') mem_code: string) {
+    const count = await this.sessionsService.countUserActiveSessions(mem_code);
+    return { active_sessions_count: count };
+  }
+
+  @Get('/ecom/password/check-email/:mem_code')
+  async checkEmail(@Param('mem_code') mem_code: string): Promise<{
+    RefKey?: string;
+    email?: boolean;
+    success: boolean;
+    message: string;
+  }> {
+    const result = await this.changePasswordService.CheckMember(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/request-otp')
+  async requestOtp(@Body('mem_code') mem_code: string): Promise<{
+    valid: boolean;
+    message: string;
+    remainingTime?: number;
+  }> {
+    const result = await this.changePasswordService.CheckTimeRequest(mem_code);
+    return result;
+  }
+
+  @Post('/ecom/password/validate-otp')
+  async validateOtp(
+    @Body()
+    data: {
+      mem_username: string;
+      otp: string;
+      timeNow: string;
+    },
+  ): Promise<{ valid: boolean; message: string; block?: boolean }> {
+    const result = await this.changePasswordService.validateOtp(data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/password/change-password')
+  async changePassword(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    body: {
+      new_password: string;
+      old_password: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const mem_username = req.user.username;
+      return this.changePasswordService.CheckOldPasswordAndUpdatePassword({
+        mem_username: mem_username,
+        new_password: body.new_password,
+        old_password: body.old_password,
+      });
+    } catch {
+      return {
+        success: false,
+        message: 'An error occurred while changing the password.',
+      };
+    }
+  }
+
+  @Put('/ecom/password/reset-password')
+  async resetPassword(
+    @Body()
+    body: {
+      mem_username: string;
+      new_password: string;
+      otp: string;
+    },
+  ): Promise<{ success: boolean; message: string }> {
+    console.log(body);
+    return this.changePasswordService.forgotPasswordUpdate(body);
+  }
+
+  @Post('/ecom/new-arrivals')
+  async NewArrivals(
+    @Body()
+    data: {
+      pro_code: string;
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+    }[],
+  ) {
+    type N = {
+      product: { pro_code: string };
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+    };
+    try {
+      const results: N[] = [];
+      console.log('Received body for new arrivals:', data);
+      for (const item of data) {
+        const result = await this.newArrivalsService.addNewArrival(
+          item.pro_code,
+          item.LOT,
+          item.MFG,
+          item.EXP,
+          item.createdAt,
+        );
+        results.push(result);
+      }
+      return results;
+    } catch (error) {
+      console.error('Error adding new arrivals:', error);
+      throw new Error('Error adding new arrivals');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/new-arrivals/list/:mem_code')
+  async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
+    return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
+  }
+
+  @Get('/ecom/hotdeal/find/:pro_code')
+  find(@Param('pro_code') pro_code: string): Promise<any> {
+    return this.hotdealService.find(pro_code);
   }
 }

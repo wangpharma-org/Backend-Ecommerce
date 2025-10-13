@@ -498,6 +498,7 @@ export class ProductsService {
     offset: number;
     mem_code: string;
     sort_by?: number;
+    limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const now = new Date();
@@ -654,7 +655,7 @@ export class ProductsService {
 
       const totalCount = await qb.getCount();
       const products = await qb
-        .take(30)
+        .take(data.limit)
         .skip(data.offset)
         .select([
           'product.pro_code',
@@ -698,6 +699,7 @@ export class ProductsService {
     offset: number;
     mem_code: string;
     sort_by?: number;
+    limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const qb = this.productRepo
@@ -807,7 +809,7 @@ export class ProductsService {
 
       const totalCount = await qb.getCount();
       const products = await qb
-        .take(30)
+        .take(data.limit)
         .skip(data.offset)
         .select([
           'product.pro_code',
@@ -998,6 +1000,7 @@ export class ProductsService {
   //   }
   // }
 
+  // ตรวจสอบแล้ว
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
       const products = await this.productRepo
@@ -1014,6 +1017,7 @@ export class ProductsService {
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
         .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
+        .andWhere('product.pro_code NOT LIKE :at3', { at3: '%@%' })
         .andWhere(
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })
@@ -1215,7 +1219,6 @@ export class ProductsService {
               .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
               .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
               .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
-              .andWhere('product.pro_stock > :stock', { stock: 0 })
               .andWhere('product.invisible_id IS NULL')
               .andWhere('product.pro_name NOT LIKE :prefix7', {
                 prefix7: 'ค่า%',
