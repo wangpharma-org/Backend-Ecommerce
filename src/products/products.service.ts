@@ -1000,6 +1000,7 @@ export class ProductsService {
   //   }
   // }
 
+  // ตรวจสอบแล้ว
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
       const products = await this.productRepo
@@ -1016,6 +1017,7 @@ export class ProductsService {
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
         .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
+        .andWhere('product.pro_code NOT LIKE :at3', { at3: '%@%' })
         .andWhere(
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })

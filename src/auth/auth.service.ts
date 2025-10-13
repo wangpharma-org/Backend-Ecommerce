@@ -79,8 +79,6 @@ export class AuthService {
 
       const data = await this.s3.upload(params).promise();
 
-      console.log(data);
-
       if (type === '1') {
         await this.userRepo.update(
           {
@@ -224,7 +222,6 @@ export class AuthService {
     username: string;
     password: string;
   }): Promise<SigninResponse> {
-    console.log('data in auth service:', data);
     const user = await this.userService.findOne(data.username);
     if (user && user.mem_password !== data.password) {
       throw new UnauthorizedException();
@@ -251,24 +248,23 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
     };
     const access_token = await this.jwtService.signAsync(payload, {
-      expiresIn: '5m',
+      expiresIn: '6m',
     });
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
       secret: process.env.ACCESS_TOKEN_SECRET,
-      expiresIn: '12h',
+      expiresIn: '18h',
     });
 
-    const expire = dayjs().add(12, 'hour').toDate();
     await this.refreshTokenRepo.save({
       mem_code: user.mem_code,
       refresh_token: refresh_token,
-      expire,
     });
     return { token: access_token, refresh_token: refresh_token };
   }
 
   async refreshToken(refresh_token: string) {
     try {
+      console.log(refresh_token);
       const existingToken = await this.refreshTokenRepo.findOne({
         where: { refresh_token: refresh_token },
       });
@@ -277,8 +273,6 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      console.log('ACCESS_TOKEN_SECRET : ', process.env.ACCESS_TOKEN_SECRET);
-
       const payload: { mem_code: string } = await this.jwtService.verifyAsync(
         refresh_token,
         {
@@ -286,29 +280,53 @@ export class AuthService {
         },
       );
 
-      await this.refreshTokenRepo.delete({ mem_code: payload.mem_code });
-
-      console.log('Payload Refresh', payload);
+      await this.refreshTokenRepo.delete({ refresh_token: refresh_token });
 
       const user = await this.userRepo.findOne({
         where: { mem_code: payload.mem_code },
       });
 
-      console.log('User Refresh', user);
-
       if (user) {
-        const data = await this.signin({
-          username: user?.mem_username,
-          password: user?.mem_password,
+        const payload = {
+          username: user.mem_username,
+          name: user.mem_nameSite ?? '',
+          mem_code: user.mem_code ?? '',
+          price_option: user.mem_price ?? '',
+          mem_address: user.mem_address ?? '',
+          mem_village: user.mem_village ?? '',
+          mem_alley: user.mem_alley ?? '',
+          mem_tumbon: user.mem_tumbon ?? '',
+          mem_amphur: user.mem_amphur ?? '',
+          mem_province: user.mem_province ?? '',
+          mem_post: user.mem_post ?? '',
+          mem_phone: user.mem_phone ?? '',
+          permission: user.permision_admin,
+        };
+
+        const payload_reflesh = {
+          username: user.mem_username,
+          name: user.mem_nameSite ?? '',
+          mem_code: user.mem_code ?? '',
+        };
+        const access_token = await this.jwtService.signAsync(payload, {
+          expiresIn: '15m',
+        });
+        const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
+          secret: process.env.ACCESS_TOKEN_SECRET,
+          expiresIn: '18h',
         });
 
-        return data;
+        await this.refreshTokenRepo.save({
+          mem_code: user.mem_code,
+          refresh_token: refresh_token,
+        });
+
+        return { token: access_token, refresh_token: refresh_token };
       } else {
-        console.log('No user found');
         throw new UnauthorizedException('Invalid refresh token');
       }
     } catch (error) {
-      console.log('refresh error: ', error);
+      console.log(error);
       throw new Error('Refresh token expired');
       // throw new UnauthorizedException('Invalid refresh token');
     }
