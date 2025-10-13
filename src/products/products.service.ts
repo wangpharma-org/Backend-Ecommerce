@@ -1250,5 +1250,43 @@ export class ProductsService {
       throw new Error('Error searching products');
     }
   }
+
+  async findProductFree(): Promise<{ pro_code: string; pro_name: string }[]> {
+    try {
+      const products = await this.productRepo.find({
+        where: { pro_free: true },
+      });
+      return products.map((product) => ({
+        pro_code: product.pro_code,
+        pro_name: product.pro_name,
+      }));
+    } catch (error) {
+      console.error('Error finding free products:', error);
+      throw new Error('Error finding free products');
+    }
+  }
+
+  async findProductPromotion(): Promise<
+    {
+      pro_code: string;
+      pro_promotion_month: number;
+      pro_promotion_amount: number;
+    }[]
+  > {
+    try {
+      const products = await this.productRepo.find({
+        where: { pro_promotion_month: MoreThan(0) },
+        select: ['pro_code', 'pro_promotion_month', 'pro_promotion_amount'],
+      });
+      return products.map((product) => ({
+        pro_code: product.pro_code,
+        pro_promotion_month: product.pro_promotion_month || 0,
+        pro_promotion_amount: product.pro_promotion_amount || 0,
+      }));
+    } catch (error) {
+      console.error('Error finding promotion products:', error);
+      throw new Error('Error finding promotion products');
+    }
+  }
 }
 export { ProductEntity };

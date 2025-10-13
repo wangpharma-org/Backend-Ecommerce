@@ -572,4 +572,81 @@ export class PromotionService {
       throw new Error('Failed to update tier');
     }
   }
+
+  async getPromotions(): Promise<{
+    promotions: PromotionEntity[];
+  }> {
+    try {
+      console.log('Fetching active promotions with all relations');
+
+      // ดึงข้อมูลพร้อม relations ทั้งหมดในครั้งเดียว
+      const promotions = await this.promotionRepo.find({
+        relations: {
+          tiers: {
+            conditions: {
+              product: true,
+            },
+            rewards: {
+              giftProduct: true,
+            },
+          },
+          creditor: true,
+        },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          start_date: true,
+          end_date: true,
+          status: true,
+          creditor: {
+            creditor_code: true,
+            creditor_name: true,
+          },
+          tiers: {
+            tier_id: true,
+            tier_name: true,
+            min_amount: true,
+            description: true,
+            tier_postter: true,
+            conditions: {
+              cond_id: true,
+              product: {
+                pro_code: true,
+                pro_name: true,
+                pro_genericname: true,
+                pro_priceA: true,
+                pro_priceB: true,
+                pro_priceC: true,
+                pro_imgmain: true,
+                pro_unit1: true,
+                pro_unit2: true,
+                pro_unit3: true,
+              },
+            },
+            rewards: {
+              reward_id: true,
+              qty: true,
+              unit: true,
+              giftProduct: {
+                pro_code: true,
+                pro_name: true,
+                pro_genericname: true,
+                pro_imgmain: true,
+                pro_unit1: true,
+                pro_unit2: true,
+                pro_unit3: true,
+              },
+            },
+          },
+        },
+      });
+
+      return {
+        promotions,
+      };
+    } catch (error) {
+      console.error('Error fetching promotions:', error);
+      throw new Error('Failed to get active promotions');
+    }
+  }
 }

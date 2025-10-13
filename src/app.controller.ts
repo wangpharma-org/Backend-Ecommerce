@@ -1453,4 +1453,45 @@ export class AppController {
   find(@Param('pro_code') pro_code: string): Promise<any> {
     return this.hotdealService.find(pro_code);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/wangday')
+  async getProductWangday() {
+    return await this.wangdayService.getProductWangday();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/company-days')
+  async getCompanyDays() {
+    return await this.promotionService.getPromotions();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/banner')
+  async getBanner() {
+    return await this.bannerService.findAllBanners();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/hotdeals')
+  async getHotdeals() {
+    return await this.hotdealService.findAllHotdeals();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/flashsales')
+  async getFlashsales() {
+    return await this.flashsaleService.findAllFlashSales();
+  }
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/product-free')
+  async getProductFree() {
+    return await this.productsService.findProductFree();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/product-promotion')
+  async getProductPromotion() {
+    return await this.productsService.findProductPromotion();
+  }
 }
