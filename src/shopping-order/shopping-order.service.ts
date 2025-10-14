@@ -177,9 +177,8 @@ export class ShoppingOrderService {
           throw new Error('Cart is empty');
         }
 
-        const checkFreebies = await this.shoppingCartService.getProFreebie(
-          data.mem_code,
-        );
+        const checkFreebies =
+          await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
         const groupCartArray = groupCart(cart, 80);
 
@@ -260,18 +259,22 @@ export class ShoppingOrderService {
                   ratio
                 : Number(item.spc_amount) * unitPrice * ratio;
 
-            const isFreebie =
-              Array.isArray(checkFreebies) &&
-              checkFreebies.some(
-                (f) =>
-                  String(f.spc_unit) === String(item.spc_unit) &&
-                  String(f.pro_code) === String(item.pro_code),
-              );
+            const isFreebie = Boolean(
+              item.hotdeal_free === true &&
+                Array.isArray(checkFreebies) &&
+                checkFreebies.some(
+                  (f) =>
+                    f &&
+                    String(f.spc_unit) === String(item.spc_unit) &&
+                    String(f.pro_code) === String(item.pro_code),
+                ),
+            );
 
             console.log('Freebie check:', { isFreebie, item, checkFreebies });
             if (isFreebie) {
               price = 0.0;
             }
+
             submitLogContext.push({
               calculatedPrice: price,
               isFreebie,

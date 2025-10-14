@@ -327,6 +327,11 @@ export class AuthService {
           expiresIn: '18h',
         });
 
+        await this.refreshTokenRepo.save({
+          mem_code: user.mem_code,
+          refresh_token: refresh_token,
+        });
+
         return { token: access_token, refresh_token: refresh_token };
       } else {
         throw new UnauthorizedException('Invalid refresh token');
