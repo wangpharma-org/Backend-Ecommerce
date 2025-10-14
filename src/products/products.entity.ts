@@ -6,6 +6,7 @@ import {
   OneToMany,
   ManyToOne,
   JoinColumn,
+  ManyToMany,
 } from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
@@ -19,6 +20,8 @@ import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { LotEntity } from 'src/lot/lot.entity';
 import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity';
 import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
+import { ReductionRT } from 'src/debtor/reduct-rt.entity';
+import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -195,4 +198,13 @@ export class ProductEntity {
 
   @OneToMany(() => NewArrival, (newArrival) => newArrival.product)
   newArrivals: NewArrival[];
+
+  @OneToMany(
+    () => ReductionRTDetail,
+    (reductionRTDetail) => reductionRTDetail.product,
+  )
+  reductionRTDetails: ReductionRTDetail[];
+
+  @ManyToMany(() => ReductionRT, (reductionRT) => reductionRT.products)
+  reductionRTs: ReductionRT[];
 }
