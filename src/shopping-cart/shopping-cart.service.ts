@@ -132,6 +132,7 @@ export class ShoppingCartService {
           mem_code: data.mem_code,
           pro_code: data.pro_code,
           spc_unit: data.pro_unit,
+          hotdeal_free: false,
         },
       });
 
