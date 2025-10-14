@@ -648,6 +648,7 @@ export class ShoppingCartService {
       await this.shoppingCartRepo.delete({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
+        hotdeal_free: false,
       });
       console.log('priceOption', data.priceOption);
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
