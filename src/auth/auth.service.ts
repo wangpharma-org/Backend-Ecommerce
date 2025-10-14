@@ -230,10 +230,6 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
     const passwordMatch = await bcrypt.compare(data.password, user.mem_password);
-    console.log('Password match:', passwordMatch);
-    console.log('User mem_password (hashed):', user.mem_password);
-    console.log('Provided password (plain):', data.password);
-
     if (user && passwordMatch === false) {
       throw new UnauthorizedException('Invalid password');
     }
@@ -325,11 +321,6 @@ export class AuthService {
         const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
           secret: process.env.ACCESS_TOKEN_SECRET,
           expiresIn: '18h',
-        });
-
-        await this.refreshTokenRepo.save({
-          mem_code: user.mem_code,
-          refresh_token: refresh_token,
         });
 
         return { token: access_token, refresh_token: refresh_token };
