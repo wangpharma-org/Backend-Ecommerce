@@ -4,24 +4,47 @@ import {
   Column,
   JoinColumn,
   ManyToOne,
+  OneToMany,
 } from 'typeorm';
 import { UserEntity } from 'src/users/users.entity';
+import { DebtorDetailEntity } from './debtor-detail.entity';
 
 @Entity({ name: 'debtor' })
 export class DebtorEntity {
   @PrimaryGeneratedColumn()
   debtor_id: number;
 
-  @Column()
+  @Column({ nullable: false })
   billing_slip_id: string;
 
-  @Column()
+  @Column({ nullable: false })
   payment_schedule_date: string;
 
-  @Column()
-  billing_amount: number;
+  @Column({ nullable: false })
+  total: string;
 
-  @ManyToOne(() => UserEntity, (user) => user.debtors, { eager: true })
-  @JoinColumn({ name: 'mem_code' })
+  @Column({ nullable: true, default: null })
+  date: string;
+
+  @Column({ nullable: false })
+  payment: string;
+
+  @Column({ nullable: false })
+  balance: string;
+
+  @Column({ length: 30 })
+  mem_code: string;
+
+  @ManyToOne(() => UserEntity, (user) => user.debtors)
+  @JoinColumn({ name: 'mem_code', referencedColumnName: 'mem_code' })
   user: UserEntity;
+
+  @OneToMany(
+    () => DebtorDetailEntity,
+    (debtorDetail) => debtorDetail.debtorEntity,
+  )
+  debtorDetail: DebtorDetailEntity[];
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  created_at: Date;
 }
