@@ -392,6 +392,7 @@ export class ProductsService {
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'product.sale_amount_day',
           'pharma.pro_code',
           'pharma.pp_properties',
           'pharma.pp_properties',
@@ -1001,6 +1002,7 @@ export class ProductsService {
   // }
 
   // ตรวจสอบแล้ว
+
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
       const products = await this.productRepo
@@ -1250,5 +1252,24 @@ export class ProductsService {
       throw new Error('Error searching products');
     }
   }
+
+  async updateSaleDayly(data: { pro_code: string; amount: number }[]) {
+    try {
+      await this.productRepo.update(
+        { pro_code: Not(IsNull()) },
+        { sale_amount_day: null },
+      );
+      await Promise.all(
+        data.map(async (item) => {
+          await this.productRepo.update(
+            { pro_code: item.pro_code },
+            { sale_amount_day: item.amount },
+          );
+        }),
+      );
+    } catch (error) {
+      console.error('Error updating sale amount day:', error);
+      throw new Error('Error updating sale amount day');
+    }
+  }
 }
-export { ProductEntity };

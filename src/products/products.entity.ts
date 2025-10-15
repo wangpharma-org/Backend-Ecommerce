@@ -158,6 +158,9 @@ export class ProductEntity {
   @Column({ nullable: true, type: 'varchar' })
   pro_nameMain: string;
 
+  @Column({ nullable: true, type: 'int' })
+  sale_amount_day: number | null;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',

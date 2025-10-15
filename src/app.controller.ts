@@ -1515,7 +1515,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/keysearch/update-product-keysearch')
-  async updateKeysearch(@Body() data: {pro_code: string; keysearch: string}) {
+  async updateKeysearch(@Body() data: { pro_code: string; keysearch: string }) {
     await this.productKeySearch.updateKeyword(data);
   }
 
@@ -1523,5 +1523,13 @@ export class AppController {
   @Get('/ecom/keysearch/get-one/:pro_code')
   async keysearchProductGetOne(@Param('pro_code') pro_code: string) {
     return await this.productKeySearch.getProductOne(pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product/pro-sale-amount-update')
+  async updateProductProSaleAmount(
+    @Body() data: { pro_code: string; amount: number }[],
+  ) {
+    return await this.productsService.updateSaleDayly(data);
   }
 }
