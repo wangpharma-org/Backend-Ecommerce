@@ -286,11 +286,14 @@ export class HotdealService {
       }
     | undefined
   > {
+    console.log('Cart items:', shopping_cart, pro_code);
     try {
       const found = await this.hotdealRepo.findOne({
         where: { product: { pro_code } },
         relations: ['product', 'product2'],
-      });
+      }); 
+
+      console.log('Found hotdeal:', found);
 
       let fromFrontend = 0;
       for (let i = 0; i < shopping_cart.length; i++) {
@@ -302,16 +305,24 @@ export class HotdealService {
         fromFrontend += convertedFrontend ?? 0;
       }
 
+      console.log('Total amount from frontend in smallest unit:', fromFrontend, pro_code);
+      console.log('=======================================')
+
+      console.log("before call convertToSmallestUnit From Database", pro_code, found?.pro1_amount, found?.pro1_unit);
       const fromDatabase = await this.convertToSmallestUnit(
         pro_code,
         found?.pro1_amount ?? '',
         found?.pro1_unit ?? '',
       );
+      console.log('Converted amount from database in smallest unit:', fromDatabase);
 
       let match = false;
       if (found) {
+        console.log('Found hotdeal:', found);
         const amountInCart = fromFrontend ?? 0;
+        console.log('Amount in cart (smallest unit):', amountInCart);
         const cal = Math.floor(amountInCart / (fromDatabase ?? 0));
+        console.log('Calculation result (cal):', cal);
 
         const hotdealFreebies = found?.pro2_amount
           ? Math.floor(cal * Number(found.pro2_amount))
@@ -320,6 +331,8 @@ export class HotdealService {
         if ((fromDatabase ?? 0) > 0 && cal >= 1) {
           match = true;
         }
+        console.log('Hotdeal freebies count:', hotdealFreebies);
+        console.log('Match status:', match);
 
         return {
           pro_code,

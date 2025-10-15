@@ -44,7 +44,14 @@ import { NewArrivalsService } from './new-arrivals/new-arrivals.service';
 import { UsersService } from './users/users.service';
 import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
+import type {
+  ImportDataRequestInvoice,
+  ImportDataRequestRT,
+} from './debtor/debtor.service';
+import { DebtorEntity } from './debtor/debtor.entity';
+import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { ProductKeywordService } from './product-keyword/product-keyword.service';
 
 interface JwtPayload {
   username: string;
@@ -89,6 +96,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
+    private readonly productKeySearch: ProductKeywordService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -111,7 +119,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/user-data/update')
   async updateUserData(@Body() data: UserEntity) {
-    console.log(data);
+    //console.log(data);
     return this.authService.updateUserData(data);
   }
 
@@ -137,7 +145,7 @@ export class AppController {
     @UploadedFile() file: Express.Multer.File,
     @Body() data: { mem_code: string; type: string; old_url: string },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.authService.UploadImage(
       file,
       data.type,
@@ -164,7 +172,7 @@ export class AppController {
     @Body() data: { pro_code: string; month: number }[],
   ) {
     const permission = req.user.permission;
-    console.log('permission', permission);
+    //console.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadPO(data);
     } else {
@@ -179,7 +187,7 @@ export class AppController {
     @Body() data: { productCode: string; quantity: number }[],
   ) {
     const permission = req.user.permission;
-    console.log('permission', permission);
+    //console.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadProductFlashSale(data);
     } else {
@@ -191,8 +199,8 @@ export class AppController {
   @Get('/ecom/products/flashsale-procode')
   async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
-    console.log('permission', permission);
-    console.log(req.user);
+    //console.log('permission', permission);
+    //console.log(req.user);
     if (permission === true) {
       return await this.productsService.listProcodeFlashSale();
     } else {
@@ -206,7 +214,7 @@ export class AppController {
     @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
-    console.log('get data favorite');
+    //console.log('get data favorite');
     return await this.favoriteService.getListFavorite(mem_code, sort_by);
   }
 
@@ -218,7 +226,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/add')
   async addToFavorite(@Body() data: { mem_code: string; pro_code: string }) {
-    console.log(data);
+    //console.log(data);
     return await this.favoriteService.addToFavorite(data);
   }
 
@@ -227,7 +235,7 @@ export class AppController {
   async deleteFavorite(
     @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.favoriteService.deleteFavorite(data);
   }
 
@@ -235,7 +243,7 @@ export class AppController {
   async signin(
     @Body() data: { username: string; password: string },
   ): Promise<SigninResponse> {
-    console.log('data in controller:', data);
+    //console.log('data in controller:', data);
     return await this.authService.signin(data);
   }
 
@@ -251,7 +259,7 @@ export class AppController {
       limit: number;
     },
   ) {
-    console.log('data in controller:', data);
+    //console.log('data in controller:', data);
     return await this.productsService.searchProducts(data);
   }
 
@@ -268,14 +276,14 @@ export class AppController {
       limit: number;
     },
   ) {
-    console.log('data in controller:', data);
+    //console.log('data in controller:', data);
     return await this.productsService.searchCategoryProducts(data);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-for-u')
   async productForYou(@Body() data: { keyword: string; pro_code: string }) {
-    console.log('data in controller:', data);
+    //console.log('data in controller:', data);
     return await this.productsService.productForYou(data);
   }
 
@@ -332,7 +340,7 @@ export class AppController {
   //   @Body() data: { productCode: string; quantity: number }[],
   // ) {
   //   const permission = req.user.permission;
-  //   console.log('permission', permission);
+  //   //console.log('permission', permission);
   //   if (permission === true) {
   //     return await this.productsService.uploadProductFlashSale(data);
   //   } else {
@@ -388,7 +396,7 @@ export class AppController {
       type: string;
       priceOption: string;
     } = { ...data, priceOption };
-    console.log(data);
+    //console.log(data);
     return await this.shoppingCartService.checkedProductCartAll(payload);
   }
 
@@ -408,7 +416,7 @@ export class AppController {
       pro_code: string;
       priceOption: string;
     } = { ...data, priceOption };
-    console.log('Delete', data);
+    //console.log('Delete', data);
     return await this.shoppingCartService.handleDeleteCart(payload);
   }
 
@@ -423,7 +431,7 @@ export class AppController {
       type: string;
     },
   ) {
-    console.log(data);
+    //console.log(data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -839,7 +847,7 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
-    console.log('permission', permission);
+    //console.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -875,10 +883,10 @@ export class AppController {
     },
   ) {
     try {
-      // console.log('Received body:', {
+      // //console.log('Received body:', {
       //   group: body.group,
       // });
-      console.log(body.filename);
+      //console.log(body.filename);
       return this.productsService.updateProductFromBackOffice({
         group: body.group,
         filename: body.filename,
@@ -901,7 +909,7 @@ export class AppController {
       emp_saleoffice: string;
     }[],
   ) {
-    console.log(data);
+    //console.log(data);
     return this.authService.upsertUser(data);
   }
 
@@ -919,7 +927,7 @@ export class AppController {
     },
   ) {
     try {
-      console.log('Received body for stock update:', body);
+      //console.log('Received body for stock update:', body);
       return await this.productsService.updateStock(body);
     } catch (error) {
       console.error('Error updating stock from back office:', error);
@@ -932,27 +940,6 @@ export class AppController {
       featured: feature,
     });
     return fileLogs;
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/upload-debtor')
-  async uploadDebtor(
-    @Body()
-    data: {
-      mem_code: string;
-      billing_slip_id: string;
-      payment_schedule_date: string;
-      billing_amount: number;
-    }[],
-  ) {
-    console.log(data);
-    return this.debtorService.updateDebtor(data);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Delete('/ecom/clear-debtor')
-  async clearDebtor() {
-    return this.debtorService.clearData();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -984,7 +971,7 @@ export class AppController {
       pro_code: string;
     }[],
   ) {
-    console.log(data);
+    //console.log(data);
     return this.lotService.addLots(data);
   }
 
@@ -1000,7 +987,7 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.flashsaleService.addFlashSale(data);
   }
 
@@ -1014,7 +1001,7 @@ export class AppController {
       limit: number;
     },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.flashsaleService.addProductToFlashSale(data);
   }
 
@@ -1057,7 +1044,7 @@ export class AppController {
   async changeStatusDailyFlashsale(
     @Body() data: { id: number; is_active: boolean },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.flashsaleService.changeStatus({
       promotion_id: data.id,
       is_active: data.is_active,
@@ -1097,7 +1084,7 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.flashsaleService.EditFlashSale(data);
   }
 
@@ -1111,7 +1098,7 @@ export class AppController {
       creditor_code: string;
     },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.invisibleService.addInvisibleTopic(data);
   }
 
@@ -1144,7 +1131,7 @@ export class AppController {
       pro_code: string;
     },
   ) {
-    console.log(data);
+    //console.log(data);
     return await this.invisibleService.updateProductInvisible(data);
   }
 
@@ -1165,7 +1152,7 @@ export class AppController {
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/edit-address/:addressId')
   async editAddress(@Param('addressId') addressId: number) {
-    console.log(addressId);
+    //console.log(addressId);
     return this.editAddressService.getAddressById(addressId);
   }
 
@@ -1190,14 +1177,14 @@ export class AppController {
       mem_code: string;
     },
   ) {
-    console.log(addressData);
+    //console.log(addressData);
     return this.editAddressService.createAddress(addressData);
   }
 
   // @UseGuards(JwtAuthGuard)
   @Put('/ecom/address/update-address/:id')
   async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
-    console.log(address);
+    //console.log(address);
     return this.editAddressService.updateAddress(id, address);
   }
 
@@ -1216,7 +1203,7 @@ export class AppController {
       show: boolean;
     },
   ) {
-    console.log(body);
+    //console.log(body);
     return this.modalContentService.SaveModalContent(body);
   }
 
@@ -1401,7 +1388,7 @@ export class AppController {
       otp: string;
     },
   ): Promise<{ success: boolean; message: string }> {
-    console.log(body);
+    //console.log(body);
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
@@ -1493,5 +1480,89 @@ export class AppController {
   @Get('/ecom/data/product-promotion')
   async getProductPromotion() {
     return await this.productsService.findProductPromotion();
+  }
+  
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/reduct-invoice/add-invoice')
+  async importData(
+    @Body()
+    data: ImportDataRequestInvoice[],
+  ): Promise<{ message: string }> {
+    //console.log('Received data for reduction invoice import:', data);
+    try {
+      const importedInvoices = await this.debtorService.importDataInvoice(data);
+      // //console.log('Imported invoice:', importedInvoices);
+      return {
+        message: `Successfully imported ${importedInvoices?.length} invoices`,
+      };
+    } catch (error) {
+      console.error('Error importing reduction invoice data22:', error);
+      return { message: 'Error importing reduction invoice data' };
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/reduct-invoice/add-rt')
+  async importDataRT(
+    @Body()
+    data: ImportDataRequestRT[],
+  ): Promise<{ message: string }> {
+    //console.log('Received data for reduction RT import:', data);
+    try {
+      const importedRTs = await this.debtorService.importDataRT(data);
+      // //console.log('Imported RT:', importedRTs);
+      return {
+        message: `Successfully imported ${importedRTs?.length} RT entries`,
+      };
+    } catch (error) {
+      console.error('Error importing reduction RT data:', error);
+      return { message: 'Error importing reduction RT data' };
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/reduct-invoice/invoice/id/:invoice')
+  async findReductionInvoices(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('invoice') invoice: string,
+  ): Promise<DebtorEntity | string> {
+    try {
+      const mem_code = req.user.mem_code;
+      const result = await this.debtorService.findDebtor(mem_code, invoice);
+      return result;
+    } catch (error) {
+      console.error('Error finding reduction invoices:', error);
+      return 'Error finding reduction invoices';
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/reduct-invoice/rt/id/:rt')
+  async findReductionRTs(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('rt') rt: string,
+  ): Promise<ReductionRT | string> {
+    try {
+      //console.log('Searching for RT:', rt);
+      const mem_code = req.user.mem_code;
+      //console.log('Member code from token:', mem_code);
+      const result = await this.debtorService.findReductionRT(mem_code, rt);
+      return result;
+    } catch (error) {
+      console.error('Error finding reduction RTs:', error);
+      return 'Error finding reduction RTs';
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/keysearch/update-product-keysearch')
+  async updateKeysearch(@Body() data: {pro_code: string; keysearch: string}) {
+    await this.productKeySearch.updateKeyword(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/keysearch/get-one/:pro_code')
+  async keysearchProductGetOne(@Param('pro_code') pro_code: string) {
+    return await this.productKeySearch.getProductOne(pro_code);
   }
 }

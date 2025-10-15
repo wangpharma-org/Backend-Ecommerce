@@ -69,7 +69,7 @@ export class NewArrivalsService {
         { memCode },
       )
       .where(
-        'product.pro_priceA != 1 OR product.pro_priceB != 1 OR product.pro_priceC != 1',
+        'product.pro_priceA != 1 AND product.pro_priceB != 1 AND product.pro_priceC != 1',
       )
       .groupBy('product.pro_code')
       .addGroupBy('newArrival.id')
