@@ -336,18 +336,48 @@ export class AuthService {
 
   async hashpassword() {
     try {
-      const data = await this.userRepo.find({
-        select: { mem_code: true, mem_password: true }
+      const users = await this.userRepo.find({
+        select: { mem_code: true, mem_password: true },
       });
-      for (const user of data) {
-        if (user.mem_password && user.mem_password !== null && user.mem_password.trim() !== '' && user.mem_password.length < 60) {
-          const hashedPassword = await bcrypt.hash(user.mem_password, SALT_ROUNDS);
-          await this.userRepo.update({ mem_code: user.mem_code }, { mem_password: hashedPassword });
+
+      let hashCount = 0;
+      let skipCount = 0;
+
+      for (const user of users) {
+        const password = user.mem_password?.trim();
+        if (!password || password.startsWith('$2')) {
+          skipCount++;
+          continue;
+        }
+        
+        try {
+          const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+          console.log(`Hash length: ${hashedPassword.length} for user: ${user.mem_code}`);
+          
+          await this.userRepo.update(
+            { mem_code: user.mem_code },
+            { mem_password: hashedPassword }
+          );
+          hashCount++;
+        } catch (updateError) {
+          console.error(`Error updating user ${user.mem_code}:`, updateError.message);
+          throw updateError;
         }
       }
+
+      return {
+        success: true,
+        message: `Hashed ${hashCount} passwords, skipped ${skipCount}`,
+        total: users.length,
+        hashed: hashCount,
+        skipped: skipCount
+      };
     } catch (error) {
-      console.log(error);
-      throw new Error('Error in hashpassword');
+      return {
+        success: false,
+        message: 'Hash password failed',
+        error: error.message
+      };
     }
   }
 }
