@@ -4,7 +4,6 @@ import {
   Controller,
   Delete,
   Get,
-  HttpException,
   Ip,
   Param,
   Post,
@@ -45,6 +44,8 @@ import { UsersService } from './users/users.service';
 import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
 import { SessionsService } from './sessions/sessions.service';
+import { EmployeesService } from './employees/employees.service';
+import { EmployeeEntity } from './employees/employees.entity';
 
 interface JwtPayload {
   username: string;
@@ -89,6 +90,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
+    private readonly employeesService: EmployeesService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -899,6 +901,8 @@ export class AppController {
       mem_password: string;
       mem_price: string;
       emp_saleoffice: string;
+      latest_purchase: string;
+      emp_id_ref?: string;
     }[],
   ) {
     console.log(data);
@@ -1452,5 +1456,56 @@ export class AppController {
   @Get('/ecom/hotdeal/find/:pro_code')
   find(@Param('pro_code') pro_code: string): Promise<any> {
     return this.hotdealService.find(pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/usercheck_latest_purchase')
+  async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    const permission = req.user.permission;
+    console.log('User permission:', permission);
+    if (permission === false) {
+      return this.usersService.checklatestPurchase(mem_code);
+    }
+    console.log('Checking latest purchase for user:', mem_code);
+    return { message: 'Check initiated' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user/employee/list')
+  async getEmployeeList() {
+    return this.employeesService.getAllEmployees();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/user/employee/upsert-employee')
+  async upsertEmployee(
+    @Body()
+    requestData: {
+      emp_code: string;
+      data: {
+        emp_code: string;
+        emp_nickname?: string;
+        emp_firstname?: string;
+        emp_lastname?: string;
+        emp_mobile?: string;
+        emp_email?: string;
+        emp_ID_line?: string;
+      };
+    },
+  ): Promise<{ message: string; data: EmployeeEntity } | { message: string }> {
+    try {
+      console.log('Update employee request:', requestData);
+      const upsertEmployee = await this.employeesService.UpsertEmployee(
+        requestData.emp_code,
+        requestData.data,
+      );
+      return upsertEmployee;
+    } catch (error) {
+      console.error('Error updating employee:', error);
+      return {
+        message: 'Error updating employee',
+      };
+    }
   }
 }
