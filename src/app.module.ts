@@ -30,6 +30,7 @@ import { NewArrivalsModule } from './new-arrivals/new-arrivals.module';
 import { ChangePasswordModule } from './change-password/change-password.module';
 import { FixFreeModule } from './fix-free/fix-free.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { ProductKeywordModule } from './product-keyword/product-keyword.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { SessionsModule } from './sessions/sessions.module';
     ChangePasswordModule,
     FixFreeModule,
     SessionsModule,
+    ProductKeywordModule,
   ],
   controllers: [AppController],
   providers: [AppService],

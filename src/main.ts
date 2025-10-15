@@ -13,7 +13,7 @@ async function bootstrap() {
     options: {
       client: {
         brokers: (
-          configService.get<string>('KAFKA_BROKER') ?? 'localhost:9092'
+          configService.get<string>('KAFKA_BROKERS') ?? 'localhost:9092'
         ).split(','),
       },
       consumer: {
