@@ -45,7 +45,6 @@ import { UsersService } from './users/users.service';
 import { ChangePasswordService } from './change-password/change-password.service';
 import { FixFreeService } from './fix-free/fix-free.service';
 import { SessionsService } from './sessions/sessions.service';
-import passport from 'passport';
 
 interface JwtPayload {
   username: string;
@@ -1409,7 +1408,8 @@ export class AppController {
   @Post('/ecom/hash-password')
   async hashpassword(@Body() body: { username: string, password: string }) {
     if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
-      return this.authService.hashpassword();
+      const result = await this.authService.hashpassword();
+      return result;
     } else {
       return { message: 'You do not have permission to access this endpoint' };
     }
