@@ -51,6 +51,7 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { ProductKeywordService } from './product-keyword/product-keyword.service';
 
 interface JwtPayload {
   username: string;
@@ -95,6 +96,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
+    private readonly productKeySearch: ProductKeywordService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -1509,5 +1511,17 @@ export class AppController {
       console.error('Error finding reduction RTs:', error);
       return 'Error finding reduction RTs';
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/keysearch/update-product-keysearch')
+  async updateKeysearch(@Body() data: {pro_code: string; keysearch: string}) {
+    await this.productKeySearch.updateKeyword(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/keysearch/get-one/:pro_code')
+  async keysearchProductGetOne(@Param('pro_code') pro_code: string) {
+    return await this.productKeySearch.getProductOne(pro_code);
   }
 }
