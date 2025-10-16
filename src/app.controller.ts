@@ -51,6 +51,9 @@ import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
+import { PromotionEntity } from './promotion/promotion.entity';
+import { BannerEntity } from './banner/banner.entity';
+import { HotdealEntity } from './hotdeal/hotdeal.entity';
 
 interface JwtPayload {
   username: string;
@@ -1442,7 +1445,13 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/wangday')
-  async getProductWangday(@Req() req: Request & { user: JwtPayload }) {
+  async getProductWangday(@Req() req: Request & { user: JwtPayload }): Promise<{
+    [wang_code: string]: {
+      wang_code: string;
+      monthly: { [month: number]: number };
+      total: number;
+    };
+  }> {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');
@@ -1452,7 +1461,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/company-days')
-  async getCompanyDays(@Req() req: Request & { user: JwtPayload }) {
+  async getCompanyDays(@Req() req: Request & { user: JwtPayload }): Promise<{
+    promotions: PromotionEntity[];
+  }> {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');
@@ -1462,7 +1473,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/banner')
-  async getBanner(@Req() req: Request & { user: JwtPayload }) {
+  async getBanner(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<BannerEntity[]> {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');
@@ -1472,7 +1485,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/hotdeals')
-  async getHotdeals(@Req() req: Request & { user: JwtPayload }) {
+  async getHotdeals(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<HotdealEntity[]> {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');
