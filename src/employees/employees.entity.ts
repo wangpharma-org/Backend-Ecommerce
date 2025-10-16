@@ -19,10 +19,13 @@ export class EmployeeEntity {
   emp_lastname: string;
 
   @Column({ length: 255, nullable: true })
-  emp_moblie: string;
+  emp_mobile: string;
 
   @Column({ length: 255, nullable: true })
-  emp_img_path: string;
+  emp_email: string;
+
+  @Column({ length: 255, nullable: true })
+  emp_ID_line: string;
 
   @OneToMany(() => UserEntity, (member) => member.employee)
   members: UserEntity[];

@@ -4,7 +4,6 @@ import {
   Controller,
   Delete,
   Get,
-  HttpException,
   Ip,
   Param,
   Post,
@@ -51,6 +50,8 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { EmployeesService } from './employees/employees.service';
+import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
 
 interface JwtPayload {
@@ -96,6 +97,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
+    private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
   ) {}
 
@@ -907,6 +909,8 @@ export class AppController {
       mem_password: string;
       mem_price: string;
       emp_saleoffice: string;
+      latest_purchase: string;
+      emp_id_ref?: string;
     }[],
   ) {
     //console.log(data);
@@ -1523,6 +1527,57 @@ export class AppController {
   @Get('/ecom/keysearch/get-one/:pro_code')
   async keysearchProductGetOne(@Param('pro_code') pro_code: string) {
     return await this.productKeySearch.getProductOne(pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/usercheck_latest_purchase')
+  async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    const permission = req.user.permission;
+    console.log('User permission:', permission);
+    if (permission === false) {
+      return this.usersService.checklatestPurchase(mem_code);
+    }
+    console.log('Checking latest purchase for user:', mem_code);
+    return { message: 'Check initiated' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user/employee/list')
+  async getEmployeeList() {
+    return this.employeesService.getAllEmployees();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/user/employee/upsert-employee')
+  async upsertEmployee(
+    @Body()
+    requestData: {
+      emp_code: string;
+      data: {
+        emp_code: string;
+        emp_nickname?: string;
+        emp_firstname?: string;
+        emp_lastname?: string;
+        emp_mobile?: string;
+        emp_email?: string;
+        emp_ID_line?: string;
+      };
+    },
+  ): Promise<{ message: string; data: EmployeeEntity } | { message: string }> {
+    try {
+      console.log('Update employee request:', requestData);
+      const upsertEmployee = await this.employeesService.UpsertEmployee(
+        requestData.emp_code,
+        requestData.data,
+      );
+      return upsertEmployee;
+    } catch (error) {
+      console.error('Error updating employee:', error);
+      return {
+        message: 'Error updating employee',
+      };
+    }
   }
 
   @UseGuards(JwtAuthGuard)

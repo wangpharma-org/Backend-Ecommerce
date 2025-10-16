@@ -116,8 +116,11 @@ export class UserEntity {
   @ManyToOne(() => EmployeeEntity, (employee) => employee.members, {
     nullable: true,
   })
-  @JoinColumn({ name: 'emp_id_ref' })
+  @JoinColumn({ name: 'emp_id_ref', referencedColumnName: 'emp_code' })
   employee: EmployeeEntity;
+
+  @Column({ nullable: true, default: null })
+  emp_id_ref: string | null;
 
   @OneToMany(() => ShoppingCartEntity, (cart) => cart.member)
   shoppingCartItems: ShoppingCartEntity[];
@@ -183,4 +186,7 @@ export class UserEntity {
   reductionRTs: ReductionRT[];
   @OneToMany(() => ChangePassword, (changePassword) => changePassword.user)
   changePasswords: ChangePassword[];
+
+  @Column({ length: 50, nullable: true, default: null })
+  latest_purchase: string;
 }
