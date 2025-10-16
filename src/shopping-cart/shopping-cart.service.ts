@@ -47,6 +47,7 @@ export interface ShoppingCart {
   is_reward: boolean;
   flashsale_end?: string;
   hotdeal_free: boolean;
+  pro_code: string;
 }
 
 export interface FlashSale {
@@ -764,6 +765,7 @@ export class ShoppingCartService {
           'flashsale.time_start AS flashsale_time_start',
           'flashsale.time_end AS flashsale_time_end',
           'cart.hotdeal_free AS hotdeal_free',
+          'cart.pro_code AS cart_pro_code',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -825,6 +827,7 @@ export class ShoppingCartService {
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
             hotdeal_free: row.hotdeal_free || false,
+            pro_code: row.pro_code,
           });
         }
       }
@@ -867,62 +870,6 @@ export class ShoppingCartService {
           };
         },
       );
-
-      // const checkhotdeal = await this.shoppingCartRepo.find({
-      //   where: { mem_code },
-      // });
-      // console.log('checkhotdeal', checkhotdeal);
-
-      // if (checkhotdeal.length > 0) {
-      //   console.log('Checking hotdeal items in cart...');
-      //   for (const item of checkhotdeal) {
-      //     console.log(
-      //       'Checking item:',
-      //       item.pro_code,
-      //       item.spc_unit,
-      //       item.spc_amount,
-      //     );
-      //     const hotdealMatch = await this.hotdealService.checkHotdealMatch(
-      //       item.pro_code,
-      //       [
-      //         {
-      //           pro1_unit: item.spc_unit,
-      //           pro1_amount: String(item.spc_amount),
-      //         },
-      //       ],
-      //     );
-      //     console.log('Hotdeal match result:', hotdealMatch);
-      //     const hotdealCartItem = await this.shoppingCartRepo.findOne({
-      //       where: { mem_code, pro_code: hotdealMatch?.product2?.pro_code },
-      //     });
-      //     console.log('hotdealCartItem:', hotdealCartItem);
-      // if (hotdealMatch && hotdealCartItem) {
-      //   // เพิ่มสินค้าแถมเข้าไปในตะกร้า
-      //   console.log(
-      //     'hotdealMatch found, adding freebie to cart:',
-      //     hotdealMatch,
-      //   );
-      //   await this.shoppingCartRepo.update(
-      //     {
-      //       mem_code,
-      //       pro_code: hotdealMatch.product2.pro_code,
-      //       hotdeal_free: true,
-      //       spc_comments: `hotdeal_${hotdealMatch.pro_code}`,
-      //     },
-      //     {
-      //       spc_amount: Number(hotdealMatch.countFreeBies),
-      //     },
-      //   );
-      //   console.log(
-      //     `Added hotdeal freebie for pro_code: ${hotdealMatch.product2.pro_code}`,
-      //   );
-      // }
-      //     continue;
-      //   }
-      //   console.log('Found hotdeal items in cart:', checkhotdeal);
-      // } else {
-      //   console.log('No hotdeal items found in cart.');
-      // }
 
       return result;
     } catch (error) {
