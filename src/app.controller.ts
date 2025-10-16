@@ -1594,4 +1594,12 @@ export class AppController {
   async keysearchProductGetOne(@Param('pro_code') pro_code: string) {
     return await this.productKeySearch.getProductOne(pro_code);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product/pro-sale-amount-update')
+  async updateProductProSaleAmount(
+    @Body() data: { pro_code: string; amount: number }[],
+  ) {
+    return await this.productsService.updateSaleDayly(data);
+  }
 }
