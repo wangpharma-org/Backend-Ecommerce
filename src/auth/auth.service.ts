@@ -9,6 +9,8 @@ import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import * as dayjs from 'dayjs';
+import * as bcrypt from 'bcrypt';
+import { SALT_ROUNDS } from '../constants/app.constants'; 
 
 export interface SigninResponse {
   token: string;
@@ -201,11 +203,12 @@ export class AuthService {
             },
           );
         } else {
+          const hashedPassword = await bcrypt.hash(user.mem_password, SALT_ROUNDS);
           const newUser = this.userRepo.create({
             mem_code: user.mem_code,
             mem_nameSite: user.mem_nameSite,
             mem_username: user.mem_username,
-            mem_password: user.mem_password,
+            mem_password: hashedPassword,
             mem_price: user.mem_price,
             emp_saleoffice: user.emp_saleoffice,
           });
@@ -218,13 +221,17 @@ export class AuthService {
     }
   }
 
-  async signin(data: {
+  async   signin(data: {
     username: string;
     password: string;
   }): Promise<SigninResponse> {
     const user = await this.userService.findOne(data.username);
-    if (user && user.mem_password !== data.password) {
-      throw new UnauthorizedException();
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const passwordMatch = await bcrypt.compare(data.password, user.mem_password);
+    if (user && passwordMatch === false) {
+      throw new UnauthorizedException('Invalid password');
     }
     const payload = {
       username: user.mem_username,
@@ -316,11 +323,6 @@ export class AuthService {
           expiresIn: '18h',
         });
 
-        await this.refreshTokenRepo.save({
-          mem_code: user.mem_code,
-          refresh_token: refresh_token,
-        });
-
         return { token: access_token, refresh_token: refresh_token };
       } else {
         throw new UnauthorizedException('Invalid refresh token');
@@ -329,6 +331,53 @@ export class AuthService {
       console.log(error);
       throw new Error('Refresh token expired');
       // throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  async hashpassword() {
+    try {
+      const users = await this.userRepo.find({
+        select: { mem_code: true, mem_password: true },
+      });
+
+      let hashCount = 0;
+      let skipCount = 0;
+
+      for (const user of users) {
+        const password = user.mem_password?.trim();
+        if (!password || password.startsWith('$2')) {
+          skipCount++;
+          continue;
+        }
+        
+        try {
+          const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+          console.log(`Hash length: ${hashedPassword.length} for user: ${user.mem_code}`);
+          
+          await this.userRepo.update(
+            { mem_code: user.mem_code },
+            { mem_password: hashedPassword }
+          );
+          hashCount++;
+        } catch (updateError) {
+          console.error(`Error updating user ${user.mem_code}:`, updateError.message);
+          throw updateError;
+        }
+      }
+
+      return {
+        success: true,
+        message: `Hashed ${hashCount} passwords, skipped ${skipCount}`,
+        total: users.length,
+        hashed: hashCount,
+        skipped: skipCount
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Hash password failed',
+        error: error.message
+      };
     }
   }
 }

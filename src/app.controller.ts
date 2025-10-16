@@ -297,15 +297,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -1392,6 +1392,15 @@ export class AppController {
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
+  @Post('/ecom/hash-password')
+  async hashpassword(@Body() body: { username: string, password: string }) {
+    if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
+      const result = await this.authService.hashpassword();
+      return result;
+    } else {
+      return { message: 'You do not have permission to access this endpoint' };
+    }
+  }
   @Post('/ecom/new-arrivals')
   async NewArrivals(
     @Body()
