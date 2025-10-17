@@ -1259,14 +1259,13 @@ export class ProductsService {
         { pro_code: Not(IsNull()) },
         { sale_amount_day: null },
       );
-      await Promise.all(
-        data.map(async (item) => {
-          await this.productRepo.update(
-            { pro_code: item.pro_code },
-            { sale_amount_day: item.amount },
-          );
-        }),
-      );
+
+      for (const item of data) {
+        await this.productRepo.update(
+          { pro_code: item.pro_code },
+          { sale_amount_day: item.amount },
+        );
+      }
     } catch (error) {
       console.error('Error updating sale amount day:', error);
       throw new Error('Error updating sale amount day');
