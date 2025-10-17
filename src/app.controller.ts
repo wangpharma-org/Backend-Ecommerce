@@ -1615,18 +1615,19 @@ export class AppController {
     return await this.productKeySearch.getProductOne(pro_code);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/usercheck_latest_purchase')
-  async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
-    const mem_code = req.user.mem_code;
-    const permission = req.user.permission;
-    console.log('User permission:', permission);
-    if (permission === false) {
-      return this.usersService.checklatestPurchase(mem_code);
-    }
-    console.log('Checking latest purchase for user:', mem_code);
-    return { message: 'Check initiated' };
-  }
+  //ยังไม่ deploy ใน release 1.10.0 คาดว่าเป็น release ถัดไป(1.11.0)
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/usercheck_latest_purchase')
+  // async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+  //   const mem_code = req.user.mem_code;
+  //   const permission = req.user.permission;
+  //   console.log('User permission:', permission);
+  //   if (permission === false) {
+  //     return this.usersService.checklatestPurchase(mem_code);
+  //   }
+  //   console.log('Checking latest purchase for user:', mem_code);
+  //   return { message: 'Check initiated' };
+  // }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/list')
@@ -1672,5 +1673,46 @@ export class AppController {
     @Body() data: { pro_code: string; amount: number }[],
   ) {
     return await this.productsService.updateSaleDayly(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/user/employee/user-vip')
+  async updateAndDeleteUserVIP(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string; message: string; tagVIP?: string },
+  ): Promise<{
+    mem_code: string;
+    message: string;
+    emp_id_ref?: string | null;
+    mem_nameSite?: string;
+  }> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource.');
+    }
+    return await this.usersService.updateAndDeleteUserVIP(
+      data.mem_code,
+      data.message,
+      data.tagVIP,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user/employee/user-vip-list')
+  async getUserVIPList(): Promise<
+    {
+      mem_code: string;
+      mem_nameSite: string;
+      emp_id_ref: string | null;
+      tagVIP: string | null;
+    }[]
+  > {
+    const vipUsers = await this.usersService.getAllUsersVIP();
+    return vipUsers.map((user) => ({
+      mem_code: user.mem_code,
+      mem_nameSite: user.mem_nameSite,
+      emp_id_ref: user.emp_id_ref || null,
+      tagVIP: user.tagVIP || null,
+    }));
   }
 }

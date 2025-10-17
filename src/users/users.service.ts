@@ -116,8 +116,13 @@ export class UsersService {
             emp_mobile: true,
             emp_ID_line: true,
           },
+          user_VIP: true,
         },
       });
+      console.log('User found for latest purchase check:', user);
+      if (user?.user_VIP === true) {
+        return 'User is VIP, no purchase check needed';
+      }
       console.log('User latest_purchase:', user);
 
       if (!user || !user.latest_purchase) {
@@ -165,6 +170,93 @@ export class UsersService {
     } catch (error) {
       console.error('Error in checklatestPurchase:', error);
       throw new Error('Error retrieving latest purchase date');
+    }
+  }
+
+  async updateAndDeleteUserVIP(
+    mem_code: string,
+    message: string,
+    tagVIP?: string,
+  ): Promise<{
+    mem_code: string;
+    message: string;
+    emp_id_ref?: string | null;
+    mem_nameSite?: string;
+    tagVIP?: string | null;
+  }> {
+    try {
+      const user = await this.userRepo.findOne({
+        where: { mem_code: mem_code },
+      });
+
+      console.log('User found for VIP update/delete:', user);
+
+      if (!user || user.mem_code !== mem_code) {
+        return { mem_code, message: 'User not found' };
+      }
+
+      if (message === 'update') {
+        if (user.user_VIP === true) {
+          return {
+            mem_code,
+            message: 'already VIP',
+          };
+        } else if (user.user_VIP === false) {
+          await this.userRepo.update(
+            { mem_code: mem_code },
+            { user_VIP: true, tagVIP: tagVIP },
+          );
+          console.log(
+            `Successfully updated VIP status to true for ${mem_code}`,
+          );
+          return {
+            mem_code,
+            mem_nameSite: user.mem_nameSite,
+            emp_id_ref: user.emp_id_ref,
+            tagVIP: tagVIP || null,
+            message: 'updated',
+          };
+        }
+      } else if (message === 'delete') {
+        await this.userRepo.update({ mem_code: mem_code }, { user_VIP: false });
+        console.log(`Successfully updated VIP status to false for ${mem_code}`);
+        return {
+          mem_code,
+          message: 'deleted',
+        };
+      } else {
+        throw new Error(
+          `Invalid message: ${message}. Use 'update' or 'delete'`,
+        );
+      }
+      throw new Error('Unexpected code path');
+    } catch (error) {
+      console.error('Error updating user VIP status:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Error updating user VIP status');
+    }
+  }
+
+  async getAllUsersVIP(): Promise<
+    {
+      mem_code: string;
+      mem_nameSite: string;
+      emp_id_ref: string | null;
+      tagVIP: string | null;
+    }[]
+  > {
+    try {
+      const vipUsers = await this.userRepo.find({
+        where: { user_VIP: true },
+        select: ['mem_code', 'mem_nameSite', 'emp_id_ref', 'tagVIP'],
+      });
+      console.log(`Found ${vipUsers.length} VIP users`);
+      return vipUsers;
+    } catch (error) {
+      console.error('Error getting all VIP users:', error);
+      throw new Error('Error retrieving VIP users');
     }
   }
 }
