@@ -189,4 +189,7 @@ export class UserEntity {
 
   @Column({ length: 50, nullable: true, default: null })
   latest_purchase: string;
+
+  @Column({ type: 'boolean', default: false })
+  user_VIP: boolean;
 }

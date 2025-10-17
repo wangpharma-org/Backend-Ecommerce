@@ -1587,4 +1587,34 @@ export class AppController {
   ) {
     return await this.productsService.updateSaleDayly(data);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/user/employee/user-vip')
+  async resetProductProSaleAmount(
+    @Body() data: { mem_code: string; message: string },
+  ): Promise<{
+    mem_code: string;
+    message: string;
+    emp_id_ref?: string | null;
+    mem_nameSite?: string;
+  }> {
+    console.log('Reset VIP user request:', data);
+    return await this.usersService.updateAndDeleteUserVIP(
+      data.mem_code,
+      data.message,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user/employee/user-vip-list')
+  async getUserVIPList(): Promise<
+    { mem_code: string; mem_nameSite: string; emp_id_ref: string | null }[]
+  > {
+    const vipUsers = await this.usersService.getAllUsersVIP();
+    return vipUsers.map((user) => ({
+      mem_code: user.mem_code,
+      mem_nameSite: user.mem_nameSite,
+      emp_id_ref: user.emp_id_ref || null,
+    }));
+  }
 }
