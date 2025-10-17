@@ -1614,13 +1614,19 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/user-vip-list')
   async getUserVIPList(): Promise<
-    { mem_code: string; mem_nameSite: string; emp_id_ref: string | null }[]
+    {
+      mem_code: string;
+      mem_nameSite: string;
+      emp_id_ref: string | null;
+      tagVIP: string | null;
+    }[]
   > {
     const vipUsers = await this.usersService.getAllUsersVIP();
     return vipUsers.map((user) => ({
       mem_code: user.mem_code,
       mem_nameSite: user.mem_nameSite,
       emp_id_ref: user.emp_id_ref || null,
+      tagVIP: user.tagVIP || null,
     }));
   }
 }
