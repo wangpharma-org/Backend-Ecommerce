@@ -1591,6 +1591,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/user/employee/user-vip')
   async resetProductProSaleAmount(
+    @Req() req: Request & { user: JwtPayload },
     @Body() data: { mem_code: string; message: string },
   ): Promise<{
     mem_code: string;
@@ -1598,6 +1599,10 @@ export class AppController {
     emp_id_ref?: string | null;
     mem_nameSite?: string;
   }> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource.');
+    }
     console.log('Reset VIP user request:', data);
     return await this.usersService.updateAndDeleteUserVIP(
       data.mem_code,
