@@ -1591,7 +1591,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/user/employee/user-vip')
-  async resetProductProSaleAmount(
+  async updateAndDeleteUserVIP(
     @Req() req: Request & { user: JwtPayload },
     @Body() data: { mem_code: string; message: string; tagVIP?: string },
   ): Promise<{
