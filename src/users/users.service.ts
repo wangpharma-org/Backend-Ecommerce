@@ -176,11 +176,13 @@ export class UsersService {
   async updateAndDeleteUserVIP(
     mem_code: string,
     message: string,
+    tagVIP?: string,
   ): Promise<{
     mem_code: string;
     message: string;
     emp_id_ref?: string | null;
     mem_nameSite?: string;
+    tagVIP?: string | null;
   }> {
     try {
       const user = await this.userRepo.findOne({
@@ -202,7 +204,7 @@ export class UsersService {
         } else if (user.user_VIP === false) {
           await this.userRepo.update(
             { mem_code: mem_code },
-            { user_VIP: true },
+            { user_VIP: true, tagVIP: tagVIP },
           );
           console.log(
             `Successfully updated VIP status to true for ${mem_code}`,
@@ -211,6 +213,7 @@ export class UsersService {
             mem_code,
             mem_nameSite: user.mem_nameSite,
             emp_id_ref: user.emp_id_ref,
+            tagVIP: tagVIP || null,
             message: 'updated',
           };
         }
@@ -237,12 +240,17 @@ export class UsersService {
   }
 
   async getAllUsersVIP(): Promise<
-    { mem_code: string; mem_nameSite: string; emp_id_ref: string | null }[]
+    {
+      mem_code: string;
+      mem_nameSite: string;
+      emp_id_ref: string | null;
+      tagVIP: string | null;
+    }[]
   > {
     try {
       const vipUsers = await this.userRepo.find({
         where: { user_VIP: true },
-        select: ['mem_code', 'mem_nameSite', 'emp_id_ref'],
+        select: ['mem_code', 'mem_nameSite', 'emp_id_ref', 'tagVIP'],
       });
       console.log(`Found ${vipUsers.length} VIP users`);
       return vipUsers;

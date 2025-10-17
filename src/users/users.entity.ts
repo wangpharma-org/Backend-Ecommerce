@@ -192,4 +192,7 @@ export class UserEntity {
 
   @Column({ type: 'boolean', default: false })
   user_VIP: boolean;
+
+  @Column({ length: 255, nullable: true, default: null })
+  tagVIP: string;
 }

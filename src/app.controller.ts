@@ -1593,7 +1593,7 @@ export class AppController {
   @Put('/ecom/user/employee/user-vip')
   async resetProductProSaleAmount(
     @Req() req: Request & { user: JwtPayload },
-    @Body() data: { mem_code: string; message: string },
+    @Body() data: { mem_code: string; message: string; tagVIP?: string },
   ): Promise<{
     mem_code: string;
     message: string;
@@ -1604,10 +1604,10 @@ export class AppController {
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource.');
     }
-    console.log('Reset VIP user request:', data);
     return await this.usersService.updateAndDeleteUserVIP(
       data.mem_code,
       data.message,
+      data.tagVIP,
     );
   }
 
