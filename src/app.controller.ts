@@ -1529,18 +1529,19 @@ export class AppController {
     return await this.productKeySearch.getProductOne(pro_code);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/usercheck_latest_purchase')
-  async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
-    const mem_code = req.user.mem_code;
-    const permission = req.user.permission;
-    console.log('User permission:', permission);
-    if (permission === false) {
-      return this.usersService.checklatestPurchase(mem_code);
-    }
-    console.log('Checking latest purchase for user:', mem_code);
-    return { message: 'Check initiated' };
-  }
+  //ยังไม่ deploy ใน release 1.10.0 คาดว่าเป็น release ถัดไป(1.11.0)
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/usercheck_latest_purchase')
+  // async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+  //   const mem_code = req.user.mem_code;
+  //   const permission = req.user.permission;
+  //   console.log('User permission:', permission);
+  //   if (permission === false) {
+  //     return this.usersService.checklatestPurchase(mem_code);
+  //   }
+  //   console.log('Checking latest purchase for user:', mem_code);
+  //   return { message: 'Check initiated' };
+  // }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/list')
