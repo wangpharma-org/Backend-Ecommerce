@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThan, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
@@ -113,7 +113,7 @@ export class ShoppingOrderService {
     data: {
       emp_code?: string;
       mem_code: string;
-      total_price: number;
+      // total_price: number;
       listFree:
         | [
             {
@@ -131,6 +131,9 @@ export class ShoppingOrderService {
     },
     ip?: string,
   ): Promise<string[] | undefined> {
+    const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
     let orderContext: {
       memberCode: string;
       priceOption: string;
@@ -146,7 +149,7 @@ export class ShoppingOrderService {
     } = {
       memberCode: data.mem_code,
       priceOption: data.priceOption,
-      totalPrice: data.total_price,
+      totalPrice: totalsummaryfromCart,
       item: null,
     };
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
@@ -171,7 +174,7 @@ export class ShoppingOrderService {
           orderContext = {
             memberCode: data.mem_code,
             priceOption: data.priceOption,
-            totalPrice: data.total_price,
+            totalPrice: totalsummaryfromCart,
             item: null,
           };
           throw new Error('Cart is empty');
@@ -277,7 +280,7 @@ export class ShoppingOrderService {
 
             submitLogContext.push({
               calculatedPrice: price,
-              isFreebie,
+              // isFreebie,
               forProCode: item.pro_code,
             });
             submitLogContext.push({ Success: true, forProCode: item.pro_code });
@@ -312,7 +315,11 @@ export class ShoppingOrderService {
             0,
           );
           totalSumPrice += sumprice;
-          submitLogContext.push({ sumprice, totalSumPrice, forOrder: running });
+          submitLogContext.push({
+            sumprice,
+            totalsummaryfromCart,
+            forOrder: running,
+          });
 
           if (groupIndex === groupCartArray.length - 1) {
             if (data.listFree && data.listFree.length > 0) {
@@ -329,7 +336,7 @@ export class ShoppingOrderService {
                   orderContext = {
                     memberCode: data.mem_code,
                     priceOption: data.priceOption,
-                    totalPrice: data.total_price,
+                    totalPrice: totalsummaryfromCart,
                     item: cart.map((c) => ({
                       pro_code: c.pro_code,
                       amount: c.spc_amount,
@@ -352,14 +359,14 @@ export class ShoppingOrderService {
                 return total + point * amount;
               }, 0);
 
-              pointAfterUse = totalSumPrice * 0.01 - sumpoint;
+              pointAfterUse = totalsummaryfromCart * 0.01 - sumpoint;
               totalSumPoint += sumpoint;
 
-              if (sumpoint && totalSumPrice * 0.01 < sumpoint) {
+              if (sumpoint && totalsummaryfromCart * 0.01 < sumpoint) {
                 orderContext = {
                   memberCode: data.mem_code,
                   priceOption: data.priceOption,
-                  totalPrice: data.total_price,
+                  totalPrice: totalsummaryfromCart,
                   item: cart.map((c) => ({
                     pro_code: c.pro_code,
                     amount: c.spc_amount,
@@ -369,6 +376,7 @@ export class ShoppingOrderService {
                 };
                 submitLogContext.push({
                   freebieError: 'Insufficient points for freebies',
+                  totalsummaryfromCart,
                   totalSumPrice,
                   totalSumPoint,
                   forProCode: data.listFree?.map((f) => f.pro_code).join(', '),
@@ -423,11 +431,11 @@ export class ShoppingOrderService {
           );
         }
 
-        if (totalSumPrice.toFixed(2) !== data.total_price.toFixed(2)) {
+        if (totalSumPrice.toFixed(2) !== totalsummaryfromCart.toFixed(2)) {
           orderContext = {
             memberCode: data.mem_code,
             priceOption: data.priceOption,
-            totalPrice: data.total_price,
+            totalPrice: totalsummaryfromCart,
             item: cart.map((c) => ({
               pro_code: c.pro_code,
               amount: c.spc_amount,
@@ -437,22 +445,22 @@ export class ShoppingOrderService {
           };
           submitLogContext.push({
             totalSumPrice,
-            expectedTotalPrice: data.total_price,
+            expectedTotalPrice: totalsummaryfromCart,
           });
           throw new Error(
-            `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${data.total_price}`,
+            `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${totalsummaryfromCart}`,
           );
         }
 
         if (
           data.listFree &&
           data.listFree.length > 0 &&
-          totalSumPrice * 0.01 < totalSumPoint
+          totalsummaryfromCart * 0.01 < totalSumPoint
         ) {
           orderContext = {
             memberCode: data.mem_code,
             priceOption: data.priceOption,
-            totalPrice: data.total_price,
+            totalPrice: totalsummaryfromCart,
             item: cart.map((c) => ({
               pro_code: c.pro_code,
               amount: c.spc_amount,
@@ -460,7 +468,7 @@ export class ShoppingOrderService {
               is_reward: c.is_reward,
             })),
           };
-          submitLogContext.push({ totalSumPoint, totalSumPrice });
+          submitLogContext.push({ totalSumPoint, totalsummaryfromCart });
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
         }
       });
@@ -475,7 +483,7 @@ export class ShoppingOrderService {
       if (data.emp_code) {
         const raw = this.saleLogEntity.create({
           sh_running: runningNumbers.join(', '),
-          spo_total_decimal: data.total_price,
+          spo_total_decimal: totalSumPrice,
           emp_code: data.emp_code?.trim(),
           ip_address: ip ?? '',
           mem_code: data.mem_code,
@@ -488,14 +496,14 @@ export class ShoppingOrderService {
       submitOrder.error('Error submitting order', {
         error: error instanceof Error ? error.message : String(error),
         member: orderContext?.memberCode || data.mem_code,
-        totalPrice: orderContext?.totalPrice || data.total_price,
+        totalPrice: totalsummaryfromCart,
         priceOption: orderContext?.priceOption || data.priceOption,
         orderContext,
         data,
       });
       console.error('Error: ', error);
       const payload = {
-        text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${orderContext?.totalPrice || data.total_price}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
+        text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${totalsummaryfromCart}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
         attachments: [
           {
             color: '#ff0000',
