@@ -161,7 +161,6 @@ export class ShoppingOrderService {
       const numberOfMonth = new Date().getMonth() + 1;
       const runningNumbers: string[] = [];
       const allIdCartForDelete: number[] = [];
-      let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
 
@@ -280,7 +279,6 @@ export class ShoppingOrderService {
 
             submitLogContext.push({
               calculatedPrice: price,
-              // isFreebie,
               forProCode: item.pro_code,
             });
             submitLogContext.push({ Success: true, forProCode: item.pro_code });
@@ -310,13 +308,7 @@ export class ShoppingOrderService {
             forOrder: running,
           });
 
-          const sumprice = orderSales.reduce(
-            (total, order) => total + Number(order.spo_total_decimal),
-            0,
-          );
-          totalSumPrice += sumprice;
           submitLogContext.push({
-            sumprice,
             totalsummaryfromCart,
             forOrder: running,
           });
@@ -377,7 +369,6 @@ export class ShoppingOrderService {
                 submitLogContext.push({
                   freebieError: 'Insufficient points for freebies',
                   totalsummaryfromCart,
-                  totalSumPrice,
                   totalSumPoint,
                   forProCode: data.listFree?.map((f) => f.pro_code).join(', '),
                 });
@@ -422,33 +413,12 @@ export class ShoppingOrderService {
             { soh_id: NewHead.soh_id },
             {
               soh_listsale: saveProduct.length,
-              soh_sumprice: sumprice,
+              soh_sumprice: totalsummaryfromCart,
               soh_coin_after_use: pointAfterUse,
-              soh_coin_recieve: sumprice * 0.01,
-              soh_coin_use: sumprice * 0.01 - pointAfterUse,
+              soh_coin_recieve: totalsummaryfromCart * 0.01,
+              soh_coin_use: totalsummaryfromCart * 0.01 - pointAfterUse,
               emp_code: data.emp_code?.trim() ?? null,
             },
-          );
-        }
-
-        if (totalSumPrice.toFixed(2) !== totalsummaryfromCart.toFixed(2)) {
-          orderContext = {
-            memberCode: data.mem_code,
-            priceOption: data.priceOption,
-            totalPrice: totalsummaryfromCart,
-            item: cart.map((c) => ({
-              pro_code: c.pro_code,
-              amount: c.spc_amount,
-              unit: c.spc_unit,
-              is_reward: c.is_reward,
-            })),
-          };
-          submitLogContext.push({
-            totalSumPrice,
-            expectedTotalPrice: totalsummaryfromCart,
-          });
-          throw new Error(
-            `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${totalsummaryfromCart}`,
           );
         }
 
@@ -483,7 +453,7 @@ export class ShoppingOrderService {
       if (data.emp_code) {
         const raw = this.saleLogEntity.create({
           sh_running: runningNumbers.join(', '),
-          spo_total_decimal: totalSumPrice,
+          spo_total_decimal: totalsummaryfromCart,
           emp_code: data.emp_code?.trim(),
           ip_address: ip ?? '',
           mem_code: data.mem_code,

@@ -1128,7 +1128,7 @@ export class ShoppingCartService {
 
       console.log('Split promo/nonPromo:', split);
 
-      const tier = result[0]?.member?.mem_price ?? 'A';
+      const tier = result[0]?.member?.mem_price ?? 'C';
 
       const totalByTier = (items: typeof summaryResults, t: 'A' | 'B' | 'C') =>
         items.reduce((sum, item) => {
