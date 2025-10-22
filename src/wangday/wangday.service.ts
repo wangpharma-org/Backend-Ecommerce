@@ -126,4 +126,60 @@ export class WangdayService {
     const data = await this.sumPriceRepo.findOne({ where: { wang_code } });
     return { data };
   }
+
+  async getProductWangday(): Promise<{
+    [wang_code: string]: {
+      wang_code: string;
+      monthly: { [month: number]: number };
+      total: number;
+    };
+  }> {
+    try {
+      // ดึงข้อมูลทั้งหมด
+      const result = await this.wangdayRepo.find();
+
+      // สร้าง object สำหรับเก็บผลลัพธ์
+      const groupedData: {
+        [wang_code: string]: {
+          wang_code: string;
+          monthly: { [month: number]: number };
+          total: number;
+        };
+      } = {};
+
+      // วนลูปเพื่อ group ข้อมูล
+      for (const row of result) {
+        const wang_code = row.wang_code;
+
+        if (!wang_code || !row.date || !row.sumprice) continue;
+
+        // แยกเดือนจาก date (format: MM/DD/YYYY)
+        const month = parseInt(row.date.split('/')[0]);
+
+        // ถ้ายังไม่มี wang_code นี้ ให้สร้างใหม่
+        if (!groupedData[wang_code]) {
+          groupedData[wang_code] = {
+            wang_code: wang_code,
+            monthly: {},
+            total: 0,
+          };
+
+          // กำหนดค่าเริ่มต้นสำหรับทุกเดือน
+          for (let m = 1; m <= 12; m++) {
+            groupedData[wang_code].monthly[m] = 0;
+          }
+        }
+
+        // รวมยอดตามเดือน
+        const price = parseFloat(row.sumprice?.toString() || '0');
+        groupedData[wang_code].monthly[month] += price;
+        groupedData[wang_code].total += price;
+      }
+
+      return groupedData;
+    } catch (error) {
+      console.error('Error in getProductWangday:', error);
+      throw new Error('Failed to get product wangday data');
+    }
+  }
 }

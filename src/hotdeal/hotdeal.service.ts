@@ -392,4 +392,22 @@ export class HotdealService {
       where: { product: { pro_code } },
     });
   }
+
+  async findAllHotdeals(): Promise<HotdealEntity[]> {
+    return await this.hotdealRepo.find({
+      relations: ['product', 'product2'],
+      select: {
+        pro1_amount: true,
+        pro1_unit: true,
+        pro2_amount: true,
+        pro2_unit: true,
+        product: {
+          pro_code: true,
+        },
+        product2: {
+          pro_code: true,
+        },
+      },
+    });
+  }
 }

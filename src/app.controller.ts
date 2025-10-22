@@ -4,7 +4,6 @@ import {
   Controller,
   Delete,
   Get,
-  HttpException,
   Ip,
   Param,
   Post,
@@ -51,7 +50,12 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { EmployeesService } from './employees/employees.service';
+import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
+import { PromotionEntity } from './promotion/promotion.entity';
+import { BannerEntity } from './banner/banner.entity';
+import { HotdealEntity } from './hotdeal/hotdeal.entity';
 
 interface JwtPayload {
   username: string;
@@ -96,6 +100,7 @@ export class AppController {
     private readonly sessionsService: SessionsService,
     private readonly usersService: UsersService,
     private readonly changePasswordService: ChangePasswordService,
+    private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
   ) {}
 
@@ -907,6 +912,8 @@ export class AppController {
       mem_password: string;
       mem_price: string;
       emp_saleoffice: string;
+      latest_purchase: string;
+      emp_id_ref?: string;
     }[],
   ) {
     //console.log(data);
@@ -1442,6 +1449,89 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/wangday')
+  async getProductWangday(@Req() req: Request & { user: JwtPayload }): Promise<{
+    [wang_code: string]: {
+      wang_code: string;
+      monthly: { [month: number]: number };
+      total: number;
+    };
+  }> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.wangdayService.getProductWangday();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/company-days')
+  async getCompanyDays(@Req() req: Request & { user: JwtPayload }): Promise<{
+    promotions: PromotionEntity[];
+  }> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.promotionService.getPromotions();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/banner')
+  async getBanner(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<BannerEntity[]> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.bannerService.findAllBanners();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/hotdeals')
+  async getHotdeals(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<HotdealEntity[]> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.hotdealService.findAllHotdeals();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/flashsales')
+  async getFlashsales(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.flashsaleService.findAllFlashSales();
+  }
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/product-free')
+  async getProductFree(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<{ pro_code: string; pro_name: string }[]> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.findProductFree();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/product-promotion')
+  async getProductPromotion(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.findProductPromotion();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/reduct-invoice/add-invoice')
   async importData(
     @Body()
@@ -1525,11 +1615,104 @@ export class AppController {
     return await this.productKeySearch.getProductOne(pro_code);
   }
 
+  //ยังไม่ deploy ใน release 1.10.0 คาดว่าเป็น release ถัดไป(1.11.0)
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/usercheck_latest_purchase')
+  // async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+  //   const mem_code = req.user.mem_code;
+  //   const permission = req.user.permission;
+  //   console.log('User permission:', permission);
+  //   if (permission === false) {
+  //     return this.usersService.checklatestPurchase(mem_code);
+  //   }
+  //   console.log('Checking latest purchase for user:', mem_code);
+  //   return { message: 'Check initiated' };
+  // }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user/employee/list')
+  async getEmployeeList() {
+    return this.employeesService.getAllEmployees();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/user/employee/upsert-employee')
+  async upsertEmployee(
+    @Body()
+    requestData: {
+      emp_code: string;
+      data: {
+        emp_code: string;
+        emp_nickname?: string;
+        emp_firstname?: string;
+        emp_lastname?: string;
+        emp_mobile?: string;
+        emp_email?: string;
+        emp_ID_line?: string;
+      };
+    },
+  ): Promise<{ message: string; data: EmployeeEntity } | { message: string }> {
+    try {
+      console.log('Update employee request:', requestData);
+      const upsertEmployee = await this.employeesService.UpsertEmployee(
+        requestData.emp_code,
+        requestData.data,
+      );
+      return upsertEmployee;
+    } catch (error) {
+      console.error('Error updating employee:', error);
+      return {
+        message: 'Error updating employee',
+      };
+    }
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product/pro-sale-amount-update')
   async updateProductProSaleAmount(
     @Body() data: { pro_code: string; amount: number }[],
   ) {
     return await this.productsService.updateSaleDayly(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/user/employee/user-vip')
+  async updateAndDeleteUserVIP(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string; message: string; tagVIP?: string },
+  ): Promise<{
+    mem_code: string;
+    message: string;
+    emp_id_ref?: string | null;
+    mem_nameSite?: string;
+  }> {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource.');
+    }
+    return await this.usersService.updateAndDeleteUserVIP(
+      data.mem_code,
+      data.message,
+      data.tagVIP,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/user/employee/user-vip-list')
+  async getUserVIPList(): Promise<
+    {
+      mem_code: string;
+      mem_nameSite: string;
+      emp_id_ref: string | null;
+      tagVIP: string | null;
+    }[]
+  > {
+    const vipUsers = await this.usersService.getAllUsersVIP();
+    return vipUsers.map((user) => ({
+      mem_code: user.mem_code,
+      mem_nameSite: user.mem_nameSite,
+      emp_id_ref: user.emp_id_ref || null,
+      tagVIP: user.tagVIP || null,
+    }));
   }
 }

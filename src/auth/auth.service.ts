@@ -9,6 +9,7 @@ import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import * as dayjs from 'dayjs';
+import { EmployeesService } from 'src/employees/employees.service';
 
 export interface SigninResponse {
   token: string;
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly httpService: HttpService,
     @InjectRepository(RefreshTokenEntity)
     private readonly refreshTokenRepo: Repository<RefreshTokenEntity>,
+    private readonly employeeService: EmployeesService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -179,6 +181,8 @@ export class AuthService {
       mem_password: string;
       mem_price: string;
       emp_saleoffice: string;
+      latest_purchase: string;
+      emp_id_ref?: string | null;
     }[],
   ) {
     try {
@@ -193,11 +197,23 @@ export class AuthService {
 
       for (const user of data) {
         if (mem_code_all_map.includes(user.mem_code)) {
+          if (user.emp_id_ref) {
+            const findemp = await this.employeeService.findOneByEmpCode(
+              user.emp_id_ref || '',
+            );
+            if (!findemp) {
+              user.emp_id_ref = null;
+            }
+          } else {
+            user.emp_id_ref = null;
+          }
           await this.userRepo.update(
             { mem_code: user.mem_code },
             {
               mem_price: user.mem_price,
               emp_saleoffice: user.emp_saleoffice,
+              latest_purchase: user.latest_purchase,
+              emp_id_ref: user?.emp_id_ref ?? null,
             },
           );
         } else {
@@ -208,6 +224,8 @@ export class AuthService {
             mem_password: user.mem_password,
             mem_price: user.mem_price,
             emp_saleoffice: user.emp_saleoffice,
+            latest_purchase: user.latest_purchase,
+            emp_id_ref: user?.emp_id_ref ?? null,
           });
           await this.userRepo.save(newUser);
         }

@@ -330,4 +330,36 @@ export class FlashsaleService {
       throw new Error('Error Something in deleteFlashSale');
     }
   }
+
+  async findAllFlashSales() {
+    try {
+      return await this.flashSaleRepo.find({
+        relations: {
+          flashsaleProducts: {
+            product: true,
+          },
+        },
+        select: {
+          promotion_id: true,
+          promotion_name: true,
+          date: true,
+          time_start: true,
+          time_end: true,
+          is_active: true,
+          flashsaleProducts: {
+            id: true,
+            limit: true,
+            product: {
+              pro_code: true,
+              pro_name: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      console.log(`${Date()} Error Something in findAllFlashSales`);
+      console.log(error);
+      throw new Error('Error Something in findAllFlashSales');
+    }
+  }
 }
