@@ -149,7 +149,10 @@ export class ShoppingOrderService {
     } = {
       memberCode: data.mem_code,
       priceOption: data.priceOption,
-      totalPrice: totalsummaryfromCart,
+      totalPrice: totalsummaryfromCart.items.reduce(
+        (acc, item) => acc + item.grandTotalItems,
+        0,
+      ),
       item: null,
     };
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
@@ -173,7 +176,10 @@ export class ShoppingOrderService {
           orderContext = {
             memberCode: data.mem_code,
             priceOption: data.priceOption,
-            totalPrice: totalsummaryfromCart,
+            totalPrice: totalsummaryfromCart.items.reduce(
+              (acc, item) => acc + item.grandTotalItems,
+              0,
+            ),
             item: null,
           };
           throw new Error('Cart is empty');
@@ -328,7 +334,10 @@ export class ShoppingOrderService {
                   orderContext = {
                     memberCode: data.mem_code,
                     priceOption: data.priceOption,
-                    totalPrice: totalsummaryfromCart,
+                    totalPrice: totalsummaryfromCart.items.reduce(
+                      (acc, item) => acc + item.grandTotalItems,
+                      0,
+                    ),
                     item: cart.map((c) => ({
                       pro_code: c.pro_code,
                       amount: c.spc_amount,
@@ -351,14 +360,17 @@ export class ShoppingOrderService {
                 return total + point * amount;
               }, 0);
 
-              pointAfterUse = totalsummaryfromCart * 0.01 - sumpoint;
+              pointAfterUse = totalsummaryfromCart.total * 0.01 - sumpoint;
               totalSumPoint += sumpoint;
 
-              if (sumpoint && totalsummaryfromCart * 0.01 < sumpoint) {
+              if (sumpoint && totalsummaryfromCart.total * 0.01 < sumpoint) {
                 orderContext = {
                   memberCode: data.mem_code,
                   priceOption: data.priceOption,
-                  totalPrice: totalsummaryfromCart,
+                  totalPrice: totalsummaryfromCart.items.reduce(
+                    (acc, item) => acc + item.grandTotalItems,
+                    0,
+                  ),
                   item: cart.map((c) => ({
                     pro_code: c.pro_code,
                     amount: c.spc_amount,
@@ -413,10 +425,23 @@ export class ShoppingOrderService {
             { soh_id: NewHead.soh_id },
             {
               soh_listsale: saveProduct.length,
-              soh_sumprice: totalsummaryfromCart,
+              soh_sumprice: totalsummaryfromCart.items.reduce(
+                (acc, item) => acc + item.grandTotalItems,
+                0,
+              ),
               soh_coin_after_use: pointAfterUse,
-              soh_coin_recieve: totalsummaryfromCart * 0.01,
-              soh_coin_use: totalsummaryfromCart * 0.01 - pointAfterUse,
+              soh_coin_recieve:
+                totalsummaryfromCart.items.reduce(
+                  (acc, item) => acc + item.grandTotalItems,
+                  0,
+                ) * 0.01,
+              soh_coin_use:
+                totalsummaryfromCart.items.reduce(
+                  (acc, item) => acc + item.grandTotalItems,
+                  0,
+                ) *
+                  0.01 -
+                pointAfterUse,
               emp_code: data.emp_code?.trim() ?? null,
             },
           );
@@ -425,12 +450,20 @@ export class ShoppingOrderService {
         if (
           data.listFree &&
           data.listFree.length > 0 &&
-          totalsummaryfromCart * 0.01 < totalSumPoint
+          totalsummaryfromCart.items.reduce(
+            (acc, item) => acc + item.grandTotalItems,
+            0,
+          ) *
+            0.01 <
+            totalSumPoint
         ) {
           orderContext = {
             memberCode: data.mem_code,
             priceOption: data.priceOption,
-            totalPrice: totalsummaryfromCart,
+            totalPrice: totalsummaryfromCart.items.reduce(
+              (acc, item) => acc + item.grandTotalItems,
+              0,
+            ),
             item: cart.map((c) => ({
               pro_code: c.pro_code,
               amount: c.spc_amount,
@@ -453,7 +486,10 @@ export class ShoppingOrderService {
       if (data.emp_code) {
         const raw = this.saleLogEntity.create({
           sh_running: runningNumbers.join(', '),
-          spo_total_decimal: totalsummaryfromCart,
+          spo_total_decimal: totalsummaryfromCart.items.reduce(
+            (acc, item) => acc + item.grandTotalItems,
+            0,
+          ),
           emp_code: data.emp_code?.trim(),
           ip_address: ip ?? '',
           mem_code: data.mem_code,
@@ -473,7 +509,10 @@ export class ShoppingOrderService {
       });
       console.error('Error: ', error);
       const payload = {
-        text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${totalsummaryfromCart}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
+        text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${totalsummaryfromCart.items.reduce(
+          (acc, item) => acc + item.grandTotalItems,
+          0,
+        )}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
         attachments: [
           {
             color: '#ff0000',

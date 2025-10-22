@@ -1743,7 +1743,7 @@ export class AppController {
   @Get('/ecom/cart/summary')
   async summaryCart(
     @Req() req: Request & { user: JwtPayload },
-  ): Promise<number> {
+  ): Promise<{ total: number; items: { [key: string]: number }[] }> {
     const mem_code = req.user.mem_code;
     return this.shoppingCartService.summaryCart(mem_code);
   }

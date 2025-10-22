@@ -1004,7 +1004,9 @@ export class ShoppingCartService {
     }
   }
 
-  async summaryCart(mem_code: string): Promise<number> {
+  async summaryCart(
+    mem_code: string,
+  ): Promise<{ total: number; items: { [key: string]: number }[] }> {
     try {
       const result = await this.shoppingCartRepo.find({
         where: {
@@ -1042,115 +1044,125 @@ export class ShoppingCartService {
       });
 
       const promotionProducts: { pro_code: string }[] = [];
-      const promotionItems = result.filter(
-        (item) =>
-          item.product &&
-          item.product.pro_promotion_month &&
-          item.product.pro_promotion_amount,
-      );
-      console.log('Promotion Items:', promotionItems);
-      promotionProducts.push(
-        ...promotionItems.map((item) => ({
-          pro_code: item.pro_code,
-        })),
-      );
+      const splitData = groupCart(result, 80);
 
-      const flashSaleItems = result.filter(
-        (item) =>
-          item.product &&
-          item.flashsale_end &&
-          new Date(item.flashsale_end) >= new Date(),
-      );
-      console.log('Flash Sale Items:', flashSaleItems);
-      promotionProducts.push(
-        ...flashSaleItems.map((item) => ({
-          pro_code: item.pro_code,
-        })),
-      );
+      const grandTotalItems = 0;
+      let total = 0;
+      let itemIndex = 0;
 
-      const orderItems = result.map((item) => ({
-        unit: item.spc_unit,
-        quantity: Number(item.spc_amount),
-        pro_code: item.pro_code,
-      }));
+      for (const [index, dataGroup] of splitData.entries()) {
+        console.log(`Group ${index + 1}:`, dataGroup);
+        const promotion = dataGroup.filter(
+          (item) =>
+            item.product &&
+            item.product.pro_promotion_month &&
+            item.product.pro_promotion_amount,
+        );
+        promotionProducts.push(
+          ...promotion.map((item) => ({
+            pro_code: item.pro_code,
+          })),
+        );
 
-      console.log('orderItems for summary:', orderItems);
+        const flashSaleItems = result.filter(
+          (item) =>
+            item.product &&
+            item.flashsale_end &&
+            new Date(item.flashsale_end) >= new Date(),
+        );
+        promotionProducts.push(
+          ...flashSaleItems.map((item) => ({
+            pro_code: item.pro_code,
+          })),
+        );
 
-      const grouped = Object.values(
-        orderItems.reduce(
+        const priceByCode = new Map<
+          string,
+          { A: number; B: number; C: number }
+        >(
+          dataGroup.map((r) => [
+            r.pro_code,
+            {
+              A: Number(r.product?.pro_priceA ?? 0),
+              B: Number(r.product?.pro_priceB ?? 0),
+              C: Number(r.product?.pro_priceC ?? 0),
+            },
+          ]),
+        );
+
+        const promoSet = new Set<string>(
+          promotionProducts.map((p) => p.pro_code),
+        );
+
+        const split = dataGroup.reduce(
           (acc, item) => {
-            if (!acc[item.pro_code]) acc[item.pro_code] = [];
-            acc[item.pro_code].push(item);
+            (promoSet.has(item.pro_code) ? acc.promo : acc.nonPromo).push(item);
             return acc;
           },
-          {} as Record<string, typeof orderItems>,
-        ),
-      );
-
-      console.log('grouped:', grouped);
-
-      const summaryResults: { pro_code: string; total_amount: number }[] = [];
-
-      for (const item of grouped) {
-        const retioItem =
-          await this.productsService.calculateSmallestUnit(item);
-        summaryResults.push({
-          pro_code: item[0].pro_code,
-          total_amount: retioItem,
-        });
-      }
-
-      const priceByCode = new Map<string, { A: number; B: number; C: number }>(
-        result.map((r) => [
-          r.pro_code,
           {
-            A: Number(r.product?.pro_priceA ?? 0),
-            B: Number(r.product?.pro_priceB ?? 0),
-            C: Number(r.product?.pro_priceC ?? 0),
+            promo: [] as typeof dataGroup,
+            nonPromo: [] as typeof dataGroup,
           },
-        ]),
-      );
+        );
 
-      const promoSet = new Set<string>(
-        promotionProducts.map((p) => p.pro_code),
-      );
+        console.log('Split promo/nonPromo:', split);
 
-      const split = summaryResults.reduce(
-        (acc, item) => {
-          (promoSet.has(item.pro_code) ? acc.promo : acc.nonPromo).push(item);
-          return acc;
-        },
-        {
-          promo: [] as typeof summaryResults,
-          nonPromo: [] as typeof summaryResults,
-        },
-      );
+        const tier = result[0]?.member?.mem_price ?? 'C';
 
-      console.log('Split promo/nonPromo:', split);
+        const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
+          items.reduce((sum, item) => {
+            const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+            return sum + item.spc_amount * price;
+          }, 0);
 
-      const tier = result[0]?.member?.mem_price ?? 'C';
+        const promoTotal = totalByTier(split.promo, 'A');
 
-      const totalByTier = (items: typeof summaryResults, t: 'A' | 'B' | 'C') =>
-        items.reduce((sum, item) => {
-          const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
-          return sum + item.total_amount * price;
-        }, 0);
+        const nonPromoTotal = totalByTier(
+          split.nonPromo,
+          tier as 'A' | 'B' | 'C',
+        );
 
-      const promoTotal = totalByTier(split.promo, 'A');
+        console.log('promoTotal:', promoTotal);
+        console.log('nonPromoTotal:', nonPromoTotal);
+        const grandTotalItems = promoTotal + nonPromoTotal;
 
-      const nonPromoTotal = totalByTier(
-        split.nonPromo,
-        tier as 'A' | 'B' | 'C',
-      );
-
-      console.log('promoTotal:', promoTotal);
-      console.log('nonPromoTotal:', nonPromoTotal);
-      const grandTotal = promoTotal + nonPromoTotal;
-
-      console.log('Grand Total:', grandTotal);
-      return grandTotal;
+        console.log('Grand Total:', grandTotalItems);
+        itemIndex += 1;
+        total += grandTotalItems;
+      }
+      return { total: total, items: [{ index: itemIndex, grandTotalItems }] };
     } catch {
-      return 0;
+      return { total: 0, items: [] };
     }
   }
+}
+
+function groupCart(
+  cart: ShoppingCartEntity[],
+  limit: number,
+): ShoppingCartEntity[][] {
+  const groups: ShoppingCartEntity[][] = [];
+  let currentGroup: ShoppingCartEntity[] = [];
+  let currentCodes = new Set<string>();
+
+  for (const item of cart) {
+    if (currentCodes.has(item.pro_code)) {
+      currentGroup.push(item);
+      continue;
+    }
+    if (currentCodes.size < limit) {
+      currentGroup.push(item);
+      currentCodes.add(item.pro_code);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [item];
+      currentCodes = new Set([item.pro_code]);
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+
+  return groups;
 }
