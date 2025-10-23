@@ -22,6 +22,7 @@ import { InvisibleEntity } from 'src/invisible-product/invisible-product.entity'
 import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
 import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
+import { RecommendEntity } from 'src/recommend/recommend.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -210,4 +211,11 @@ export class ProductEntity {
 
   @ManyToMany(() => ReductionRT, (reductionRT) => reductionRT.products)
   reductionRTs: ReductionRT[];
+
+  @ManyToOne(() => RecommendEntity, (recommend) => recommend.products)
+  @JoinColumn({ name: 'recommend_id' })
+  recommend: RecommendEntity;
+
+  @Column({ nullable: true, type: 'int' })
+  recommend_rank: number | null;
 }
