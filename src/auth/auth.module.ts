@@ -9,6 +9,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { HttpModule } from '@nestjs/axios';
 import { RefreshTokenEntity } from './refresh-token.entity';
+import { EmployeesModule } from 'src/employees/employees.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { RefreshTokenEntity } from './refresh-token.entity';
     JwtModule.register({
       secret: jwtConstants.secret,
     }),
+    EmployeesModule,
   ],
   providers: [AuthService, JwtStrategy],
   exports: [AuthService],

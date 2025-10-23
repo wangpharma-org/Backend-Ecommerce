@@ -392,6 +392,7 @@ export class ProductsService {
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'product.sale_amount_day',
           'pharma.pro_code',
           'pharma.pp_properties',
           'pharma.pp_properties',
@@ -1001,6 +1002,7 @@ export class ProductsService {
   // }
 
   // ตรวจสอบแล้ว
+
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
       const products = await this.productRepo
@@ -1250,5 +1252,61 @@ export class ProductsService {
       throw new Error('Error searching products');
     }
   }
+
+  async findProductFree(): Promise<{ pro_code: string; pro_name: string }[]> {
+    try {
+      const products = await this.productRepo.find({
+        where: { pro_free: true },
+      });
+      return products.map((product) => ({
+        pro_code: product.pro_code,
+        pro_name: product.pro_name,
+      }));
+    } catch (error) {
+      console.error('Error finding free products:', error);
+      throw new Error('Error finding free products');
+    }
+  }
+
+  async findProductPromotion(): Promise<
+    {
+      pro_code: string;
+      pro_promotion_month: number;
+      pro_promotion_amount: number;
+    }[]
+  > {
+    try {
+      const products = await this.productRepo.find({
+        where: { pro_promotion_month: MoreThan(0) },
+        select: ['pro_code', 'pro_promotion_month', 'pro_promotion_amount'],
+      });
+      return products.map((product) => ({
+        pro_code: product.pro_code,
+        pro_promotion_month: product.pro_promotion_month || 0,
+        pro_promotion_amount: product.pro_promotion_amount || 0,
+      }));
+    } catch (error) {
+      console.error('Error finding promotion products:', error);
+      throw new Error('Error finding promotion products');
+    }
+  }
+  async updateSaleDayly(data: { pro_code: string; amount: number }[]) {
+    try {
+      await this.productRepo.update(
+        { pro_code: Not(IsNull()) },
+        { sale_amount_day: null },
+      );
+      await Promise.all(
+        data.map(async (item) => {
+          await this.productRepo.update(
+            { pro_code: item.pro_code },
+            { sale_amount_day: item.amount },
+          );
+        }),
+      );
+    } catch (error) {
+      console.error('Error updating sale amount day:', error);
+      throw new Error('Error updating sale amount day');
+    }
+  }
 }
-export { ProductEntity };

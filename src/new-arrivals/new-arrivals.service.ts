@@ -68,6 +68,9 @@ export class NewArrivalsService {
         'cart.mem_code = :memCode',
         { memCode },
       )
+      .where(
+        'product.pro_priceA != 1 AND product.pro_priceB != 1 AND product.pro_priceC != 1',
+      )
       .groupBy('product.pro_code')
       .addGroupBy('newArrival.id')
       .addGroupBy('newArrival.createdAt')

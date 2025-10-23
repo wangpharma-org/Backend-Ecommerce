@@ -12,6 +12,7 @@ import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { FavoriteEntity } from '../favorite/favorite.entity';
 import { DebtorEntity } from 'src/debtor/debtor.entity';
 import { EditAddress } from 'src/edit-address/edit-address.entity';
+import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ChangePassword } from 'src/change-password/change-password.entity';
 
 @Entity('users')
@@ -115,8 +116,11 @@ export class UserEntity {
   @ManyToOne(() => EmployeeEntity, (employee) => employee.members, {
     nullable: true,
   })
-  @JoinColumn({ name: 'emp_id_ref' })
+  @JoinColumn({ name: 'emp_id_ref', referencedColumnName: 'emp_code' })
   employee: EmployeeEntity;
+
+  @Column({ nullable: true, default: null })
+  emp_id_ref: string | null;
 
   @OneToMany(() => ShoppingCartEntity, (cart) => cart.member)
   shoppingCartItems: ShoppingCartEntity[];
@@ -175,6 +179,20 @@ export class UserEntity {
   @OneToMany(() => EditAddress, (editAddress) => editAddress.user)
   editAddresses: EditAddress[];
 
+  @OneToMany(() => DebtorEntity, (reductionInvoice) => reductionInvoice.user)
+  reductionInvoices: DebtorEntity[];
+
+  @OneToMany(() => ReductionRT, (reductionRT) => reductionRT.user)
+  reductionRTs: ReductionRT[];
   @OneToMany(() => ChangePassword, (changePassword) => changePassword.user)
   changePasswords: ChangePassword[];
+
+  @Column({ length: 50, nullable: true, default: null })
+  latest_purchase: string;
+
+  @Column({ type: 'boolean', default: false })
+  user_VIP: boolean;
+
+  @Column({ length: 255, nullable: true, default: null })
+  tagVIP: string;
 }

@@ -86,4 +86,8 @@ export class BannerService {
       throw new Error('Something Error in Upload Banner');
     }
   }
+
+  async findAllBanners(): Promise<BannerEntity[]> {
+    return this.bannerRepo.find();
+  }
 }
