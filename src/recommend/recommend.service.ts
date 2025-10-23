@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecommendEntity } from './recommend.entity';
-import { Repository } from 'typeorm';
+import { Repository, In, Not, MoreThan } from 'typeorm';
 import { ProductEntity } from 'src/products/products.entity';
 
 @Injectable()
@@ -111,6 +111,56 @@ export class RecommendService {
       return this.productEntity.update({ pro_code }, { recommend: tag });
     } catch (error) {
       throw new Error(`Failed to update tag to product: ${error}`);
+    }
+  }
+
+  async GetProductRecommendByCode(
+    recommend_id: number[],
+    pro_code: string[],
+    mem_code: string,
+  ) {
+    try {
+      return this.productEntity
+        .createQueryBuilder('product')
+        .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect('product.creditor', 'creditor')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :mem_code',
+          { mem_code },
+        )
+        .leftJoinAndSelect('product.flashsale', 'product_flashsale')
+        .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale') // join ชั้นในอีกที
+        .where('recommend.id IN (:...recommend_id)', { recommend_id })
+        .andWhere('product.pro_stock > 0')
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_stock',
+          'product.recommend_rank',
+          'product.pro_promotion_month',
+          'creditor.creditor_code',
+          'cart.mem_code',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'product_flashsale.id',
+          'product_flashsale.limit',
+          'flashsale.promotion_id',
+          'flashsale.date',
+          'flashsale.time_start',
+          'flashsale.time_end',
+        ])
+        .getMany();
+    } catch (error) {
+      throw new Error(`Failed to get product recommend by code: ${error}`);
     }
   }
 }

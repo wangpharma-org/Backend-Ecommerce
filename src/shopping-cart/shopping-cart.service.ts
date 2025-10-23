@@ -24,10 +24,21 @@ export interface ShoppingProductCart {
   pro_promotion_amount: number;
   shopping_cart: ShoppingCart[];
   lots: LotItem[];
+  recommend: RecommendedProduct[];
   flashsale_limit?: number;
   flashsale_time_end?: string;
   flashsale_time_start?: string;
   flashsale_date?: string;
+  pro_stock: number;
+  order_quantity: number;
+  recommended_id?: number;
+}
+
+export interface RecommendedProduct {
+  recommended_id: number;
+  pro_code: string;
+  pro_imgmain: string;
+  pro_name: string;
 }
 
 export interface LotItem {
@@ -86,6 +97,12 @@ interface RawProductCart {
   flashsale_time_start?: string;
   flashsale_date?: string;
   hotdeal_free: boolean;
+  recommended_id: number;
+  recommended_pro_imgmain?: string;
+  recommended_pro_name?: string;
+  recommended_pro_code?: string;
+  pro_stock: number;
+  order_quantity: number;
 }
 
 // Define a DTO for the return type
@@ -732,6 +749,8 @@ export class ShoppingCartService {
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect('fs.flashsale', 'flashsale')
+        .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect('recommend.products', 'recommendedProducts')
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
           'product.pro_code AS pro_code',
@@ -746,6 +765,8 @@ export class ShoppingCartService {
           'product.pro_ratio1 AS pro_ratio1',
           'product.pro_ratio2 AS pro_ratio2',
           'product.pro_ratio3 AS pro_ratio3',
+          'product.pro_stock AS pro_stock',
+          'product.order_quantity AS order_quantity',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.pro_promotion_amount AS pro_promotion_amount',
           'lot.lot_id AS lot_id',
@@ -766,6 +787,10 @@ export class ShoppingCartService {
           'flashsale.time_end AS flashsale_time_end',
           'cart.hotdeal_free AS hotdeal_free',
           'cart.pro_code AS cart_pro_code',
+          'recommendedProducts.recommend_id AS recommended_id',
+          'recommendedProducts.pro_code AS recommended_pro_code',
+          'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
+          'recommendedProducts.pro_name AS recommended_pro_name',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -789,6 +814,8 @@ export class ShoppingCartService {
             pro_ratio1: row.pro_ratio1,
             pro_ratio2: row.pro_ratio2,
             pro_ratio3: row.pro_ratio3,
+            pro_stock: row.pro_stock,
+            order_quantity: row.order_quantity,
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
             flashsale_limit: row.flashsale_limit,
@@ -797,6 +824,7 @@ export class ShoppingCartService {
             flashsale_date: row.flashsale_date,
             shopping_cart: [],
             lots: [],
+            recommend: [],
           };
         }
 
@@ -810,6 +838,24 @@ export class ShoppingCartService {
               lot: row.lot,
               mfg: row.mfg,
               exp: row.exp,
+            });
+          }
+        }
+
+        if (
+          row.recommended_id &&
+          row.recommended_pro_code &&
+          row.recommended_pro_name
+        ) {
+          if (
+            row.recommended_pro_code !== row.pro_code &&
+            grouped[code].recommend.length < 6
+          ) {
+            grouped[code].recommend.push({
+              recommended_id: row.recommended_id,
+              pro_code: row.recommended_pro_code,
+              pro_imgmain: row.recommended_pro_imgmain ?? '',
+              pro_name: row.recommended_pro_name,
             });
           }
         }

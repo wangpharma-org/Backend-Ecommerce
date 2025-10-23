@@ -1767,4 +1767,20 @@ export class AppController {
   async deleteRecommendTag(@Body() data: { tag_id: number }) {
     return await this.recommendService.deleteTag(data.tag_id);
   }
+
+  @Post('/ecom/recommend/recommend-products')
+  async getRecommendProducts(
+    @Body()
+    data: {
+      pro_code: string[];
+      recommend_id: number[];
+      mem_code: string;
+    },
+  ) {
+    return await this.recommendService.GetProductRecommendByCode(
+      data.recommend_id,
+      data.pro_code,
+      data.mem_code,
+    );
+  }
 }
