@@ -574,6 +574,8 @@ function groupCart(
   let currentGroup: ShoppingCartEntity[] = [];
   let currentCodes = new Set<string>();
 
+  console.log('cart to group:', cart);
+  console.log('Grouping cart with limit:', limit);
   for (const item of cart) {
     if (currentCodes.has(item.pro_code)) {
       currentGroup.push(item);
@@ -592,6 +594,7 @@ function groupCart(
   if (currentGroup.length > 0) {
     groups.push(currentGroup);
   }
+  console.log('Grouped cart result:', groups);
 
   return groups;
 }
