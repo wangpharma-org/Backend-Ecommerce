@@ -1105,6 +1105,20 @@ export class ShoppingCartService {
           },
         );
 
+        const orderItems = dataGroup.map((item) => {
+          const unitRatioMap = new Map([
+            [item.product.pro_unit1, item.product.pro_ratio1],
+            [item.product.pro_unit2, item.product.pro_ratio2],
+            [item.product.pro_unit3, item.product.pro_ratio3],
+          ]);
+          const ratio = unitRatioMap.get(item.spc_unit) || 1;
+          return {
+            pro_code: item.pro_code,
+            unit: item.spc_unit,
+            quantity: Number(item.spc_amount) * Number(ratio),
+          };
+        });
+
         console.log('Split promo/nonPromo:', split);
 
         const tier = result[0]?.member?.mem_price ?? 'C';
@@ -1112,7 +1126,10 @@ export class ShoppingCartService {
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
             const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
-            return sum + item.spc_amount * price;
+            const quantity =
+              orderItems.find((i) => i.pro_code === item.pro_code)?.quantity ||
+              0;
+            return sum + quantity * price || 0;
           }, 0);
 
         const promoTotal = totalByTier(split.promo, 'A');
