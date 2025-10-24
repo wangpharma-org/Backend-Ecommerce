@@ -985,23 +985,32 @@ export class ProductsService {
 
   async calculateSmallestUnit(order: OrderItem[]): Promise<number> {
     let total = 0;
+    console.log('Calculating smallest unit for order:', order);
     try {
       // ลูปผ่านทุก orderItem
       for (const orderItem of order) {
         const { unit, quantity, pro_code } = orderItem;
+        console.log(
+          `Processing orderItem - pro_code: ${pro_code}, unit: ${unit}, quantity: ${quantity}`,
+        );
 
         const productsWithUnits = await this.getProductsWithUnits(pro_code);
+        // console.log('Products with units:', productsWithUnits);
 
         const product = productsWithUnits.find((p) => p.pro_code === pro_code);
+        // console.log('Matched product:', product);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
 
         const unitData = product.units.find((u) => u.unit === unit);
+        // console.log('Matched unit data:', unitData);
         if (unitData) {
           const totalForItem = quantity * unitData.ratio; // คำนวณหน่วยที่เล็กที่สุดสำหรับแต่ละ orderItem
+          console.log(`Total for item (${pro_code}): ${totalForItem}`);
 
           total += totalForItem; // บวกผลลัพธ์เข้ากับ total รวม
+          console.log(`Accumulated total for ${pro_code}: ${total}`);
 
           // console.log(`pro_code: ${pro_code}, Unit: ${unit}, Quantity: ${quantity}, Total for ${pro_code}: ${totalForItem}`);
         }

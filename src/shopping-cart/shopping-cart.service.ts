@@ -203,11 +203,7 @@ export class ShoppingCartService {
       await this.checkPromotionReward(data.mem_code, data.priceCondition);
 
       console.log('Check Hotdeal');
-      await this.checkHotdealByProCode(
-        data.mem_code,
-        data.pro_code,
-        data.pro_unit,
-      );
+      await this.checkHotdealByProCode(data.mem_code, data.pro_code);
 
       return await this.getProductCart(data.mem_code);
     } catch (error) {
@@ -964,7 +960,6 @@ export class ShoppingCartService {
   async checkHotdealByProCode(
     mem_code: string,
     pro_code: string,
-    pro_unit: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
       const existingCart = await this.shoppingCartRepo.find({
@@ -1054,4 +1049,166 @@ export class ShoppingCartService {
       return null;
     }
   }
+
+  async summaryCart(
+    mem_code: string,
+  ): Promise<{ total: number; items: { [key: string]: number }[] }> {
+    try {
+      const result = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          spc_checked: true,
+          hotdeal_free: false,
+          is_reward: false,
+        },
+        relations: { product: true, member: true },
+        select: {
+          spc_amount: true,
+          spc_unit: true,
+          pro_code: true,
+          mem_code: true,
+          flashsale_end: true,
+          product: {
+            pro_code: true,
+            pro_priceA: true,
+            pro_priceB: true,
+            pro_priceC: true,
+            pro_unit1: true,
+            pro_unit2: true,
+            pro_unit3: true,
+            pro_ratio1: true,
+            pro_ratio2: true,
+            pro_ratio3: true,
+            pro_promotion_month: true,
+            pro_promotion_amount: true,
+          },
+          member: {
+            mem_code: true,
+            mem_price: true,
+          },
+        },
+      });
+
+      const promotionProducts: { pro_code: string }[] = [];
+      const splitData = groupCart(result, 80);
+
+      const grandTotalItems = 0;
+      let total = 0;
+      let itemIndex = 0;
+
+      for (const [index, dataGroup] of splitData.entries()) {
+        console.log(`Group ${index + 1}:`, dataGroup);
+        const promotion = dataGroup.filter(
+          (item) =>
+            item.product &&
+            item.product.pro_promotion_month &&
+            item.product.pro_promotion_amount,
+        );
+        promotionProducts.push(
+          ...promotion.map((item) => ({
+            pro_code: item.pro_code,
+          })),
+        );
+
+        const flashSaleItems = result.filter(
+          (item) =>
+            item.product &&
+            item.flashsale_end &&
+            new Date(item.flashsale_end) >= new Date(),
+        );
+        promotionProducts.push(
+          ...flashSaleItems.map((item) => ({
+            pro_code: item.pro_code,
+          })),
+        );
+
+        const priceByCode = new Map<
+          string,
+          { A: number; B: number; C: number }
+        >(
+          dataGroup.map((r) => [
+            r.pro_code,
+            {
+              A: Number(r.product?.pro_priceA ?? 0),
+              B: Number(r.product?.pro_priceB ?? 0),
+              C: Number(r.product?.pro_priceC ?? 0),
+            },
+          ]),
+        );
+
+        const promoSet = new Set<string>(
+          promotionProducts.map((p) => p.pro_code),
+        );
+
+        const split = dataGroup.reduce(
+          (acc, item) => {
+            (promoSet.has(item.pro_code) ? acc.promo : acc.nonPromo).push(item);
+            return acc;
+          },
+          {
+            promo: [] as typeof dataGroup,
+            nonPromo: [] as typeof dataGroup,
+          },
+        );
+
+        console.log('Split promo/nonPromo:', split);
+
+        const tier = result[0]?.member?.mem_price ?? 'C';
+
+        const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
+          items.reduce((sum, item) => {
+            const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+            return sum + item.spc_amount * price;
+          }, 0);
+
+        const promoTotal = totalByTier(split.promo, 'A');
+
+        const nonPromoTotal = totalByTier(
+          split.nonPromo,
+          tier as 'A' | 'B' | 'C',
+        );
+
+        console.log('promoTotal:', promoTotal);
+        console.log('nonPromoTotal:', nonPromoTotal);
+        const grandTotalItems = promoTotal + nonPromoTotal;
+
+        console.log('Grand Total:', grandTotalItems);
+        itemIndex += 1;
+        total += grandTotalItems;
+      }
+      return { total: total, items: [{ index: itemIndex, grandTotalItems }] };
+    } catch {
+      return { total: 0, items: [] };
+    }
+  }
+}
+
+function groupCart(
+  cart: ShoppingCartEntity[],
+  limit: number,
+): ShoppingCartEntity[][] {
+  const groups: ShoppingCartEntity[][] = [];
+  let currentGroup: ShoppingCartEntity[] = [];
+  let currentCodes = new Set<string>();
+
+  for (const item of cart) {
+    if (currentCodes.has(item.pro_code)) {
+      currentGroup.push(item);
+      continue;
+    }
+    if (currentCodes.size < limit) {
+      currentGroup.push(item);
+      currentCodes.add(item.pro_code);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [item];
+      currentCodes = new Set([item.pro_code]);
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+
+  return groups;
 }
