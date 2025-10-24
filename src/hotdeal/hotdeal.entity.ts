@@ -32,4 +32,7 @@ export class HotdealEntity {
 
   @Column({ length: 20, nullable: false })
   pro2_unit: string;
+
+  @Column({ type: 'int', default: 0})
+  order: number;
 }

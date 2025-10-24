@@ -108,8 +108,28 @@ export class HotdealService {
   }
 
   // ตรวจสอบและแก้ไขแล้ว
-  async saveHotdeal(datainput: HotdealInput): Promise<string> {
+  async saveHotdeal(datainput: HotdealInput, id?: number, pro_code?: string, order?: number): Promise<string> {
     try {
+      const existingHotdeal = await this.hotdealRepo.findOne({
+        where: { id: id },
+      });
+      if (existingHotdeal) {
+        if (existingHotdeal.order !== order) {
+          const hotdealId = existingHotdeal.id === id;
+          if (hotdealId) {
+            await this.hotdealRepo.update(
+              { id: existingHotdeal.id },
+              { order: order },
+            );
+            const maxOrderHotdeal = await this.hotdealRepo.find({
+              order: { order: 'ASC' },
+            })
+            console.log('maxOrderHotdeal', maxOrderHotdeal);
+
+          }
+        }
+      }
+      else {
       const hotdeal = this.hotdealRepo.create({
         pro1_amount: datainput.pro1_amount,
         pro1_unit: datainput.pro1_unit,
@@ -127,7 +147,7 @@ export class HotdealService {
         datainput.pro2_code,
         datainput.pro2_unit,
       );
-
+    }
       return 'add hotdeal successfully';
     } catch (error) {
       console.error('Error saving hotdeal:', error);
@@ -139,7 +159,7 @@ export class HotdealService {
   async getAllHotdealsWithProductNames() {
     const hotdeals = await this.hotdealRepo.find({
       relations: ['product', 'product2'],
-      order: { id: 'DESC' },
+      order: { order: 'ASC' },
     });
 
     return hotdeals.map((hotdeal) => ({
@@ -152,6 +172,7 @@ export class HotdealService {
       pro2_unit: hotdeal.pro2_unit,
       pro_name: hotdeal.product?.pro_name || null,
       pro2_name: hotdeal.product2?.pro_name || null,
+      order: hotdeal.order,
     }));
   }
 
@@ -180,7 +201,7 @@ export class HotdealService {
       .createQueryBuilder('hotdeal')
       .leftJoinAndSelect('hotdeal.product', 'product')
       .leftJoinAndSelect('hotdeal.product2', 'product2')
-      .orderBy('hotdeal.id', 'DESC');
+      .orderBy('hotdeal.order', 'ASC');
 
     if (mem_code) {
       query
