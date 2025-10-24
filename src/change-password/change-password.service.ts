@@ -480,7 +480,7 @@ export class ChangePasswordService {
       if (!user) {
         throw new Error('User not found');
       }
-      
+
       const isMatch = await this.usersService.comparePassword(
         data.old_password,
         user.mem_password,

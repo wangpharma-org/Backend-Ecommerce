@@ -239,7 +239,7 @@ export class AuthService {
     }
   }
 
-  async   signin(data: {
+  async signin(data: {
     username: string;
     password: string;
   }): Promise<SigninResponse> {
