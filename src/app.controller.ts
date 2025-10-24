@@ -75,6 +75,9 @@ interface JwtPayload {
 
 @Controller()
 export class AppController {
+  // Add simple lock to prevent race condition
+  private isHashingInProgress = false;
+
   constructor(
     private readonly appService: AppService,
     private readonly authService: AuthService,
@@ -1402,8 +1405,21 @@ export class AppController {
   @Post('/ecom/hash-password')
   async hashpassword(@Body() body: { username: string, password: string }) {
     if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
-      const result = await this.authService.hashpassword();
-      return result;
+      // Prevent concurrent hash operations
+      if (this.isHashingInProgress) {
+        return { 
+          success: false, 
+          message: 'Hash operation already in progress. Please wait and try again later.' 
+        };
+      }
+      
+      this.isHashingInProgress = true;
+      try {
+        const result = await this.authService.hashpassword();
+        return result;
+      } finally {
+        this.isHashingInProgress = false;
+      }
     } else {
       return { message: 'You do not have permission to access this endpoint' };
     }

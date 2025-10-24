@@ -357,16 +357,23 @@ export class AuthService {
   }
 
   async hashpassword() {
+    const queryRunner = this.userRepo.manager.connection.createQueryRunner(); //ตรงนี้จะเป็นการสร้าง queryRunnerเอง
+    await queryRunner.connect();
+    await queryRunner.startTransaction(); //เริ่ม transaction
+
     try {
-      const users = await this.userRepo.find({
+      // Get users within transaction แทนที่จะใช้ this.userRepo.find
+      const users = await queryRunner.manager.find('UserEntity', {
         select: { mem_code: true, mem_password: true },
       });
 
       let hashCount = 0;
       let skipCount = 0;
+      const errors: string[] = []; //เก็บ errors เพื่อตัดสินใจ rollback
 
       for (const user of users) {
-        const password = user.mem_password?.trim();
+        //เก็บ spaces ใน password (ไม่ .trim()) เว้นวรรค=เป็นส่วนนึงของรหัสผ่าน
+        const password = (user as any).mem_password;
         if (!password || password.startsWith('$2')) {
           skipCount++;
           continue;
@@ -374,19 +381,34 @@ export class AuthService {
         
         try {
           const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-          console.log(`Hash length: ${hashedPassword.length} for user: ${user.mem_code}`);
+          console.log(`Hash length: ${hashedPassword.length} for user: ${(user as any).mem_code}`);
           
-          await this.userRepo.update(
-            { mem_code: user.mem_code },
+          //Update within transaction แทนที่จะใช้ this.userRepo.update
+          await queryRunner.manager.update('UserEntity', 
+            { mem_code: (user as any).mem_code },
             { mem_password: hashedPassword }
           );
           hashCount++;
         } catch (updateError) {
-          console.error(`Error updating user ${user.mem_code}:`, updateError.message);
-          throw updateError;
+          //เก็บ error แทนที่จะ throw ทันทีเพื่อrollback ได้
+          errors.push(`Error updating user ${(user as any).mem_code}: ${updateError.message}`);
+          console.error(`Error updating user ${(user as any).mem_code}:`, updateError.message);
         }
       }
 
+      //ตรวจสอบ errors และ rollback ถ้ามี 
+      if (errors.length > 0) {
+        await queryRunner.rollbackTransaction(); //rollback
+        return {
+          success: false,
+          message: 'Hash password failed - transaction rolled back',
+          errors: errors
+        };
+      }
+
+      //Commit transaction เมื่อสำเร็จทั้งหมด
+      await queryRunner.commitTransaction();
+      console.log(`Successfully hashed ${hashCount} passwords`);
       return {
         success: true,
         message: `Hashed ${hashCount} passwords, skipped ${skipCount}`,
@@ -394,12 +416,20 @@ export class AuthService {
         hashed: hashCount,
         skipped: skipCount
       };
+
     } catch (error) {
+      //Rollback เมื่อเกิด error
+      await queryRunner.rollbackTransaction();
+      console.error('Transaction failed:', error);
+      
       return {
         success: false,
         message: 'Hash password failed',
         error: error.message
       };
+    } finally {
+      //ปลดปล่อย connection เสมอ กัน memory leak
+      await queryRunner.release();
     }
   }
 }
