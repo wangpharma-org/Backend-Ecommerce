@@ -300,6 +300,7 @@ export class AppController {
     data: {
       emp_code?: string;
       mem_code: string;
+      total_price: number;
       listFree:
         | [
             {
@@ -316,7 +317,7 @@ export class AppController {
       addressed: string;
     },
   ) {
-    return await this.shoppingOrderService.submitOrder(data, ip);
+    return await this.shoppingOrderService.submitOrder(data);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -381,11 +382,7 @@ export class AppController {
       priceCondition,
     };
     console.log(payload);
-    const existingCart = await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
-      data.mem_code,
-    );
-    return { cart: existingCart, summaryCart: summaryCart };
+    return await this.shoppingCartService.addProductCart(payload);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -405,15 +402,7 @@ export class AppController {
       priceOption: string;
     } = { ...data, priceOption };
     //console.log(data);
-    const checkedProductCartAll =
-      await this.shoppingCartService.checkedProductCartAll(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
-      data.mem_code,
-    );
-    return {
-      cart: checkedProductCartAll,
-      summaryCart: summaryCart,
-    };
+    return await this.shoppingCartService.checkedProductCartAll(payload);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -433,12 +422,7 @@ export class AppController {
       priceOption: string;
     } = { ...data, priceOption };
     //console.log('Delete', data);
-    const handleDeleteCart =
-      await this.shoppingCartService.handleDeleteCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
-      data.mem_code,
-    );
-    return { cart: handleDeleteCart, summaryCart: summaryCart };
+    return await this.shoppingCartService.handleDeleteCart(payload);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -460,20 +444,13 @@ export class AppController {
       type: string;
       priceOption: string;
     } = { ...data, priceOption };
-    const checkedProductCart =
-      await this.shoppingCartService.checkedProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
-      data.mem_code,
-    );
-    return { cart: checkedProductCart, summaryCart: summaryCart };
+    return await this.shoppingCartService.checkedProductCart(payload);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Param('mem_code') mem_code: string) {
-    const cart = await this.shoppingCartService.getProductCart(mem_code);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    return { cart: cart, summaryCart: summaryCart };
+    return this.shoppingCartService.getProductCart(mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1743,8 +1720,9 @@ export class AppController {
   @Get('/ecom/cart/summary')
   async summaryCart(
     @Req() req: Request & { user: JwtPayload },
-  ): Promise<{ total: number; items: { [key: string]: number }[] }> {
+  ): Promise<number> {
     const mem_code = req.user.mem_code;
-    return this.shoppingCartService.summaryCart(mem_code);
+    const data = await this.shoppingCartService.summaryCart(mem_code);
+    return data.total;
   }
 }
