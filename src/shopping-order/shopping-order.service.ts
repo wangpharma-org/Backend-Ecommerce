@@ -161,6 +161,7 @@ export class ShoppingOrderService {
         mem_code: data.mem_code,
         body: JSON.stringify(data),
       });
+      console.log('submitOrder data:', data);
       const numberOfMonth = new Date().getMonth() + 1;
       const runningNumbers: string[] = [];
       const allIdCartForDelete: number[] = [];

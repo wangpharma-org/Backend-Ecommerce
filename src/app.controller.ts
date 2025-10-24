@@ -56,6 +56,7 @@ import { ProductKeywordService } from './product-keyword/product-keyword.service
 import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
+import { RecommendService } from './recommend/recommend.service';
 
 interface JwtPayload {
   username: string;
@@ -102,6 +103,7 @@ export class AppController {
     private readonly changePasswordService: ChangePasswordService,
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
+    private readonly recommendService: RecommendService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -612,6 +614,12 @@ export class AppController {
   @Get('/ecom/promotion/product/keysearch-flashsale')
   async getProductForKeySearchForFlashSale() {
     return this.productsService.getProductForKeySearchForFlashSale();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-recommend')
+  async getProductForKeySearchForRecommend() {
+    return this.productsService.getProductForKeySearchForRecommend();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1724,5 +1732,63 @@ export class AppController {
     const mem_code = req.user.mem_code;
     const data = await this.shoppingCartService.summaryCart(mem_code);
     return data.total;
+  @Get('/ecom/recommend/tags')
+  async getRecommendTags() {
+    return await this.recommendService.getAllTags();
+  }
+
+  @Post('/ecom/recommend/insertTag')
+  async insertRecommendTag(@Body() data: { tag: string }) {
+    return await this.recommendService.insertTag(data.tag);
+  }
+
+  @Get('/ecom/recommend/products/:tag_id')
+  async getRecommendProductsByTag(@Param('tag_id') tag_id: number) {
+    return await this.recommendService.getProductsByTag(tag_id);
+  }
+
+  @Post('/ecom/recommend/updateTagToProduct')
+  async updateTagToProduct(@Body() data: { tag_id: number; pro_code: string }) {
+    return await this.recommendService.UpdateTagToProduct(
+      data.pro_code,
+      data.tag_id,
+    );
+  }
+
+  @Post('/ecom/recommend/updateRank')
+  async updateRecommendRank(@Body() data: { pro_code: string; rank: number }) {
+    console.log(data);
+    return await this.recommendService.UpdateRank(data.pro_code, data.rank);
+  }
+
+  @Post('/ecom/recommend/removeTagFromProduct')
+  async removeTagFromProduct(@Body() data: { pro_code: string }) {
+    return await this.recommendService.DeleteTagFromProduct(data.pro_code);
+  }
+
+  @Post('/ecom/recommend/deleteRank')
+  async deleteRecommendRank(@Body() data: { pro_code: string }) {
+    return await this.recommendService.DeleteRank(data.pro_code);
+  }
+
+  @Post('/ecom/recommend/deleteTag')
+  async deleteRecommendTag(@Body() data: { tag_id: number }) {
+    return await this.recommendService.deleteTag(data.tag_id);
+  }
+
+  @Post('/ecom/recommend/recommend-products')
+  async getRecommendProducts(
+    @Body()
+    data: {
+      pro_code: string[];
+      recommend_id: number[];
+      mem_code: string;
+    },
+  ) {
+    return await this.recommendService.GetProductRecommendByCode(
+      data.recommend_id,
+      data.pro_code,
+      data.mem_code,
+    );
   }
 }
