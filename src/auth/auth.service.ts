@@ -363,9 +363,9 @@ export class AuthService {
 
     try {
       // Get users within transaction แทนที่จะใช้ this.userRepo.find
-      const users = await queryRunner.manager.find('UserEntity', {
+      const users = await queryRunner.manager.find(UserEntity, {
         select: { mem_code: true, mem_password: true },
-      });
+      }) as Pick<UserEntity, 'mem_code' | 'mem_password'>[];
 
       let hashCount = 0;
       let skipCount = 0;
@@ -373,7 +373,7 @@ export class AuthService {
 
       for (const user of users) {
         //เก็บ spaces ใน password (ไม่ .trim()) เว้นวรรค=เป็นส่วนนึงของรหัสผ่าน
-        const password = (user as any).mem_password;
+        const password = user.mem_password;
         if (!password || password.startsWith('$2')) {
           skipCount++;
           continue;
@@ -381,18 +381,18 @@ export class AuthService {
         
         try {
           const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-          console.log(`Hash length: ${hashedPassword.length} for user: ${(user as any).mem_code}`);
+          console.log(`Hash length: ${hashedPassword.length} for user: ${user.mem_code}`);
           
           //Update within transaction แทนที่จะใช้ this.userRepo.update
-          await queryRunner.manager.update('UserEntity', 
-            { mem_code: (user as any).mem_code },
+          await queryRunner.manager.update(UserEntity, 
+            { mem_code: user.mem_code },
             { mem_password: hashedPassword }
           );
           hashCount++;
         } catch (updateError) {
           //เก็บ error แทนที่จะ throw ทันทีเพื่อrollback ได้
-          errors.push(`Error updating user ${(user as any).mem_code}: ${updateError.message}`);
-          console.error(`Error updating user ${(user as any).mem_code}:`, updateError.message);
+          errors.push(`Error updating user ${user.mem_code}: ${updateError.message}`);
+          console.error(`Error updating user ${user.mem_code}:`, updateError.message);
         }
       }
 
