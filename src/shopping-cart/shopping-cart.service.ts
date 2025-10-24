@@ -1090,14 +1090,14 @@ export class ShoppingCartService {
       });
 
       const promotionProducts: { pro_code: string }[] = [];
-      const splitData = groupCart(result, 80);
+      const splitData = groupCart(result, 2);
 
-      const grandTotalItems = 0;
+      let grandTotalItems = 0;
       let total = 0;
-      let itemIndex = 0;
+      const itemsArray: { index: number; grandTotalItems: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
-        console.log(`Group ${index + 1}:`, dataGroup);
+        // console.log(`Group ${index + 1}:`, dataGroup);
         const promotion = dataGroup.filter(
           (item) =>
             item.product &&
@@ -1187,13 +1187,13 @@ export class ShoppingCartService {
 
         console.log('promoTotal:', promoTotal);
         console.log('nonPromoTotal:', nonPromoTotal);
-        const grandTotalItems = promoTotal + nonPromoTotal;
+        grandTotalItems = promoTotal + nonPromoTotal;
 
         console.log('Grand Total:', grandTotalItems);
-        itemIndex += 1;
         total += grandTotalItems;
+        itemsArray.push({ index: index, grandTotalItems });
       }
-      return { total: total, items: [{ index: itemIndex, grandTotalItems }] };
+      return { total: total, items: itemsArray };
     } catch {
       console.error('Error in summaryCart');
       throw new Error('Somthing wrong in summaryCart');
