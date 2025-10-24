@@ -1756,6 +1756,8 @@ export class AppController {
     const mem_code = req.user.mem_code;
     const data = await this.shoppingCartService.summaryCart(mem_code);
     return data.total;
+  }
+  
   @Get('/ecom/recommend/tags')
   async getRecommendTags() {
     return await this.recommendService.getAllTags();

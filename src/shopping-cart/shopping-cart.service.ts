@@ -1195,7 +1195,8 @@ export class ShoppingCartService {
       }
       return { total: total, items: [{ index: itemIndex, grandTotalItems }] };
     } catch {
-      return { total: 0, items: [] };
+      console.error('Error in summaryCart');
+      throw new Error('Somthing wrong in summaryCart');
     }
   }
 }
