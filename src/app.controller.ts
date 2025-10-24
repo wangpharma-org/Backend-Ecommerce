@@ -1724,14 +1724,6 @@ export class AppController {
     }));
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/cart/summary')
-  async summaryCart(
-    @Req() req: Request & { user: JwtPayload },
-  ): Promise<number> {
-    const mem_code = req.user.mem_code;
-    const data = await this.shoppingCartService.summaryCart(mem_code);
-    return data.total;
   @Get('/ecom/recommend/tags')
   async getRecommendTags() {
     return await this.recommendService.getAllTags();
