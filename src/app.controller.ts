@@ -854,7 +854,6 @@ export class AppController {
         }),
       );
       // flatten array
-      console.log('allResults:', allResults);
       return allResults.flat().filter(Boolean);
     } catch (error) {
       console.error('Error in checkHotdealMatch:', error);

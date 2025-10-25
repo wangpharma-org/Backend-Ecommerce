@@ -309,7 +309,7 @@ export class ProductsService {
   }
 
   async uploadPO(data: { pro_code: string; month: number }[]) {
-    console.log(data);
+    // console.log(data);
     try {
       await this.productRepo.update(
         { pro_promotion_month: Not(IsNull()) },
@@ -398,7 +398,11 @@ export class ProductsService {
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .leftJoinAndSelect('product.recommend', 'recommend')
-        .leftJoinAndSelect('recommend.products', 'products')
+        .leftJoinAndSelect(
+          'recommend.products',
+          'products',
+          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0'
+        )
         .leftJoinAndSelect('products.inCarts', 'inCarts')
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
@@ -908,7 +912,7 @@ export class ProductsService {
   }
 
   async listFree(sort_by?: string) {
-    console.log('sort_by', sort_by);
+    // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
 

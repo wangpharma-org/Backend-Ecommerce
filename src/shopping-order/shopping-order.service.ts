@@ -185,7 +185,7 @@ export class ShoppingOrderService {
 
         const groupCartArray = groupCart(cart, 2);
 
-        console.log('Grouped cart items:', groupCartArray);
+        // console.log('Grouped cart items:', groupCartArray);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
           submitLogContext.push({ groupIndex, groupSize: group.length });
@@ -596,8 +596,8 @@ function groupCart(
   let currentGroup: ShoppingCartEntity[] = [];
   let currentCodes = new Set<string>();
 
-  console.log('cart to group:', cart);
-  console.log('Grouping cart with limit:', limit);
+  // console.log('cart to group:', cart);
+  // console.log('Grouping cart with limit:', limit);
   for (const item of cart) {
     if (currentCodes.has(item.pro_code)) {
       currentGroup.push(item);
@@ -616,7 +616,7 @@ function groupCart(
   if (currentGroup.length > 0) {
     groups.push(currentGroup);
   }
-  console.log('Grouped cart result:', groups);
+  // console.log('Grouped cart result:', groups);
 
   return groups;
 }
