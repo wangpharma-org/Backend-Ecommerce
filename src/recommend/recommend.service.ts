@@ -134,6 +134,7 @@ export class RecommendService {
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale') // join ชั้นในอีกที
         .where('recommend.id IN (:...recommend_id)', { recommend_id })
         .andWhere('product.pro_stock > 0')
+        .andWhere('product.recommend_rank IS NOT NULL')
         .select([
           'product.pro_code',
           'product.pro_name',

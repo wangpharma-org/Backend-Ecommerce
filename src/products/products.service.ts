@@ -457,6 +457,7 @@ export class ProductsService {
           'products.order_quantity',
           'products.pro_promotion_amount',
           'products.pro_promotion_month',
+          'products.recommend_rank',
           'inCarts.mem_code',
           'inCarts.spc_amount',
           'inCarts.spc_unit',
