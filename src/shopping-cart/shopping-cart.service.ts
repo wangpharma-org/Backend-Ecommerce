@@ -134,7 +134,7 @@ export class ShoppingCartService {
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
-  ) { }
+  ) {}
 
   async addProductCart(data: {
     mem_code: string;
@@ -1207,7 +1207,10 @@ export class ShoppingCartService {
           }, 0);
 
         const promoTotal = totalByTier(split.promo, 'A');
-        const nonPromoTotal = totalByTier(split.nonPromo, tier as 'A' | 'B' | 'C');
+        const nonPromoTotal = totalByTier(
+          split.nonPromo,
+          tier as 'A' | 'B' | 'C',
+        );
 
         const grandTotalItems = promoTotal + nonPromoTotal;
 
