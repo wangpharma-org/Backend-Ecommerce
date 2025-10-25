@@ -33,6 +33,7 @@ export interface ShoppingProductCart {
   order_quantity: number;
   pro_lowest_stock: number;
   recommended_id?: number;
+  recommend_rank?: number;
 }
 
 export interface RecommendedProduct {
@@ -40,6 +41,7 @@ export interface RecommendedProduct {
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
+  recommend_rank?: number | null;
 }
 
 export interface LotItem {
@@ -105,6 +107,7 @@ interface RawProductCart {
   pro_stock: number;
   order_quantity: number;
   pro_lowest_stock: number;
+  recommend_rank?: number;
 }
 
 // Define a DTO for the return type
@@ -817,6 +820,7 @@ export class ShoppingCartService {
           'recommendedProducts.pro_code AS recommended_pro_code',
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
+          'recommendedProducts.recommend_rank AS recommend_rank',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -884,6 +888,7 @@ export class ShoppingCartService {
               pro_code: row.recommended_pro_code,
               pro_imgmain: row.recommended_pro_imgmain ?? '',
               pro_name: row.recommended_pro_name,
+              recommend_rank: row.recommend_rank ?? null,
             });
           }
         }
