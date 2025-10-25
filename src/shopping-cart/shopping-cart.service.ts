@@ -134,7 +134,7 @@ export class ShoppingCartService {
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
-  ) {}
+  ) { }
 
   async addProductCart(data: {
     mem_code: string;
@@ -1089,38 +1089,58 @@ export class ShoppingCartService {
         },
       });
 
-      const promotionProducts: { pro_code: string }[] = [];
+      const numberOfMonth = new Date().getMonth() + 1;
+      // const promotionProducts: { pro_code: string }[] = [];
       const splitData = groupCart(result, 2);
 
-      let grandTotalItems = 0;
+      // let grandTotalItems = 0;
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
         console.log(`Group ${index + 1}:`, dataGroup);
-        const promotion = dataGroup.filter(
-          (item) =>
-            item.product &&
-            item.product.pro_promotion_month &&
-            item.product.pro_promotion_amount,
-        );
-        promotionProducts.push(
-          ...promotion.map((item) => ({
-            pro_code: item.pro_code,
-          })),
-        );
 
-        const flashSaleItems = result.filter(
-          (item) =>
-            item.product &&
-            item.flashsale_end &&
-            new Date(item.flashsale_end) >= new Date(),
-        );
-        promotionProducts.push(
-          ...flashSaleItems.map((item) => ({
-            pro_code: item.pro_code,
-          })),
-        );
+        const productTotalAmounts = new Map<string, number>();
+
+        for (const item of dataGroup) {
+          if (!item.product) continue;
+
+          const unitRatioMap = new Map([
+            [item.product.pro_unit1, item.product.pro_ratio1 || 1],
+            [item.product.pro_unit2, item.product.pro_ratio2 || 1],
+            [item.product.pro_unit3, item.product.pro_ratio3 || 1],
+          ]);
+
+          const ratio = unitRatioMap.get(item.spc_unit) || 1;
+          const baseAmount = Number(item.spc_amount) * Number(ratio);
+
+          productTotalAmounts.set(
+            item.pro_code,
+            (productTotalAmounts.get(item.pro_code) || 0) + baseAmount,
+          );
+        }
+
+        const promotionProducts: { pro_code: string }[] = [];
+        for (const item of dataGroup) {
+          if (!item.product) continue;
+          // เช็ค promotion month + amount
+          const totalAmount = productTotalAmounts.get(item.pro_code) || 0;
+          const isPromotionActive =
+            item.product.pro_promotion_month === numberOfMonth &&
+            totalAmount >= (item.product.pro_promotion_amount ?? 0);
+          // totalAmount >= (item.product.pro_promotion_amount ?? 0);
+
+          // เช็ค flashsale
+          const isFlashSale = item.flashsale_end
+            ? new Date(item.flashsale_end) >= new Date()
+            : false;
+
+          if (isPromotionActive || isFlashSale) {
+            if (!promotionProducts.find((p) => p.pro_code === item.pro_code)) {
+              promotionProducts.push({ pro_code: item.pro_code });
+            }
+          }
+        }
 
         const priceByCode = new Map<
           string,
@@ -1151,13 +1171,15 @@ export class ShoppingCartService {
           },
         );
 
-        console.log('Split promo/nonPromo:', split);
-
         const tier = result[0]?.member?.mem_price ?? 'C';
 
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            // คำนวณ ratio และ quantity ภายใน reduce เลย
+            // ✅ เช็ค hotdeal_free
+            if (item.hotdeal_free === true) {
+              return sum + 0;
+            }
+
             const unitRatioMap = new Map([
               [item.product.pro_unit1, item.product.pro_ratio1 || 1],
               [item.product.pro_unit2, item.product.pro_ratio2 || 1],
@@ -1178,29 +1200,29 @@ export class ShoppingCartService {
               quantity,
               'Price:',
               price,
+              'IsFreebie:',
+              item.hotdeal_free,
             );
             return sum + quantity * price;
           }, 0);
 
         const promoTotal = totalByTier(split.promo, 'A');
+        const nonPromoTotal = totalByTier(split.nonPromo, tier as 'A' | 'B' | 'C');
 
-        const nonPromoTotal = totalByTier(
-          split.nonPromo,
-          tier as 'A' | 'B' | 'C',
-        );
+        const grandTotalItems = promoTotal + nonPromoTotal;
 
         console.log('promoTotal:', promoTotal);
         console.log('nonPromoTotal:', nonPromoTotal);
-        grandTotalItems = promoTotal + nonPromoTotal;
-
         console.log('Grand Total:', grandTotalItems);
+
         total += grandTotalItems;
         itemsArray.push({ index: index, grandTotalItems });
       }
+
       return { total: total, items: itemsArray };
-    } catch {
-      console.error('Error in summaryCart');
-      throw new Error('Somthing wrong in summaryCart');
+    } catch (error) {
+      console.error('Error in summaryCart:', error);
+      throw new Error('Something wrong in summaryCart');
     }
   }
 }
