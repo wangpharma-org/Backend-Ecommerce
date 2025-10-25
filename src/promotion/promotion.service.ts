@@ -142,7 +142,7 @@ export class PromotionService {
     mem_code: string;
     sort_by?: number;
   }) {
-    console.log(data);
+    // console.log(data);
     try {
       const tier = await this.promotionTierRepo.findOne({
         where: {
@@ -301,7 +301,7 @@ export class PromotionService {
     status: boolean;
   }) {
     try {
-      console.log(data);
+      // console.log(data);
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
         creditor: { creditor_code: data.creditor_code },
@@ -311,7 +311,7 @@ export class PromotionService {
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
-      console.log(error);
+      // console.log(error);
       throw new Error(`Failed to add promotion`);
     }
   }
@@ -357,7 +357,7 @@ export class PromotionService {
     description?: string;
     file: Express.Multer.File;
   }) {
-    console.log(data);
+    // console.log(data);
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id: data.promo_id },
@@ -389,7 +389,7 @@ export class PromotionService {
       });
       await this.promotionTierRepo.save(newTier);
     } catch (error) {
-      console.log(error);
+      // console.log(error);
       throw new Error(`Failed to add tier to promotion`);
     }
   }
