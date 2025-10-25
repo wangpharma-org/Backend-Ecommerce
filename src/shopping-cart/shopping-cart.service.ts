@@ -1223,9 +1223,8 @@ export class ShoppingCartService {
       }
 
       return { total: total, items: itemsArray };
-    } catch (error) {
-      console.error('Error in summaryCart:', error);
-      throw new Error('Something wrong in summaryCart');
+    } catch {
+      return { total: 0, items: [] };
     }
   }
 }
