@@ -24,10 +24,21 @@ export interface ShoppingProductCart {
   pro_promotion_amount: number;
   shopping_cart: ShoppingCart[];
   lots: LotItem[];
+  recommend: RecommendedProduct[];
   flashsale_limit?: number;
   flashsale_time_end?: string;
   flashsale_time_start?: string;
   flashsale_date?: string;
+  pro_stock: number;
+  order_quantity: number;
+  recommended_id?: number;
+}
+
+export interface RecommendedProduct {
+  recommended_id: number;
+  pro_code: string;
+  pro_imgmain: string;
+  pro_name: string;
 }
 
 export interface LotItem {
@@ -86,6 +97,12 @@ interface RawProductCart {
   flashsale_time_start?: string;
   flashsale_date?: string;
   hotdeal_free: boolean;
+  recommended_id: number;
+  recommended_pro_imgmain?: string;
+  recommended_pro_name?: string;
+  recommended_pro_code?: string;
+  pro_stock: number;
+  order_quantity: number;
 }
 
 // Define a DTO for the return type
@@ -732,6 +749,8 @@ export class ShoppingCartService {
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect('fs.flashsale', 'flashsale')
+        .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect('recommend.products', 'recommendedProducts')
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
           'product.pro_code AS pro_code',
@@ -746,6 +765,8 @@ export class ShoppingCartService {
           'product.pro_ratio1 AS pro_ratio1',
           'product.pro_ratio2 AS pro_ratio2',
           'product.pro_ratio3 AS pro_ratio3',
+          'product.pro_stock AS pro_stock',
+          'product.order_quantity AS order_quantity',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.pro_promotion_amount AS pro_promotion_amount',
           'lot.lot_id AS lot_id',
@@ -766,6 +787,10 @@ export class ShoppingCartService {
           'flashsale.time_end AS flashsale_time_end',
           'cart.hotdeal_free AS hotdeal_free',
           'cart.pro_code AS cart_pro_code',
+          'recommendedProducts.recommend_id AS recommended_id',
+          'recommendedProducts.pro_code AS recommended_pro_code',
+          'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
+          'recommendedProducts.pro_name AS recommended_pro_name',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -789,6 +814,8 @@ export class ShoppingCartService {
             pro_ratio1: row.pro_ratio1,
             pro_ratio2: row.pro_ratio2,
             pro_ratio3: row.pro_ratio3,
+            pro_stock: row.pro_stock,
+            order_quantity: row.order_quantity,
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
             flashsale_limit: row.flashsale_limit,
@@ -797,6 +824,7 @@ export class ShoppingCartService {
             flashsale_date: row.flashsale_date,
             shopping_cart: [],
             lots: [],
+            recommend: [],
           };
         }
 
@@ -810,6 +838,24 @@ export class ShoppingCartService {
               lot: row.lot,
               mfg: row.mfg,
               exp: row.exp,
+            });
+          }
+        }
+
+        if (
+          row.recommended_id &&
+          row.recommended_pro_code &&
+          row.recommended_pro_name
+        ) {
+          if (
+            row.recommended_pro_code !== row.pro_code &&
+            grouped[code].recommend.length < 6
+          ) {
+            grouped[code].recommend.push({
+              recommended_id: row.recommended_id,
+              pro_code: row.recommended_pro_code,
+              pro_imgmain: row.recommended_pro_imgmain ?? '',
+              pro_name: row.recommended_pro_name,
             });
           }
         }
@@ -1008,4 +1054,212 @@ export class ShoppingCartService {
       return null;
     }
   }
+
+  async summaryCart(
+    mem_code: string,
+  ): Promise<{ total: number; items: { [key: string]: number }[] }> {
+    try {
+      const result = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          spc_checked: true,
+          hotdeal_free: false,
+          is_reward: false,
+        },
+        relations: { product: true, member: true },
+        select: {
+          spc_amount: true,
+          spc_unit: true,
+          pro_code: true,
+          mem_code: true,
+          flashsale_end: true,
+          product: {
+            pro_code: true,
+            pro_priceA: true,
+            pro_priceB: true,
+            pro_priceC: true,
+            pro_unit1: true,
+            pro_unit2: true,
+            pro_unit3: true,
+            pro_ratio1: true,
+            pro_ratio2: true,
+            pro_ratio3: true,
+            pro_promotion_month: true,
+            pro_promotion_amount: true,
+          },
+          member: {
+            mem_code: true,
+            mem_price: true,
+          },
+        },
+      });
+
+      const numberOfMonth = new Date().getMonth() + 1;
+      // const promotionProducts: { pro_code: string }[] = [];
+      const splitData = groupCart(result, 2);
+
+      // let grandTotalItems = 0;
+      let total = 0;
+      const itemsArray: { index: number; grandTotalItems: number }[] = [];
+
+      for (const [index, dataGroup] of splitData.entries()) {
+        console.log(`Group ${index + 1}:`, dataGroup);
+
+        const productTotalAmounts = new Map<string, number>();
+
+        for (const item of dataGroup) {
+          if (!item.product) continue;
+
+          const unitRatioMap = new Map([
+            [item.product.pro_unit1, item.product.pro_ratio1 || 1],
+            [item.product.pro_unit2, item.product.pro_ratio2 || 1],
+            [item.product.pro_unit3, item.product.pro_ratio3 || 1],
+          ]);
+
+          const ratio = unitRatioMap.get(item.spc_unit) || 1;
+          const baseAmount = Number(item.spc_amount) * Number(ratio);
+
+          productTotalAmounts.set(
+            item.pro_code,
+            (productTotalAmounts.get(item.pro_code) || 0) + baseAmount,
+          );
+        }
+
+        const promotionProducts: { pro_code: string }[] = [];
+        for (const item of dataGroup) {
+          if (!item.product) continue;
+          // เช็ค promotion month + amount
+          const totalAmount = productTotalAmounts.get(item.pro_code) || 0;
+          const isPromotionActive =
+            item.product.pro_promotion_month === numberOfMonth &&
+            totalAmount >= (item.product.pro_promotion_amount ?? 0);
+          // totalAmount >= (item.product.pro_promotion_amount ?? 0);
+
+          // เช็ค flashsale
+          const isFlashSale = item.flashsale_end
+            ? new Date(item.flashsale_end) >= new Date()
+            : false;
+
+          if (isPromotionActive || isFlashSale) {
+            if (!promotionProducts.find((p) => p.pro_code === item.pro_code)) {
+              promotionProducts.push({ pro_code: item.pro_code });
+            }
+          }
+        }
+
+        const priceByCode = new Map<
+          string,
+          { A: number; B: number; C: number }
+        >(
+          dataGroup.map((r) => [
+            r.pro_code,
+            {
+              A: Number(r.product?.pro_priceA ?? 0),
+              B: Number(r.product?.pro_priceB ?? 0),
+              C: Number(r.product?.pro_priceC ?? 0),
+            },
+          ]),
+        );
+
+        const promoSet = new Set<string>(
+          promotionProducts.map((p) => p.pro_code),
+        );
+
+        const split = dataGroup.reduce(
+          (acc, item) => {
+            (promoSet.has(item.pro_code) ? acc.promo : acc.nonPromo).push(item);
+            return acc;
+          },
+          {
+            promo: [] as typeof dataGroup,
+            nonPromo: [] as typeof dataGroup,
+          },
+        );
+
+        const tier = result[0]?.member?.mem_price ?? 'C';
+
+        const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
+          items.reduce((sum, item) => {
+            // ✅ เช็ค hotdeal_free
+            if (item.hotdeal_free === true) {
+              return sum + 0;
+            }
+
+            const unitRatioMap = new Map([
+              [item.product.pro_unit1, item.product.pro_ratio1 || 1],
+              [item.product.pro_unit2, item.product.pro_ratio2 || 1],
+              [item.product.pro_unit3, item.product.pro_ratio3 || 1],
+            ]);
+            const ratio = unitRatioMap.get(item.spc_unit) || 1;
+            const quantity = Number(item.spc_amount) * Number(ratio);
+            const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+
+            console.log(
+              'Calculating item:',
+              item.pro_code,
+              'Unit:',
+              item.spc_unit,
+              'Ratio:',
+              ratio,
+              'Quantity:',
+              quantity,
+              'Price:',
+              price,
+              'IsFreebie:',
+              item.hotdeal_free,
+            );
+            return sum + quantity * price;
+          }, 0);
+
+        const promoTotal = totalByTier(split.promo, 'A');
+        const nonPromoTotal = totalByTier(
+          split.nonPromo,
+          tier as 'A' | 'B' | 'C',
+        );
+
+        const grandTotalItems = promoTotal + nonPromoTotal;
+
+        console.log('promoTotal:', promoTotal);
+        console.log('nonPromoTotal:', nonPromoTotal);
+        console.log('Grand Total:', grandTotalItems);
+
+        total += grandTotalItems;
+        itemsArray.push({ index: index, grandTotalItems });
+      }
+
+      return { total: total, items: itemsArray };
+    } catch {
+      return { total: 0, items: [] };
+    }
+  }
+}
+
+function groupCart(
+  cart: ShoppingCartEntity[],
+  limit: number,
+): ShoppingCartEntity[][] {
+  const groups: ShoppingCartEntity[][] = [];
+  let currentGroup: ShoppingCartEntity[] = [];
+  let currentCodes = new Set<string>();
+
+  for (const item of cart) {
+    if (currentCodes.has(item.pro_code)) {
+      currentGroup.push(item);
+      continue;
+    }
+    if (currentCodes.size < limit) {
+      currentGroup.push(item);
+      currentCodes.add(item.pro_code);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [item];
+      currentCodes = new Set([item.pro_code]);
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+
+  return groups;
 }

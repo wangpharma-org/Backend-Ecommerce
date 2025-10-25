@@ -291,9 +291,7 @@ export class HotdealService {
       const found = await this.hotdealRepo.findOne({
         where: { product: { pro_code } },
         relations: ['product', 'product2'],
-      }); 
-
-      console.log('Found hotdeal:', found);
+      });
 
       let fromFrontend = 0;
       for (let i = 0; i < shopping_cart.length; i++) {
@@ -318,7 +316,6 @@ export class HotdealService {
 
       let match = false;
       if (found) {
-        console.log('Found hotdeal:', found);
         const amountInCart = fromFrontend ?? 0;
         console.log('Amount in cart (smallest unit):', amountInCart);
         const cal = Math.floor(amountInCart / (fromDatabase ?? 0));
