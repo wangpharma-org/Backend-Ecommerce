@@ -113,7 +113,6 @@ export class ShoppingOrderService {
     data: {
       emp_code?: string;
       mem_code: string;
-      total_price: number;
       listFree:
         | [
             {
@@ -433,27 +432,6 @@ export class ShoppingOrderService {
           );
         }
 
-        if (totalSumPrice.toFixed(2) !== data.total_price.toFixed(2)) {
-          orderContext = {
-            memberCode: data.mem_code,
-            priceOption: data.priceOption,
-            totalPrice: data.total_price,
-            item: cart.map((c) => ({
-              pro_code: c.pro_code,
-              amount: c.spc_amount,
-              unit: c.spc_unit,
-              is_reward: c.is_reward,
-            })),
-          };
-          submitLogContext.push({
-            totalSumPrice,
-            expectedTotalPrice: data.total_price,
-          });
-          throw new Error(
-            `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${data.total_price}`,
-          );
-        }
-
         if (
           data.listFree &&
           data.listFree.length > 0 &&
@@ -498,7 +476,7 @@ export class ShoppingOrderService {
       submitOrder.error('Error submitting order', {
         error: error instanceof Error ? error.message : String(error),
         member: orderContext?.memberCode || data.mem_code,
-        totalPrice: orderContext?.totalPrice || data.total_price,
+        totalPrice: totalsummaryfromCart.total,
         priceOption: orderContext?.priceOption || data.priceOption,
         orderContext,
         data,

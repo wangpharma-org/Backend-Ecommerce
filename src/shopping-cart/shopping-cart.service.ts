@@ -591,7 +591,12 @@ export class ShoppingCartService {
         }
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          { pro_code: data.pro_code, mem_code: data.mem_code },
+          {
+            pro_code: data.pro_code,
+            mem_code: data.mem_code,
+            is_reward: false,
+            hotdeal_free: false,
+          },
           { spc_checked: false },
         );
 
@@ -983,6 +988,7 @@ export class ShoppingCartService {
           hotdeal_free: true,
         },
       });
+      console.log('Found freebies:', freebies);
       return freebies;
     } catch (error) {
       console.error('Error fetching freebie products:', error);
@@ -1091,8 +1097,6 @@ export class ShoppingCartService {
         where: {
           mem_code,
           spc_checked: true,
-          hotdeal_free: false,
-          is_reward: false,
         },
         relations: { product: true, member: true },
         select: {
@@ -1209,7 +1213,7 @@ export class ShoppingCartService {
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
             // ✅ เช็ค hotdeal_free
-            if (item.hotdeal_free === true) {
+            if (item.hotdeal_free && item.is_reward) {
               return sum + 0;
             }
 
