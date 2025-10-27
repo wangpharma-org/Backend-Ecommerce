@@ -1012,14 +1012,6 @@ export class ShoppingCartService {
       const hotdeal = await this.hotdealService.find(pro_code);
       const hotdealMatch = await this.hotdealService.checkHotdealMatch(
         pro_code,
-        // [
-        //   {
-        //     pro1_unit: pro_unit,
-        //     pro1_amount: String(
-        //       existingCart ? Number(existingCart.spc_amount) : 0,
-        //     ),
-        //   },
-        // ],
         existingCart.map((item) => ({
           pro1_unit: item.spc_unit,
           pro1_amount: String(Number(item.spc_amount)),
@@ -1097,6 +1089,8 @@ export class ShoppingCartService {
         where: {
           mem_code,
           spc_checked: true,
+          is_reward: false,
+          hotdeal_free: false,
         },
         relations: { product: true, member: true },
         select: {
@@ -1212,11 +1206,6 @@ export class ShoppingCartService {
 
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            // ✅ เช็ค hotdeal_free
-            if (item.hotdeal_free && item.is_reward) {
-              return sum + 0;
-            }
-
             const unitRatioMap = new Map([
               [item.product.pro_unit1, item.product.pro_ratio1 || 1],
               [item.product.pro_unit2, item.product.pro_ratio2 || 1],
