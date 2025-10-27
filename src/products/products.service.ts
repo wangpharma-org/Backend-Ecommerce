@@ -1018,15 +1018,13 @@ export class ProductsService {
         )
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
-        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
-        .andWhere('product.pro_code NOT LIKE :at3', { at3: '%@%' })
+        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%@%' })
         .andWhere(
           new Brackets((qb) => {
-            qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })
-              .andWhere('product.pro_name NOT LIKE :n2', { n2: '%โอน%' })
-              .andWhere('product.pro_name NOT LIKE :n3', { n3: '%ค่า%' })
-              .andWhere('product.pro_name NOT LIKE :n4', { n4: '%ขนส่ง%' })
-              .andWhere('product.pro_name NOT LIKE :n5', { n5: '%โปรโมชั่น%' });
+            qb.where('product.pro_name NOT LIKE :n1', { n1: '%โอน%' })
+              .andWhere('product.pro_name NOT LIKE :n2', { n2: '%ค่า%' })
+              .andWhere('product.pro_name NOT LIKE :n3', { n3: '%ขนส่ง%' })
+              .andWhere('product.pro_name NOT LIKE :n4', { n4: '%โปรโมชั่น%' });
           }),
         )
         .select([
