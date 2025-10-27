@@ -208,11 +208,7 @@ export class ShoppingCartService {
       await this.checkPromotionReward(data.mem_code, data.priceCondition);
 
       console.log('Check Hotdeal');
-      await this.checkHotdealByProCode(
-        data.mem_code,
-        data.pro_code,
-        data.pro_unit,
-      );
+      await this.checkHotdealByProCode(data.mem_code, data.pro_code);
 
       return await this.getProductCart(data.mem_code);
     } catch (error) {
@@ -997,7 +993,6 @@ export class ShoppingCartService {
   async checkHotdealByProCode(
     mem_code: string,
     pro_code: string,
-    pro_unit: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
       const existingCart = await this.shoppingCartRepo.find({
@@ -1129,7 +1124,7 @@ export class ShoppingCartService {
 
       const numberOfMonth = new Date().getMonth() + 1;
       // const promotionProducts: { pro_code: string }[] = [];
-      const splitData = groupCart(result, 2);
+      const splitData = groupCart(result, 80);
 
       // let grandTotalItems = 0;
       let total = 0;
