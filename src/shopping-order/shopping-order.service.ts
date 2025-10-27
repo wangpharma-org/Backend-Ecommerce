@@ -180,7 +180,7 @@ export class ShoppingOrderService {
         const checkFreebies =
           await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
-        const groupCartArray = groupCart(cart, 80);
+        const groupCartArray = groupCart(cart, 2);
 
         console.log('Grouped cart items:', groupCartArray);
 
@@ -580,11 +580,12 @@ export class ShoppingOrderService {
     }
   }
 }
-
+// Sort shopping cart items before grouping
 function groupCart(
   cart: ShoppingCartEntity[],
   limit: number,
 ): ShoppingCartEntity[][] {
+  // console.log('cart before grouping:', cart);
   const groups: ShoppingCartEntity[][] = [];
   let currentGroup: ShoppingCartEntity[] = [];
   let currentCodes = new Set<string>();
@@ -607,6 +608,10 @@ function groupCart(
   if (currentGroup.length > 0) {
     groups.push(currentGroup);
   }
+
+  console.log('Grouped cart items:', groups);
+  console.log('Current codes:', currentCodes);
+  console.log('Current group size:', currentGroup.length);
 
   return groups;
 }

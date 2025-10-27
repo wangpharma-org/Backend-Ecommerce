@@ -617,6 +617,9 @@ export class ShoppingCartService {
           spc_checked: true,
         },
         relations: ['product'],
+        order: {
+          pro_code: 'ASC',
+        },
       });
     } catch {
       throw new Error('Somthing wrong in handleGetCartToOrder');
