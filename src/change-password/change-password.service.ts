@@ -1,11 +1,11 @@
-// ...existing code...
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ChangePassword } from './change-password.entity';
 import { UsersService } from 'src/users/users.service';
 import { HttpService } from '@nestjs/axios'; // เพิ่ม HttpService
-// import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcrypt';
+import { SALT_ROUNDS } from '../constants/app.constants'; // เปิดใช้แล้ว
 
 interface MailgunMessageData {
   from: string;
@@ -489,8 +489,7 @@ export class ChangePasswordService {
         throw new Error('Old password is incorrect');
       }
       try {
-        user.mem_password = data.new_password;
-        // user.mem_password = await bcrypt.hash(data.new_password, 10);
+        user.mem_password = await bcrypt.hash(data.new_password, SALT_ROUNDS);
         await this.usersService.update(user.mem_username, user);
       } catch (hashError) {
         console.error('Error hashing/updating password:', hashError);
@@ -528,8 +527,7 @@ export class ChangePasswordService {
           throw new Error(otpValidation.message);
         }
 
-        user.mem_password = data.new_password;
-        // user.mem_password = await bcrypt.hash(data.new_password, 10);
+        user.mem_password = await bcrypt.hash(data.new_password, SALT_ROUNDS);
         await this.usersService.update(user.mem_username, user);
       } catch (hashError) {
         console.error('Error hashing/updating password:', hashError);

@@ -309,7 +309,7 @@ export class ProductsService {
   }
 
   async uploadPO(data: { pro_code: string; month: number }[]) {
-    console.log(data);
+    // console.log(data);
     try {
       await this.productRepo.update(
         { pro_promotion_month: Not(IsNull()) },
@@ -398,7 +398,11 @@ export class ProductsService {
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .leftJoinAndSelect('product.recommend', 'recommend')
-        .leftJoinAndSelect('recommend.products', 'products')
+        .leftJoinAndSelect(
+          'recommend.products',
+          'products',
+          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0'
+        )
         .leftJoinAndSelect('products.inCarts', 'inCarts')
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
@@ -457,6 +461,7 @@ export class ProductsService {
           'products.order_quantity',
           'products.pro_promotion_amount',
           'products.pro_promotion_month',
+          'products.recommend_rank',
           'inCarts.mem_code',
           'inCarts.spc_amount',
           'inCarts.spc_unit',
@@ -907,7 +912,7 @@ export class ProductsService {
   }
 
   async listFree(sort_by?: string) {
-    console.log('sort_by', sort_by);
+    // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
 
@@ -1079,15 +1084,13 @@ export class ProductsService {
         )
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
-        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
-        .andWhere('product.pro_code NOT LIKE :at3', { at3: '%@%' })
+        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%@%' })
         .andWhere(
           new Brackets((qb) => {
-            qb.where('product.pro_name NOT LIKE :n1', { n1: 'ฟรี%' })
-              .andWhere('product.pro_name NOT LIKE :n2', { n2: '%โอน%' })
-              .andWhere('product.pro_name NOT LIKE :n3', { n3: '%ค่า%' })
-              .andWhere('product.pro_name NOT LIKE :n4', { n4: '%ขนส่ง%' })
-              .andWhere('product.pro_name NOT LIKE :n5', { n5: '%โปรโมชั่น%' });
+            qb.where('product.pro_name NOT LIKE :n1', { n1: '%โอน%' })
+              .andWhere('product.pro_name NOT LIKE :n2', { n2: '%ค่า%' })
+              .andWhere('product.pro_name NOT LIKE :n3', { n3: '%ขนส่ง%' })
+              .andWhere('product.pro_name NOT LIKE :n4', { n4: '%โปรโมชั่น%' });
           }),
         )
         .select([

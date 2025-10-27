@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThan, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
@@ -113,7 +113,6 @@ export class ShoppingOrderService {
     data: {
       emp_code?: string;
       mem_code: string;
-      total_price: number;
       listFree:
         | [
             {
@@ -131,6 +130,9 @@ export class ShoppingOrderService {
     },
     ip?: string,
   ): Promise<string[] | undefined> {
+    const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
     let orderContext: {
       memberCode: string;
       priceOption: string;
@@ -183,9 +185,9 @@ export class ShoppingOrderService {
         const checkFreebies =
           await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
-        const groupCartArray = groupCart(cart, 2);
+        const groupCartArray = groupCart(cart, 80);
 
-        console.log('Grouped cart items:', groupCartArray);
+        // console.log('Grouped cart items:', groupCartArray);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
           submitLogContext.push({ groupIndex, groupSize: group.length });
@@ -430,27 +432,6 @@ export class ShoppingOrderService {
           );
         }
 
-        if (totalSumPrice.toFixed(2) !== data.total_price.toFixed(2)) {
-          orderContext = {
-            memberCode: data.mem_code,
-            priceOption: data.priceOption,
-            totalPrice: data.total_price,
-            item: cart.map((c) => ({
-              pro_code: c.pro_code,
-              amount: c.spc_amount,
-              unit: c.spc_unit,
-              is_reward: c.is_reward,
-            })),
-          };
-          submitLogContext.push({
-            totalSumPrice,
-            expectedTotalPrice: data.total_price,
-          });
-          throw new Error(
-            `Price Error: totalSumPrice=${totalSumPrice}, data.total_price=${data.total_price}`,
-          );
-        }
-
         if (
           data.listFree &&
           data.listFree.length > 0 &&
@@ -495,7 +476,7 @@ export class ShoppingOrderService {
       submitOrder.error('Error submitting order', {
         error: error instanceof Error ? error.message : String(error),
         member: orderContext?.memberCode || data.mem_code,
-        totalPrice: orderContext?.totalPrice || data.total_price,
+        totalPrice: totalsummaryfromCart.total,
         priceOption: orderContext?.priceOption || data.priceOption,
         orderContext,
         data,
@@ -596,8 +577,8 @@ function groupCart(
   let currentGroup: ShoppingCartEntity[] = [];
   let currentCodes = new Set<string>();
 
-  console.log('cart to group:', cart);
-  console.log('Grouping cart with limit:', limit);
+  // console.log('cart to group:', cart);
+  // console.log('Grouping cart with limit:', limit);
   for (const item of cart) {
     if (currentCodes.has(item.pro_code)) {
       currentGroup.push(item);
@@ -616,7 +597,7 @@ function groupCart(
   if (currentGroup.length > 0) {
     groups.push(currentGroup);
   }
-  console.log('Grouped cart result:', groups);
+  // console.log('Grouped cart result:', groups);
 
   return groups;
 }

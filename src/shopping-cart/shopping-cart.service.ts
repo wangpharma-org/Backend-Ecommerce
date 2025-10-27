@@ -1,7 +1,7 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, Not, Brackets } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { PromotionEntity } from 'src/promotion/promotion.entity';
 import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
@@ -31,7 +31,9 @@ export interface ShoppingProductCart {
   flashsale_date?: string;
   pro_stock: number;
   order_quantity: number;
+  pro_lowest_stock: number;
   recommended_id?: number;
+  recommend_rank?: number;
 }
 
 export interface RecommendedProduct {
@@ -39,6 +41,7 @@ export interface RecommendedProduct {
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
+  recommend_rank?: number | null;
 }
 
 export interface LotItem {
@@ -103,6 +106,8 @@ interface RawProductCart {
   recommended_pro_code?: string;
   pro_stock: number;
   order_quantity: number;
+  pro_lowest_stock: number;
+  recommend_rank?: number;
 }
 
 // Define a DTO for the return type
@@ -203,11 +208,7 @@ export class ShoppingCartService {
       await this.checkPromotionReward(data.mem_code, data.priceCondition);
 
       console.log('Check Hotdeal');
-      await this.checkHotdealByProCode(
-        data.mem_code,
-        data.pro_code,
-        data.pro_unit,
-      );
+      await this.checkHotdealByProCode(data.mem_code, data.pro_code);
 
       return await this.getProductCart(data.mem_code);
     } catch (error) {
@@ -590,7 +591,12 @@ export class ShoppingCartService {
         }
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          { pro_code: data.pro_code, mem_code: data.mem_code },
+          {
+            pro_code: data.pro_code,
+            mem_code: data.mem_code,
+            is_reward: false,
+            hotdeal_free: false,
+          },
           { spc_checked: false },
         );
 
@@ -690,9 +696,28 @@ export class ShoppingCartService {
     priceOption: string;
   }): Promise<ShoppingProductCart[]> {
     try {
+      console.log('checkedProductCartAll data : ', data);
       if (data.type === 'check') {
+        const productCanNotCheck = await this.shoppingCartRepo
+          .createQueryBuilder('cart')
+          .leftJoinAndSelect('cart.product', 'product')
+          .andWhere(
+            new Brackets((qb) => {
+              qb.where('product.pro_stock <= 0').orWhere(
+                'product.pro_stock < product.pro_lowest_stock',
+              );
+            }),
+          )
+          .andWhere('cart.mem_code = :mem_code', { mem_code: data.mem_code })
+          .select('cart.pro_code')
+          .getMany();
+        console.log('productCanNotCheck : ', productCanNotCheck);
         await this.shoppingCartRepo.update(
-          { mem_code: data.mem_code, is_reward: false },
+          {
+            mem_code: data.mem_code,
+            is_reward: false,
+            pro_code: Not(In(productCanNotCheck.map((p) => p.pro_code))),
+          },
           { spc_checked: true },
         );
       } else if (data.type === 'uncheck') {
@@ -750,7 +775,11 @@ export class ShoppingCartService {
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect('fs.flashsale', 'flashsale')
         .leftJoinAndSelect('product.recommend', 'recommend')
-        .leftJoinAndSelect('recommend.products', 'recommendedProducts')
+        .leftJoinAndSelect(
+          'recommend.products',
+          'recommendedProducts',
+          'recommendedProducts.pro_stock > recommendedProducts.pro_lowest_stock AND recommendedProducts.pro_stock > 0',
+        )
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
           'product.pro_code AS pro_code',
@@ -766,6 +795,7 @@ export class ShoppingCartService {
           'product.pro_ratio2 AS pro_ratio2',
           'product.pro_ratio3 AS pro_ratio3',
           'product.pro_stock AS pro_stock',
+          'product.pro_lowest_stock AS pro_lowest_stock',
           'product.order_quantity AS order_quantity',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.pro_promotion_amount AS pro_promotion_amount',
@@ -791,6 +821,7 @@ export class ShoppingCartService {
           'recommendedProducts.pro_code AS recommended_pro_code',
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
+          'recommendedProducts.recommend_rank AS recommend_rank',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -815,6 +846,7 @@ export class ShoppingCartService {
             pro_ratio2: row.pro_ratio2,
             pro_ratio3: row.pro_ratio3,
             pro_stock: row.pro_stock,
+            pro_lowest_stock: row.pro_lowest_stock,
             order_quantity: row.order_quantity,
             pro_promotion_month: row.pro_promotion_month,
             pro_promotion_amount: row.pro_promotion_amount,
@@ -832,6 +864,7 @@ export class ShoppingCartService {
           const exists = grouped[code].lots.some(
             (l) => l.lot_id === row.lot_id,
           );
+
           if (!exists) {
             grouped[code].lots.push({
               lot_id: row.lot_id,
@@ -847,15 +880,16 @@ export class ShoppingCartService {
           row.recommended_pro_code &&
           row.recommended_pro_name
         ) {
-          if (
-            row.recommended_pro_code !== row.pro_code &&
-            grouped[code].recommend.length < 6
-          ) {
+          const exists = grouped[code].recommend.some(
+            (r) => r.pro_code === row.recommended_pro_code,
+          );
+          if (grouped[code].recommend.length < 6 && !exists) {
             grouped[code].recommend.push({
               recommended_id: row.recommended_id,
               pro_code: row.recommended_pro_code,
               pro_imgmain: row.recommended_pro_imgmain ?? '',
               pro_name: row.recommended_pro_name,
+              recommend_rank: row.recommend_rank ?? null,
             });
           }
         }
@@ -954,6 +988,7 @@ export class ShoppingCartService {
           hotdeal_free: true,
         },
       });
+      console.log('Found freebies:', freebies);
       return freebies;
     } catch (error) {
       console.error('Error fetching freebie products:', error);
@@ -964,7 +999,6 @@ export class ShoppingCartService {
   async checkHotdealByProCode(
     mem_code: string,
     pro_code: string,
-    pro_unit: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
       const existingCart = await this.shoppingCartRepo.find({
@@ -1063,8 +1097,6 @@ export class ShoppingCartService {
         where: {
           mem_code,
           spc_checked: true,
-          hotdeal_free: false,
-          is_reward: false,
         },
         relations: { product: true, member: true },
         select: {
@@ -1096,14 +1128,14 @@ export class ShoppingCartService {
 
       const numberOfMonth = new Date().getMonth() + 1;
       // const promotionProducts: { pro_code: string }[] = [];
-      const splitData = groupCart(result, 2);
+      const splitData = groupCart(result, 80);
 
       // let grandTotalItems = 0;
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
-        console.log(`Group ${index + 1}:`, dataGroup);
+        // console.log(`Group ${index + 1}:`, dataGroup);
 
         const productTotalAmounts = new Map<string, number>();
 
@@ -1181,7 +1213,7 @@ export class ShoppingCartService {
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
             // ✅ เช็ค hotdeal_free
-            if (item.hotdeal_free === true) {
+            if (item.hotdeal_free && item.is_reward) {
               return sum + 0;
             }
 
@@ -1219,9 +1251,9 @@ export class ShoppingCartService {
 
         const grandTotalItems = promoTotal + nonPromoTotal;
 
-        console.log('promoTotal:', promoTotal);
-        console.log('nonPromoTotal:', nonPromoTotal);
-        console.log('Grand Total:', grandTotalItems);
+        // console.log('promoTotal:', promoTotal);
+        // console.log('nonPromoTotal:', nonPromoTotal);
+        // console.log('Grand Total:', grandTotalItems);
 
         total += grandTotalItems;
         itemsArray.push({ index: index, grandTotalItems });
