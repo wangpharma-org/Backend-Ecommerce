@@ -780,7 +780,7 @@ export class AppController {
       order?: number;
     },
   ) {
-    console.log(body);
+    console.log('Saving Hotdeal:', body);
     return this.hotdealService.saveHotdeal(body.data, body.id, body.order);
   }
 
