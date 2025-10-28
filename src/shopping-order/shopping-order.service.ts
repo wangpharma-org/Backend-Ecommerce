@@ -151,8 +151,6 @@ export class ShoppingOrderService {
       totalPrice: totalsummaryfromCart.total,
       item: null,
     };
-    console.log('Order Context Init:', orderContext);
-    console.log('TotalsummaryfromCart:', totalsummaryfromCart);
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
     try {
       submitLogContext.push({
@@ -163,7 +161,6 @@ export class ShoppingOrderService {
       const numberOfMonth = new Date().getMonth() + 1;
       const runningNumbers: string[] = [];
       const allIdCartForDelete: number[] = [];
-      let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
 
@@ -186,8 +183,6 @@ export class ShoppingOrderService {
           await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
         const groupCartArray = groupCart(cart, 80);
-
-        // console.log('Grouped cart items:', groupCartArray);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
           submitLogContext.push({ groupIndex, groupSize: group.length });
@@ -316,8 +311,12 @@ export class ShoppingOrderService {
             (total, order) => total + Number(order.spo_total_decimal),
             0,
           );
-          totalSumPrice += sumprice;
-          submitLogContext.push({ sumprice, totalSumPrice, forOrder: running });
+          // totalSumPrice += sumprice;
+          submitLogContext.push({
+            sumprice,
+            totalsummaryfromCart,
+            forOrder: running,
+          });
 
           if (groupIndex === groupCartArray.length - 1) {
             if (data.listFree && data.listFree.length > 0) {
@@ -357,10 +356,10 @@ export class ShoppingOrderService {
                 return total + point * amount;
               }, 0);
 
-              pointAfterUse = totalSumPrice * 0.01 - sumpoint;
+              pointAfterUse = totalsummaryfromCart.total * 0.01 - sumpoint;
               totalSumPoint += sumpoint;
 
-              if (sumpoint && totalSumPrice * 0.01 < sumpoint) {
+              if (sumpoint && totalsummaryfromCart.total * 0.01 < sumpoint) {
                 orderContext = {
                   memberCode: data.mem_code,
                   priceOption: data.priceOption,
@@ -374,7 +373,7 @@ export class ShoppingOrderService {
                 };
                 submitLogContext.push({
                   freebieError: 'Insufficient points for freebies',
-                  totalSumPrice,
+                  totalsummaryfromCart: totalsummaryfromCart.total,
                   totalSumPoint,
                   forProCode: data.listFree?.map((f) => f.pro_code).join(', '),
                 });
@@ -448,7 +447,7 @@ export class ShoppingOrderService {
               is_reward: c.is_reward,
             })),
           };
-          submitLogContext.push({ totalSumPoint, totalSumPrice });
+          submitLogContext.push({ totalSumPoint, totalsummaryfromCart });
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
         }
       });

@@ -1121,16 +1121,12 @@ export class ShoppingCartService {
       });
 
       const numberOfMonth = new Date().getMonth() + 1;
-      // const promotionProducts: { pro_code: string }[] = [];
       const splitData = groupCart(result, 80);
 
-      // let grandTotalItems = 0;
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
-        // console.log(`Group ${index + 1}:`, dataGroup);
-
         const productTotalAmounts = new Map<string, number>();
 
         for (const item of dataGroup) {
@@ -1154,14 +1150,11 @@ export class ShoppingCartService {
         const promotionProducts: { pro_code: string }[] = [];
         for (const item of dataGroup) {
           if (!item.product) continue;
-          // เช็ค promotion month + amount
           const totalAmount = productTotalAmounts.get(item.pro_code) || 0;
           const isPromotionActive =
             item.product.pro_promotion_month === numberOfMonth &&
             totalAmount >= (item.product.pro_promotion_amount ?? 0);
-          // totalAmount >= (item.product.pro_promotion_amount ?? 0);
 
-          // เช็ค flashsale
           const isFlashSale = item.flashsale_end
             ? new Date(item.flashsale_end) >= new Date()
             : false;
@@ -1239,11 +1232,6 @@ export class ShoppingCartService {
         );
 
         const grandTotalItems = promoTotal + nonPromoTotal;
-
-        // console.log('promoTotal:', promoTotal);
-        // console.log('nonPromoTotal:', nonPromoTotal);
-        // console.log('Grand Total:', grandTotalItems);
-
         total += grandTotalItems;
         itemsArray.push({ index: index, grandTotalItems });
       }
