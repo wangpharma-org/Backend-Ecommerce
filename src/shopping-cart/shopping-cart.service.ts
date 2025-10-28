@@ -1124,7 +1124,6 @@ export class ShoppingCartService {
 
       const numberOfMonth = new Date().getMonth() + 1;
       const splitData = groupCart(result, 80);
-      console.log('splitData', splitData);
 
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
@@ -1132,9 +1131,7 @@ export class ShoppingCartService {
       for (const [index, dataGroup] of splitData.entries()) {
         const productTotalAmounts = new Map<string, number>();
 
-        console.log('dataGroup', dataGroup);
         for (const item of dataGroup) {
-          console.log('Calculating total amount for item:', item.pro_code);
           if (!item.product) continue;
 
           const unitRatioMap = new Map([
@@ -1142,33 +1139,20 @@ export class ShoppingCartService {
             [item.product.pro_unit2, item.product.pro_ratio2],
             [item.product.pro_unit3, item.product.pro_ratio3],
           ]);
-          console.log('Unit ratio map for item:', item.pro_code, unitRatioMap);
 
-          const ratio = unitRatioMap.get(item.spc_unit) ?? 0;
-          console.log(
-            'Using ratio for item:',
-            item.pro_code,
-            'Unit:',
-            item.spc_unit,
-            'Ratio:',
-            ratio,
-          );
+          const ratio = unitRatioMap.get(item.spc_unit);
+          if (!ratio) {
+            throw new Error(
+              `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
+            );
+          }
           const baseAmount = Number(item.spc_amount) * Number(ratio);
-          console.log(
-            'Base amount for item:',
-            item.pro_code,
-            'Amount:',
-            item.spc_amount,
-            'BaseAmount:',
-            baseAmount,
-          );
 
           productTotalAmounts.set(
             item.pro_code,
             (productTotalAmounts.get(item.pro_code) || 0) + baseAmount,
           );
         }
-        console.log('Processing data group:', productTotalAmounts);
 
         const promotionProducts: { pro_code: string }[] = [];
         for (const item of dataGroup) {

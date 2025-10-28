@@ -221,7 +221,17 @@ export class ShoppingOrderService {
             const totalAmount = normalItems
               .filter((c) => c.pro_code === item.pro_code)
               .reduce((sum, sc) => {
-                const ratio = unitRatioMap.get(sc.spc_unit) ?? 0;
+                if (!sc.spc_unit) {
+                  throw new Error(
+                    `Invalid unit ${sc.spc_unit} for product ${sc.pro_code}`,
+                  );
+                }
+                const ratio = unitRatioMap.get(sc.spc_unit);
+                if (!ratio) {
+                  throw new Error(
+                    `Invalid unit ${sc.spc_unit} for product ${sc.pro_code}`,
+                  );
+                }
                 return sum + Number(sc.spc_amount) * ratio;
               }, 0);
             submitLogContext.push({ totalAmount, forProCode: item.pro_code });
@@ -251,7 +261,17 @@ export class ShoppingOrderService {
                     ? Number(item.product.pro_priceC)
                     : 0;
 
-            const ratio = unitRatioMap.get(item.spc_unit) ?? 1;
+            if (!item.spc_unit) {
+              throw new Error(
+                `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
+              );
+            }
+            const ratio = unitRatioMap.get(item.spc_unit);
+            if (!ratio) {
+              throw new Error(
+                `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
+              );
+            }
             let price =
               isPromotionActive || isFlashSale
                 ? Number(item.spc_amount) *
