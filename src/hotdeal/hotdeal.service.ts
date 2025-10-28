@@ -23,7 +23,7 @@ export class HotdealService {
     private readonly productService: ProductsService,
     @Inject(forwardRef(() => ShoppingCartService))
     private readonly shoppingCartService: ShoppingCartService,
-  ) {}
+  ) { }
 
   // ตรวจสอบแล้วว่าใช้ได้
   async find(pro_code: string): Promise<HotdealEntity | null> {
@@ -108,26 +108,40 @@ export class HotdealService {
   }
 
   // ตรวจสอบและแก้ไขแล้ว
-  async saveHotdeal(datainput: HotdealInput): Promise<string> {
+  async saveHotdeal(datainput: HotdealInput, id?: number, order?: number): Promise<string> {
     try {
-      const hotdeal = this.hotdealRepo.create({
-        pro1_amount: datainput.pro1_amount,
-        pro1_unit: datainput.pro1_unit,
-        pro2_amount: datainput.pro2_amount,
-        pro2_unit: datainput.pro2_unit,
-        product: { pro_code: datainput.pro1_code },
-        product2: { pro_code: datainput.pro2_code },
-      });
+      console.log('Hotdeal Input Data:', datainput, id, order);
+      if (id) {
+        const existingHotdeal = await this.hotdealRepo.findOne({ where: { id: id }, });
+        if (existingHotdeal && existingHotdeal.order !== order) {
+          const hotdealId = existingHotdeal.id === id;
+          if (hotdealId) {
+            await this.hotdealRepo.update(
+              { id: existingHotdeal.id },
+              { order: order },
+            );
+          }
+        }
+      } else {
+        console.log('Creating new Hotdeal');
+        const hotdeal = this.hotdealRepo.create({
+          pro1_amount: datainput.pro1_amount,
+          pro1_unit: datainput.pro1_unit,
+          pro2_amount: datainput.pro2_amount,
+          pro2_unit: datainput.pro2_unit,
+          product: { pro_code: datainput.pro1_code },
+          product2: { pro_code: datainput.pro2_code },
+        });
 
-      await this.hotdealRepo.save(hotdeal);
-      await this.checkAndAddProductToHotdeal(
-        datainput.pro1_code,
-        datainput.pro1_unit,
-        Number(datainput.pro1_amount),
-        datainput.pro2_code,
-        datainput.pro2_unit,
-      );
-
+        await this.hotdealRepo.save(hotdeal);
+        await this.checkAndAddProductToHotdeal(
+          datainput.pro1_code,
+          datainput.pro1_unit,
+          Number(datainput.pro1_amount),
+          datainput.pro2_code,
+          datainput.pro2_unit,
+        );
+      }
       return 'add hotdeal successfully';
     } catch (error) {
       console.error('Error saving hotdeal:', error);
@@ -139,7 +153,7 @@ export class HotdealService {
   async getAllHotdealsWithProductNames() {
     const hotdeals = await this.hotdealRepo.find({
       relations: ['product', 'product2'],
-      order: { id: 'DESC' },
+      order: { order: 'ASC' },
     });
 
     return hotdeals.map((hotdeal) => ({
@@ -152,6 +166,7 @@ export class HotdealService {
       pro2_unit: hotdeal.pro2_unit,
       pro_name: hotdeal.product?.pro_name || null,
       pro2_name: hotdeal.product2?.pro_name || null,
+      order: hotdeal.order,
     }));
   }
 
@@ -180,7 +195,7 @@ export class HotdealService {
       .createQueryBuilder('hotdeal')
       .leftJoinAndSelect('hotdeal.product', 'product')
       .leftJoinAndSelect('hotdeal.product2', 'product2')
-      .orderBy('hotdeal.id', 'DESC');
+      .orderBy('hotdeal.order', 'ASC');
 
     if (mem_code) {
       query
@@ -230,22 +245,22 @@ export class HotdealService {
       const pickProductFields = (product: ProductType | null | undefined) =>
         product
           ? {
-              pro_code: product.pro_code,
-              pro_name: product.pro_name,
-              pro_priceA: product.pro_priceA,
-              pro_priceB: product.pro_priceB,
-              pro_priceC: product.pro_priceC,
-              pro_imgmain: product.pro_imgmain,
-              pro_ratio1: product.pro_ratio1,
-              pro_ratio2: product.pro_ratio2,
-              pro_ratio3: product.pro_ratio3,
-              pro_unit1: product.pro_unit1,
-              pro_unit2: product.pro_unit2,
-              pro_unit3: product.pro_unit3,
-              pro_stock: product.pro_stock,
-              order_quantity: product.order_quantity,
-              pro_lowest_stock: product.pro_lowest_stock,
-            }
+            pro_code: product.pro_code,
+            pro_name: product.pro_name,
+            pro_priceA: product.pro_priceA,
+            pro_priceB: product.pro_priceB,
+            pro_priceC: product.pro_priceC,
+            pro_imgmain: product.pro_imgmain,
+            pro_ratio1: product.pro_ratio1,
+            pro_ratio2: product.pro_ratio2,
+            pro_ratio3: product.pro_ratio3,
+            pro_unit1: product.pro_unit1,
+            pro_unit2: product.pro_unit2,
+            pro_unit3: product.pro_unit3,
+            pro_stock: product.pro_stock,
+            order_quantity: product.order_quantity,
+            pro_lowest_stock: product.pro_lowest_stock,
+          }
           : null;
 
       return {
@@ -258,9 +273,9 @@ export class HotdealService {
         product2: pickProductFields(hotdeal.product2 as ProductType),
         shopping_cart: mem_code
           ? {
-              product_cart: (hotdeal.product as ProductType)?.inCarts || [],
-              product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
-            }
+            product_cart: (hotdeal.product as ProductType)?.inCarts || [],
+            product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
+          }
           : 'ไม่เจอข้อมูล',
       };
     });
@@ -273,17 +288,17 @@ export class HotdealService {
     shopping_cart: { pro1_unit: string; pro1_amount: string }[],
   ): Promise<
     | {
-        pro_code: string;
-        match: boolean;
-        countFreeBies: string;
-        product2: { pro_code: string; pro_name: string };
-        hotdeal: {
-          pro1_amount: string;
-          pro1_unit: string;
-          pro2_amount: string;
-          pro2_unit: string;
-        };
-      }
+      pro_code: string;
+      match: boolean;
+      countFreeBies: string;
+      product2: { pro_code: string; pro_name: string };
+      hotdeal: {
+        pro1_amount: string;
+        pro1_unit: string;
+        pro2_amount: string;
+        pro2_unit: string;
+      };
+    }
     | undefined
   > {
     try {
