@@ -1441,29 +1441,6 @@ export class AppController {
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
-  @Post('/ecom/hash-password')
-  async hashpassword(@Body() body: { username: string; password: string }) {
-    if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
-      // Prevent concurrent hash operations
-      if (this.isHashingInProgress) {
-        return {
-          success: false,
-          message:
-            'Hash operation already in progress. Please wait and try again later.',
-        };
-      }
-
-      this.isHashingInProgress = true;
-      try {
-        const result = await this.authService.hashpassword();
-        return result;
-      } finally {
-        this.isHashingInProgress = false;
-      }
-    } else {
-      return { message: 'You do not have permission to access this endpoint' };
-    }
-  }
   @Post('/ecom/new-arrivals')
   async NewArrivals(
     @Body()
