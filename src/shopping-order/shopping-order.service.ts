@@ -182,7 +182,7 @@ export class ShoppingOrderService {
         const checkFreebies =
           await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
-        const groupCartArray = groupCart(cart, 2);
+        const groupCartArray = groupCart(cart, 80);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
           submitLogContext.push({ groupIndex, groupSize: group.length });

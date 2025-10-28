@@ -1123,7 +1123,7 @@ export class ShoppingCartService {
       });
 
       const numberOfMonth = new Date().getMonth() + 1;
-      const splitData = groupCart(result, 2);
+      const splitData = groupCart(result, 80);
       console.log('splitData', splitData);
 
       let total = 0;
