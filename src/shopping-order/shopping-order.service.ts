@@ -161,6 +161,7 @@ export class ShoppingOrderService {
       const numberOfMonth = new Date().getMonth() + 1;
       const runningNumbers: string[] = [];
       const allIdCartForDelete: number[] = [];
+      let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
 
@@ -331,7 +332,7 @@ export class ShoppingOrderService {
             (total, order) => total + Number(order.spo_total_decimal),
             0,
           );
-          // totalSumPrice += sumprice;
+          totalSumPrice += sumprice;
           submitLogContext.push({
             sumprice,
             totalsummaryfromCart,
@@ -472,6 +473,25 @@ export class ShoppingOrderService {
           };
           submitLogContext.push({ totalSumPoint, totalsummaryfromCart });
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
+        }
+
+        if (totalSumPrice !== totalsummaryfromCart.total) {
+          orderContext = {
+            memberCode: data.mem_code,
+            priceOption: data.priceOption,
+            totalPrice: totalsummaryfromCart.total,
+            item: cart.map((c) => ({
+              pro_code: c.pro_code,
+              amount: c.spc_amount,
+              unit: c.spc_unit,
+              is_reward: c.is_reward,
+            })),
+          };
+          submitLogContext.push({
+            totalSumPrice,
+            expectedTotal: totalsummaryfromCart.total,
+          });
+          throw new Error('Total price mismatch');
         }
       });
       submitLogContext.push({
