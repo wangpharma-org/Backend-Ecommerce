@@ -704,9 +704,7 @@ export class ShoppingCartService {
           .leftJoinAndSelect('cart.product', 'product')
           .andWhere(
             new Brackets((qb) => {
-              qb.where('product.pro_stock <= 0').orWhere(
-                'product.pro_stock < product.pro_lowest_stock',
-              );
+              qb.where('product.pro_stock <= 0');
             }),
           )
           .andWhere('cart.mem_code = :mem_code', { mem_code: data.mem_code })
