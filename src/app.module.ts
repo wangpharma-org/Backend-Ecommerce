@@ -31,6 +31,7 @@ import { ChangePasswordModule } from './change-password/change-password.module';
 import { FixFreeModule } from './fix-free/fix-free.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { ProductKeywordModule } from './product-keyword/product-keyword.module';
+import { RecommendModule } from './recommend/recommend.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { ProductKeywordModule } from './product-keyword/product-keyword.module';
     FixFreeModule,
     SessionsModule,
     ProductKeywordModule,
+    RecommendModule,
   ],
   controllers: [AppController],
   providers: [AppService],
