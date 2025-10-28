@@ -182,7 +182,7 @@ export class ShoppingOrderService {
         const checkFreebies =
           await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
-        const groupCartArray = groupCart(cart, 80);
+        const groupCartArray = groupCart(cart, 2);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
           submitLogContext.push({ groupIndex, groupSize: group.length });
@@ -425,7 +425,10 @@ export class ShoppingOrderService {
               soh_sumprice: currentGroupTotal,
               soh_coin_after_use: pointAfterUse,
               soh_coin_recieve: currentGroupTotal * 0.01,
-              soh_coin_use: currentGroupTotal * 0.01 - pointAfterUse,
+              soh_coin_use:
+                pointAfterUse === 0
+                  ? 0
+                  : currentGroupTotal * 0.01 - pointAfterUse,
               emp_code: data.emp_code?.trim() ?? null,
             },
           );
