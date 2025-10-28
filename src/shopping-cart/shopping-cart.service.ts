@@ -777,7 +777,7 @@ export class ShoppingCartService {
         .leftJoinAndSelect(
           'recommend.products',
           'recommendedProducts',
-          'recommendedProducts.pro_stock > recommendedProducts.pro_lowest_stock AND recommendedProducts.pro_stock > 0',
+          'recommendedProducts.pro_stock > 0',
         )
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
