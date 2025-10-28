@@ -56,6 +56,7 @@ import { ProductKeywordService } from './product-keyword/product-keyword.service
 import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
+import { RecommendService } from './recommend/recommend.service';
 
 interface JwtPayload {
   username: string;
@@ -75,6 +76,9 @@ interface JwtPayload {
 
 @Controller()
 export class AppController {
+  // Add simple lock to prevent race condition
+  private isHashingInProgress = false;
+
   constructor(
     private readonly appService: AppService,
     private readonly authService: AuthService,
@@ -102,6 +106,7 @@ export class AppController {
     private readonly changePasswordService: ChangePasswordService,
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
+    private readonly recommendService: RecommendService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -317,7 +322,7 @@ export class AppController {
       addressed: string;
     },
   ) {
-    return await this.shoppingOrderService.submitOrder(data);
+    return await this.shoppingOrderService.submitOrder(data, ip);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -382,7 +387,11 @@ export class AppController {
       priceCondition,
     };
     console.log(payload);
-    return await this.shoppingCartService.addProductCart(payload);
+    const existingCart = await this.shoppingCartService.addProductCart(payload);
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
+    return { cart: existingCart, summaryCart: summaryCart.total };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -402,7 +411,15 @@ export class AppController {
       priceOption: string;
     } = { ...data, priceOption };
     //console.log(data);
-    return await this.shoppingCartService.checkedProductCartAll(payload);
+    const checkedProductCartAll =
+      await this.shoppingCartService.checkedProductCartAll(payload);
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
+    return {
+      cart: checkedProductCartAll,
+      summaryCart: summaryCart.total,
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -422,7 +439,12 @@ export class AppController {
       priceOption: string;
     } = { ...data, priceOption };
     //console.log('Delete', data);
-    return await this.shoppingCartService.handleDeleteCart(payload);
+    const handleDeleteCart =
+      await this.shoppingCartService.handleDeleteCart(payload);
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
+    return { cart: handleDeleteCart, summaryCart: summaryCart.total };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -444,13 +466,20 @@ export class AppController {
       type: string;
       priceOption: string;
     } = { ...data, priceOption };
-    return await this.shoppingCartService.checkedProductCart(payload);
+    const checkedProductCart =
+      await this.shoppingCartService.checkedProductCart(payload);
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
+    return { cart: checkedProductCart, summaryCart: summaryCart.total };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Param('mem_code') mem_code: string) {
-    return this.shoppingCartService.getProductCart(mem_code);
+    const cart = await this.shoppingCartService.getProductCart(mem_code);
+    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+    return { cart: cart, summaryCart: summaryCart.total };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -615,6 +644,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-recommend')
+  async getProductForKeySearchForRecommend() {
+    return this.productsService.getProductForKeySearchForRecommend();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tiers/:tier_id')
   async getTierByID(@Param('tier_id') tier_id: number) {
     return this.promotionService.getTierOneById(tier_id);
@@ -771,9 +806,17 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
-  async saveHotdeal(@Body() body: { data: HotdealInput }) {
-    console.log(body);
-    return this.hotdealService.saveHotdeal(body.data);
+  async saveHotdeal(
+    @Body()
+    body: {
+      data: HotdealInput;
+      pro_code?: string;
+      id?: number;
+      order?: number;
+    },
+  ) {
+    console.log('Saving Hotdeal:', body);
+    return this.hotdealService.saveHotdeal(body.data, body.id, body.order);
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')
@@ -822,7 +865,6 @@ export class AppController {
         }),
       );
       // flatten array
-      console.log('allResults:', allResults);
       return allResults.flat().filter(Boolean);
     } catch (error) {
       console.error('Error in checkHotdealMatch:', error);
@@ -1714,5 +1756,75 @@ export class AppController {
       emp_id_ref: user.emp_id_ref || null,
       tagVIP: user.tagVIP || null,
     }));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/cart/summary')
+  async summaryCart(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<number> {
+    const mem_code = req.user.mem_code;
+    const data = await this.shoppingCartService.summaryCart(mem_code);
+    return data.total;
+  }
+
+  @Get('/ecom/recommend/tags')
+  async getRecommendTags() {
+    return await this.recommendService.getAllTags();
+  }
+
+  @Post('/ecom/recommend/insertTag')
+  async insertRecommendTag(@Body() data: { tag: string }) {
+    return await this.recommendService.insertTag(data.tag);
+  }
+
+  @Get('/ecom/recommend/products/:tag_id')
+  async getRecommendProductsByTag(@Param('tag_id') tag_id: number) {
+    return await this.recommendService.getProductsByTag(tag_id);
+  }
+
+  @Post('/ecom/recommend/updateTagToProduct')
+  async updateTagToProduct(@Body() data: { tag_id: number; pro_code: string }) {
+    return await this.recommendService.UpdateTagToProduct(
+      data.pro_code,
+      data.tag_id,
+    );
+  }
+
+  @Post('/ecom/recommend/updateRank')
+  async updateRecommendRank(@Body() data: { pro_code: string; rank: number }) {
+    console.log(data);
+    return await this.recommendService.UpdateRank(data.pro_code, data.rank);
+  }
+
+  @Post('/ecom/recommend/removeTagFromProduct')
+  async removeTagFromProduct(@Body() data: { pro_code: string }) {
+    return await this.recommendService.DeleteTagFromProduct(data.pro_code);
+  }
+
+  @Post('/ecom/recommend/deleteRank')
+  async deleteRecommendRank(@Body() data: { pro_code: string }) {
+    return await this.recommendService.DeleteRank(data.pro_code);
+  }
+
+  @Post('/ecom/recommend/deleteTag')
+  async deleteRecommendTag(@Body() data: { tag_id: number }) {
+    return await this.recommendService.deleteTag(data.tag_id);
+  }
+
+  @Post('/ecom/recommend/recommend-products')
+  async getRecommendProducts(
+    @Body()
+    data: {
+      pro_code: string[];
+      recommend_id: number[];
+      mem_code: string;
+    },
+  ) {
+    return await this.recommendService.GetProductRecommendByCode(
+      data.recommend_id,
+      data.pro_code,
+      data.mem_code,
+    );
   }
 }

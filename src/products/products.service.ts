@@ -137,6 +137,37 @@ export class ProductsService {
     }
   }
 
+  async getProductForKeySearchForRecommend() {
+    try {
+      const qb = this.productRepo.createQueryBuilder('product');
+      const data = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_imgmain',
+          'product.pro_stock',
+        ])
+        .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
+        .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
+        .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+        .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+        .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+        .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+        .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .andWhere('product.pro_name NOT LIKE :p8', { p8: 'ฟรี%' })
+        .andWhere('product.recommend_id IS NULL')
+        .getMany();
+      return data;
+    } catch (error) {
+      console.error('Error in getProductByCreditor', error);
+      throw error;
+    }
+  }
+
   async getProductOne(pro_code: string) {
     try {
       // console.log('getProductOne', pro_code);
@@ -278,7 +309,7 @@ export class ProductsService {
   }
 
   async uploadPO(data: { pro_code: string; month: number }[]) {
-    console.log(data);
+    // console.log(data);
     try {
       await this.productRepo.update(
         { pro_promotion_month: Not(IsNull()) },
@@ -366,6 +397,15 @@ export class ProductsService {
         )
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
+        .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect(
+          'recommend.products',
+          'products',
+          'products.pro_stock > 0',
+        )
+        .leftJoinAndSelect('products.inCarts', 'inCarts')
+        .leftJoinAndSelect('products.flashsale', 'fsp_products')
+        .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -406,6 +446,31 @@ export class ProductsService {
           'fs.time_start',
           'fs.time_end',
           'fs.date',
+          'recommend.id',
+          'products.pro_code',
+          'products.pro_name',
+          'products.pro_imgmain',
+          'products.pro_priceA',
+          'products.pro_priceB',
+          'products.pro_priceC',
+          'products.pro_unit1',
+          'products.pro_unit2',
+          'products.pro_unit3',
+          'products.pro_stock',
+          'products.pro_lowest_stock',
+          'products.order_quantity',
+          'products.pro_promotion_amount',
+          'products.pro_promotion_month',
+          'products.recommend_rank',
+          'inCarts.mem_code',
+          'inCarts.spc_amount',
+          'inCarts.spc_unit',
+          'fsp_products.limit',
+          'fsp_products.id',
+          'fs_products.promotion_id',
+          'fs_products.time_start',
+          'fs_products.time_end',
+          'fs_products.date',
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
         .getOne();
@@ -414,7 +479,8 @@ export class ProductsService {
       } else {
         throw new Error('Not found Product');
       }
-    } catch {
+    } catch (error) {
+      console.log(error);
       throw new Error('Something Error in Product Detail');
     }
   }
@@ -846,7 +912,7 @@ export class ProductsService {
   }
 
   async listFree(sort_by?: string) {
-    console.log('sort_by', sort_by);
+    // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
 
@@ -1018,8 +1084,7 @@ export class ProductsService {
         )
         .andWhere('product.pro_priceA != :price', { price: 1 })
         .andWhere('product.pro_code NOT LIKE :at1', { at1: '@M%' })
-        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%/%' })
-        .andWhere('product.pro_code NOT LIKE :at3', { at3: '%@%' })
+        .andWhere('product.pro_code NOT LIKE :at2', { at2: '%@%' })
         .andWhere(
           new Brackets((qb) => {
             qb.where('product.pro_name NOT LIKE :n1', { n1: '%โอน%' })
@@ -1295,14 +1360,13 @@ export class ProductsService {
         { pro_code: Not(IsNull()) },
         { sale_amount_day: null },
       );
-      await Promise.all(
-        data.map(async (item) => {
-          await this.productRepo.update(
-            { pro_code: item.pro_code },
-            { sale_amount_day: item.amount },
-          );
-        }),
-      );
+
+      for (const item of data) {
+        await this.productRepo.update(
+          { pro_code: item.pro_code },
+          { sale_amount_day: item.amount },
+        );
+      }
     } catch (error) {
       console.error('Error updating sale amount day:', error);
       throw new Error('Error updating sale amount day');
