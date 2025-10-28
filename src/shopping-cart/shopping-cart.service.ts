@@ -34,6 +34,7 @@ export interface ShoppingProductCart {
   pro_lowest_stock: number;
   recommended_id?: number;
   recommend_rank?: number;
+  is_reward: boolean;
 }
 
 export interface RecommendedProduct {
@@ -156,6 +157,7 @@ export class ShoppingCartService {
           pro_code: data.pro_code,
           spc_unit: data.pro_unit,
           hotdeal_free: false,
+          is_reward: false,
         },
       });
 
@@ -252,18 +254,21 @@ export class ShoppingCartService {
   async checkPromotionReward(mem_code: string, priceOption: string) {
     const today = new Date();
 
+    // ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
       where: { mem_code },
       relations: { product: true },
     });
 
+    // ฟิลเตอร์เฉพาะรายการที่ reward ที่หมดอายุ แล้วใช้ code ต่ออายุ
+    // from = cart
+    // output = rewardUseCodeItems
     const rewardUseCodeItems = cart.filter(
       (c) => c.is_reward && c.spc_checked && c.use_code === true,
     );
 
-    console.log('rewardUseCodeItems : ', rewardUseCodeItems);
-
     if (rewardUseCodeItems.length > 0) {
+      // ถ้ามีหลาย tier_id ให้ดึงเฉพาะ distinct เท่านั้น
       const distinctTierIds = Array.from(
         new Set(
           rewardUseCodeItems
@@ -330,7 +335,7 @@ export class ShoppingCartService {
       }
     }
 
-    // 2) Load distinct product codes in active promotion conditions
+    // 2) ดึง product ที่อยู่ใน condition ของ promotion ที่ active
     const productInCondition = await this.conRepo
       .createQueryBuilder('cond')
       .innerJoin('cond.tier', 'tier')
@@ -354,13 +359,14 @@ export class ShoppingCartService {
 
     const promoMonth = new Date().getMonth() + 1;
 
-    // 3) Precompute per-product total base units (ratio-normalized)
     const perProductTotalUnits = new Map<string, number>();
     const checkedCart: typeof cart = [];
 
     for (const line of cart) {
       if (!line.product) continue;
       if (!line.spc_checked) continue;
+      if (line.is_reward) continue;
+      if (line.hotdeal_free) continue;
       if (!productCodes.has(line.pro_code)) continue;
 
       const ratio =
@@ -456,14 +462,53 @@ export class ShoppingCartService {
       }
     >();
 
+    const promoConditions = await this.conRepo
+      .createQueryBuilder('cond')
+      .innerJoin('cond.tier', 'tier')
+      .innerJoin('tier.promotion', 'promo')
+      .innerJoin('cond.product', 'prod')
+      .select(['promo.promo_id AS promo_id', 'prod.pro_code AS pro_code'])
+      .getRawMany<{ promo_id: number; pro_code: string }>();
+
+    // สร้าง Map <promo_id, Set<pro_code>>
+    const promoConditionMap = new Map<number, Set<string>>();
+    for (const { promo_id, pro_code } of promoConditions) {
+      if (!promoConditionMap.has(promo_id)) {
+        promoConditionMap.set(promo_id, new Set());
+      }
+      promoConditionMap.get(promo_id)!.add(pro_code);
+    }
+
     for (const promo of promotions) {
       if (!promo.tiers?.length) continue;
+
+      const conditionCodes = promoConditionMap.get(promo.promo_id) || new Set();
+
+      const remaining = checkedCart
+        .filter((line) => conditionCodes.has(line.pro_code))
+        .reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+
+          const price =
+            priceOption === 'A'
+              ? Number(p.pro_priceA)
+              : priceOption === 'B'
+                ? Number(p.pro_priceB)
+                : Number(p.pro_priceC);
+
+          return sum + Number(line.spc_amount) * price * Number(ratio);
+        }, 0);
+
+      if (remaining <= 0) continue;
 
       const tiersDesc = [...promo.tiers].sort(
         (a, b) => Number(b.min_amount) - Number(a.min_amount),
       );
-
-      let remaining = totalSumPrice;
 
       for (const tier of tiersDesc) {
         const threshold = Number(tier.min_amount);
@@ -487,17 +532,11 @@ export class ShoppingCartService {
                 pro_code: code,
                 unit: rw.unit,
                 qty: addQty,
-                promo_id: promo_id,
+                promo_id,
                 tier_id: tier.tier_id,
               });
             }
           }
-        }
-
-        remaining -= multiplier * threshold;
-        if (remaining < tiersDesc[tiersDesc.length - 1].min_amount) {
-          // small optimization: break early if remaining can't hit smallest tier
-          break;
         }
       }
     }
@@ -595,7 +634,12 @@ export class ShoppingCartService {
         }
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          { pro_code: data.pro_code, mem_code: data.mem_code },
+          {
+            pro_code: data.pro_code,
+            mem_code: data.mem_code,
+            is_reward: false,
+            hotdeal_free: false,
+          },
           { spc_checked: false },
         );
 
@@ -828,10 +872,10 @@ export class ShoppingCartService {
       const grouped: Record<string, ShoppingProductCart> = {};
 
       for (const row of raw) {
-        const code = row.pro_code;
+        const key = `${row.pro_code}_${row.is_reward ? 'reward' : 'normal'}`;
 
-        if (!grouped[code]) {
-          grouped[code] = {
+        if (!grouped[key]) {
+          grouped[key] = {
             pro_code: row.pro_code,
             pro_name: row.pro_name,
             pro_imgmain: row.pro_imgmain,
@@ -856,16 +900,15 @@ export class ShoppingCartService {
             shopping_cart: [],
             lots: [],
             recommend: [],
+            is_reward: !!row.is_reward,
           };
         }
 
         if (row.lot_id) {
-          const exists = grouped[code].lots.some(
-            (l) => l.lot_id === row.lot_id,
-          );
+          const exists = grouped[key].lots.some((l) => l.lot_id === row.lot_id);
 
           if (!exists) {
-            grouped[code].lots.push({
+            grouped[key].lots.push({
               lot_id: row.lot_id,
               lot: row.lot,
               mfg: row.mfg,
@@ -879,11 +922,11 @@ export class ShoppingCartService {
           row.recommended_pro_code &&
           row.recommended_pro_name
         ) {
-          const exists = grouped[code].recommend.some(
+          const exists = grouped[key].recommend.some(
             (r) => r.pro_code === row.recommended_pro_code,
           );
-          if (grouped[code].recommend.length < 6 && !exists) {
-            grouped[code].recommend.push({
+          if (grouped[key].recommend.length < 6 && !exists) {
+            grouped[key].recommend.push({
               recommended_id: row.recommended_id,
               pro_code: row.recommended_pro_code,
               pro_imgmain: row.recommended_pro_imgmain ?? '',
@@ -894,9 +937,9 @@ export class ShoppingCartService {
         }
 
         if (
-          !grouped[code].shopping_cart.find((sc) => sc.spc_id === row.spc_id)
+          !grouped[key].shopping_cart.find((sc) => sc.spc_id === row.spc_id)
         ) {
-          grouped[code].shopping_cart.push({
+          grouped[key].shopping_cart.push({
             spc_id: row.spc_id,
             spc_amount: row.spc_amount,
             spc_checked: row.spc_checked,

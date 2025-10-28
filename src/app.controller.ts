@@ -307,15 +307,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -626,8 +626,8 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('/ecom/promotion/product/creditor/:creditor_code')
-  async getProductByCreditor(@Param('creditor_code') creditor_code: string) {
+  @Post('/ecom/promotion/product/creditor')
+  async getProductByCreditor(@Body() creditor_code: string) {
     return this.productsService.getProductByCreditor(creditor_code);
   }
 
@@ -1434,16 +1434,17 @@ export class AppController {
   }
 
   @Post('/ecom/hash-password')
-  async hashpassword(@Body() body: { username: string, password: string }) {
+  async hashpassword(@Body() body: { username: string; password: string }) {
     if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
       // Prevent concurrent hash operations
       if (this.isHashingInProgress) {
-        return { 
-          success: false, 
-          message: 'Hash operation already in progress. Please wait and try again later.' 
+        return {
+          success: false,
+          message:
+            'Hash operation already in progress. Please wait and try again later.',
         };
       }
-      
+
       this.isHashingInProgress = true;
       try {
         const result = await this.authService.hashpassword();
@@ -1781,7 +1782,7 @@ export class AppController {
     const data = await this.shoppingCartService.summaryCart(mem_code);
     return data.total;
   }
-  
+
   @Get('/ecom/recommend/tags')
   async getRecommendTags() {
     return await this.recommendService.getAllTags();
@@ -1840,5 +1841,12 @@ export class AppController {
       data.pro_code,
       data.mem_code,
     );
+  }
+
+  @Post('/ecom/promotion/set-all-product')
+  async setAllProductPromotion(
+    @Body() data: { tier_id: number; status: boolean },
+  ) {
+    return await this.promotionService.setAllProducts(data.tier_id, data.status);
   }
 }

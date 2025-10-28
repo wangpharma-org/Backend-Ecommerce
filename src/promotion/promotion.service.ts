@@ -8,6 +8,7 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
+  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -234,7 +235,7 @@ export class PromotionService {
   async getAllTiers() {
     const Today = new Date();
     try {
-      return await this.promotionTierRepo.find({
+      const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
@@ -243,6 +244,29 @@ export class PromotionService {
           },
         },
       });
+      const reward = await this.promotionRewardRepo.find({
+        where: {
+          tier: {
+            tier_id: In(poster.map((p) => p.tier_id)),
+          },
+        },
+        relations: {
+          tier: true,
+          giftProduct: true,
+        },
+        select: {
+          tier: {
+            tier_id: true,
+          },
+          giftProduct: {
+            pro_code: true,
+            pro_name: true,
+            pro_imgmain: true,
+          },
+        },
+      });
+
+      return { poster, reward };
     } catch {
       throw new Error(`Failed to get tiers`);
     }
@@ -295,7 +319,7 @@ export class PromotionService {
 
   async addPromotion(data: {
     promo_name: string;
-    creditor_code: string;
+    creditor_code: string | null;
     start_date: Date;
     end_date: Date;
     status: boolean;
@@ -304,14 +328,16 @@ export class PromotionService {
       // console.log(data);
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
-        creditor: { creditor_code: data.creditor_code },
+        creditor: data.creditor_code
+          ? { creditor_code: data.creditor_code }
+          : undefined,
         start_date: data.start_date,
         end_date: data.end_date,
         status: data.status,
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
-      // console.log(error);
+      console.log(error);
       throw new Error(`Failed to add promotion`);
     }
   }
@@ -525,6 +551,8 @@ export class PromotionService {
           cond_id: true,
           product: {
             pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
           },
         },
       });
@@ -647,6 +675,26 @@ export class PromotionService {
     } catch (error) {
       console.error('Error fetching promotions:', error);
       throw new Error('Failed to get active promotions');
+    }
+  }
+
+  async setAllProducts(tier_id: number, status: boolean) {
+    try {
+      if (status === true) {
+        await this.promotionConditionRepo.delete({ tier: { tier_id } });
+        await this.promotionTierRepo.update(tier_id, {
+          all_products: true,
+        });
+        return 'All products set successfully for the tier';
+      } else {
+        await this.promotionTierRepo.update(tier_id, {
+          all_products: false,
+        });
+        return 'Tier set to specific products successfully';
+      }
+    } catch (error) {
+      console.error(error);
+      throw new Error('Failed to set all products for the tier');
     }
   }
 }

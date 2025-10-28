@@ -237,9 +237,9 @@ export class ProductsService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :mem_code',
-          { mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', mem_code)
         .where('product.pro_promotion_month = :month', { month: numberOfMonth })
         .select([
           'product.pro_code',
@@ -774,9 +774,9 @@ export class ProductsService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :memCode',
-          { memCode: data.mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .where('product.pro_priceA != 0')

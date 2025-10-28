@@ -28,6 +28,9 @@ export class PromotionTierEntity {
   @Column({ length: 255, nullable: true })
   description?: string;
 
+  @Column({ default: false })
+  all_products: boolean;
+
   @OneToMany(() => PromotionConditionEntity, (cond) => cond.tier, {
     cascade: true,
   })
