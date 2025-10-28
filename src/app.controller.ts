@@ -781,12 +781,7 @@ export class AppController {
     },
   ) {
     console.log(body);
-    return this.hotdealService.saveHotdeal(
-      body.data,
-      body.id,
-      body.pro_code,
-      body.order,
-    );
+    return this.hotdealService.saveHotdeal(body.data, body.id, body.order);
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')

@@ -108,28 +108,22 @@ export class HotdealService {
   }
 
   // ตรวจสอบและแก้ไขแล้ว
-  async saveHotdeal(datainput: HotdealInput, id?: number, pro_code?: string, order?: number): Promise<string> {
+  async saveHotdeal(datainput: HotdealInput, id?: number, order?: number): Promise<string> {
     try {
       const existingHotdeal = await this.hotdealRepo.findOne({
         where: { id: id },
       });
       if (existingHotdeal) {
         if (existingHotdeal.order !== order) {
-          const hotdealId = existingHotdeal.id === id;
+          const hotdealId = existingHotdeal.id;
           if (hotdealId) {
             await this.hotdealRepo.update(
               { id: existingHotdeal.id },
               { order: order },
             );
-            const maxOrderHotdeal = await this.hotdealRepo.find({
-              order: { order: 'ASC' },
-            })
-            console.log('maxOrderHotdeal', maxOrderHotdeal);
-
           }
         }
-      }
-      else {
+      } else {
       const hotdeal = this.hotdealRepo.create({
         pro1_amount: datainput.pro1_amount,
         pro1_unit: datainput.pro1_unit,
