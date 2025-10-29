@@ -210,11 +210,7 @@ export class ShoppingCartService {
       await this.checkPromotionReward(data.mem_code, data.priceCondition);
 
       console.log('Check Hotdeal');
-      await this.checkHotdealByProCode(
-        data.mem_code,
-        data.pro_code,
-        data.pro_unit,
-      );
+      await this.checkHotdealByProCode(data.mem_code, data.pro_code);
 
       return await this.getProductCart(data.mem_code);
     } catch (error) {
@@ -683,6 +679,7 @@ export class ShoppingCartService {
           spc_checked: true,
         },
         relations: ['product'],
+        order: { pro_code: 'ASC' },
       });
     } catch {
       throw new Error('Somthing wrong in handleGetCartToOrder');
@@ -746,9 +743,7 @@ export class ShoppingCartService {
           .leftJoinAndSelect('cart.product', 'product')
           .andWhere(
             new Brackets((qb) => {
-              qb.where('product.pro_stock <= 0').orWhere(
-                'product.pro_stock < product.pro_lowest_stock',
-              );
+              qb.where('product.pro_stock <= 0');
             }),
           )
           .andWhere('cart.mem_code = :mem_code', { mem_code: data.mem_code })
@@ -821,7 +816,7 @@ export class ShoppingCartService {
         .leftJoinAndSelect(
           'recommend.products',
           'recommendedProducts',
-          'recommendedProducts.pro_stock > recommendedProducts.pro_lowest_stock AND recommendedProducts.pro_stock > 0',
+          'recommendedProducts.pro_stock > 0',
         )
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
@@ -1030,6 +1025,7 @@ export class ShoppingCartService {
           hotdeal_free: true,
         },
       });
+      console.log('Found freebies:', freebies);
       return freebies;
     } catch (error) {
       console.error('Error fetching freebie products:', error);
@@ -1040,7 +1036,6 @@ export class ShoppingCartService {
   async checkHotdealByProCode(
     mem_code: string,
     pro_code: string,
-    pro_unit: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
       const existingCart = await this.shoppingCartRepo.find({
@@ -1054,14 +1049,6 @@ export class ShoppingCartService {
       const hotdeal = await this.hotdealService.find(pro_code);
       const hotdealMatch = await this.hotdealService.checkHotdealMatch(
         pro_code,
-        // [
-        //   {
-        //     pro1_unit: pro_unit,
-        //     pro1_amount: String(
-        //       existingCart ? Number(existingCart.spc_amount) : 0,
-        //     ),
-        //   },
-        // ],
         existingCart.map((item) => ({
           pro1_unit: item.spc_unit,
           pro1_amount: String(Number(item.spc_amount)),
@@ -1139,8 +1126,8 @@ export class ShoppingCartService {
         where: {
           mem_code,
           spc_checked: true,
-          hotdeal_free: false,
           is_reward: false,
+          hotdeal_free: false,
         },
         relations: { product: true, member: true },
         select: {
@@ -1168,31 +1155,33 @@ export class ShoppingCartService {
             mem_price: true,
           },
         },
+        order: { pro_code: 'ASC' },
       });
 
       const numberOfMonth = new Date().getMonth() + 1;
-      // const promotionProducts: { pro_code: string }[] = [];
-      const splitData = groupCart(result, 2);
+      const splitData = groupCart(result, 80);
 
-      // let grandTotalItems = 0;
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
-        // console.log(`Group ${index + 1}:`, dataGroup);
-
         const productTotalAmounts = new Map<string, number>();
 
         for (const item of dataGroup) {
           if (!item.product) continue;
 
           const unitRatioMap = new Map([
-            [item.product.pro_unit1, item.product.pro_ratio1 || 1],
-            [item.product.pro_unit2, item.product.pro_ratio2 || 1],
-            [item.product.pro_unit3, item.product.pro_ratio3 || 1],
+            [item.product.pro_unit1, item.product.pro_ratio1],
+            [item.product.pro_unit2, item.product.pro_ratio2],
+            [item.product.pro_unit3, item.product.pro_ratio3],
           ]);
 
-          const ratio = unitRatioMap.get(item.spc_unit) || 1;
+          const ratio = unitRatioMap.get(item.spc_unit);
+          if (!ratio) {
+            throw new Error(
+              `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
+            );
+          }
           const baseAmount = Number(item.spc_amount) * Number(ratio);
 
           productTotalAmounts.set(
@@ -1204,14 +1193,11 @@ export class ShoppingCartService {
         const promotionProducts: { pro_code: string }[] = [];
         for (const item of dataGroup) {
           if (!item.product) continue;
-          // เช็ค promotion month + amount
           const totalAmount = productTotalAmounts.get(item.pro_code) || 0;
           const isPromotionActive =
             item.product.pro_promotion_month === numberOfMonth &&
             totalAmount >= (item.product.pro_promotion_amount ?? 0);
-          // totalAmount >= (item.product.pro_promotion_amount ?? 0);
 
-          // เช็ค flashsale
           const isFlashSale = item.flashsale_end
             ? new Date(item.flashsale_end) >= new Date()
             : false;
@@ -1251,22 +1237,22 @@ export class ShoppingCartService {
             nonPromo: [] as typeof dataGroup,
           },
         );
+        console.log(
+          'Split items into promo and non-promo:',
+          split.promo,
+          split.nonPromo,
+        );
 
         const tier = result[0]?.member?.mem_price ?? 'C';
 
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            // ✅ เช็ค hotdeal_free
-            if (item.hotdeal_free === true) {
-              return sum + 0;
-            }
-
             const unitRatioMap = new Map([
-              [item.product.pro_unit1, item.product.pro_ratio1 || 1],
-              [item.product.pro_unit2, item.product.pro_ratio2 || 1],
-              [item.product.pro_unit3, item.product.pro_ratio3 || 1],
+              [item.product.pro_unit1, item.product.pro_ratio1],
+              [item.product.pro_unit2, item.product.pro_ratio2],
+              [item.product.pro_unit3, item.product.pro_ratio3],
             ]);
-            const ratio = unitRatioMap.get(item.spc_unit) || 1;
+            const ratio = unitRatioMap.get(item.spc_unit) ?? 0;
             const quantity = Number(item.spc_amount) * Number(ratio);
             const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
 
@@ -1294,19 +1280,13 @@ export class ShoppingCartService {
         );
 
         const grandTotalItems = promoTotal + nonPromoTotal;
-
-        // console.log('promoTotal:', promoTotal);
-        // console.log('nonPromoTotal:', nonPromoTotal);
-        // console.log('Grand Total:', grandTotalItems);
-
         total += grandTotalItems;
         itemsArray.push({ index: index, grandTotalItems });
       }
 
       return { total: total, items: itemsArray };
-    } catch (error) {
-      console.error('Error in summaryCart:', error);
-      throw new Error('Something wrong in summaryCart');
+    } catch {
+      return { total: 0, items: [] };
     }
   }
 }

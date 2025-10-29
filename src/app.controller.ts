@@ -806,9 +806,17 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
-  async saveHotdeal(@Body() body: { data: HotdealInput }) {
-    console.log(body);
-    return this.hotdealService.saveHotdeal(body.data);
+  async saveHotdeal(
+    @Body()
+    body: {
+      data: HotdealInput;
+      pro_code?: string;
+      id?: number;
+      order?: number;
+    },
+  ) {
+    console.log('Saving Hotdeal:', body);
+    return this.hotdealService.saveHotdeal(body.data, body.id, body.order);
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')
@@ -1433,6 +1441,7 @@ export class AppController {
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
+<<<<<<< HEAD
   @Post('/ecom/hash-password')
   async hashpassword(@Body() body: { username: string; password: string }) {
     if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
@@ -1456,6 +1465,8 @@ export class AppController {
       return { message: 'You do not have permission to access this endpoint' };
     }
   }
+=======
+>>>>>>> 5e0f5709f11c1776c9a6f89cc1576e87df3a48cc
   @Post('/ecom/new-arrivals')
   async NewArrivals(
     @Body()
