@@ -59,7 +59,6 @@ export class ImagedebugService {
         select: {
           id: true,
           imageUrl: true,
-          count: true,
           row_image: true,
           relatedImage: { pro_code: true, pro_name: true },
         },
