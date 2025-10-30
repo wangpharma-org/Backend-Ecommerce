@@ -1,5 +1,11 @@
 import { ProductEntity } from 'src/products/products.entity';
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity()
 export class Imagedebug {
@@ -9,7 +15,8 @@ export class Imagedebug {
   @Column({ nullable: true, default: '' })
   imageUrl: string;
 
-  @ManyToOne(() => ProductEntity, (product) => product.imagedebug)
+  @OneToOne(() => ProductEntity, (product) => product.imagedebug)
+  @JoinColumn({ name: 'pro_code' })
   relatedImage: ProductEntity;
 
   @Column({ nullable: false })

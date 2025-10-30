@@ -220,6 +220,6 @@ export class ProductEntity {
   @Column({ nullable: true, type: 'int' })
   recommend_rank: number | null;
 
-  @OneToMany(() => Imagedebug, (image) => image.relatedImage)
-  imagedebug: Imagedebug[];
+  @OneToOne(() => Imagedebug, (image) => image.relatedImage)
+  imagedebug: Imagedebug;
 }
