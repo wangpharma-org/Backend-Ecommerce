@@ -475,7 +475,9 @@ export class ShoppingOrderService {
           throw new Error(`Point Error: totalSumPoint=${totalSumPoint}`);
         }
 
-        if (totalSumPrice !== totalsummaryfromCart.total) {
+        if (
+          totalSumPrice.toFixed(2) !== totalsummaryfromCart.total.toFixed(2)
+        ) {
           orderContext = {
             memberCode: data.mem_code,
             priceOption: data.priceOption,
