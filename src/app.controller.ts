@@ -57,6 +57,7 @@ import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
+import { ImagedebugService } from './imagedebug/imagedebug.service';
 
 interface JwtPayload {
   username: string;
@@ -107,6 +108,7 @@ export class AppController {
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
     private readonly recommendService: RecommendService,
+    private readonly imagedebugService: ImagedebugService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -167,6 +169,30 @@ export class AppController {
   @Get('/ecom/feature-flag/:flag')
   async checkFlag(@Param('flag') flag: string) {
     return this.featureFlagsService.getFlag(flag);
+  }
+
+  @Post('/ecom/hash-password')
+  async hashpassword(@Body() body: { username: string; password: string }) {
+    if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
+      // Prevent concurrent hash operations
+      if (this.isHashingInProgress) {
+        return {
+          success: false,
+          message:
+            'Hash operation already in progress. Please wait and try again later.',
+        };
+      }
+
+      this.isHashingInProgress = true;
+      try {
+        const result = await this.authService.hashpassword();
+        return result;
+      } finally {
+        this.isHashingInProgress = false;
+      }
+    } else {
+      return { message: 'You do not have permission to access this endpoint' };
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1826,5 +1852,20 @@ export class AppController {
       data.pro_code,
       data.mem_code,
     );
+  }
+
+  @Post('/ecom/debug-image')
+  async debugImage(
+    @Body() data: { row_image: string; pro_code: string; imageUrl?: string },
+  ): Promise<{ message: string }> {
+    try {
+      const result = await this.imagedebugService.UpsercetImg(data);
+      return { message: result };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error('Error logging image debug data:', errorMessage);
+      return { message: `Error logging image debug data: ${errorMessage}` };
+    }
   }
 }

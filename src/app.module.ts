@@ -32,6 +32,7 @@ import { FixFreeModule } from './fix-free/fix-free.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { ProductKeywordModule } from './product-keyword/product-keyword.module';
 import { RecommendModule } from './recommend/recommend.module';
+import { ImagedebugModule } from './imagedebug/imagedebug.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { RecommendModule } from './recommend/recommend.module';
     SessionsModule,
     ProductKeywordModule,
     RecommendModule,
+    ImagedebugModule,
   ],
   controllers: [AppController],
   providers: [AppService],
