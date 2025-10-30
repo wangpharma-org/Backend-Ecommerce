@@ -401,7 +401,7 @@ export class ProductsService {
         .leftJoinAndSelect(
           'recommend.products',
           'products',
-          'products.pro_stock > 0',
+          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0'
         )
         .leftJoinAndSelect('products.inCarts', 'inCarts')
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
@@ -774,7 +774,7 @@ export class ProductsService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          ' AND cart.is_reward = false',
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')

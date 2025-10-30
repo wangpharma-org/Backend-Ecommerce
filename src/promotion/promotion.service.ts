@@ -685,4 +685,80 @@ export class PromotionService {
       throw new Error('Failed to set all products for the tier');
     }
   }
+
+  async getTierWithProCode(pro_code: string, mem_code: string) {
+    try {
+      const tierCondition = await this.promotionConditionRepo
+        .createQueryBuilder('condition')
+        .leftJoinAndSelect('condition.product', 'product')
+        .leftJoinAndSelect('condition.tier', 'tier')
+        .leftJoinAndSelect('tier.promotion', 'promotion')
+        .leftJoinAndSelect('tier.conditions', 'tier_conditions')
+        .leftJoinAndSelect('tier_conditions.product', 'tier_product')
+        .leftJoinAndSelect(
+          'tier_product.inCarts',
+          'cart',
+          'cart.mem_code = :mem_code AND cart.is_reward = false',
+        )
+        .setParameter('mem_code', mem_code)
+        .leftJoinAndSelect('tier.rewards', 'rewards')
+        .leftJoinAndSelect('rewards.giftProduct', 'gift_product')
+        .leftJoinAndSelect('product.flashsale', 'product_flashsale')
+        .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
+        .where('product.pro_code = :pro_code', { pro_code })
+        .andWhere('promotion.status = true')
+        .andWhere('promotion.start_date <= NOW()')
+        .andWhere('promotion.end_date >= NOW()')
+        .select([
+          'condition.cond_id',
+          'tier.tier_id',
+          'tier.tier_name',
+          'tier.min_amount',
+          'tier.description',
+          'tier.tier_postter',
+
+          // เงื่อนไขใน tier
+          'tier_conditions.cond_id',
+
+          // ข้อมูล product
+          'tier_product.pro_code',
+          'tier_product.pro_name',
+          'tier_product.pro_priceA',
+          'tier_product.pro_priceB',
+          'tier_product.pro_priceC',
+          'tier_product.pro_imgmain',
+          'tier_product.pro_unit1',
+          'tier_product.pro_unit2',
+          'tier_product.pro_unit3',
+          'tier_product.pro_promotion_amount',
+          'tier_product.pro_promotion_month',
+          'tier_product.pro_stock',
+          'tier_product.pro_sale_amount',
+          'tier_product.pro_lowest_stock',
+          'cart.mem_code',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'product_flashsale.id',
+          'product_flashsale.limit',
+          'flashsale.promotion_id',
+          'flashsale.date',
+          'flashsale.time_start',
+          'flashsale.time_end',
+          // ของรางวัล
+          'rewards.reward_id',
+          'rewards.qty',
+          'rewards.unit',
+          'gift_product.pro_code',
+          'gift_product.pro_name',
+          'gift_product.pro_imgmain',
+          'gift_product.pro_unit1',
+          'gift_product.pro_unit2',
+          'gift_product.pro_unit3',
+        ])
+        .getOne();
+      return tierCondition;
+    } catch {
+      throw new Error('Failed to get tier with product code');
+    }
+  }
 }

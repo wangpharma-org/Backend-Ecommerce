@@ -114,11 +114,7 @@ export class RecommendService {
     }
   }
 
-  async GetProductRecommendByCode(
-    recommend_id: number[],
-    pro_code: string[],
-    mem_code: string,
-  ) {
+  async GetProductRecommendByCode(recommend_id: number[], mem_code: string) {
     try {
       return this.productEntity
         .createQueryBuilder('product')
@@ -127,11 +123,11 @@ export class RecommendService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :mem_code',
-          { mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', mem_code)
         .leftJoinAndSelect('product.flashsale', 'product_flashsale')
-        .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale') // join ชั้นในอีกที
+        .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
         .where('recommend.id IN (:...recommend_id)', { recommend_id })
         .andWhere('product.pro_stock > 0')
         .andWhere('product.recommend_rank IS NOT NULL')

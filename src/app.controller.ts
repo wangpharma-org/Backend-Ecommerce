@@ -1441,32 +1441,6 @@ export class AppController {
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
-<<<<<<< HEAD
-  @Post('/ecom/hash-password')
-  async hashpassword(@Body() body: { username: string; password: string }) {
-    if (body.password === 'iamadmin101' && body.username === 'dontscamme') {
-      // Prevent concurrent hash operations
-      if (this.isHashingInProgress) {
-        return {
-          success: false,
-          message:
-            'Hash operation already in progress. Please wait and try again later.',
-        };
-      }
-
-      this.isHashingInProgress = true;
-      try {
-        const result = await this.authService.hashpassword();
-        return result;
-      } finally {
-        this.isHashingInProgress = false;
-      }
-    } else {
-      return { message: 'You do not have permission to access this endpoint' };
-    }
-  }
-=======
->>>>>>> 5e0f5709f11c1776c9a6f89cc1576e87df3a48cc
   @Post('/ecom/new-arrivals')
   async NewArrivals(
     @Body()
@@ -1849,7 +1823,6 @@ export class AppController {
   ) {
     return await this.recommendService.GetProductRecommendByCode(
       data.recommend_id,
-      data.pro_code,
       data.mem_code,
     );
   }
@@ -1858,6 +1831,19 @@ export class AppController {
   async setAllProductPromotion(
     @Body() data: { tier_id: number; status: boolean },
   ) {
-    return await this.promotionService.setAllProducts(data.tier_id, data.status);
+    return await this.promotionService.setAllProducts(
+      data.tier_id,
+      data.status,
+    );
+  }
+
+  @Post('/ecom/promotion/check-product-promotion')
+  async checkProductPromotion(
+    @Body() data: { pro_code: string; mem_code: string },
+  ) {
+    return await this.promotionService.getTierWithProCode(
+      data.pro_code,
+      data.mem_code,
+    );
   }
 }
