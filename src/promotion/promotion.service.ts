@@ -755,10 +755,50 @@ export class PromotionService {
           'gift_product.pro_unit2',
           'gift_product.pro_unit3',
         ])
-        .getOne();
+        .getMany();
       return tierCondition;
     } catch {
       throw new Error('Failed to get tier with product code');
+    }
+  }
+
+  async getTierAllProduct() {
+    try {
+      return await this.promotionTierRepo.find({
+        where: {
+          all_products: true,
+          promotion: {
+            status: true,
+            start_date: LessThanOrEqual(new Date()),
+            end_date: MoreThanOrEqual(new Date()),
+          },
+        },
+      });
+    } catch {
+      throw new Error(`Failed to get tier with all products`);
+    }
+  }
+
+  async getRewardByTierId(tier_id: number) {
+    try {
+      return await this.promotionRewardRepo.find({
+        where: { tier: { tier_id } },
+        relations: { giftProduct: true },
+        select: {
+          reward_id: true,
+          qty: true,
+          unit: true,
+          giftProduct: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+            pro_imgmain: true,
+          },
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      throw new Error(`Failed to get reward by tier id`);
     }
   }
 }
