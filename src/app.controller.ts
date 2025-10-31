@@ -232,7 +232,17 @@ export class AppController {
 
   @Post('/ecom/flashsale/get-list')
   async getDataFlashSale(@Body() data: { limit: number; mem_code: string }) {
-    return await this.productsService.getFlashSale(data.limit, data.mem_code);
+    const func = await this.productsService.getFlashSale(
+      data.limit,
+      data.mem_code,
+    );
+    for (const funcItem of func) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: funcItem.pro_code,
+        imageUrl: funcItem.pro_imgmain,
+      });
+    }
+    return func;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -272,7 +282,14 @@ export class AppController {
     },
   ) {
     //console.log('data in controller:', data);
-    return await this.productsService.searchProducts(data);
+    const result = await this.productsService.searchProducts(data);
+    for (const resultItem of result.products) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -336,13 +353,25 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-detail')
   async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
-    return await this.productsService.getProductDetail(data);
+    const result = await this.productsService.getProductDetail(data);
+    await this.imagedebugService.UpsercetImg({
+      pro_code: result.pro_code,
+      imageUrl: result.pro_imgmain,
+    });
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-coin/:sortBy')
   async productCoin(@Param('sortBy') sort_by: string) {
-    return await this.productsService.listFree(sort_by);
+    const result = await this.productsService.listFree(sort_by);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -481,6 +510,12 @@ export class AppController {
   async getProductCart(@Param('mem_code') mem_code: string) {
     const cart = await this.shoppingCartService.getProductCart(mem_code);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+    for (const item of cart) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: item.pro_code,
+        imageUrl: item.pro_imgmain,
+      });
+    }
     return { cart: cart, summaryCart: summaryCart.total };
   }
 
@@ -495,7 +530,15 @@ export class AppController {
   async getLast6Orders(
     @Param('memCode') memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
-    return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+    const result =
+      await this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.product.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -503,7 +546,16 @@ export class AppController {
   async AllOrderByMember(
     @Param('memCode') memCode: string,
   ): Promise<AllOrderByMemberRes> {
-    return await this.shoppingHeadService.AllOrderByMember(memCode);
+    const result = await this.shoppingHeadService.AllOrderByMember(memCode);
+    for (const order of result) {
+      for (const orderItem of order.Newdetails) {
+        await this.imagedebugService.UpsercetImg({
+          pro_code: orderItem.product.pro_code,
+          imageUrl: orderItem.product.pro_imgmain,
+        });
+      }
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -511,7 +563,14 @@ export class AppController {
   async SomeOrderByMember(
     @Param('soh_runing') soh_runing: string,
   ): Promise<ShoppingHeadEntity> {
-    return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+    const result = await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+    for (const orderItem of result.details) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: orderItem.product.pro_code,
+        imageUrl: orderItem.product.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -803,7 +862,14 @@ export class AppController {
 
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
   async searchProductMain(@Param('keyword') keyword: string) {
-    return this.hotdealService.searchProduct(keyword);
+    const result = await this.hotdealService.searchProduct(keyword);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem?.pro_code,
+        imageUrl: resultItem?.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1831,18 +1897,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('/ecom/debug-image')
-  async debugImage(
-    @Body() data: { row_image: string; pro_code: string; imageUrl?: string },
-  ): Promise<{ message: string }> {
-    try {
-      const result = await this.imagedebugService.UpsercetImg(data);
-      return { message: result };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error('Error logging image debug data:', errorMessage);
-      return { message: `Error logging image debug data: ${errorMessage}` };
+  @Get('/ecom/image-bug/all-imagedebug')
+  async getAllImagedebug(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource.');
     }
+    return await this.imagedebugService.getAllImagedebug();
   }
 }

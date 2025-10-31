@@ -18,7 +18,4 @@ export class Imagedebug {
   @OneToOne(() => ProductEntity, (product) => product.imagedebug)
   @JoinColumn({ name: 'pro_code' })
   relatedImage: ProductEntity;
-
-  @Column({ nullable: false })
-  row_image: string;
 }

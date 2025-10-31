@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import { Imagedebug } from './imagedebug.entity';
 import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
-
 @Injectable()
 export class ImagedebugService {
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
@@ -14,7 +13,6 @@ export class ImagedebugService {
   ) {}
 
   async UpsercetImg(data: {
-    row_image: string;
     pro_code: string;
     imageUrl?: string;
   }): Promise<string> {
@@ -22,7 +20,6 @@ export class ImagedebugService {
       const findItem = await this.imagedebugRepository.findOne({
         where: {
           relatedImage: { pro_code: data.pro_code },
-          row_image: data.row_image,
         },
         relations: { relatedImage: true },
         select: {
@@ -32,12 +29,20 @@ export class ImagedebugService {
         },
       });
       if (!findItem) {
-        await this.imagedebugRepository.save({
-          relatedImage: { pro_code: data.pro_code },
-          row_image: data.row_image,
-          imageUrl: data.imageUrl || 'No Image',
-        });
-        return 'Inserted new record';
+        try {
+          await this.imagedebugRepository.save({
+            relatedImage: { pro_code: data.pro_code },
+            imageUrl: data.imageUrl || 'No Image',
+          });
+          return 'Inserted new record';
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          console.error(
+            'Error occurred while inserting image debug:',
+            errorMessage,
+          );
+        }
       }
       return 'Checked Item';
     } catch (error) {
@@ -51,7 +56,7 @@ export class ImagedebugService {
     }
   }
 
-  @Cron('* 1 * * *') // ทุกวันตอนตี 1
+  @Cron('0 1 * * *') // ทุก 2 นาที
   async summaryItem(): Promise<Imagedebug[]> {
     try {
       const findAllItem = await this.imagedebugRepository.find({
@@ -59,7 +64,6 @@ export class ImagedebugService {
         select: {
           id: true,
           imageUrl: true,
-          row_image: true,
           relatedImage: { pro_code: true, pro_name: true },
         },
       });
@@ -68,52 +72,36 @@ export class ImagedebugService {
         throw new Error(`Can't find Item image`);
       }
 
+      let CountData: number = 0;
+      for (const item of findAllItem) {
+        if (item.imageUrl !== 'No Image') {
+          try {
+            const imageBuffer = await axios.get(item.imageUrl, {
+              timeout: 5000,
+            });
+            if (
+              imageBuffer.status === 200 ||
+              imageBuffer.status === 201 ||
+              imageBuffer.status === 304
+            ) {
+              await this.imagedebugRepository.delete(item.id);
+              continue;
+            }
+          } catch (error) {
+            CountData += 1;
+            continue;
+          }
+        }
+        CountData += 1;
+      }
       const itemsToReturn = [...findAllItem];
       const slackUrl = this.slackUrl;
 
-      const chunk = <T>(arr: T[], size: number) =>
-        Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-          arr.slice(i * size, i * size + size),
-        );
+      const payload = {
+        text: `(กำลังทดสอบระบบ) สรุปข้อมูลภาพที่มีข้อผิดพลาด จำนวน ${CountData} รายการ`,
+      };
 
-      const batches = chunk(itemsToReturn, 45);
-
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-
-        const blocks = [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text:
-                `*(กำลังทดสอบระบบ) สรุปข้อมูลภาพที่มีข้อผิดพลาด* ` +
-                `(ชุดที่ ${i + 1}/${batches.length}, รวม ${itemsToReturn.length} รายการ)`,
-            },
-          },
-          { type: 'divider' },
-          ...batch.map((item, index) => ({
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text:
-                `*${index + 1 + i * 45}.* ` +
-                `*${item?.relatedImage?.pro_code}* – ${item?.relatedImage?.pro_name}\n` +
-                `> ${item?.imageUrl === 'No Image' ? '🔹 <ไม่มีภาพ>' : item?.imageUrl}`,
-            },
-          })),
-        ];
-
-        const payload = {
-          text: `(กำลังทดสอบระบบ) สรุปข้อมูลภาพที่มีข้อผิดพลาด จำนวน ${itemsToReturn.length} รายการ`,
-          blocks,
-        };
-
-        await axios.post(slackUrl, payload);
-      }
-
-      const ids = findAllItem.map((item) => item.id);
-      await this.imagedebugRepository.delete(ids);
+      await axios.post(slackUrl, payload);
 
       return itemsToReturn;
     } catch (e: any) {
@@ -123,6 +111,33 @@ export class ImagedebugService {
         errorMessage,
       );
       throw e;
+    }
+  }
+
+  async getAllImagedebug(): Promise<Imagedebug[]> {
+    try {
+      const findAllItem = await this.imagedebugRepository.find({
+        relations: { relatedImage: true },
+        select: {
+          id: true,
+          imageUrl: true,
+          relatedImage: { pro_code: true, pro_name: true },
+        },
+      });
+
+      if (!findAllItem?.length) {
+        throw new Error(`Can't find Item image`);
+      }
+
+      return findAllItem;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        'Error occurred while fetching all image debug:',
+        errorMessage,
+      );
+      throw error;
     }
   }
 }
