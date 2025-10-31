@@ -418,6 +418,7 @@ export class HotdealService {
         product2: {
           pro_code: true,
         },
+        order: true,
       },
     });
   }
