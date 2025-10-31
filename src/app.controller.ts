@@ -1555,7 +1555,7 @@ export class AppController {
   @Get('/ecom/data/product-free')
   async getProductFree(
     @Req() req: Request & { user: JwtPayload },
-  ): Promise<{ pro_code: string; pro_name: string }[]> {
+  ): Promise<{ pro_code: string; pro_name: string; pro_point: number }[]> {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');
