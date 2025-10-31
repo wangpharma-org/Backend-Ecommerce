@@ -225,9 +225,9 @@ export class FlashsaleService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :mem_code',
-          { mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', mem_code)
         .where('flash.date = :date', { date: currentDate })
         .andWhere(':nowTime BETWEEN flash.time_start AND flash.time_end', {
           nowTime: currentTime,
