@@ -1317,7 +1317,9 @@ export class ProductsService {
     }
   }
 
-  async findProductFree(): Promise<{ pro_code: string; pro_name: string }[]> {
+  async findProductFree(): Promise<
+    { pro_code: string; pro_name: string; pro_point: number }[]
+  > {
     try {
       const products = await this.productRepo.find({
         where: { pro_free: true },
@@ -1325,6 +1327,7 @@ export class ProductsService {
       return products.map((product) => ({
         pro_code: product.pro_code,
         pro_name: product.pro_name,
+        pro_point: product.pro_point,
       }));
     } catch (error) {
       console.error('Error finding free products:', error);
