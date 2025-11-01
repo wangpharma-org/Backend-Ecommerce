@@ -534,7 +534,7 @@ export class AppController {
       await this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
     for (const resultItem of result) {
       await this.imagedebugService.UpsercetImg({
-        pro_code: resultItem.pro_code,
+        pro_code: resultItem.product.pro_code,
         imageUrl: resultItem.product.pro_imgmain,
       });
     }

@@ -29,20 +29,11 @@ export class ImagedebugService {
         },
       });
       if (!findItem) {
-        try {
-          await this.imagedebugRepository.save({
-            relatedImage: { pro_code: data.pro_code },
-            imageUrl: data.imageUrl || 'No Image',
-          });
-          return 'Inserted new record';
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          console.error(
-            'Error occurred while inserting image debug:',
-            errorMessage,
-          );
-        }
+        await this.imagedebugRepository.save({
+          relatedImage: { pro_code: data.pro_code },
+          imageUrl: data.imageUrl || 'No Image',
+        });
+        return 'Inserted new record';
       }
       return 'Checked Item';
     } catch (error) {
@@ -52,7 +43,7 @@ export class ImagedebugService {
         'Error occurred while upserting image debug:',
         errorMessage,
       );
-      throw error; // ต้อง throw ต่อไปให้ controller จัดการ
+      throw error;
     }
   }
 
