@@ -1870,8 +1870,4 @@ export class AppController {
     return await this.promotionService.getRewardByTierId(tier_id);
   }
 
-  @Get('/ecom/hash')
-  async getHash() {
-    return await this.authService.hashpassword();
-  }
 }
