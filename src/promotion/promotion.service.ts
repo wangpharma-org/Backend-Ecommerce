@@ -222,7 +222,16 @@ export class PromotionService {
   }
 
   async getAllTiers() {
-    const Today = new Date();
+    const now = new Date();
+    const Today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0,
+    );
     try {
       const poster = await this.promotionTierRepo.find({
         where: {
