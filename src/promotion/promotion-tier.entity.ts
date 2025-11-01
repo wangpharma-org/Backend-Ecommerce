@@ -28,6 +28,9 @@ export class PromotionTierEntity {
   @Column({ length: 255, nullable: true })
   description?: string;
 
+  @Column({ length: 2000, nullable: true })
+  detail?: string;
+
   @Column({ default: false })
   all_products: boolean;
 

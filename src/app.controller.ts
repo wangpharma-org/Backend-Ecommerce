@@ -550,6 +550,7 @@ export class AppController {
       tier_name: string;
       min_amount: number;
       description?: string;
+      detail?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -557,6 +558,7 @@ export class AppController {
       tier_name: data.tier_name,
       min_amount: data.min_amount,
       description: data.description,
+      detail: data.detail,
       file,
     });
   }
@@ -724,6 +726,7 @@ export class AppController {
       tier_name?: string;
       min_amount?: number;
       description?: string;
+      detail?: string;
     },
   ) {
     return await this.promotionService.updateTier(data);
@@ -1869,5 +1872,4 @@ export class AppController {
   async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
     return await this.promotionService.getRewardByTierId(tier_id);
   }
-
 }

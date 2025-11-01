@@ -165,6 +165,7 @@ export class PromotionService {
           'tier.min_amount',
           'tier.description',
           'tier.tier_postter',
+          'tier.detail',
 
           'condition.cond_id',
 
@@ -381,6 +382,7 @@ export class PromotionService {
     tier_name: string;
     min_amount: number;
     description?: string;
+    detail?: string;
     file: Express.Multer.File;
   }) {
     // console.log(data);
@@ -412,9 +414,10 @@ export class PromotionService {
         description: data.description,
         promotion: promotion,
         tier_postter: imgData.Location,
+        detail: data.detail,
       });
       await this.promotionTierRepo.save(newTier);
-    } catch (error) {
+    } catch {
       // console.log(error);
       throw new Error(`Failed to add tier to promotion`);
     }
@@ -593,6 +596,7 @@ export class PromotionService {
         tier_name: data.tier_name,
         min_amount: data.min_amount,
         description: data.description,
+        detail: data.description,
       });
       return 'Tier updated successfully';
     } catch (error) {
