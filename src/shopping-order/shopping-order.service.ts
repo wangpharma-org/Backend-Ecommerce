@@ -556,9 +556,9 @@ export class ShoppingOrderService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :memCode',
-          { memCode },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', memCode)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .leftJoin('order.orderHeader', 'header')

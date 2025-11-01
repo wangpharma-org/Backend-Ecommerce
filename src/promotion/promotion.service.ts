@@ -8,6 +8,7 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
+  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -142,68 +143,57 @@ export class PromotionService {
     mem_code: string;
     sort_by?: number;
   }) {
-    // console.log(data);
     try {
-      const tier = await this.promotionTierRepo.findOne({
-        where: {
-          tier_id: data.tier_id,
-          promotion: {
-            status: true,
-            start_date: LessThanOrEqual(new Date()),
-            end_date: MoreThanOrEqual(new Date()),
-          },
-        },
-        relations: {
-          conditions: { product: { inCarts: true } },
-        },
-        select: {
-          tier_id: true,
-          tier_name: true,
-          min_amount: true,
-          description: true,
-          tier_postter: true,
-          conditions: {
-            cond_id: true,
-            product: {
-              pro_code: true,
-              pro_name: true,
-              pro_priceA: true,
-              pro_priceB: true,
-              pro_priceC: true,
-              pro_imgmain: true,
-              pro_unit1: true,
-              pro_unit2: true,
-              pro_unit3: true,
-              pro_promotion_amount: true,
-              pro_promotion_month: true,
-              pro_stock: true,
-              pro_sale_amount: true,
-              order_quantity: true,
-              pro_lowest_stock: true,
-              inCarts: {
-                mem_code: true,
-                spc_amount: true,
-                spc_unit: true,
-              },
-            },
-          },
-        },
-      });
+      const tier = await this.promotionTierRepo
+        .createQueryBuilder('tier')
+        .leftJoinAndSelect('tier.promotion', 'promotion')
+        .leftJoinAndSelect('tier.conditions', 'condition')
+        .leftJoinAndSelect('condition.product', 'product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :mem_code AND cart.is_reward = false',
+          { mem_code: data.mem_code },
+        )
+        .where('tier.tier_id = :tier_id', { tier_id: data.tier_id })
+        .andWhere('promotion.status = true')
+        .andWhere('promotion.start_date <= NOW()')
+        .andWhere('promotion.end_date >= NOW()')
+        .select([
+          'tier.tier_id',
+          'tier.tier_name',
+          'tier.min_amount',
+          'tier.description',
+          'tier.tier_postter',
+
+          'condition.cond_id',
+
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_promotion_amount',
+          'product.pro_promotion_month',
+          'product.pro_stock',
+          'product.pro_sale_amount',
+          'product.order_quantity',
+          'product.pro_lowest_stock',
+
+          'cart.mem_code',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.is_reward',
+        ])
+        .getOne();
 
       if (!tier) return null;
 
-      tier.conditions = tier.conditions.map((cond) => ({
-        ...cond,
-        product: {
-          ...cond.product,
-          inCarts:
-            cond.product.inCarts?.filter(
-              (cart) => cart.mem_code === data.mem_code,
-            ) ?? [],
-        },
-      }));
-
-      if (tier?.conditions) {
+      if (tier.conditions) {
         tier.conditions = tier.conditions.sort((a, b) => {
           if (data.sort_by) {
             switch (data.sort_by) {
@@ -224,7 +214,6 @@ export class PromotionService {
           return a.product.pro_name.localeCompare(b.product.pro_name);
         });
       }
-
       return tier;
     } catch {
       throw new Error(`Failed to get tier products`);
@@ -234,7 +223,7 @@ export class PromotionService {
   async getAllTiers() {
     const Today = new Date();
     try {
-      return await this.promotionTierRepo.find({
+      const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
@@ -243,6 +232,29 @@ export class PromotionService {
           },
         },
       });
+      const reward = await this.promotionRewardRepo.find({
+        where: {
+          tier: {
+            tier_id: In(poster.map((p) => p.tier_id)),
+          },
+        },
+        relations: {
+          tier: true,
+          giftProduct: true,
+        },
+        select: {
+          tier: {
+            tier_id: true,
+          },
+          giftProduct: {
+            pro_code: true,
+            pro_name: true,
+            pro_imgmain: true,
+          },
+        },
+      });
+
+      return { poster, reward };
     } catch {
       throw new Error(`Failed to get tiers`);
     }
@@ -295,7 +307,7 @@ export class PromotionService {
 
   async addPromotion(data: {
     promo_name: string;
-    creditor_code: string;
+    creditor_code: string | null;
     start_date: Date;
     end_date: Date;
     status: boolean;
@@ -304,14 +316,16 @@ export class PromotionService {
       // console.log(data);
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
-        creditor: { creditor_code: data.creditor_code },
+        creditor: data.creditor_code
+          ? { creditor_code: data.creditor_code }
+          : undefined,
         start_date: data.start_date,
         end_date: data.end_date,
         status: data.status,
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
-      // console.log(error);
+      console.log(error);
       throw new Error(`Failed to add promotion`);
     }
   }
@@ -525,6 +539,8 @@ export class PromotionService {
           cond_id: true,
           product: {
             pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
           },
         },
       });
@@ -647,6 +663,142 @@ export class PromotionService {
     } catch (error) {
       console.error('Error fetching promotions:', error);
       throw new Error('Failed to get active promotions');
+    }
+  }
+
+  async setAllProducts(tier_id: number, status: boolean) {
+    try {
+      if (status === true) {
+        await this.promotionConditionRepo.delete({ tier: { tier_id } });
+        await this.promotionTierRepo.update(tier_id, {
+          all_products: true,
+        });
+        return 'All products set successfully for the tier';
+      } else {
+        await this.promotionTierRepo.update(tier_id, {
+          all_products: false,
+        });
+        return 'Tier set to specific products successfully';
+      }
+    } catch (error) {
+      console.error(error);
+      throw new Error('Failed to set all products for the tier');
+    }
+  }
+
+  async getTierWithProCode(pro_code: string, mem_code: string) {
+    try {
+      const tierCondition = await this.promotionConditionRepo
+        .createQueryBuilder('condition')
+        .leftJoinAndSelect('condition.product', 'product')
+        .leftJoinAndSelect('condition.tier', 'tier')
+        .leftJoinAndSelect('tier.promotion', 'promotion')
+        .leftJoinAndSelect('tier.conditions', 'tier_conditions')
+        .leftJoinAndSelect('tier_conditions.product', 'tier_product')
+        .leftJoinAndSelect(
+          'tier_product.inCarts',
+          'cart',
+          'cart.mem_code = :mem_code AND cart.is_reward = false',
+        )
+        .setParameter('mem_code', mem_code)
+        .leftJoinAndSelect('tier.rewards', 'rewards')
+        .leftJoinAndSelect('rewards.giftProduct', 'gift_product')
+        .leftJoinAndSelect('product.flashsale', 'product_flashsale')
+        .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
+        .where('product.pro_code = :pro_code', { pro_code })
+        .andWhere('promotion.status = true')
+        .andWhere('promotion.start_date <= NOW()')
+        .andWhere('promotion.end_date >= NOW()')
+        .select([
+          'condition.cond_id',
+          'tier.tier_id',
+          'tier.tier_name',
+          'tier.min_amount',
+          'tier.description',
+          'tier.tier_postter',
+
+          // เงื่อนไขใน tier
+          'tier_conditions.cond_id',
+
+          // ข้อมูล product
+          'tier_product.pro_code',
+          'tier_product.pro_name',
+          'tier_product.pro_priceA',
+          'tier_product.pro_priceB',
+          'tier_product.pro_priceC',
+          'tier_product.pro_imgmain',
+          'tier_product.pro_unit1',
+          'tier_product.pro_unit2',
+          'tier_product.pro_unit3',
+          'tier_product.pro_promotion_amount',
+          'tier_product.pro_promotion_month',
+          'tier_product.pro_stock',
+          'tier_product.pro_sale_amount',
+          'tier_product.pro_lowest_stock',
+          'cart.mem_code',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'product_flashsale.id',
+          'product_flashsale.limit',
+          'flashsale.promotion_id',
+          'flashsale.date',
+          'flashsale.time_start',
+          'flashsale.time_end',
+          // ของรางวัล
+          'rewards.reward_id',
+          'rewards.qty',
+          'rewards.unit',
+          'gift_product.pro_code',
+          'gift_product.pro_name',
+          'gift_product.pro_imgmain',
+          'gift_product.pro_unit1',
+          'gift_product.pro_unit2',
+          'gift_product.pro_unit3',
+        ])
+        .getMany();
+      return tierCondition;
+    } catch {
+      throw new Error('Failed to get tier with product code');
+    }
+  }
+
+  async getTierAllProduct() {
+    try {
+      return await this.promotionTierRepo.find({
+        where: {
+          all_products: true,
+          promotion: {
+            status: true,
+            start_date: LessThanOrEqual(new Date()),
+            end_date: MoreThanOrEqual(new Date()),
+          },
+        },
+      });
+    } catch {
+      throw new Error(`Failed to get tier with all products`);
+    }
+  }
+
+  async getRewardByTierId(tier_id: number) {
+    try {
+      return await this.promotionRewardRepo.find({
+        where: { tier: { tier_id } },
+        relations: { giftProduct: true },
+        select: {
+          reward_id: true,
+          qty: true,
+          unit: true,
+          giftProduct: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+            pro_imgmain: true,
+          },
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      throw new Error(`Failed to get reward by tier id`);
     }
   }
 }

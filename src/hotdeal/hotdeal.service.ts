@@ -23,7 +23,7 @@ export class HotdealService {
     private readonly productService: ProductsService,
     @Inject(forwardRef(() => ShoppingCartService))
     private readonly shoppingCartService: ShoppingCartService,
-  ) { }
+  ) {}
 
   // ตรวจสอบแล้วว่าใช้ได้
   async find(pro_code: string): Promise<HotdealEntity | null> {
@@ -108,11 +108,17 @@ export class HotdealService {
   }
 
   // ตรวจสอบและแก้ไขแล้ว
-  async saveHotdeal(datainput: HotdealInput, id?: number, order?: number): Promise<string> {
+  async saveHotdeal(
+    datainput: HotdealInput,
+    id?: number,
+    order?: number,
+  ): Promise<string> {
     try {
       console.log('Hotdeal Input Data:', datainput, id, order);
       if (id) {
-        const existingHotdeal = await this.hotdealRepo.findOne({ where: { id: id }, });
+        const existingHotdeal = await this.hotdealRepo.findOne({
+          where: { id: id },
+        });
         if (existingHotdeal && existingHotdeal.order !== order) {
           const hotdealId = existingHotdeal.id === id;
           if (hotdealId) {
@@ -202,9 +208,9 @@ export class HotdealService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :mem_code',
-          { mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', mem_code)
         .leftJoinAndSelect(
           'product2.inCarts',
           'cart2',
@@ -245,22 +251,22 @@ export class HotdealService {
       const pickProductFields = (product: ProductType | null | undefined) =>
         product
           ? {
-            pro_code: product.pro_code,
-            pro_name: product.pro_name,
-            pro_priceA: product.pro_priceA,
-            pro_priceB: product.pro_priceB,
-            pro_priceC: product.pro_priceC,
-            pro_imgmain: product.pro_imgmain,
-            pro_ratio1: product.pro_ratio1,
-            pro_ratio2: product.pro_ratio2,
-            pro_ratio3: product.pro_ratio3,
-            pro_unit1: product.pro_unit1,
-            pro_unit2: product.pro_unit2,
-            pro_unit3: product.pro_unit3,
-            pro_stock: product.pro_stock,
-            order_quantity: product.order_quantity,
-            pro_lowest_stock: product.pro_lowest_stock,
-          }
+              pro_code: product.pro_code,
+              pro_name: product.pro_name,
+              pro_priceA: product.pro_priceA,
+              pro_priceB: product.pro_priceB,
+              pro_priceC: product.pro_priceC,
+              pro_imgmain: product.pro_imgmain,
+              pro_ratio1: product.pro_ratio1,
+              pro_ratio2: product.pro_ratio2,
+              pro_ratio3: product.pro_ratio3,
+              pro_unit1: product.pro_unit1,
+              pro_unit2: product.pro_unit2,
+              pro_unit3: product.pro_unit3,
+              pro_stock: product.pro_stock,
+              order_quantity: product.order_quantity,
+              pro_lowest_stock: product.pro_lowest_stock,
+            }
           : null;
 
       return {
@@ -273,9 +279,9 @@ export class HotdealService {
         product2: pickProductFields(hotdeal.product2 as ProductType),
         shopping_cart: mem_code
           ? {
-            product_cart: (hotdeal.product as ProductType)?.inCarts || [],
-            product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
-          }
+              product_cart: (hotdeal.product as ProductType)?.inCarts || [],
+              product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
+            }
           : 'ไม่เจอข้อมูล',
       };
     });
@@ -288,17 +294,17 @@ export class HotdealService {
     shopping_cart: { pro1_unit: string; pro1_amount: string }[],
   ): Promise<
     | {
-      pro_code: string;
-      match: boolean;
-      countFreeBies: string;
-      product2: { pro_code: string; pro_name: string };
-      hotdeal: {
-        pro1_amount: string;
-        pro1_unit: string;
-        pro2_amount: string;
-        pro2_unit: string;
-      };
-    }
+        pro_code: string;
+        match: boolean;
+        countFreeBies: string;
+        product2: { pro_code: string; pro_name: string };
+        hotdeal: {
+          pro1_amount: string;
+          pro1_unit: string;
+          pro2_amount: string;
+          pro2_unit: string;
+        };
+      }
     | undefined
   > {
     try {

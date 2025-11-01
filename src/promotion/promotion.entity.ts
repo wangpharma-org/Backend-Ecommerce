@@ -15,7 +15,7 @@ export class PromotionEntity {
   promo_id: number;
 
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.promotions, {
-    nullable: false,
+    nullable: true,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })

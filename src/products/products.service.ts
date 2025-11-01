@@ -237,9 +237,9 @@ export class ProductsService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :mem_code',
-          { mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', mem_code)
         .where('product.pro_promotion_month = :month', { month: numberOfMonth })
         .select([
           'product.pro_code',
@@ -401,7 +401,7 @@ export class ProductsService {
         .leftJoinAndSelect(
           'recommend.products',
           'products',
-          'products.pro_stock > 0',
+          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0'
         )
         .leftJoinAndSelect('products.inCarts', 'inCarts')
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
@@ -578,9 +578,9 @@ export class ProductsService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :memCode',
-          { memCode: data.mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs');
 
@@ -774,9 +774,9 @@ export class ProductsService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :memCode',
-          { memCode: data.mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .where('product.pro_priceA != 0')
