@@ -353,6 +353,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-detail')
   async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
+    console.log('data in controller:', data);
     const result = await this.productsService.getProductDetail(data);
     await this.imagedebugService.UpsercetImg({
       pro_code: result.pro_code,
