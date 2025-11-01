@@ -157,7 +157,7 @@ export class UsersService {
           employee: user.employee ?? undefined,
         };
       }
-      throw new Error('No recent purchase within 1 year');
+      return 'Purchase within 1 year';
     } catch (error) {
       console.error('Error in checklatestPurchase:', error);
       throw new Error('Error retrieving latest purchase date');
