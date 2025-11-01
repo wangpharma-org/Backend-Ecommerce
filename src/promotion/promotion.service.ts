@@ -254,7 +254,19 @@ export class PromotionService {
         },
       });
 
-      return { poster, reward };
+      const limitedReward = Object.values(
+        reward.reduce(
+          (acc: Record<number, typeof reward>, item) => {
+            const id = item.tier.tier_id;
+            if (!acc[id]) acc[id] = [];
+            if (acc[id].length < 3) acc[id].push(item);
+            return acc;
+          },
+          {} as Record<number, typeof reward>,
+        ),
+      ).flat();
+
+      return { poster, reward: limitedReward };
     } catch {
       throw new Error(`Failed to get tiers`);
     }
