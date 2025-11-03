@@ -144,6 +144,12 @@ export class PromotionService {
     sort_by?: number;
   }) {
     try {
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
+
       const tier = await this.promotionTierRepo
         .createQueryBuilder('tier')
         .leftJoinAndSelect('tier.promotion', 'promotion')
@@ -157,8 +163,8 @@ export class PromotionService {
         )
         .where('tier.tier_id = :tier_id', { tier_id: data.tier_id })
         .andWhere('promotion.status = true')
-        .andWhere('promotion.start_date <= NOW()')
-        .andWhere('promotion.end_date >= NOW()')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'tier.tier_id',
           'tier.tier_name',
@@ -184,6 +190,7 @@ export class PromotionService {
           'product.pro_sale_amount',
           'product.order_quantity',
           'product.pro_lowest_stock',
+          'product.viwers',
 
           'cart.mem_code',
           'cart.spc_amount',
@@ -285,12 +292,14 @@ export class PromotionService {
   async getAllTiersProduct(): Promise<string[]> {
     try {
       const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const tiers = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(Today),
-            end_date: MoreThanOrEqual(Today),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
         relations: {

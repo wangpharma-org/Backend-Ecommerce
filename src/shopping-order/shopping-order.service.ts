@@ -584,6 +584,7 @@ export class ShoppingOrderService {
           'product.order_quantity',
           'product.pro_promotion_month',
           'product.pro_promotion_amount',
+          'product.viwers',
           'header.soh_datetime',
           'cart.spc_id',
           'cart.spc_amount',
