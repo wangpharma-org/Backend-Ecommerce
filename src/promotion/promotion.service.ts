@@ -229,23 +229,16 @@ export class PromotionService {
   }
 
   async getAllTiers() {
-    const now = new Date();
-    const Today = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0,
-      0,
-      0,
-      0,
-    );
+    const Today = new Date();
+    const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
     try {
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(Today),
-            end_date: MoreThanOrEqual(Today),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
       });
@@ -802,13 +795,16 @@ export class PromotionService {
 
   async getTierAllProduct() {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       return await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(new Date()),
-            end_date: MoreThanOrEqual(new Date()),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
       });
