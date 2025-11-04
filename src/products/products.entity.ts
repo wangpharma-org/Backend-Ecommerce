@@ -162,6 +162,9 @@ export class ProductEntity {
   @Column({ nullable: true, type: 'int' })
   sale_amount_day: number | null;
 
+  @Column({ nullable: true, type: 'int' })
+  viwers: number | null;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',

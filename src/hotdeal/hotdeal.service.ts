@@ -242,6 +242,7 @@ export class HotdealService {
         pro_unit1: string;
         pro_unit2: string;
         pro_unit3: string;
+        viwers: number;
         pro_stock: number;
         order_quantity: number;
         pro_lowest_stock: number;
@@ -264,6 +265,7 @@ export class HotdealService {
               pro_unit2: product.pro_unit2,
               pro_unit3: product.pro_unit3,
               pro_stock: product.pro_stock,
+              viwers: product.viwers,
               order_quantity: product.order_quantity,
               pro_lowest_stock: product.pro_lowest_stock,
             }

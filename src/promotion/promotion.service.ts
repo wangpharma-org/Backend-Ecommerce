@@ -144,6 +144,12 @@ export class PromotionService {
     sort_by?: number;
   }) {
     try {
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
+
       const tier = await this.promotionTierRepo
         .createQueryBuilder('tier')
         .leftJoinAndSelect('tier.promotion', 'promotion')
@@ -157,8 +163,8 @@ export class PromotionService {
         )
         .where('tier.tier_id = :tier_id', { tier_id: data.tier_id })
         .andWhere('promotion.status = true')
-        .andWhere('promotion.start_date <= NOW()')
-        .andWhere('promotion.end_date >= NOW()')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'tier.tier_id',
           'tier.tier_name',
@@ -184,6 +190,7 @@ export class PromotionService {
           'product.pro_sale_amount',
           'product.order_quantity',
           'product.pro_lowest_stock',
+          'product.viwers',
 
           'cart.mem_code',
           'cart.spc_amount',
@@ -222,23 +229,16 @@ export class PromotionService {
   }
 
   async getAllTiers() {
-    const now = new Date();
-    const Today = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0,
-      0,
-      0,
-      0,
-    );
+    const Today = new Date();
+    const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
     try {
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(Today),
-            end_date: MoreThanOrEqual(Today),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
       });
@@ -285,12 +285,14 @@ export class PromotionService {
   async getAllTiersProduct(): Promise<string[]> {
     try {
       const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const tiers = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(Today),
-            end_date: MoreThanOrEqual(Today),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
         relations: {
@@ -713,6 +715,9 @@ export class PromotionService {
 
   async getTierWithProCode(pro_code: string, mem_code: string) {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const tierCondition = await this.promotionConditionRepo
         .createQueryBuilder('condition')
         .leftJoinAndSelect('condition.product', 'product')
@@ -732,8 +737,8 @@ export class PromotionService {
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
         .where('product.pro_code = :pro_code', { pro_code })
         .andWhere('promotion.status = true')
-        .andWhere('promotion.start_date <= NOW()')
-        .andWhere('promotion.end_date >= NOW()')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'condition.cond_id',
           'tier.tier_id',
@@ -755,6 +760,7 @@ export class PromotionService {
           'tier_product.pro_unit1',
           'tier_product.pro_unit2',
           'tier_product.pro_unit3',
+          'tier_product.viwers',
           'tier_product.pro_promotion_amount',
           'tier_product.pro_promotion_month',
           'tier_product.pro_stock',
@@ -789,13 +795,16 @@ export class PromotionService {
 
   async getTierAllProduct() {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       return await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(new Date()),
-            end_date: MoreThanOrEqual(new Date()),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
       });

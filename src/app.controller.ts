@@ -1650,7 +1650,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/keysearch/update-product-keysearch')
-  async updateKeysearch(@Body() data: { pro_code: string; keysearch: string }) {
+  async updateKeysearch(
+    @Body() data: { pro_code: string; keysearch: string; viewers: number },
+  ) {
     await this.productKeySearch.updateKeyword(data);
   }
 
