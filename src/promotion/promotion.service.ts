@@ -722,6 +722,9 @@ export class PromotionService {
 
   async getTierWithProCode(pro_code: string, mem_code: string) {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const tierCondition = await this.promotionConditionRepo
         .createQueryBuilder('condition')
         .leftJoinAndSelect('condition.product', 'product')
@@ -741,8 +744,8 @@ export class PromotionService {
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
         .where('product.pro_code = :pro_code', { pro_code })
         .andWhere('promotion.status = true')
-        .andWhere('promotion.start_date <= NOW()')
-        .andWhere('promotion.end_date >= NOW()')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'condition.cond_id',
           'tier.tier_id',
@@ -764,6 +767,7 @@ export class PromotionService {
           'tier_product.pro_unit1',
           'tier_product.pro_unit2',
           'tier_product.pro_unit3',
+          'tier_product.viwers',
           'tier_product.pro_promotion_amount',
           'tier_product.pro_promotion_month',
           'tier_product.pro_stock',
