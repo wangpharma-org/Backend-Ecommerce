@@ -31,7 +31,7 @@ export class PromotionRewardEntity {
   @Column({ type: 'int', nullable: true, default: null })
   free_product_limit: number;
 
-  @Column({ type: 'int', nullable: true, default: null })
+  @Column({ type: 'int', nullable: true, default: 0 })
   free_product_count: number;
 
   @Index()
