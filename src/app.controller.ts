@@ -1884,4 +1884,10 @@ export class AppController {
       data.limit,
     );
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/reset-limit-count')
+  async resetLimitReward(@Body() data: { pro_code: string }) {
+    return await this.promotionService.resetCountLimit(data.pro_code);
+  }
 }

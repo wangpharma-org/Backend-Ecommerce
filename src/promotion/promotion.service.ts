@@ -850,4 +850,17 @@ export class PromotionService {
       throw new Error(`Failed to update reward limit`);
     }
   }
+
+  async resetCountLimit(pro_code: string) {
+    try {
+      await this.promotionRewardRepo.update(
+        { giftProduct: { pro_code: pro_code } },
+        {
+          free_product_count: 0,
+        },
+      );
+    } catch {
+      throw new Error(`Failed to update reward limit`);
+    }
+  }
 }
