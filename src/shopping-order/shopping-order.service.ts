@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
@@ -13,6 +13,7 @@ import axios from 'axios';
 import { submitOrder } from 'src/logger/submitOrder.logger';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
+import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
 
 interface CountSale {
   pro_code: string;
@@ -36,6 +37,8 @@ export class ShoppingOrderService {
     private readonly dataSource: DataSource,
     @InjectRepository(SaleLogEntity)
     private readonly saleLogEntity: Repository<SaleLogEntity>,
+    @InjectRepository(PromotionRewardEntity)
+    private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
   ) {}
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
@@ -312,16 +315,87 @@ export class ShoppingOrderService {
             });
           });
 
-          const orderRewards = rewardItems.map((item) =>
-            manager.create(ShoppingOrderEntity, {
+          const orderRewards: ShoppingOrderEntity[] = [];
+
+          const limitItem = await this.promotionRewardEntity.find({
+            where: {
+              giftProduct: { pro_code: In(rewardItems.map((r) => r.pro_code)) },
+            },
+            select: {
+              giftProduct: { pro_code: true },
+              free_product_limit: true,
+              free_product_count: true,
+            },
+            relations: ['giftProduct'],
+          });
+
+          for (const item of rewardItems) {
+            await manager.increment(
+              PromotionRewardEntity,
+              { giftProduct: { pro_code: item.pro_code } },
+              'free_product_count',
+              item.spc_amount,
+            );
+
+            const updated = await manager.findOne(PromotionRewardEntity, {
+              where: { giftProduct: { pro_code: item.pro_code } },
+              relations: ['giftProduct'],
+            });
+
+            console.log('limitItem:', limitItem);
+
+            const limitData = limitItem.find(
+              (l) =>
+                l.giftProduct.pro_code === item.pro_code &&
+                l.free_product_limit !== null,
+            );
+
+            if (
+              updated &&
+              limitData &&
+              updated.free_product_count >= limitData.free_product_limit
+            ) {
+              await axios.post(this.slackUrl, {
+                text: `🚨 *แจ้งเตือนจำนวนของแถมถึงจุดที่กำหนดไว้แล้ว!*`,
+                attachments: [
+                  {
+                    color: '#FF0000',
+                    fields: [
+                      {
+                        title: 'สินค้า',
+                        value: `${updated.giftProduct.pro_code}`,
+                        short: true,
+                      },
+                      {
+                        title: 'จำนวนแจกปัจจุบัน',
+                        value: `${updated.free_product_count}/${limitData.free_product_limit}`,
+                        short: true,
+                      },
+                    ],
+                    footer: 'ระบบโปรโมชั่นอัตโนมัติ',
+                    ts: Math.floor(Date.now() / 1000),
+                  },
+                  {
+                    color: '#FFA500',
+                    text: 'กรุณาตรวจสอบ *Stock ของแถม* เพื่อป้องกันการแจกเกินจำนวนที่กำหนดไว้',
+                  },
+                ],
+              });
+            }
+
+            const orderItem = manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
               pro_code: item.pro_code,
               spo_unit: item.spc_unit,
               spo_qty: item.spc_amount,
               spo_price_unit: 0,
               spo_total_decimal: 0,
-            }),
-          );
+            });
+
+            orderRewards.push(orderItem);
+          }
+
+          await manager.save(orderRewards);
           submitLogContext.push({
             orderSalesCount: orderSales.length,
             orderRewardsCount: orderRewards.length,

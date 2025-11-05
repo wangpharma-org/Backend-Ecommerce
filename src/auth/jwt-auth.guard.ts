@@ -30,8 +30,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         throw new ForbiddenException('Missing Authorization token');
       }
 
-      console.log('Use Guard', token);
-
       try {
         const payload: { permission: string } =
           await this.jwtService.verifyAsync(token, {

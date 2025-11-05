@@ -1873,4 +1873,21 @@ export class AppController {
   async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
     return await this.promotionService.getRewardByTierId(tier_id);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/limit-update')
+  async updatePromotionLimit(
+    @Body() data: { pro_code: string; limit: number },
+  ) {
+    return await this.promotionService.rewardUpdateLimit(
+      data.pro_code,
+      data.limit,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/reset-limit-count')
+  async resetLimitReward(@Body() data: { pro_code: string }) {
+    return await this.promotionService.resetCountLimit(data.pro_code);
+  }
 }

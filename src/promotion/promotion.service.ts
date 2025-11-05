@@ -540,6 +540,8 @@ export class PromotionService {
           reward_id: true,
           qty: true,
           unit: true,
+          free_product_count: true,
+          free_product_limit: true,
           giftProduct: {
             pro_code: true,
             pro_name: true,
@@ -833,6 +835,32 @@ export class PromotionService {
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get reward by tier id`);
+    }
+  }
+
+  async rewardUpdateLimit(pro_code: string, limit: number) {
+    try {
+      await this.promotionRewardRepo.update(
+        { giftProduct: { pro_code: pro_code } },
+        {
+          free_product_limit: limit,
+        },
+      );
+    } catch {
+      throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async resetCountLimit(pro_code: string) {
+    try {
+      await this.promotionRewardRepo.update(
+        { giftProduct: { pro_code: pro_code } },
+        {
+          free_product_count: 0,
+        },
+      );
+    } catch {
+      throw new Error(`Failed to update reward limit`);
     }
   }
 }
