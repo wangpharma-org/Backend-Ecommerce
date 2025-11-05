@@ -1873,4 +1873,15 @@ export class AppController {
   async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
     return await this.promotionService.getRewardByTierId(tier_id);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/limit-update')
+  async updatePromotionLimit(
+    @Body() data: { pro_code: string; limit: number },
+  ) {
+    return await this.promotionService.rewardUpdateLimit(
+      data.pro_code,
+      data.limit,
+    );
+  }
 }
