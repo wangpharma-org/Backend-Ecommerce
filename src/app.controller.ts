@@ -57,6 +57,10 @@ import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
+import { ContractLogService } from './contract-log/contract-log.service';
+import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
+import { ContractLogPerson } from './contract-log/contract-log-person.entity';
+import { CreditorEntity } from './products/creditor.entity';
 
 interface JwtPayload {
   username: string;
@@ -107,6 +111,7 @@ export class AppController {
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
     private readonly recommendService: RecommendService,
+    private readonly contractLogService: ContractLogService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -1868,5 +1873,89 @@ export class AppController {
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
   async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
     return await this.promotionService.getRewardByTierId(tier_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/create-log-banner')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFileBanner(
+    @UploadedFile() file: Express.Multer.File,
+    @Body()
+    data: {
+      urlPath: Express.Multer.File;
+      name?: string;
+      type?: 'wang' | 'attestor' | 'creditor' | 'banner';
+      bannerName?: string;
+    },
+  ): Promise<{
+    Image: number;
+    personId?: number;
+    type?: string;
+    bannerName?: string;
+    urlBanner?: string;
+  }> {
+    console.log('data:', data.urlPath);
+    const result = await this.contractLogService.uploadFile({
+      urlPath: file,
+      bannerName: data.bannerName,
+      type: data.type,
+      name: data.name,
+    });
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/banner')
+  async getContractLogBanner(
+    @Body('bannerId') bannerId: number | 'all' | undefined,
+  ): Promise<ContractLogBanner | ContractLogBanner[] | null> {
+    const result = await this.contractLogService.getContractLogBanner(bannerId);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/dropdown')
+  async selectDataDropdown(
+    @Body() data: { group: string; type: string },
+  ): Promise<{ type: string; data: ContractLogPerson[] }> {
+    console.log(data);
+    const result = await this.contractLogService.selectDataDropdown(
+      data.group,
+      data.type,
+    );
+    return { type: data.type, data: result.data };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/create-banner')
+  async createContractLogBanner(
+    @Body()
+    data: {
+      selectedWang?: number;
+      selectedAttestor?: number;
+      selectedAttestor2?: number;
+      selectedCreditor?: number;
+      bannerId?: number;
+      bannerName?: string;
+      signingDate?: Date;
+      creditorCode?: string;
+      startDate?: Date;
+      endDate?: Date;
+      paymentDue?: Date;
+      address?: string;
+    },
+  ): Promise<ContractLogBanner> {
+    console.log(data);
+
+    const result = await this.contractLogService.createContractLog(data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/search-creditor')
+  async getDataCreditor(
+    @Body('keyword') keyword?: string,
+  ): Promise<CreditorEntity[] | []> {
+    return await this.productsService.getDataCreditor(keyword);
   }
 }

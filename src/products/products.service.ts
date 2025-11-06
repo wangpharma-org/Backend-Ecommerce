@@ -401,7 +401,7 @@ export class ProductsService {
         .leftJoinAndSelect(
           'recommend.products',
           'products',
-          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0'
+          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0',
         )
         .leftJoinAndSelect('products.inCarts', 'inCarts')
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
@@ -1373,6 +1373,42 @@ export class ProductsService {
     } catch (error) {
       console.error('Error updating sale amount day:', error);
       throw new Error('Error updating sale amount day');
+    }
+  }
+
+  async getDataCreditor(keyword?: string): Promise<CreditorEntity[] | []> {
+    try {
+      console.log('Keyword for creditor search:', keyword);
+      const creditors = await this.creditorRepo
+        .createQueryBuilder('creditor')
+        .where(
+          'creditor.creditor_code LIKE :kw OR creditor.creditor_name LIKE :kw',
+          { kw: `%${keyword}%` },
+        )
+        .take(10)
+        .getMany();
+      console.log('Found creditors:', creditors);
+      return creditors;
+    } catch (error) {
+      console.error('Error fetching creditor data:', error);
+      throw new Error('Error fetching creditor data');
+    }
+  }
+
+  async saveAddress(creditor: string, address?: string): Promise<void> {
+    try {
+      const findCreditor = await this.creditorRepo.findOne({
+        where: { creditor_code: creditor, creditor_address: address },
+      });
+      if (address && !findCreditor) {
+        await this.creditorRepo.update(
+          { creditor_code: creditor },
+          { creditor_address: address },
+        );
+      }
+    } catch (error) {
+      console.error('Error saving address:', error);
+      throw new Error('Error saving address');
     }
   }
 }
