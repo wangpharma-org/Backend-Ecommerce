@@ -25,9 +25,6 @@ export class ContractLogBanner {
   signingDate: Date;
 
   @Column({ nullable: true, default: null })
-  wangCreate: boolean;
-
-  @Column({ nullable: true, default: null })
   creditorEmpId: number;
 
   @Column({ nullable: true, default: null })
