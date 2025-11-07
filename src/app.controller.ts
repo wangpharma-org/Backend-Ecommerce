@@ -1958,4 +1958,36 @@ export class AppController {
   ): Promise<CreditorEntity[] | []> {
     return await this.productsService.getDataCreditor(keyword);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/update-creditor-person')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateContractLogBanner(
+    @Body() data: { contractId: number; name?: string },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ContractLogBanner | void> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    console.log('name:', data.name);
+    return await this.contractLogService.updateContractLogBanner({
+      bannerId: data.contractId,
+      urlPath: file,
+      name: data.name,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/upload-signed-contract')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignedContract(
+    @Body() data: { contractId: number; name?: string },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ urlContract: string }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    return await this.contractLogService.uploadSignedContract({
+      bannerId: data.contractId,
+      urlPath: file,
+    });
+  }
 }

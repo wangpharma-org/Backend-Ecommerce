@@ -107,6 +107,7 @@ export class ContractLogService {
         return await this.contractLogBanner.find({
           relations: [
             'upload',
+            'upload2',
             'personByWangEmp',
             'personByAttestor',
             'personByAttestor2',
@@ -115,44 +116,59 @@ export class ContractLogService {
           ],
         });
       } else {
-        return await this.contractLogBanner.findOne({
-          where: { bannerId },
-          relations: [
-            'upload',
-            'personByWangEmp',
-            'personByAttestor',
-            'personByAttestor2',
-            'personByCreditor',
-            'creditor',
-          ],
-          select: {
-            personByWangEmp: {
-              personId: true,
-              personName: true,
-            },
-            personByAttestor: {
-              personId: true,
-              personName: true,
-            },
-            personByAttestor2: {
-              personId: true,
-              personName: true,
-            },
-            personByCreditor: {
-              personId: true,
-              personName: true,
-            },
-            creditor: {
-              creditor_code: true,
-              creditor_name: true,
-              creditor_address: true,
-            },
-            upload: {
-              uploadId: true,
-              urlPath: true,
-            },
-          },
-        });
+        return await this.contractLogBanner
+          .createQueryBuilder('banner')
+          .leftJoinAndSelect('banner.upload', 'upload')
+          .leftJoinAndSelect('banner.upload2', 'upload2')
+          .leftJoinAndSelect('banner.personByWangEmp', 'personByWangEmp')
+          .leftJoinAndSelect(
+            'personByWangEmp.uploads',
+            'personByWangEmpUploads',
+          )
+          .leftJoinAndSelect('banner.personByAttestor', 'personByAttestor')
+          .leftJoinAndSelect(
+            'personByAttestor.uploads',
+            'personByAttestorUploads',
+          )
+          .leftJoinAndSelect('banner.personByAttestor2', 'personByAttestor2')
+          .leftJoinAndSelect(
+            'personByAttestor2.uploads',
+            'personByAttestor2Uploads',
+          )
+          .leftJoinAndSelect('banner.personByCreditor', 'personByCreditor')
+          .leftJoinAndSelect(
+            'personByCreditor.uploads',
+            'personByCreditorUploads',
+          )
+          .leftJoinAndSelect('banner.creditor', 'creditor')
+          .where('banner.bannerId = :bannerId', { bannerId })
+          .select([
+            'banner',
+            'upload.uploadId',
+            'upload.urlPath',
+            'upload2.uploadId',
+            'upload2.urlPath',
+            'personByWangEmp.personId',
+            'personByWangEmp.personName',
+            'personByWangEmpUploads.uploadId',
+            'personByWangEmpUploads.urlPath',
+            'personByAttestor.personId',
+            'personByAttestor.personName',
+            'personByAttestorUploads.uploadId',
+            'personByAttestorUploads.urlPath',
+            'personByAttestor2.personId',
+            'personByAttestor2.personName',
+            'personByAttestor2Uploads.uploadId',
+            'personByAttestor2Uploads.urlPath',
+            'personByCreditor.personId',
+            'personByCreditor.personName',
+            'personByCreditorUploads.uploadId',
+            'personByCreditorUploads.urlPath',
+            'creditor.creditor_code',
+            'creditor.creditor_name',
+            'creditor.creditor_address',
+          ])
+          .getOne();
       }
     } catch (error) {
       console.error('Error fetching banner:', error);
@@ -169,13 +185,17 @@ export class ContractLogService {
       if (group === 'upload' && type === 'wang') {
         console.log('Fetching persons of type wang');
         result.push(
-          ...(await this.contractLogPerson.find({ where: { type: 'wang' } })),
+          ...(await this.contractLogPerson.find({
+            where: { type: 'wang' },
+            relations: ['uploads'],
+          })),
         );
       } else if (group === 'upload' && type === 'attestor') {
         console.log('Fetching persons of type attestor');
         result.push(
           ...(await this.contractLogPerson.find({
             where: { type: 'attestor' },
+            relations: ['uploads'],
           })),
         );
       }
@@ -225,6 +245,89 @@ export class ContractLogService {
     } catch (error) {
       console.error('Error creating contract log:', error);
       throw new Error('Failed to create contract log');
+    }
+  }
+
+  async updateContractLogBanner(data: {
+    bannerId: number;
+    urlPath?: Express.Multer.File;
+    name?: string;
+  }): Promise<ContractLogBanner | void> {
+    const { bannerId, urlPath, name } = data;
+    console.log('Updating contract log banner with ID:', bannerId);
+    console.log('File data received:', urlPath);
+    console.log('Name received:', name);
+    if (!urlPath || !urlPath.buffer) {
+      throw new Error(
+        'File buffer is missing. Check your upload configuration and request.',
+      );
+    }
+    try {
+      const params = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${urlPath?.originalname}`,
+        Body: urlPath?.buffer,
+        ContentType: urlPath?.mimetype,
+        ACL: 'public-read',
+      };
+
+      const uploadResult = await this.s3.upload(params).promise();
+
+      const updateData = this.contractLogUpload.create({
+        urlPath: uploadResult.Location,
+      });
+      const savedData = await this.contractLogUpload.save(updateData);
+      console.log('Saved upload data:', savedData);
+
+      const savedDataPerson = await this.contractLogPerson.save({
+        personName: data.name,
+        type: 'creditor',
+        uploads: savedData,
+      });
+      console.log('Saved person data:', savedDataPerson);
+      const updatedBanner = await this.contractLogBanner.update(bannerId, {
+        creditorEmpId: savedDataPerson.personId,
+      });
+      console.log('Updated banner:', updatedBanner);
+      // return await this.contractLogBanner.findOne({ where: { bannerId } });
+    } catch (error) {
+      console.error('Error updating contract log banner:', error);
+      throw new Error('Failed to update contract log banner');
+    }
+  }
+
+  async uploadSignedContract(data: {
+    urlPath?: Express.Multer.File;
+    note?: string;
+    bannerId: number;
+  }): Promise<{ urlContract: string }> {
+    const { urlPath, bannerId } = data;
+    try {
+      if (!urlPath) {
+        throw new Error('File is missing');
+      }
+      const params = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${urlPath?.originalname}`,
+        Body: urlPath?.buffer,
+        ContentType: urlPath?.mimetype,
+        ACL: 'public-read',
+      };
+      const uploadResult = await this.s3.upload(params).promise();
+
+      const newUpload = this.contractLogUpload.create({
+        urlPath: uploadResult.Location,
+      });
+      const savedUpload = await this.contractLogUpload.save(newUpload);
+      console.log('Saved contract upload:', savedUpload);
+
+      await this.contractLogBanner.update(bannerId, {
+        urlContract: savedUpload.uploadId,
+      });
+      return { urlContract: uploadResult.Location };
+    } catch (error) {
+      console.error('Error uploading contract file:', error);
+      throw new Error('Failed to upload contract file');
     }
   }
 }

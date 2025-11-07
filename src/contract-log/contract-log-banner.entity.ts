@@ -51,6 +51,9 @@ export class ContractLogBanner {
   @Column({ nullable: true, default: null })
   attestor2: number;
 
+  @Column({ nullable: true, default: null })
+  urlContract: number;
+
   @ManyToOne(() => ContractLogPerson, (p) => p.bannerByWang, {
     nullable: true,
   })
@@ -79,11 +82,11 @@ export class ContractLogBanner {
   @JoinColumn({ name: 'img_banner', referencedColumnName: 'uploadId' })
   upload: ContractLogUpload;
 
+  @OneToOne(() => ContractLogUpload, { nullable: true })
+  @JoinColumn({ name: 'urlContract', referencedColumnName: 'uploadId' })
+  upload2: ContractLogUpload;
+
   @ManyToOne(() => CreditorEntity, (c) => c.contract_log, { nullable: true })
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
   creditor: CreditorEntity;
-
-  // get person(): ContractLogPerson | undefined {
-  //   return this.personByWangEmp ?? this.personByAttestor;
-  // }
 }
