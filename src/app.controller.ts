@@ -1963,9 +1963,15 @@ export class AppController {
   @Post('/ecom/contract-log/update-creditor-person')
   @UseInterceptors(FileInterceptor('file'))
   async updateContractLogBanner(
-    @Body() data: { contractId: number; name?: string },
+    @Body()
+    data: {
+      contractId: number;
+      name?: string;
+      type?: 'creditor' | 'banner';
+      bannerName?: string;
+    },
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<ContractLogBanner | void> {
+  ): Promise<{ bannerName?: string; img_banner?: number }> {
     console.log('contractId:', data.contractId);
     console.log('urlPath:', file);
     console.log('name:', data.name);
@@ -1973,6 +1979,8 @@ export class AppController {
       bannerId: data.contractId,
       urlPath: file,
       name: data.name,
+      type: data.type,
+      bannerName: data.bannerName,
     });
   }
 

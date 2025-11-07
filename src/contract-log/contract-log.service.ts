@@ -252,11 +252,20 @@ export class ContractLogService {
     bannerId: number;
     urlPath?: Express.Multer.File;
     name?: string;
-  }): Promise<ContractLogBanner | void> {
-    const { bannerId, urlPath, name } = data;
+    type?: 'creditor' | 'banner';
+    bannerName?: string;
+  }): Promise<{
+    creditorEmpId?: number;
+    bannerName?: string;
+    img_banner?: number;
+  }> {
+    const { bannerId, urlPath, name, type, bannerName } = data;
     console.log('Updating contract log banner with ID:', bannerId);
     console.log('File data received:', urlPath);
     console.log('Name received:', name);
+    console.log('Type received:', type);
+    console.log('Banner Name received:', bannerName);
+
     if (!urlPath || !urlPath.buffer) {
       throw new Error(
         'File buffer is missing. Check your upload configuration and request.',
@@ -278,18 +287,26 @@ export class ContractLogService {
       });
       const savedData = await this.contractLogUpload.save(updateData);
       console.log('Saved upload data:', savedData);
+      if (data.type === 'creditor') {
+        const savedDataPerson = await this.contractLogPerson.save({
+          personName: data.name,
+          type: data.type,
+          uploads: savedData,
+        });
+        console.log('Saved person data:', savedDataPerson);
 
-      const savedDataPerson = await this.contractLogPerson.save({
-        personName: data.name,
-        type: 'creditor',
-        uploads: savedData,
-      });
-      console.log('Saved person data:', savedDataPerson);
-      const updatedBanner = await this.contractLogBanner.update(bannerId, {
-        creditorEmpId: savedDataPerson.personId,
-      });
-      console.log('Updated banner:', updatedBanner);
-      // return await this.contractLogBanner.findOne({ where: { bannerId } });
+        await this.contractLogBanner.update(bannerId, {
+          creditorEmpId: savedDataPerson.personId,
+        });
+        return { creditorEmpId: savedDataPerson.personId };
+      } else if (bannerName && type === 'banner') {
+        await this.contractLogBanner.update(bannerId, {
+          bannerName: bannerName,
+          img_banner: savedData.uploadId,
+        });
+        return { bannerName: bannerName, img_banner: savedData.uploadId };
+      }
+      throw new Error('Invalid type provided for update');
     } catch (error) {
       console.error('Error updating contract log banner:', error);
       throw new Error('Failed to update contract log banner');
