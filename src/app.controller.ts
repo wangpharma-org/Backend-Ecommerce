@@ -556,6 +556,7 @@ export class AppController {
       tier_name: string;
       min_amount: number;
       description?: string;
+      detail?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -563,6 +564,7 @@ export class AppController {
       tier_name: data.tier_name,
       min_amount: data.min_amount,
       description: data.description,
+      detail: data.detail,
       file,
     });
   }
@@ -656,6 +658,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-replace')
+  async getProductForKeySearchForReplace() {
+    return this.productsService.getProductForKeySearchForReplace();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tiers/:tier_id')
   async getTierByID(@Param('tier_id') tier_id: number) {
     return this.promotionService.getTierOneById(tier_id);
@@ -730,6 +738,7 @@ export class AppController {
       tier_name?: string;
       min_amount?: number;
       description?: string;
+      detail?: string;
     },
   ) {
     return await this.promotionService.updateTier(data);
@@ -1653,7 +1662,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/keysearch/update-product-keysearch')
-  async updateKeysearch(@Body() data: { pro_code: string; keysearch: string }) {
+  async updateKeysearch(
+    @Body() data: { pro_code: string; keysearch: string; viewers: number },
+  ) {
     await this.productKeySearch.updateKeyword(data);
   }
 
@@ -1663,19 +1674,18 @@ export class AppController {
     return await this.productKeySearch.getProductOne(pro_code);
   }
 
-  //ยังไม่ deploy ใน release 1.10.0 คาดว่าเป็น release ถัดไป(1.11.0)
-  // @UseGuards(JwtAuthGuard)
-  // @Get('/ecom/usercheck_latest_purchase')
-  // async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
-  //   const mem_code = req.user.mem_code;
-  //   const permission = req.user.permission;
-  //   console.log('User permission:', permission);
-  //   if (permission === false) {
-  //     return this.usersService.checklatestPurchase(mem_code);
-  //   }
-  //   console.log('Checking latest purchase for user:', mem_code);
-  //   return { message: 'Check initiated' };
-  // }
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/usercheck_latest_purchase')
+  async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    const permission = req.user.permission;
+    console.log('User permission:', permission);
+    if (permission === false) {
+      return this.usersService.checklatestPurchase(mem_code);
+    }
+    console.log('Checking latest purchase for user:', mem_code);
+    return { message: 'Check initiated' };
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/list')
@@ -2008,6 +2018,31 @@ export class AppController {
     console.log(body);
     return await this.contractLogService.getContractCompanyDays(
       body.companyDayId,
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/limit-update')
+  async updatePromotionLimit(
+    @Body() data: { pro_code: string; limit: number },
+  ) {
+    return await this.promotionService.rewardUpdateLimit(
+      data.pro_code,
+      data.limit,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/reset-limit-count')
+  async resetLimitReward(@Body() data: { pro_code: string }) {
+    return await this.promotionService.resetCountLimit(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/replace-product')
+  async ReplaceProduct(
+    @Body() data: { pro_code: string; replace_pro_code: string },
+  ) {
+    return await this.recommendService.AddReplaceProduct(
+      data.pro_code,
+      data.replace_pro_code,
     );
   }
 
@@ -2073,5 +2108,15 @@ export class AppController {
       companyId: data.contractId,
       urlPath: file,
     });
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/get-product')
+  async GetProductAndReplace(@Body() data: { pro_code: string }) {
+    return await this.recommendService.GetProductAndReplace(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/replace-product-null')
+  async UpdateProductAndReplaceNull(@Body() data: { pro_code: string }) {
+    return await this.recommendService.RemoveReplaceProduct(data.pro_code);
   }
 }

@@ -14,10 +14,11 @@ import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import * as AWS from 'aws-sdk';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
 import { AuthService } from 'src/auth/auth.service';
+import { ProductEntity } from 'src/products/products.entity';
 
 @Injectable()
 export class PromotionService {
@@ -37,6 +38,8 @@ export class PromotionService {
     private readonly promotionRewardRepo: Repository<PromotionRewardEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly authService: AuthService,
+    @InjectRepository(ProductEntity)
+    private readonly productRepo: Repository<ProductEntity>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -144,6 +147,12 @@ export class PromotionService {
     sort_by?: number;
   }) {
     try {
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
+
       const tier = await this.promotionTierRepo
         .createQueryBuilder('tier')
         .leftJoinAndSelect('tier.promotion', 'promotion')
@@ -157,14 +166,15 @@ export class PromotionService {
         )
         .where('tier.tier_id = :tier_id', { tier_id: data.tier_id })
         .andWhere('promotion.status = true')
-        .andWhere('promotion.start_date <= NOW()')
-        .andWhere('promotion.end_date >= NOW()')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'tier.tier_id',
           'tier.tier_name',
           'tier.min_amount',
           'tier.description',
           'tier.tier_postter',
+          'tier.detail',
 
           'condition.cond_id',
 
@@ -183,6 +193,7 @@ export class PromotionService {
           'product.pro_sale_amount',
           'product.order_quantity',
           'product.pro_lowest_stock',
+          'product.viwers',
 
           'cart.mem_code',
           'cart.spc_amount',
@@ -222,13 +233,15 @@ export class PromotionService {
 
   async getAllTiers() {
     const Today = new Date();
+    const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
     try {
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(Today),
-            end_date: MoreThanOrEqual(Today),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
       });
@@ -254,7 +267,19 @@ export class PromotionService {
         },
       });
 
-      return { poster, reward };
+      const limitedReward = Object.values(
+        reward.reduce(
+          (acc: Record<number, typeof reward>, item) => {
+            const id = item.tier.tier_id;
+            if (!acc[id]) acc[id] = [];
+            if (acc[id].length < 3) acc[id].push(item);
+            return acc;
+          },
+          {} as Record<number, typeof reward>,
+        ),
+      ).flat();
+
+      return { poster, reward: limitedReward };
     } catch {
       throw new Error(`Failed to get tiers`);
     }
@@ -263,12 +288,14 @@ export class PromotionService {
   async getAllTiersProduct(): Promise<string[]> {
     try {
       const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const tiers = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(Today),
-            end_date: MoreThanOrEqual(Today),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
         relations: {
@@ -369,6 +396,7 @@ export class PromotionService {
     tier_name: string;
     min_amount: number;
     description?: string;
+    detail?: string;
     file: Express.Multer.File;
   }) {
     // console.log(data);
@@ -400,9 +428,10 @@ export class PromotionService {
         description: data.description,
         promotion: promotion,
         tier_postter: imgData.Location,
+        detail: data.detail,
       });
       await this.promotionTierRepo.save(newTier);
-    } catch (error) {
+    } catch {
       // console.log(error);
       throw new Error(`Failed to add tier to promotion`);
     }
@@ -521,6 +550,8 @@ export class PromotionService {
             pro_unit1: true,
             pro_unit2: true,
             pro_unit3: true,
+            free_product_count: true,
+            free_product_limit: true,
           },
         },
       });
@@ -581,6 +612,7 @@ export class PromotionService {
         tier_name: data.tier_name,
         min_amount: data.min_amount,
         description: data.description,
+        detail: data.description,
       });
       return 'Tier updated successfully';
     } catch (error) {
@@ -688,6 +720,9 @@ export class PromotionService {
 
   async getTierWithProCode(pro_code: string, mem_code: string) {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const tierCondition = await this.promotionConditionRepo
         .createQueryBuilder('condition')
         .leftJoinAndSelect('condition.product', 'product')
@@ -707,8 +742,8 @@ export class PromotionService {
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
         .where('product.pro_code = :pro_code', { pro_code })
         .andWhere('promotion.status = true')
-        .andWhere('promotion.start_date <= NOW()')
-        .andWhere('promotion.end_date >= NOW()')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'condition.cond_id',
           'tier.tier_id',
@@ -730,6 +765,7 @@ export class PromotionService {
           'tier_product.pro_unit1',
           'tier_product.pro_unit2',
           'tier_product.pro_unit3',
+          'tier_product.viwers',
           'tier_product.pro_promotion_amount',
           'tier_product.pro_promotion_month',
           'tier_product.pro_stock',
@@ -764,13 +800,16 @@ export class PromotionService {
 
   async getTierAllProduct() {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       return await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(new Date()),
-            end_date: MoreThanOrEqual(new Date()),
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
           },
         },
       });
@@ -799,6 +838,32 @@ export class PromotionService {
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get reward by tier id`);
+    }
+  }
+
+  async rewardUpdateLimit(pro_code: string, limit: number) {
+    try {
+      await this.productRepo.update(
+        { pro_code: pro_code },
+        {
+          free_product_limit: limit,
+        },
+      );
+    } catch {
+      throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async resetCountLimit(pro_code: string) {
+    try {
+      await this.productRepo.update(
+        { pro_code: pro_code },
+        {
+          free_product_count: 0,
+        },
+      );
+    } catch {
+      throw new Error(`Failed to update reward limit`);
     }
   }
 }

@@ -150,23 +150,14 @@ export class UsersService {
 
       console.log('Difference in days:', diffInDays);
 
-      if (diffInDays < 30) {
-        return `Most recently used within 30 days`;
-      } else if (diffInDays >= 30 && diffInDays < 45) {
-        console.log(
-          'Latest purchase within 30 days:',
-          user.latest_purchase,
-          diffInDays,
-        );
-        return `Latest purchase within 30 days`;
-      } else if (diffInDays >= 45) {
-        console.log('More than 45 days ago', user.latest_purchase, diffInDays);
+      if (diffInDays >= 365) {
+        console.log('More than 1 year ago', user.latest_purchase, diffInDays);
         return {
-          message: 'More than 45 days ago',
+          message: 'More than 1 year ago',
           employee: user.employee ?? undefined,
         };
       }
-      throw new Error('No recent purchase within 30 days');
+      return 'Purchase within 1 year';
     } catch (error) {
       console.error('Error in checklatestPurchase:', error);
       throw new Error('Error retrieving latest purchase date');
