@@ -61,6 +61,7 @@ import { ContractLogService } from './contract-log/contract-log.service';
 import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log/contract-log-person.entity';
 import { CreditorEntity } from './products/creditor.entity';
+import { ContractLogCompanyDay } from './contract-log/contract-log-company-day.entity';
 
 interface JwtPayload {
   username: string;
@@ -1995,6 +1996,81 @@ export class AppController {
     console.log('urlPath:', file);
     return await this.contractLogService.uploadSignedContract({
       bannerId: data.contractId,
+      urlPath: file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/contract-details')
+  async getContractCompanyDays(
+    @Body() body: { companyDayId?: number | 'all' },
+  ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
+    console.log(body);
+    return await this.contractLogService.getContractCompanyDays(
+      body.companyDayId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/create-company-day')
+  async createContractCompanyDay(
+    @Body()
+    data: {
+      selectedWang?: number;
+      selectedAttestor?: number;
+      selectedAttestor2?: number;
+      selectedCreditor?: number;
+      bannerId?: number;
+      bannerName?: string;
+      signingDate?: Date;
+      creditorCode?: string;
+      startDate?: Date;
+      endDate?: Date;
+      paymentDue?: Date;
+      address?: string;
+    },
+  ): Promise<ContractLogCompanyDay> {
+    console.log(data);
+    return await this.contractLogService.createContractLogCompanyDay(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/update-company-day')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateContractCompanyDay(
+    @Body()
+    data: {
+      contractId: number;
+      urlPath?: Express.Multer.File;
+      name?: string;
+      type?: 'creditor';
+    },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{
+    creditorEmpId?: number;
+    bannerName?: string;
+    img_banner?: number;
+  }> {
+    console.log(data);
+    return await this.contractLogService.updateContractLogCompanyDay({
+      companyId: data.contractId,
+      urlPath: file,
+      name: data.name,
+      type: 'creditor',
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/upload-signed-company-day')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignedCompanyDay(
+    @Body() data: { contractId: number },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ urlContract: string }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    return await this.contractLogService.uploadSignedContractCompanyDays({
+      companyId: data.contractId,
       urlPath: file,
     });
   }

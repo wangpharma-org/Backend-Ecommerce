@@ -7,6 +7,7 @@ import { ContractLogUpload } from './contract-log-upload.entity';
 import { Repository } from 'typeorm';
 import * as AWS from 'aws-sdk';
 import { ProductsService } from 'src/products/products.service';
+import { ContractLogCompanyDay } from './contract-log-company-day.entity';
 
 @Injectable()
 export class ContractLogService {
@@ -21,6 +22,8 @@ export class ContractLogService {
     @InjectRepository(ContractLogUpload)
     private readonly contractLogUpload: Repository<ContractLogUpload>,
     private readonly productsService: ProductsService,
+    @InjectRepository(ContractLogCompanyDay)
+    private readonly contractLogCompanyDay: Repository<ContractLogCompanyDay>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -238,6 +241,7 @@ export class ContractLogService {
         endDate: data.endDate,
         paymentDue: data.paymentDue,
       });
+      console.log('New log entity created:', newLog);
       if (data.creditorCode && data.address) {
         await this.productsService.saveAddress(data.creditorCode, data.address);
       }
@@ -308,8 +312,8 @@ export class ContractLogService {
       }
       throw new Error('Invalid type provided for update');
     } catch (error) {
-      console.error('Error updating contract log banner:', error);
-      throw new Error('Failed to update contract log banner');
+      console.error('Error updating contract log :', error);
+      throw new Error('Failed to update contract log');
     }
   }
 
@@ -345,6 +349,219 @@ export class ContractLogService {
     } catch (error) {
       console.error('Error uploading contract file:', error);
       throw new Error('Failed to upload contract file');
+    }
+  }
+
+  //================Company Days==================
+
+  async getContractCompanyDays(
+    companyDayId?: number | 'all',
+  ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
+    console.log('Fetching contract company days with ID:', companyDayId);
+    try {
+      if (companyDayId === 'all') {
+        console.log('No ID provided, fetching all contract company days');
+        return await this.contractLogCompanyDay.find({
+          relations: ['creditor'],
+        });
+      } else if (companyDayId) {
+        return await this.contractLogCompanyDay
+          .createQueryBuilder('companyDay')
+          .leftJoinAndSelect('companyDay.upload', 'upload')
+          .leftJoinAndSelect('companyDay.personByWangEmp', 'personByWangEmp')
+          .leftJoinAndSelect(
+            'personByWangEmp.uploads',
+            'personByWangEmpUploads',
+          )
+          .leftJoinAndSelect('companyDay.personByAttestor', 'personByAttestor')
+          .leftJoinAndSelect(
+            'personByAttestor.uploads',
+            'personByAttestorUploads',
+          )
+          .leftJoinAndSelect(
+            'companyDay.personByAttestor2',
+            'personByAttestor2',
+          )
+          .leftJoinAndSelect(
+            'personByAttestor2.uploads',
+            'personByAttestor2Uploads',
+          )
+          .leftJoinAndSelect('companyDay.personByCreditor', 'personByCreditor')
+          .leftJoinAndSelect(
+            'personByCreditor.uploads',
+            'personByCreditorUploads',
+          )
+          .leftJoinAndSelect('companyDay.creditor', 'creditor')
+          .where('companyDay.companyDayId = :companyDayId', {
+            companyDayId: companyDayId,
+          })
+          .select([
+            'companyDay',
+            'upload.uploadId',
+            'upload.urlPath',
+            'personByWangEmp.personId',
+            'personByWangEmp.personName',
+            'personByWangEmpUploads.uploadId',
+            'personByWangEmpUploads.urlPath',
+            'personByAttestor.personId',
+            'personByAttestor.personName',
+            'personByAttestorUploads.uploadId',
+            'personByAttestorUploads.urlPath',
+            'personByAttestor2.personId',
+            'personByAttestor2.personName',
+            'personByAttestor2Uploads.uploadId',
+            'personByAttestor2Uploads.urlPath',
+            'personByCreditor.personId',
+            'personByCreditor.personName',
+            'personByCreditorUploads.uploadId',
+            'personByCreditorUploads.urlPath',
+            'creditor.creditor_code',
+            'creditor.creditor_name',
+            'creditor.creditor_address',
+          ])
+          .getOne();
+      }
+      throw new Error('companyDayId is required to fetch specific company day');
+    } catch (error) {
+      console.error('Error fetching contract company days:', error);
+      throw new Error('Failed to fetch contract company days');
+    }
+  }
+
+  async createContractLogCompanyDay(data: {
+    selectedWang?: number;
+    selectedAttestor?: number;
+    selectedAttestor2?: number;
+    selectedCreditor?: number;
+    bannerId?: number;
+    bannerName?: string;
+    signingDate?: Date;
+    creditorCode?: string;
+    startDate?: Date;
+    endDate?: Date;
+    paymentDue?: Date;
+    address?: string;
+  }): Promise<ContractLogCompanyDay> {
+    try {
+      console.log('Creating contract log with data:', data);
+      const newLog = this.contractLogCompanyDay.create({
+        wangEmpId: data.selectedWang,
+        attestor: data.selectedAttestor,
+        attestor2: data.selectedAttestor2,
+        creditorEmpId: data.selectedCreditor,
+        signingDate: data.signingDate,
+        creditor_code: data.creditorCode,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        paymentDue: data.paymentDue,
+      });
+      console.log('New log entity created:', newLog);
+      if (data.creditorCode && data.address) {
+        await this.productsService.saveAddress(data.creditorCode, data.address);
+      }
+      const savedLog = await this.contractLogCompanyDay.save(newLog);
+      console.log('Saved contract log company day:', savedLog);
+      return savedLog;
+    } catch (error) {
+      console.error('Error creating contract log:', error);
+      throw new Error('Failed to create contract log');
+    }
+  }
+
+  async uploadSignedContractCompanyDays(data: {
+    urlPath?: Express.Multer.File;
+    companyId: number;
+  }): Promise<{ urlContract: string }> {
+    const { urlPath, companyId } = data;
+    try {
+      if (!urlPath) {
+        throw new Error('File is missing');
+      }
+      const params = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${urlPath?.originalname}`,
+        Body: urlPath?.buffer,
+        ContentType: urlPath?.mimetype,
+        ACL: 'public-read',
+      };
+      const uploadResult = await this.s3.upload(params).promise();
+
+      const newUpload = this.contractLogUpload.create({
+        urlPath: uploadResult.Location,
+      });
+      const savedUpload = await this.contractLogUpload.save(newUpload);
+      console.log('Saved contract upload:', savedUpload);
+
+      console.log('Updating company day ID:', companyId);
+
+      const updatedCompanyDay = await this.contractLogCompanyDay.update(
+        companyId,
+        {
+          urlContract: savedUpload.uploadId,
+        },
+      );
+      console.log('updatedCompanyDay', updatedCompanyDay);
+      return { urlContract: uploadResult.Location };
+    } catch (error) {
+      console.error('Error uploading contract file:', error);
+      throw new Error('Failed to upload contract file');
+    }
+  }
+
+  async updateContractLogCompanyDay(data: {
+    companyId: number;
+    urlPath?: Express.Multer.File;
+    name?: string;
+    type?: 'creditor';
+  }): Promise<{
+    creditorEmpId?: number;
+    bannerName?: string;
+    img_banner?: number;
+  }> {
+    const { companyId, urlPath, name, type } = data;
+    console.log('Updating contract log company day with ID:', companyId);
+    console.log('File data received:', urlPath);
+    console.log('Name received:', name);
+    console.log('Type received:', type);
+
+    if (!urlPath || !urlPath.buffer) {
+      throw new Error(
+        'File buffer is missing. Check your upload configuration and request.',
+      );
+    }
+    try {
+      const params = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${urlPath?.originalname}`,
+        Body: urlPath?.buffer,
+        ContentType: urlPath?.mimetype,
+        ACL: 'public-read',
+      };
+
+      const uploadResult = await this.s3.upload(params).promise();
+
+      const updateData = this.contractLogUpload.create({
+        urlPath: uploadResult.Location,
+      });
+      const savedData = await this.contractLogUpload.save(updateData);
+      console.log('Saved upload data:', savedData);
+      if (data.type === 'creditor') {
+        const savedDataPerson = await this.contractLogPerson.save({
+          personName: data.name,
+          type: data.type,
+          uploads: savedData,
+        });
+        console.log('Saved person data:', savedDataPerson);
+
+        await this.contractLogCompanyDay.update(companyId, {
+          creditorEmpId: savedDataPerson.personId,
+        });
+        return { creditorEmpId: savedDataPerson.personId };
+      }
+      throw new Error('Invalid type provided for update');
+    } catch (error) {
+      console.error('Error updating contract log :', error);
+      throw new Error('Failed to update contract log');
     }
   }
 }
