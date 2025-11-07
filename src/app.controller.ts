@@ -2007,6 +2007,8 @@ export class AppController {
       bannerId: data.contractId,
       urlPath: file,
     });
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/limit-update')
   async updatePromotionLimit(
