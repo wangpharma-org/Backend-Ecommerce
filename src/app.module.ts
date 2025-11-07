@@ -33,6 +33,7 @@ import { SessionsModule } from './sessions/sessions.module';
 import { ProductKeywordModule } from './product-keyword/product-keyword.module';
 import { RecommendModule } from './recommend/recommend.module';
 import { ContractLogModule } from './contract-log/contract-log.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { ContractLogModule } from './contract-log/contract-log.module';
     ProductKeywordModule,
     RecommendModule,
     ContractLogModule,
+    CampaignsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

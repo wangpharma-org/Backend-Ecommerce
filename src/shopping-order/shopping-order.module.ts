@@ -1,3 +1,4 @@
+import { PromotionRewardEntity } from './../promotion/promotion-reward.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ShoppingOrderEntity } from './shopping-order.entity';
@@ -17,6 +18,7 @@ import { SaleLogEntity } from './salelog-order.entity';
       FailedEntity,
       ProductEntity,
       SaleLogEntity,
+      PromotionRewardEntity,
     ]),
     ShoppingCartModule,
     HttpModule,
