@@ -2018,6 +2018,9 @@ export class AppController {
     console.log(body);
     return await this.contractLogService.getContractCompanyDays(
       body.companyDayId,
+    );
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/limit-update')
   async updatePromotionLimit(
@@ -2108,6 +2111,8 @@ export class AppController {
       companyId: data.contractId,
       urlPath: file,
     });
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/get-product')
   async GetProductAndReplace(@Body() data: { pro_code: string }) {
