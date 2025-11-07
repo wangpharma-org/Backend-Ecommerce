@@ -652,6 +652,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-replace')
+  async getProductForKeySearchForReplace() {
+    return this.productsService.getProductForKeySearchForReplace();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tiers/:tier_id')
   async getTierByID(@Param('tier_id') tier_id: number) {
     return this.promotionService.getTierOneById(tier_id);
@@ -1889,5 +1895,28 @@ export class AppController {
   @Post('/ecom/promotion/reset-limit-count')
   async resetLimitReward(@Body() data: { pro_code: string }) {
     return await this.promotionService.resetCountLimit(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/replace-product')
+  async ReplaceProduct(
+    @Body() data: { pro_code: string; replace_pro_code: string },
+  ) {
+    return await this.recommendService.AddReplaceProduct(
+      data.pro_code,
+      data.replace_pro_code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/get-product')
+  async GetProductAndReplace(@Body() data: { pro_code: string }) {
+    return await this.recommendService.GetProductAndReplace(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/replace-product-null')
+  async UpdateProductAndReplaceNull(@Body() data: { pro_code: string }) {
+    return await this.recommendService.RemoveReplaceProduct(data.pro_code);
   }
 }

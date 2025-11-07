@@ -38,7 +38,7 @@ export interface ShoppingProductCart {
 }
 
 export interface RecommendedProduct {
-  recommended_id: number;
+  recommended_id: number | null;
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
@@ -109,6 +109,10 @@ interface RawProductCart {
   order_quantity: number;
   pro_lowest_stock: number;
   recommend_rank?: number;
+  replace_pro_code?: string;
+  replace_pro_name?: string;
+  replace_pro_imgmain?: string;
+  recommended_replace_pro_code?: string;
 }
 
 // Define a DTO for the return type
@@ -864,10 +868,15 @@ export class ShoppingCartService {
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect('fs.flashsale', 'flashsale')
         .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect('product.replace', 'replace')
         .leftJoinAndSelect(
           'recommend.products',
           'recommendedProducts',
           'recommendedProducts.pro_stock > 0',
+        )
+        .leftJoinAndSelect(
+          'recommendedProducts.replace',
+          'recommendedProductsReplace',
         )
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
@@ -888,6 +897,9 @@ export class ShoppingCartService {
           'product.order_quantity AS order_quantity',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.pro_promotion_amount AS pro_promotion_amount',
+          'replace.pro_code AS replace_pro_code',
+          'replace.pro_imgmain AS replace_pro_imgmain',
+          'replace.pro_name AS replace_pro_name',
           'lot.lot_id AS lot_id',
           'lot.lot AS lot',
           'lot.mfg AS mfg',
@@ -911,6 +923,7 @@ export class ShoppingCartService {
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
           'recommendedProducts.recommend_rank AS recommend_rank',
+          'recommendedProductsReplace.pro_code AS recommended_replace_pro_code',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -963,10 +976,21 @@ export class ShoppingCartService {
           }
         }
 
-        if (
+        if (row.replace_pro_code) {
+          grouped[key].recommend = [
+            {
+              recommended_id: 1,
+              pro_code: row.replace_pro_code,
+              pro_imgmain: row.replace_pro_imgmain ?? '',
+              pro_name: row.replace_pro_name ?? '',
+              recommend_rank: 1,
+            },
+          ];
+        } else if (
           row.recommended_id &&
           row.recommended_pro_code &&
-          row.recommended_pro_name
+          row.recommended_pro_name &&
+          row.recommended_replace_pro_code !== row.pro_code
         ) {
           const exists = grouped[key].recommend.some(
             (r) => r.pro_code === row.recommended_pro_code,

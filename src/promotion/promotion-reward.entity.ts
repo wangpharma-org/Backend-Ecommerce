@@ -28,12 +28,6 @@ export class PromotionRewardEntity {
   @Column({ length: 16, comment: 'หน่วยที่แถม' })
   unit: string;
 
-  @Column({ type: 'int', nullable: true, default: null })
-  free_product_limit: number;
-
-  @Column({ type: 'int', nullable: true, default: 0 })
-  free_product_count: number;
-
   @Index()
   @ManyToOne(() => PromotionTierEntity, (tier) => tier.rewards, {
     nullable: false,

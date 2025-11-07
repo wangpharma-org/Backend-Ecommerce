@@ -322,17 +322,19 @@ export class ShoppingOrderService {
               giftProduct: { pro_code: In(rewardItems.map((r) => r.pro_code)) },
             },
             select: {
-              giftProduct: { pro_code: true },
-              free_product_limit: true,
-              free_product_count: true,
+              giftProduct: {
+                pro_code: true,
+                free_product_limit: true,
+                free_product_count: true,
+              },
             },
             relations: ['giftProduct'],
           });
 
           for (const item of rewardItems) {
             await manager.increment(
-              PromotionRewardEntity,
-              { giftProduct: { pro_code: item.pro_code } },
+              ProductEntity,
+              { pro_code: item.pro_code },
               'free_product_count',
               item.spc_amount,
             );
@@ -347,13 +349,14 @@ export class ShoppingOrderService {
             const limitData = limitItem.find(
               (l) =>
                 l.giftProduct.pro_code === item.pro_code &&
-                l.free_product_limit !== null,
+                l.giftProduct.free_product_limit !== null,
             );
 
             if (
               updated &&
               limitData &&
-              updated.free_product_count >= limitData.free_product_limit
+              updated.giftProduct.free_product_count >=
+                limitData.giftProduct.free_product_limit
             ) {
               await axios.post(this.slackUrl, {
                 text: `🚨 *แจ้งเตือนจำนวนของแถมถึงจุดที่กำหนดไว้แล้ว!*`,
@@ -368,7 +371,7 @@ export class ShoppingOrderService {
                       },
                       {
                         title: 'จำนวนแจกปัจจุบัน',
-                        value: `${updated.free_product_count}/${limitData.free_product_limit}`,
+                        value: `${updated.giftProduct.free_product_count}/${limitData.giftProduct.free_product_limit}`,
                         short: true,
                       },
                     ],

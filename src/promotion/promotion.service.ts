@@ -14,10 +14,11 @@ import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import * as AWS from 'aws-sdk';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
 import { AuthService } from 'src/auth/auth.service';
+import { ProductEntity } from 'src/products/products.entity';
 
 @Injectable()
 export class PromotionService {
@@ -37,6 +38,8 @@ export class PromotionService {
     private readonly promotionRewardRepo: Repository<PromotionRewardEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly authService: AuthService,
+    @InjectRepository(ProductEntity)
+    private readonly productRepo: Repository<ProductEntity>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -540,8 +543,6 @@ export class PromotionService {
           reward_id: true,
           qty: true,
           unit: true,
-          free_product_count: true,
-          free_product_limit: true,
           giftProduct: {
             pro_code: true,
             pro_name: true,
@@ -549,6 +550,8 @@ export class PromotionService {
             pro_unit1: true,
             pro_unit2: true,
             pro_unit3: true,
+            free_product_count: true,
+            free_product_limit: true,
           },
         },
       });
@@ -840,8 +843,8 @@ export class PromotionService {
 
   async rewardUpdateLimit(pro_code: string, limit: number) {
     try {
-      await this.promotionRewardRepo.update(
-        { giftProduct: { pro_code: pro_code } },
+      await this.productRepo.update(
+        { pro_code: pro_code },
         {
           free_product_limit: limit,
         },
@@ -853,8 +856,8 @@ export class PromotionService {
 
   async resetCountLimit(pro_code: string) {
     try {
-      await this.promotionRewardRepo.update(
-        { giftProduct: { pro_code: pro_code } },
+      await this.productRepo.update(
+        { pro_code: pro_code },
         {
           free_product_count: 0,
         },
