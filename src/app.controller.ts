@@ -612,6 +612,7 @@ export class AppController {
       tier_name: string;
       min_amount: number;
       description?: string;
+      detail?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -619,6 +620,7 @@ export class AppController {
       tier_name: data.tier_name,
       min_amount: data.min_amount,
       description: data.description,
+      detail: data.detail,
       file,
     });
   }
@@ -688,9 +690,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('/ecom/promotion/product/creditor/:creditor_code')
-  async getProductByCreditor(@Param('creditor_code') creditor_code: string) {
-    return this.productsService.getProductByCreditor(creditor_code);
+  @Post('/ecom/promotion/product/creditor')
+  async getProductByCreditor(@Body() data: { creditor_code: string }) {
+    return this.productsService.getProductByCreditor(data.creditor_code);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -709,6 +711,12 @@ export class AppController {
   @Get('/ecom/promotion/product/keysearch-recommend')
   async getProductForKeySearchForRecommend() {
     return this.productsService.getProductForKeySearchForRecommend();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/product/keysearch-replace')
+  async getProductForKeySearchForReplace() {
+    return this.productsService.getProductForKeySearchForReplace();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -786,6 +794,7 @@ export class AppController {
       tier_name?: string;
       min_amount?: number;
       description?: string;
+      detail?: string;
     },
   ) {
     return await this.promotionService.updateTier(data);
@@ -1624,7 +1633,7 @@ export class AppController {
   @Get('/ecom/data/product-free')
   async getProductFree(
     @Req() req: Request & { user: JwtPayload },
-  ): Promise<{ pro_code: string; pro_name: string }[]> {
+  ): Promise<{ pro_code: string; pro_name: string; pro_point: number }[]> {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');
@@ -1716,7 +1725,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/keysearch/update-product-keysearch')
-  async updateKeysearch(@Body() data: { pro_code: string; keysearch: string }) {
+  async updateKeysearch(
+    @Body() data: { pro_code: string; keysearch: string; viewers: number },
+  ) {
     await this.productKeySearch.updateKeyword(data);
   }
 
@@ -1726,19 +1737,18 @@ export class AppController {
     return await this.productKeySearch.getProductOne(pro_code);
   }
 
-  //ยังไม่ deploy ใน release 1.10.0 คาดว่าเป็น release ถัดไป(1.11.0)
-  // @UseGuards(JwtAuthGuard)
-  // @Get('/ecom/usercheck_latest_purchase')
-  // async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
-  //   const mem_code = req.user.mem_code;
-  //   const permission = req.user.permission;
-  //   console.log('User permission:', permission);
-  //   if (permission === false) {
-  //     return this.usersService.checklatestPurchase(mem_code);
-  //   }
-  //   console.log('Checking latest purchase for user:', mem_code);
-  //   return { message: 'Check initiated' };
-  // }
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/usercheck_latest_purchase')
+  async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    const permission = req.user.permission;
+    console.log('User permission:', permission);
+    if (permission === false) {
+      return this.usersService.checklatestPurchase(mem_code);
+    }
+    console.log('Checking latest purchase for user:', mem_code);
+    return { message: 'Check initiated' };
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/list')
@@ -1837,21 +1847,25 @@ export class AppController {
     return data.total;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/recommend/tags')
   async getRecommendTags() {
     return await this.recommendService.getAllTags();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/insertTag')
   async insertRecommendTag(@Body() data: { tag: string }) {
     return await this.recommendService.insertTag(data.tag);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/recommend/products/:tag_id')
   async getRecommendProductsByTag(@Param('tag_id') tag_id: number) {
     return await this.recommendService.getProductsByTag(tag_id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/updateTagToProduct')
   async updateTagToProduct(@Body() data: { tag_id: number; pro_code: string }) {
     return await this.recommendService.UpdateTagToProduct(
@@ -1860,27 +1874,32 @@ export class AppController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/updateRank')
   async updateRecommendRank(@Body() data: { pro_code: string; rank: number }) {
     console.log(data);
     return await this.recommendService.UpdateRank(data.pro_code, data.rank);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/removeTagFromProduct')
   async removeTagFromProduct(@Body() data: { pro_code: string }) {
     return await this.recommendService.DeleteTagFromProduct(data.pro_code);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/deleteRank')
   async deleteRecommendRank(@Body() data: { pro_code: string }) {
     return await this.recommendService.DeleteRank(data.pro_code);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/deleteTag')
   async deleteRecommendTag(@Body() data: { tag_id: number }) {
     return await this.recommendService.deleteTag(data.tag_id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/recommend-products')
   async getRecommendProducts(
     @Body()
@@ -1892,6 +1911,27 @@ export class AppController {
   ) {
     return await this.recommendService.GetProductRecommendByCode(
       data.recommend_id,
+      data.mem_code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/set-all-product')
+  async setAllProductPromotion(
+    @Body() data: { tier_id: number; status: boolean },
+  ) {
+    return await this.promotionService.setAllProducts(
+      data.tier_id,
+      data.status,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/check-product-promotion')
+  async checkProductPromotion(
+    @Body() data: { pro_code: string; mem_code: string },
+  ) {
+    return await this.promotionService.getTierWithProCode(
       data.pro_code,
       data.mem_code,
     );
@@ -1905,5 +1945,57 @@ export class AppController {
       throw new Error('You do not have permission to access this resource.');
     }
     return await this.imagedebugService.getAllImagedebug();
+  }
+  
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/tier-list-all-product')
+  async getPromotionTierList() {
+    return await this.promotionService.getTierAllProduct();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
+  async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
+    return await this.promotionService.getRewardByTierId(tier_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/limit-update')
+  async updatePromotionLimit(
+    @Body() data: { pro_code: string; limit: number },
+  ) {
+    return await this.promotionService.rewardUpdateLimit(
+      data.pro_code,
+      data.limit,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/reset-limit-count')
+  async resetLimitReward(@Body() data: { pro_code: string }) {
+    return await this.promotionService.resetCountLimit(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/replace-product')
+  async ReplaceProduct(
+    @Body() data: { pro_code: string; replace_pro_code: string },
+  ) {
+    return await this.recommendService.AddReplaceProduct(
+      data.pro_code,
+      data.replace_pro_code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/get-product')
+  async GetProductAndReplace(@Body() data: { pro_code: string }) {
+    return await this.recommendService.GetProductAndReplace(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/replace/replace-product-null')
+  async UpdateProductAndReplaceNull(@Body() data: { pro_code: string }) {
+    return await this.recommendService.RemoveReplaceProduct(data.pro_code);
   }
 }

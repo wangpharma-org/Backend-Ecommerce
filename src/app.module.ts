@@ -33,6 +33,7 @@ import { SessionsModule } from './sessions/sessions.module';
 import { ProductKeywordModule } from './product-keyword/product-keyword.module';
 import { RecommendModule } from './recommend/recommend.module';
 import { ImagedebugModule } from './imagedebug/imagedebug.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { ImagedebugModule } from './imagedebug/imagedebug.module';
     ProductKeywordModule,
     RecommendModule,
     ImagedebugModule,
+    CampaignsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

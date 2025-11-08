@@ -163,6 +163,15 @@ export class ProductEntity {
   @Column({ nullable: true, type: 'int' })
   sale_amount_day: number | null;
 
+  @Column({ nullable: true, type: 'int' })
+  viwers: number | null;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  free_product_limit: number;
+
+  @Column({ type: 'int', nullable: true, default: 0 })
+  free_product_count: number;
+
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',
@@ -222,4 +231,13 @@ export class ProductEntity {
 
   @OneToOne(() => Imagedebug, (image) => image.relatedImage)
   imagedebug: Imagedebug;
+  @ManyToOne(() => ProductEntity, (product) => product.replacedBy, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'replace_code', referencedColumnName: 'pro_code' })
+  replace: ProductEntity | null;
+
+  @OneToMany(() => ProductEntity, (product) => product.replace)
+  replacedBy: ProductEntity[];
 }

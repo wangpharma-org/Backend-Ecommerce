@@ -49,9 +49,9 @@ export class FavoriteService {
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
-          'cart.mem_code = :memCode',
-          { memCode: mem_code },
+          'cart.mem_code = :memCode AND cart.is_reward = false',
         )
+        .setParameter('memCode', mem_code)
         .where('fav.member.mem_code = :mem_code', { mem_code });
 
       switch (sort_by) {

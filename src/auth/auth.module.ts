@@ -10,6 +10,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { HttpModule } from '@nestjs/axios';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import { EmployeesModule } from 'src/employees/employees.module';
+import { JwtService } from '@nestjs/jwt';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { EmployeesModule } from 'src/employees/employees.module';
     HttpModule,
     PassportModule,
     JwtModule.register({
+      global: true,
       secret: jwtConstants.secret,
     }),
     EmployeesModule,

@@ -65,9 +65,9 @@ export class NewArrivalsService {
       .leftJoinAndSelect(
         'product.inCarts',
         'cart',
-        'cart.mem_code = :memCode',
-        { memCode },
+        'cart.mem_code = :memCode AND cart.is_reward = false',
       )
+      .setParameter('memCode', memCode)
       .where(
         'product.pro_priceA != 1 AND product.pro_priceB != 1 AND product.pro_priceC != 1',
       )
