@@ -77,7 +77,14 @@ export class ImagedebugService {
       for (const item of findAllItem) {
         if (item.imageUrl !== 'No Image') {
           try {
-            const imageBuffer = await axios.get(item.imageUrl, {
+            let testUrl = item.imageUrl;
+            if (item.imageUrl?.startsWith('../cms')) {
+              testUrl = item.imageUrl.replace(
+                '..',
+                'https://www.wangpharma.com',
+              );
+            }
+            const imageBuffer = await axios.get(testUrl, {
               timeout: 5000,
             });
             if (
@@ -100,7 +107,7 @@ export class ImagedebugService {
       const slackUrl = this.slackUrl;
 
       const payload = {
-        text: `(กำลังทดสอบระบบ) สรุปข้อมูลภาพที่มีข้อผิดพลาด จำนวน ${CountData} รายการ`,
+        text: `สรุปข้อมูลภาพที่มีข้อผิดพลาด จำนวน ${CountData} รายการ`,
       };
 
       await axios.post(slackUrl, payload);
