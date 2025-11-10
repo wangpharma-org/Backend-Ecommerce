@@ -1,0 +1,23 @@
+import { Module } from '@nestjs/common';
+import { ContractLogService } from './contract-log.service';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ContractLogBanner } from './contract-log-banner.entity';
+import { ContractLogPerson } from './contract-log-person.entity';
+import { ContractLogUpload } from './contract-log-upload.entity';
+import { ProductsModule } from 'src/products/products.module';
+import { ContractLogCompanyDay } from './contract-log-company-day.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      ContractLogBanner,
+      ContractLogPerson,
+      ContractLogUpload,
+      ContractLogCompanyDay,
+    ]),
+    ProductsModule,
+  ],
+  providers: [ContractLogService],
+  exports: [ContractLogService],
+})
+export class ContractLogModule {}
