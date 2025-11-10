@@ -160,7 +160,7 @@ export class ContractLogService {
             'personByCreditorUploads.urlPath',
             'creditor.creditor_code',
             'creditor.creditor_name',
-            'creditor.creditor_address',
+            'banner.address',
           ])
           .getOne();
       }
@@ -226,6 +226,7 @@ export class ContractLogService {
         startDate: data.startDate,
         endDate: data.endDate,
         paymentDue: data.paymentDue,
+        address: data.address,
       });
       if (data.creditorCode && data.address) {
         await this.productsService.saveAddress(data.creditorCode, data.address);
@@ -400,7 +401,7 @@ export class ContractLogService {
             'personByCreditorUploads.urlPath',
             'creditor.creditor_code',
             'creditor.creditor_name',
-            'creditor.creditor_address',
+            'companyDay.address',
           ])
           .getOne();
       }
@@ -454,6 +455,7 @@ export class ContractLogService {
         firstPaymentCondition: data.firstPaymentCondition,
         finalInstallmentAmount: data.finalInstallmentAmount,
         productsToOrder: data.productsToOrder,
+        address: data.address,
       });
       if (data.creditorCode && data.address) {
         await this.productsService.saveAddress(data.creditorCode, data.address);

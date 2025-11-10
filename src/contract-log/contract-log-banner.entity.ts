@@ -86,4 +86,7 @@ export class ContractLogBanner {
   @ManyToOne(() => CreditorEntity, (c) => c.contract_log, { nullable: true })
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
   creditor: CreditorEntity;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  address: string;
 }

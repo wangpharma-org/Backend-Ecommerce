@@ -103,4 +103,7 @@ export class ContractLogCompanyDay {
 
   @Column({ nullable: false, default: null })
   productsToOrder: string;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  address: string;
 }
