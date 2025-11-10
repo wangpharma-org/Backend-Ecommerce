@@ -651,7 +651,7 @@ export class AppController {
     return this.productsService.getProductForKeySearchForRecommend();
   }
 
-  @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/product/keysearch-replace')
   async getProductForKeySearchForReplace() {
     return this.productsService.getProductForKeySearchForReplace();
