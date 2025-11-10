@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContractLogBanner } from './contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log-person.entity';
 import { ContractLogUpload } from './contract-log-upload.entity';
-import { ContractLog } from './contract-log.entity';
 import { ProductsModule } from 'src/products/products.module';
 import { ContractLogCompanyDay } from './contract-log-company-day.entity';
 
@@ -14,7 +13,6 @@ import { ContractLogCompanyDay } from './contract-log-company-day.entity';
       ContractLogBanner,
       ContractLogPerson,
       ContractLogUpload,
-      ContractLog,
       ContractLogCompanyDay,
     ]),
     ProductsModule,

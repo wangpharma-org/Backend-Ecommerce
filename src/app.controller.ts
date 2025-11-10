@@ -2064,8 +2064,17 @@ export class AppController {
       creditorCode?: string;
       startDate?: Date;
       endDate?: Date;
-      paymentDue?: Date;
       address?: string;
+      reportDueDate?: Date;
+      finalPaymentAmount?: number;
+      totalSupportValue?: number;
+      supportDeliveryDate?: Date;
+      numberOfInstallments?: number;
+      installmentIntervalDays?: number;
+      firstInstallmentAmount?: number;
+      firstPaymentCondition?: string;
+      finalInstallmentAmount?: number;
+      productsToOrder?: string;
     },
   ): Promise<ContractLogCompanyDay> {
     console.log(data);
@@ -2086,8 +2095,8 @@ export class AppController {
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{
     creditorEmpId?: number;
-    bannerName?: string;
-    img_banner?: number;
+    name?: string;
+    image?: string;
   }> {
     console.log(data);
     return await this.contractLogService.updateContractLogCompanyDay({

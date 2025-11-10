@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ContractLog } from './contract-log.entity';
 import { ContractLogBanner } from './contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log-person.entity';
 import { ContractLogUpload } from './contract-log-upload.entity';
@@ -13,8 +12,6 @@ import { ContractLogCompanyDay } from './contract-log-company-day.entity';
 export class ContractLogService {
   private s3: AWS.S3;
   constructor(
-    @InjectRepository(ContractLog)
-    private readonly contractLog: Repository<ContractLog>,
     @InjectRepository(ContractLogBanner)
     private readonly contractLogBanner: Repository<ContractLogBanner>,
     @InjectRepository(ContractLogPerson)
@@ -43,14 +40,8 @@ export class ContractLogService {
     personName?: string;
     type?: string;
     bannerName?: string;
-    urlBanner?: string;
+    urlImage?: string;
   }> {
-    console.log('uploadFile called with:', {
-      urlPath: data.urlPath,
-      name: data.name,
-      type: data.type,
-      bannerName: data.bannerName,
-    });
     const { urlPath, name, type, bannerName } = data;
     try {
       if (!type || !urlPath) {
@@ -79,19 +70,19 @@ export class ContractLogService {
           type: type,
           uploads: savedUploads,
         });
-        console.log('Person to be saved:', person);
         const savedPerson = await this.contractLogPerson.save(person);
         return {
           Image: savedUploads.uploadId,
           personId: savedPerson.personId,
           personName: savedPerson.personName,
+          urlImage: savedUploads.urlPath,
           type: savedPerson.type,
         };
       } else if (type === 'banner') {
         return {
           Image: savedUploads.uploadId,
           type: 'banner',
-          urlBanner: savedUploads.urlPath,
+          urlImage: savedUploads.urlPath,
           bannerName: bannerName,
         };
       }
@@ -186,7 +177,6 @@ export class ContractLogService {
     try {
       const result: ContractLogPerson[] = [];
       if (group === 'upload' && type === 'wang') {
-        console.log('Fetching persons of type wang');
         result.push(
           ...(await this.contractLogPerson.find({
             where: { type: 'wang' },
@@ -194,7 +184,6 @@ export class ContractLogService {
           })),
         );
       } else if (group === 'upload' && type === 'attestor') {
-        console.log('Fetching persons of type attestor');
         result.push(
           ...(await this.contractLogPerson.find({
             where: { type: 'attestor' },
@@ -203,8 +192,6 @@ export class ContractLogService {
         );
       }
       // const test = await this.contractLogPerson.find();
-      console.log('Fetched persons:', result);
-      // console.log('All persons for debugging:', test);
       return { type: type, data: result };
     } catch (error) {
       console.error('Error fetching persons:', error);
@@ -227,7 +214,6 @@ export class ContractLogService {
     address?: string;
   }): Promise<ContractLogBanner> {
     try {
-      console.log('Creating contract log with data:', data);
       const newLog = this.contractLogBanner.create({
         wangEmpId: data.selectedWang,
         attestor: data.selectedAttestor,
@@ -241,7 +227,6 @@ export class ContractLogService {
         endDate: data.endDate,
         paymentDue: data.paymentDue,
       });
-      console.log('New log entity created:', newLog);
       if (data.creditorCode && data.address) {
         await this.productsService.saveAddress(data.creditorCode, data.address);
       }
@@ -262,13 +247,9 @@ export class ContractLogService {
     creditorEmpId?: number;
     bannerName?: string;
     img_banner?: number;
+    image?: string;
   }> {
-    const { bannerId, urlPath, name, type, bannerName } = data;
-    console.log('Updating contract log banner with ID:', bannerId);
-    console.log('File data received:', urlPath);
-    console.log('Name received:', name);
-    console.log('Type received:', type);
-    console.log('Banner Name received:', bannerName);
+    const { bannerId, urlPath, type, bannerName } = data;
 
     if (!urlPath || !urlPath.buffer) {
       throw new Error(
@@ -290,25 +271,30 @@ export class ContractLogService {
         urlPath: uploadResult.Location,
       });
       const savedData = await this.contractLogUpload.save(updateData);
-      console.log('Saved upload data:', savedData);
       if (data.type === 'creditor') {
         const savedDataPerson = await this.contractLogPerson.save({
           personName: data.name,
           type: data.type,
           uploads: savedData,
         });
-        console.log('Saved person data:', savedDataPerson);
 
         await this.contractLogBanner.update(bannerId, {
           creditorEmpId: savedDataPerson.personId,
         });
-        return { creditorEmpId: savedDataPerson.personId };
+        return {
+          creditorEmpId: savedDataPerson.personId,
+          image: savedData.urlPath,
+        };
       } else if (bannerName && type === 'banner') {
         await this.contractLogBanner.update(bannerId, {
           bannerName: bannerName,
           img_banner: savedData.uploadId,
         });
-        return { bannerName: bannerName, img_banner: savedData.uploadId };
+        return {
+          bannerName: bannerName,
+          img_banner: savedData.uploadId,
+          image: savedData.urlPath,
+        };
       }
       throw new Error('Invalid type provided for update');
     } catch (error) {
@@ -340,7 +326,6 @@ export class ContractLogService {
         urlPath: uploadResult.Location,
       });
       const savedUpload = await this.contractLogUpload.save(newUpload);
-      console.log('Saved contract upload:', savedUpload);
 
       await this.contractLogBanner.update(bannerId, {
         urlContract: savedUpload.uploadId,
@@ -357,10 +342,8 @@ export class ContractLogService {
   async getContractCompanyDays(
     companyDayId?: number | 'all',
   ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
-    console.log('Fetching contract company days with ID:', companyDayId);
     try {
       if (companyDayId === 'all') {
-        console.log('No ID provided, fetching all contract company days');
         return await this.contractLogCompanyDay.find({
           relations: ['creditor'],
         });
@@ -439,11 +422,19 @@ export class ContractLogService {
     creditorCode?: string;
     startDate?: Date;
     endDate?: Date;
-    paymentDue?: Date;
     address?: string;
+    reportDueDate?: Date;
+    finalPaymentAmount?: number;
+    totalSupportValue?: number;
+    supportDeliveryDate?: Date;
+    numberOfInstallments?: number;
+    installmentIntervalDays?: number;
+    firstInstallmentAmount?: number;
+    firstPaymentCondition?: string;
+    finalInstallmentAmount?: number;
+    productsToOrder?: string;
   }): Promise<ContractLogCompanyDay> {
     try {
-      console.log('Creating contract log with data:', data);
       const newLog = this.contractLogCompanyDay.create({
         wangEmpId: data.selectedWang,
         attestor: data.selectedAttestor,
@@ -453,14 +444,21 @@ export class ContractLogService {
         creditor_code: data.creditorCode,
         startDate: data.startDate,
         endDate: data.endDate,
-        paymentDue: data.paymentDue,
+        reportDueDate: data.reportDueDate,
+        finalPaymentAmount: data?.finalPaymentAmount,
+        totalSupportValue: data.totalSupportValue,
+        supportDeliveryDate: data.supportDeliveryDate,
+        numberOfInstallments: data.numberOfInstallments,
+        installmentIntervalDays: data.installmentIntervalDays,
+        firstInstallmentAmount: data.firstInstallmentAmount,
+        firstPaymentCondition: data.firstPaymentCondition,
+        finalInstallmentAmount: data.finalInstallmentAmount,
+        productsToOrder: data.productsToOrder,
       });
-      console.log('New log entity created:', newLog);
       if (data.creditorCode && data.address) {
         await this.productsService.saveAddress(data.creditorCode, data.address);
       }
       const savedLog = await this.contractLogCompanyDay.save(newLog);
-      console.log('Saved contract log company day:', savedLog);
       return savedLog;
     } catch (error) {
       console.error('Error creating contract log:', error);
@@ -490,17 +488,10 @@ export class ContractLogService {
         urlPath: uploadResult.Location,
       });
       const savedUpload = await this.contractLogUpload.save(newUpload);
-      console.log('Saved contract upload:', savedUpload);
 
-      console.log('Updating company day ID:', companyId);
-
-      const updatedCompanyDay = await this.contractLogCompanyDay.update(
-        companyId,
-        {
-          urlContract: savedUpload.uploadId,
-        },
-      );
-      console.log('updatedCompanyDay', updatedCompanyDay);
+      await this.contractLogCompanyDay.update(companyId, {
+        urlContract: savedUpload.uploadId,
+      });
       return { urlContract: uploadResult.Location };
     } catch (error) {
       console.error('Error uploading contract file:', error);
@@ -515,14 +506,10 @@ export class ContractLogService {
     type?: 'creditor';
   }): Promise<{
     creditorEmpId?: number;
-    bannerName?: string;
-    img_banner?: number;
+    name?: string;
+    image?: string;
   }> {
-    const { companyId, urlPath, name, type } = data;
-    console.log('Updating contract log company day with ID:', companyId);
-    console.log('File data received:', urlPath);
-    console.log('Name received:', name);
-    console.log('Type received:', type);
+    const { companyId, urlPath } = data;
 
     if (!urlPath || !urlPath.buffer) {
       throw new Error(
@@ -544,19 +531,21 @@ export class ContractLogService {
         urlPath: uploadResult.Location,
       });
       const savedData = await this.contractLogUpload.save(updateData);
-      console.log('Saved upload data:', savedData);
       if (data.type === 'creditor') {
         const savedDataPerson = await this.contractLogPerson.save({
           personName: data.name,
           type: data.type,
           uploads: savedData,
         });
-        console.log('Saved person data:', savedDataPerson);
 
         await this.contractLogCompanyDay.update(companyId, {
           creditorEmpId: savedDataPerson.personId,
         });
-        return { creditorEmpId: savedDataPerson.personId };
+        return {
+          creditorEmpId: savedDataPerson.personId,
+          name: data.name,
+          image: savedData.urlPath,
+        };
       }
       throw new Error('Invalid type provided for update');
     } catch (error) {
