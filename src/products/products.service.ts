@@ -441,7 +441,18 @@ export class ProductsService {
           'products.pro_stock > 0',
         )
         .leftJoinAndSelect('products.replace', 'replaceInRecommend')
-        .leftJoinAndSelect('products.inCarts', 'inCarts')
+        .leftJoinAndSelect(
+          'replace.inCarts',
+          'inCartsInReplace',
+          'inCartsInReplace.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
+        .leftJoinAndSelect(
+          'products.inCarts',
+          'inCarts',
+          'inCarts.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
         .select([
@@ -515,6 +526,11 @@ export class ProductsService {
           'replace.order_quantity',
           'replace.pro_promotion_amount',
           'replace.pro_promotion_month',
+          'inCartsInReplace.mem_code',
+          'inCartsInReplace.spc_amount',
+          'inCartsInReplace.spc_unit',
+          'inCartsInReplace.pro_code',
+          'inCarts.pro_code',
           'inCarts.mem_code',
           'inCarts.spc_amount',
           'inCarts.spc_unit',
