@@ -7,6 +7,7 @@ import { ProductListner } from './product.listener';
 import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendModule } from 'src/backend/backend.module';
+import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { BackendModule } from 'src/backend/backend.module';
       LogFileEntity,
     ]),
     BackendModule,
+    ImagedebugModule,
   ],
   providers: [ProductsService],
   controllers: [ProductListner],
