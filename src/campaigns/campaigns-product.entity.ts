@@ -9,7 +9,7 @@ import {
 import { ProductEntity } from '../products/products.entity';
 import { CampaignRowEntity } from './campaigns-row.entity';
 
-@Entity({ name: 'promo_products' })
+@Entity({ name: 'campaigns_promo_products' })
 @Unique(['promo_row', 'product'])
 export class PromoProductEntity {
   @PrimaryGeneratedColumn('uuid')

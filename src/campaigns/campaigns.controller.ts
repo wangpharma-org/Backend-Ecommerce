@@ -112,7 +112,15 @@ export class CampaignsController {
   async updateRow(
     @Param('campaignId') campaignId: string,
     @Param('rowId') rowId: string,
-    @Body() body: { target?: string; con_percent?: string },
+    @Body()
+    body: {
+      target?: string;
+      con_percent?: string;
+      condition?: string;
+      set_number?: number;
+      price_per_set?: string;
+      number_of_sets?: number;
+    },
   ) {
     try {
       const updatedRow: CampaignRowEntity =
@@ -210,6 +218,11 @@ export class CampaignsController {
     @Body() body: { pro_code: string },
   ) {
     try {
+      console.log('Adding product to row:', {
+        campaignId,
+        rowId,
+        pro_code: body.pro_code,
+      });
       const product = await this.campaignsService.addProductToRow(
         campaignId,
         rowId,
@@ -222,6 +235,115 @@ export class CampaignsController {
           success: false,
           error: { code: 'ADD_PRODUCT_TO_ROW_FAILED' },
         },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post(':campaignId/data/:rowId/rewards')
+  async addPromoReward(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Body()
+    body: {
+      reward_column_id: string;
+      quantity?: string;
+      unit?: string;
+      price?: string;
+      value?: string;
+    },
+  ) {
+    try {
+      const reward = await this.campaignsService.addPromoReward(
+        campaignId,
+        rowId,
+        body,
+      );
+      return { success: true, data: reward };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'ADD_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Put(':campaignId/data/:rowId/rewards/:rewardId')
+  async updatePromoReward(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Param('rewardId') rewardId: string,
+    @Body()
+    body: {
+      quantity?: string;
+      unit?: string;
+      price?: string;
+      value?: string;
+    },
+  ) {
+    try {
+      console.log('Updating promo reward:', {
+        campaignId,
+        rowId,
+        rewardId,
+        body,
+      });
+      const updatedReward = await this.campaignsService.updatePromoReward(
+        campaignId,
+        rowId,
+        rewardId,
+        body,
+      );
+      return { success: true, data: updatedReward };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPDATE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Delete(':campaignId/data/:rowId/rewards/:rewardId')
+  async deletePromoReward(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Param('rewardId') rewardId: string,
+  ) {
+    try {
+      await this.campaignsService.deletePromoReward(
+        campaignId,
+        rowId,
+        rewardId,
+      );
+      return {
+        success: true,
+        data: { message: 'Promo reward deleted successfully' },
+      };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post('/update-collumn-reward')
+  async updateRewardColumn(
+    @Body() data: { reward_id: string; url: string; pro_code: string },
+  ) {
+    try {
+      await this.campaignsService.updateRewardColumn(
+        data.reward_id,
+        data.url,
+        data.pro_code,
+      );
+      return {
+        success: true,
+        data: { message: 'Reward column updated successfully'},
+      };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_PROMO_REWARD_FAILED' } },
         HttpStatus.BAD_REQUEST,
       );
     }
