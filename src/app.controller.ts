@@ -866,9 +866,7 @@ export class AppController {
 
   @Get('/ecom/wangday/monthly/:wang_code')
   async getWangdayMonthly(@Param('wang_code') wang_code: string) {
-    console.log('Get Monthly Sum for wang_code:', wang_code);
     const result = await this.wangdayService.getMonthlySumByWangCode(wang_code);
-    console.log('Result:', result);
     return result;
   }
   @Get('/ecom/wangsumprice/:wang_code')
@@ -1748,11 +1746,9 @@ export class AppController {
   async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
     const permission = req.user.permission;
-    console.log('User permission:', permission);
     if (permission === false) {
       return this.usersService.checklatestPurchase(mem_code);
     }
-    console.log('Checking latest purchase for user:', mem_code);
     return { message: 'Check initiated' };
   }
 
@@ -1952,7 +1948,7 @@ export class AppController {
     }
     return await this.imagedebugService.getAllImagedebug();
   }
-  
+
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product')
   async getPromotionTierList() {

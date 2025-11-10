@@ -17,7 +17,6 @@ export class ImagedebugService {
     imageUrl?: string;
   }): Promise<string> {
     try {
-      console.log('UpsertImg data:', data);
       const findItem = await this.imagedebugRepository.findOne({
         where: {
           relatedImage: { pro_code: data.pro_code },
@@ -29,15 +28,12 @@ export class ImagedebugService {
           },
         },
       });
-      console.log('Found item:', findItem);
       try {
         if (!findItem) {
-          console.log('Inserting new record for pro_code:', data.pro_code);
           await this.imagedebugRepository.save({
             relatedImage: { pro_code: data.pro_code },
             imageUrl: data.imageUrl || 'No Image',
           });
-          console.log('Insert successful for pro_code:', data.pro_code);
           return 'Inserted new record';
         }
         return 'Checked Item';
@@ -46,9 +42,6 @@ export class ImagedebugService {
           error instanceof Error &&
           error.message.includes('Duplicate entry')
         ) {
-          console.warn(
-            `Duplicate entry for pro_code ${data.pro_code}, skipping insert.`,
-          );
           return 'Duplicate entry, skipped insert';
         }
         throw error;
@@ -96,7 +89,7 @@ export class ImagedebugService {
               continue;
             }
             CountData += 1;
-          } catch (error) {
+          } catch {
             CountData += 1;
             continue;
           }
