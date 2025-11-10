@@ -57,6 +57,12 @@ import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
+import { ContractLogService } from './contract-log/contract-log.service';
+import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
+import { ContractLogPerson } from './contract-log/contract-log-person.entity';
+import { CreditorEntity } from './products/creditor.entity';
+import { ContractLogCompanyDay } from './contract-log/contract-log-company-day.entity';
+import { ImagedebugService } from './imagedebug/imagedebug.service';
 
 interface JwtPayload {
   username: string;
@@ -107,6 +113,8 @@ export class AppController {
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
     private readonly recommendService: RecommendService,
+    private readonly contractLogService: ContractLogService,
+    private readonly imagedebugService: ImagedebugService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -230,7 +238,17 @@ export class AppController {
 
   @Post('/ecom/flashsale/get-list')
   async getDataFlashSale(@Body() data: { limit: number; mem_code: string }) {
-    return await this.productsService.getFlashSale(data.limit, data.mem_code);
+    const func = await this.productsService.getFlashSale(
+      data.limit,
+      data.mem_code,
+    );
+    for (const funcItem of func) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: funcItem.pro_code,
+        imageUrl: funcItem.pro_imgmain,
+      });
+    }
+    return func;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -270,7 +288,14 @@ export class AppController {
     },
   ) {
     //console.log('data in controller:', data);
-    return await this.productsService.searchProducts(data);
+    const result = await this.productsService.searchProducts(data);
+    for (const resultItem of result.products) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -334,13 +359,26 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-detail')
   async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
-    return await this.productsService.getProductDetail(data);
+    console.log('data in controller:', data);
+    const result = await this.productsService.getProductDetail(data);
+    await this.imagedebugService.UpsercetImg({
+      pro_code: result.pro_code,
+      imageUrl: result.pro_imgmain,
+    });
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-coin/:sortBy')
   async productCoin(@Param('sortBy') sort_by: string) {
-    return await this.productsService.listFree(sort_by);
+    const result = await this.productsService.listFree(sort_by);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -479,6 +517,12 @@ export class AppController {
   async getProductCart(@Param('mem_code') mem_code: string) {
     const cart = await this.shoppingCartService.getProductCart(mem_code);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+    for (const item of cart) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: item.pro_code,
+        imageUrl: item.pro_imgmain,
+      });
+    }
     return { cart: cart, summaryCart: summaryCart.total };
   }
 
@@ -493,7 +537,15 @@ export class AppController {
   async getLast6Orders(
     @Param('memCode') memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
-    return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+    const result =
+      await this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.product.pro_code,
+        imageUrl: resultItem.product.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -501,7 +553,16 @@ export class AppController {
   async AllOrderByMember(
     @Param('memCode') memCode: string,
   ): Promise<AllOrderByMemberRes> {
-    return await this.shoppingHeadService.AllOrderByMember(memCode);
+    const result = await this.shoppingHeadService.AllOrderByMember(memCode);
+    for (const order of result) {
+      for (const orderItem of order.Newdetails) {
+        await this.imagedebugService.UpsercetImg({
+          pro_code: orderItem.product.pro_code,
+          imageUrl: orderItem.product.pro_imgmain,
+        });
+      }
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -509,7 +570,14 @@ export class AppController {
   async SomeOrderByMember(
     @Param('soh_runing') soh_runing: string,
   ): Promise<ShoppingHeadEntity> {
-    return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+    const result = await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+    for (const orderItem of result.details) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: orderItem.product.pro_code,
+        imageUrl: orderItem.product.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -798,9 +866,7 @@ export class AppController {
 
   @Get('/ecom/wangday/monthly/:wang_code')
   async getWangdayMonthly(@Param('wang_code') wang_code: string) {
-    console.log('Get Monthly Sum for wang_code:', wang_code);
     const result = await this.wangdayService.getMonthlySumByWangCode(wang_code);
-    console.log('Result:', result);
     return result;
   }
   @Get('/ecom/wangsumprice/:wang_code')
@@ -810,7 +876,14 @@ export class AppController {
 
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
   async searchProductMain(@Param('keyword') keyword: string) {
-    return this.hotdealService.searchProduct(keyword);
+    const result = await this.hotdealService.searchProduct(keyword);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem?.pro_code,
+        imageUrl: resultItem?.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1673,11 +1746,9 @@ export class AppController {
   async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
     const permission = req.user.permission;
-    console.log('User permission:', permission);
     if (permission === false) {
       return this.usersService.checklatestPurchase(mem_code);
     }
-    console.log('Checking latest purchase for user:', mem_code);
     return { message: 'Check initiated' };
   }
 
@@ -1869,6 +1940,16 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/image-bug/all-imagedebug')
+  async getAllImagedebug(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource.');
+    }
+    return await this.imagedebugService.getAllImagedebug();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product')
   async getPromotionTierList() {
     return await this.promotionService.getTierAllProduct();
@@ -1878,6 +1959,141 @@ export class AppController {
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
   async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
     return await this.promotionService.getRewardByTierId(tier_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/create-log-banner')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFileBanner(
+    @UploadedFile() file: Express.Multer.File,
+    @Body()
+    data: {
+      urlPath: Express.Multer.File;
+      name?: string;
+      type?: 'wang' | 'attestor' | 'creditor' | 'banner';
+      bannerName?: string;
+    },
+  ): Promise<{
+    Image: number;
+    personId?: number;
+    type?: string;
+    bannerName?: string;
+    urlBanner?: string;
+  }> {
+    console.log('data:', data.urlPath);
+    const result = await this.contractLogService.uploadFile({
+      urlPath: file,
+      bannerName: data.bannerName,
+      type: data.type,
+      name: data.name,
+    });
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/banner')
+  async getContractLogBanner(
+    @Body('bannerId') bannerId: number | 'all' | undefined,
+  ): Promise<ContractLogBanner | ContractLogBanner[] | null> {
+    const result = await this.contractLogService.getContractLogBanner(bannerId);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/dropdown')
+  async selectDataDropdown(
+    @Body() data: { group: string; type: string },
+  ): Promise<{ type: string; data: ContractLogPerson[] }> {
+    console.log(data);
+    const result = await this.contractLogService.selectDataDropdown(
+      data.group,
+      data.type,
+    );
+    return { type: data.type, data: result.data };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/create-banner')
+  async createContractLogBanner(
+    @Body()
+    data: {
+      selectedWang?: number;
+      selectedAttestor?: number;
+      selectedAttestor2?: number;
+      selectedCreditor?: number;
+      bannerId?: number;
+      bannerName?: string;
+      signingDate?: Date;
+      creditorCode?: string;
+      startDate?: Date;
+      endDate?: Date;
+      paymentDue?: Date;
+      address?: string;
+    },
+  ): Promise<ContractLogBanner> {
+    console.log(data);
+
+    const result = await this.contractLogService.createContractLog(data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/search-creditor')
+  async getDataCreditor(
+    @Body('keyword') keyword?: string,
+  ): Promise<CreditorEntity[] | []> {
+    return await this.productsService.getDataCreditor(keyword);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/update-creditor-person')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateContractLogBanner(
+    @Body()
+    data: {
+      contractId: number;
+      name?: string;
+      type?: 'creditor' | 'banner';
+      bannerName?: string;
+    },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ bannerName?: string; img_banner?: number }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    console.log('name:', data.name);
+    return await this.contractLogService.updateContractLogBanner({
+      bannerId: data.contractId,
+      urlPath: file,
+      name: data.name,
+      type: data.type,
+      bannerName: data.bannerName,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/upload-signed-contract')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignedContract(
+    @Body() data: { contractId: number; name?: string },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ urlContract: string }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    return await this.contractLogService.uploadSignedContract({
+      bannerId: data.contractId,
+      urlPath: file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/contract-details')
+  async getContractCompanyDays(
+    @Body() body: { companyDayId?: number | 'all' },
+  ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
+    console.log(body);
+    return await this.contractLogService.getContractCompanyDays(
+      body.companyDayId,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1906,6 +2122,79 @@ export class AppController {
       data.pro_code,
       data.replace_pro_code,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/create-company-day')
+  async createContractCompanyDay(
+    @Body()
+    data: {
+      selectedWang?: number;
+      selectedAttestor?: number;
+      selectedAttestor2?: number;
+      selectedCreditor?: number;
+      bannerId?: number;
+      bannerName?: string;
+      signingDate?: Date;
+      creditorCode?: string;
+      startDate?: Date;
+      endDate?: Date;
+      address?: string;
+      reportDueDate?: Date;
+      finalPaymentAmount?: number;
+      totalSupportValue?: number;
+      supportDeliveryDate?: Date;
+      numberOfInstallments?: number;
+      installmentIntervalDays?: number;
+      firstInstallmentAmount?: number;
+      firstPaymentCondition?: string;
+      finalInstallmentAmount?: number;
+      productsToOrder?: string;
+    },
+  ): Promise<ContractLogCompanyDay> {
+    console.log(data);
+    return await this.contractLogService.createContractLogCompanyDay(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/update-company-day')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateContractCompanyDay(
+    @Body()
+    data: {
+      contractId: number;
+      urlPath?: Express.Multer.File;
+      name?: string;
+      type?: 'creditor';
+    },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{
+    creditorEmpId?: number;
+    name?: string;
+    image?: string;
+  }> {
+    console.log(data);
+    return await this.contractLogService.updateContractLogCompanyDay({
+      companyId: data.contractId,
+      urlPath: file,
+      name: data.name,
+      type: 'creditor',
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/upload-signed-company-day')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignedCompanyDay(
+    @Body() data: { contractId: number },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ urlContract: string }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    return await this.contractLogService.uploadSignedContractCompanyDays({
+      companyId: data.contractId,
+      urlPath: file,
+    });
   }
 
   @UseGuards(JwtAuthGuard)

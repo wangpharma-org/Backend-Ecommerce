@@ -23,6 +23,7 @@ import { NewArrival } from 'src/new-arrivals/new-arrival.entity';
 import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 import { RecommendEntity } from 'src/recommend/recommend.entity';
+import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -228,6 +229,8 @@ export class ProductEntity {
   @Column({ nullable: true, type: 'int' })
   recommend_rank: number | null;
 
+  @OneToOne(() => Imagedebug, (image) => image.relatedImage)
+  imagedebug: Imagedebug;
   @ManyToOne(() => ProductEntity, (product) => product.replacedBy, {
     nullable: true,
     onDelete: 'SET NULL',
