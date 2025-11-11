@@ -1,4 +1,3 @@
-import { CampaignsController } from './campaigns.controller';
 import { Module } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { CampaignEntity } from './campaigns.entity';
@@ -20,7 +19,7 @@ import { ProductEntity } from 'src/products/products.entity';
       ProductEntity,
     ]),
   ],
-  controllers: [CampaignsController],
   providers: [CampaignsService],
+  exports: [CampaignsService],
 })
 export class CampaignsModule {}
