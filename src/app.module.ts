@@ -55,7 +55,7 @@ import { CampaignsModule } from './campaigns/campaigns.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: configService.get<boolean>('SYNCHRONIZE') ?? true,
+        synchronize: configService.get<boolean>('SYNCHRONIZE') ?? false,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
