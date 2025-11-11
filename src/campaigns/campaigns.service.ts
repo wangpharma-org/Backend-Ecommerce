@@ -110,6 +110,9 @@ export class CampaignsService {
       set_number?: number;
       price_per_set?: string;
       number_of_sets?: number;
+      unit_price?: number;
+      quantity?: number;
+      discounted_price?: number;
     },
   ) {
     const row = await this.campaignRowRepository.findOne({

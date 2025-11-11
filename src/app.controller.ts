@@ -2251,6 +2251,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:id')
   async deleteCampaign(@Param('id') id: string) {
     try {
@@ -2270,6 +2271,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/campaigns/:campaignId/data')
   async getCampaignData(@Param('campaignId') campaignId: string) {
     try {
@@ -2286,6 +2288,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data')
   async createRow(
     @Param('campaignId') campaignId: string,
@@ -2308,6 +2311,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Put('/campaigns/:campaignId/data/:rowId')
   async updateRow(
     @Param('campaignId') campaignId: string,
@@ -2320,6 +2324,9 @@ export class AppController {
       set_number?: number;
       price_per_set?: string;
       number_of_sets?: number;
+      unit_price?: number;
+      quantity?: number;
+      discounted_price?: number;
     },
   ) {
     try {
@@ -2334,6 +2341,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/data/:rowId')
   async deleteRow(
     @Param('campaignId') campaignId: string,
@@ -2350,6 +2358,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/columns')
   async createRewardColumn(
     @Param('campaignId') campaignId: string,
@@ -2370,6 +2379,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/columns/:columnId')
   async deleteRewardColumn(
     @Param('campaignId') campaignId: string,
@@ -2394,6 +2404,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/campaigns/products')
   async getProducts() {
     try {
@@ -2411,6 +2422,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/products')
   async addProductToRow(
     @Param('campaignId') campaignId: string,
@@ -2440,6 +2452,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/products-delete')
   async removeProductFromRow(
     @Param('campaignId') campaignId: string,
@@ -2472,6 +2485,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/rewards')
   async addPromoReward(
     @Param('campaignId') campaignId: string,
@@ -2500,6 +2514,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Put('/campaigns/:campaignId/data/:rowId/rewards/:rewardId')
   async updatePromoReward(
     @Param('campaignId') campaignId: string,
@@ -2535,6 +2550,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/data/:rowId/rewards/:rewardId')
   async deletePromoReward(
     @Param('campaignId') campaignId: string,
@@ -2559,6 +2575,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/campaigns/update-collumn-reward')
   async updateRewardColumn(
     @Body() data: { reward_id: string; url: string; pro_code: string },
