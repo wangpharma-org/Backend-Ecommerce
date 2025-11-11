@@ -89,4 +89,7 @@ export class ContractLogBanner {
 
   @Column({ type: 'text', nullable: true, default: null })
   address: string;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  price: string;
 }

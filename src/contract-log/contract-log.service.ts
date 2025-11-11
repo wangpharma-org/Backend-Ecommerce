@@ -161,6 +161,7 @@ export class ContractLogService {
             'creditor.creditor_code',
             'creditor.creditor_name',
             'banner.address',
+            'banner.price',
           ])
           .getOne();
       }
@@ -212,6 +213,7 @@ export class ContractLogService {
     endDate?: Date;
     paymentDue?: Date;
     address?: string;
+    price?: string;
   }): Promise<ContractLogBanner> {
     try {
       const newLog = this.contractLogBanner.create({
@@ -227,6 +229,7 @@ export class ContractLogService {
         endDate: data.endDate,
         paymentDue: data.paymentDue,
         address: data.address,
+        price: data.price,
       });
       if (data.creditorCode && data.address) {
         await this.productsService.saveAddress(data.creditorCode, data.address);
