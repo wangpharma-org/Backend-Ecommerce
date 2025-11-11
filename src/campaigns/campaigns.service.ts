@@ -203,6 +203,20 @@ export class CampaignsService {
     return this.promoProductRepository.save(promoProduct);
   }
 
+  async removeProductFromRow(
+    campaignId: string,
+    rowId: string,
+    pro_code: string,
+  ) {
+    const result = await this.promoProductRepository.delete({
+      promo_row: { id: rowId, campaign: { id: campaignId } },
+      product: { pro_code },
+    });
+    if (result.affected === 0) {
+      throw new HttpException('Promo product not found', HttpStatus.NOT_FOUND);
+    }
+  }
+
   async addPromoReward(
     campaignId: string,
     rowId: string,
