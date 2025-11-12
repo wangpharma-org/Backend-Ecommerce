@@ -415,6 +415,7 @@ export class AppController {
       amount: number;
       // pro_freebie: number;
       flashsale_end: string;
+      clientVersion?: string;
     },
   ) {
     const priceCondition = req.user.price_option ?? 'C';
@@ -427,16 +428,25 @@ export class AppController {
       // is_reward: boolean;
       flashsale_end: string;
       // hotdeal_free: boolean;
+      clientVersion?: string;
     } = {
       ...data,
       priceCondition,
     };
     console.log(payload);
-    const existingCart = await this.shoppingCartService.addProductCart(payload);
+    const {cart,
+      cartVersion,
+      cartSyncedAt,
+    } = await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
-    return { cart: existingCart, summaryCart: summaryCart.total };
+    return {
+      cart,
+      summaryCart: summaryCart.total,
+      cartVersion,
+      cartSyncedAt,
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -447,6 +457,7 @@ export class AppController {
     data: {
       mem_code: string;
       type: string;
+      clientVersion?: string;
     },
   ) {
     const priceOption = req.user.price_option ?? 'C';
@@ -454,16 +465,23 @@ export class AppController {
       mem_code: string;
       type: string;
       priceOption: string;
+      clientVersion?: string;
     } = { ...data, priceOption };
     //console.log(data);
-    const checkedProductCartAll =
+    const {
+      cart,
+      cartVersion,
+      cartSyncedAt,
+    } =
       await this.shoppingCartService.checkedProductCartAll(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
     return {
-      cart: checkedProductCartAll,
+      cart,
       summaryCart: summaryCart.total,
+      cartVersion,
+      cartSyncedAt,
     };
   }
 
@@ -475,6 +493,7 @@ export class AppController {
     data: {
       mem_code: string;
       pro_code: string;
+      clientVersion?: string;
     },
   ) {
     const priceOption = req.user.price_option ?? 'C';
@@ -482,14 +501,20 @@ export class AppController {
       mem_code: string;
       pro_code: string;
       priceOption: string;
+      clientVersion?: string;
     } = { ...data, priceOption };
     //console.log('Delete', data);
-    const handleDeleteCart =
+    const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.handleDeleteCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
-    return { cart: handleDeleteCart, summaryCart: summaryCart.total };
+    return {
+      cart,
+      summaryCart: summaryCart.total,
+      cartVersion,
+      cartSyncedAt,
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -501,6 +526,7 @@ export class AppController {
       mem_code: string;
       pro_code: string;
       type: string;
+      clientVersion?: string;
     },
   ) {
     //console.log(data);
@@ -510,19 +536,26 @@ export class AppController {
       pro_code: string;
       type: string;
       priceOption: string;
+      clientVersion?: string;
     } = { ...data, priceOption };
-    const checkedProductCart =
+    const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
-    return { cart: checkedProductCart, summaryCart: summaryCart.total };
+    return {
+      cart,
+      summaryCart: summaryCart.total,
+      cartVersion,
+      cartSyncedAt,
+    };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Param('mem_code') mem_code: string) {
-    const cart = await this.shoppingCartService.getProductCart(mem_code);
+    const { cart, cartVersion, cartSyncedAt } =
+      await this.shoppingCartService.getCartSnapshot(mem_code);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
@@ -530,7 +563,13 @@ export class AppController {
         imageUrl: item.pro_imgmain,
       });
     }
-    return { cart: cart, summaryCart: summaryCart.total };
+    return{
+      cart,
+      summaryCart: summaryCart.total,
+      cartVersion,
+      cartSyncedAt,
+    };
+    
   }
 
   @UseGuards(JwtAuthGuard)

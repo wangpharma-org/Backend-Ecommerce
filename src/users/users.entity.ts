@@ -195,4 +195,10 @@ export class UserEntity {
 
   @Column({ length: 255, nullable: true, default: null })
   tagVIP: string;
+
+  @Column({ type: 'bigint', default: () => '0' })
+  cart_version: string;
+
+  @Column({ type: 'datetime', nullable: true, default: null })
+  cart_synced_at: Date | null;
 }
