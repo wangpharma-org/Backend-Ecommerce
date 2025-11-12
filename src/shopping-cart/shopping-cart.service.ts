@@ -1461,20 +1461,6 @@ export class ShoppingCartService {
             const quantity = Number(item.spc_amount) * Number(ratio);
             const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
 
-            console.log(
-              'Calculating item:',
-              item.pro_code,
-              'Unit:',
-              item.spc_unit,
-              'Ratio:',
-              ratio,
-              'Quantity:',
-              quantity,
-              'Price:',
-              price,
-              'IsFreebie:',
-              item.hotdeal_free,
-            );
             return sum + quantity * price;
           }, 0);
 

@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
+  HttpStatus,
   Ip,
   Param,
   Post,
@@ -57,6 +59,16 @@ import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
+import { ContractLogService } from './contract-log/contract-log.service';
+import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
+import { ContractLogPerson } from './contract-log/contract-log-person.entity';
+import { CreditorEntity } from './products/creditor.entity';
+import { ContractLogCompanyDay } from './contract-log/contract-log-company-day.entity';
+import { ImagedebugService } from './imagedebug/imagedebug.service';
+import { CampaignsService } from './campaigns/campaigns.service';
+import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
+import { ProductEntity } from './products/products.entity';
+import { CampaignEntity } from './campaigns/campaigns.entity';
 
 interface JwtPayload {
   username: string;
@@ -107,6 +119,9 @@ export class AppController {
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
     private readonly recommendService: RecommendService,
+    private readonly contractLogService: ContractLogService,
+    private readonly imagedebugService: ImagedebugService,
+    private readonly campaignsService: CampaignsService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -230,7 +245,17 @@ export class AppController {
 
   @Post('/ecom/flashsale/get-list')
   async getDataFlashSale(@Body() data: { limit: number; mem_code: string }) {
-    return await this.productsService.getFlashSale(data.limit, data.mem_code);
+    const func = await this.productsService.getFlashSale(
+      data.limit,
+      data.mem_code,
+    );
+    for (const funcItem of func) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: funcItem.pro_code,
+        imageUrl: funcItem.pro_imgmain,
+      });
+    }
+    return func;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -270,7 +295,14 @@ export class AppController {
     },
   ) {
     //console.log('data in controller:', data);
-    return await this.productsService.searchProducts(data);
+    const result = await this.productsService.searchProducts(data);
+    for (const resultItem of result.products) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -334,13 +366,26 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-detail')
   async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
-    return await this.productsService.getProductDetail(data);
+    console.log('data in controller:', data);
+    const result = await this.productsService.getProductDetail(data);
+    await this.imagedebugService.UpsercetImg({
+      pro_code: result.pro_code,
+      imageUrl: result.pro_imgmain,
+    });
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-coin/:sortBy')
   async productCoin(@Param('sortBy') sort_by: string) {
-    return await this.productsService.listFree(sort_by);
+    const result = await this.productsService.listFree(sort_by);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.pro_code,
+        imageUrl: resultItem.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -512,12 +557,19 @@ export class AppController {
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(mem_code);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    return {
+    for (const item of cart) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: item.pro_code,
+        imageUrl: item.pro_imgmain,
+      });
+    }
+    return{
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
     };
+    
   }
 
   @UseGuards(JwtAuthGuard)
@@ -531,7 +583,15 @@ export class AppController {
   async getLast6Orders(
     @Param('memCode') memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
-    return this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+    const result =
+      await this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem.product.pro_code,
+        imageUrl: resultItem.product.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -539,7 +599,16 @@ export class AppController {
   async AllOrderByMember(
     @Param('memCode') memCode: string,
   ): Promise<AllOrderByMemberRes> {
-    return await this.shoppingHeadService.AllOrderByMember(memCode);
+    const result = await this.shoppingHeadService.AllOrderByMember(memCode);
+    for (const order of result) {
+      for (const orderItem of order.Newdetails) {
+        await this.imagedebugService.UpsercetImg({
+          pro_code: orderItem.product.pro_code,
+          imageUrl: orderItem.product.pro_imgmain,
+        });
+      }
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -547,7 +616,14 @@ export class AppController {
   async SomeOrderByMember(
     @Param('soh_runing') soh_runing: string,
   ): Promise<ShoppingHeadEntity> {
-    return await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+    const result = await this.shoppingHeadService.SomeOrderByMember(soh_runing);
+    for (const orderItem of result.details) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: orderItem.product.pro_code,
+        imageUrl: orderItem.product.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -689,7 +765,7 @@ export class AppController {
     return this.productsService.getProductForKeySearchForRecommend();
   }
 
-  @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/product/keysearch-replace')
   async getProductForKeySearchForReplace() {
     return this.productsService.getProductForKeySearchForReplace();
@@ -836,9 +912,7 @@ export class AppController {
 
   @Get('/ecom/wangday/monthly/:wang_code')
   async getWangdayMonthly(@Param('wang_code') wang_code: string) {
-    console.log('Get Monthly Sum for wang_code:', wang_code);
     const result = await this.wangdayService.getMonthlySumByWangCode(wang_code);
-    console.log('Result:', result);
     return result;
   }
   @Get('/ecom/wangsumprice/:wang_code')
@@ -848,7 +922,14 @@ export class AppController {
 
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
   async searchProductMain(@Param('keyword') keyword: string) {
-    return this.hotdealService.searchProduct(keyword);
+    const result = await this.hotdealService.searchProduct(keyword);
+    for (const resultItem of result) {
+      await this.imagedebugService.UpsercetImg({
+        pro_code: resultItem?.pro_code,
+        imageUrl: resultItem?.pro_imgmain,
+      });
+    }
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1711,11 +1792,9 @@ export class AppController {
   async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
     const permission = req.user.permission;
-    console.log('User permission:', permission);
     if (permission === false) {
       return this.usersService.checklatestPurchase(mem_code);
     }
-    console.log('Checking latest purchase for user:', mem_code);
     return { message: 'Check initiated' };
   }
 
@@ -1907,6 +1986,16 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/image-bug/all-imagedebug')
+  async getAllImagedebug(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource.');
+    }
+    return await this.imagedebugService.getAllImagedebug();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product')
   async getPromotionTierList() {
     return await this.promotionService.getTierAllProduct();
@@ -1916,6 +2005,141 @@ export class AppController {
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
   async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
     return await this.promotionService.getRewardByTierId(tier_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/create-log-banner')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFileBanner(
+    @UploadedFile() file: Express.Multer.File,
+    @Body()
+    data: {
+      urlPath: Express.Multer.File;
+      name?: string;
+      type?: 'wang' | 'attestor' | 'creditor' | 'banner';
+      bannerName?: string;
+    },
+  ): Promise<{
+    Image: number;
+    personId?: number;
+    type?: string;
+    bannerName?: string;
+    urlBanner?: string;
+  }> {
+    console.log('data:', data.urlPath);
+    const result = await this.contractLogService.uploadFile({
+      urlPath: file,
+      bannerName: data.bannerName,
+      type: data.type,
+      name: data.name,
+    });
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/banner')
+  async getContractLogBanner(
+    @Body('bannerId') bannerId: number | 'all' | undefined,
+  ): Promise<ContractLogBanner | ContractLogBanner[] | null> {
+    const result = await this.contractLogService.getContractLogBanner(bannerId);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/dropdown')
+  async selectDataDropdown(
+    @Body() data: { group: string; type: string },
+  ): Promise<{ type: string; data: ContractLogPerson[] }> {
+    console.log(data);
+    const result = await this.contractLogService.selectDataDropdown(
+      data.group,
+      data.type,
+    );
+    return { type: data.type, data: result.data };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/create-banner')
+  async createContractLogBanner(
+    @Body()
+    data: {
+      selectedWang?: number;
+      selectedAttestor?: number;
+      selectedAttestor2?: number;
+      selectedCreditor?: number;
+      bannerId?: number;
+      bannerName?: string;
+      signingDate?: Date;
+      creditorCode?: string;
+      startDate?: Date;
+      endDate?: Date;
+      paymentDue?: Date;
+      address?: string;
+    },
+  ): Promise<ContractLogBanner> {
+    console.log(data);
+
+    const result = await this.contractLogService.createContractLog(data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/search-creditor')
+  async getDataCreditor(
+    @Body('keyword') keyword?: string,
+  ): Promise<CreditorEntity[] | []> {
+    return await this.productsService.getDataCreditor(keyword);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/update-creditor-person')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateContractLogBanner(
+    @Body()
+    data: {
+      contractId: number;
+      name?: string;
+      type?: 'creditor' | 'banner';
+      bannerName?: string;
+    },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ bannerName?: string; img_banner?: number }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    console.log('name:', data.name);
+    return await this.contractLogService.updateContractLogBanner({
+      bannerId: data.contractId,
+      urlPath: file,
+      name: data.name,
+      type: data.type,
+      bannerName: data.bannerName,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/upload-signed-contract')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignedContract(
+    @Body() data: { contractId: number; name?: string },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ urlContract: string }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    return await this.contractLogService.uploadSignedContract({
+      bannerId: data.contractId,
+      urlPath: file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/contract-details')
+  async getContractCompanyDays(
+    @Body() body: { companyDayId?: number | 'all' },
+  ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
+    console.log(body);
+    return await this.contractLogService.getContractCompanyDays(
+      body.companyDayId,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1947,6 +2171,79 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/create-company-day')
+  async createContractCompanyDay(
+    @Body()
+    data: {
+      selectedWang?: number;
+      selectedAttestor?: number;
+      selectedAttestor2?: number;
+      selectedCreditor?: number;
+      bannerId?: number;
+      bannerName?: string;
+      signingDate?: Date;
+      creditorCode?: string;
+      startDate?: Date;
+      endDate?: Date;
+      address?: string;
+      reportDueDate?: Date;
+      finalPaymentAmount?: number;
+      totalSupportValue?: number;
+      supportDeliveryDate?: Date;
+      numberOfInstallments?: number;
+      installmentIntervalDays?: number;
+      firstInstallmentAmount?: number;
+      firstPaymentCondition?: string;
+      finalInstallmentAmount?: number;
+      productsToOrder?: string;
+    },
+  ): Promise<ContractLogCompanyDay> {
+    console.log(data);
+    return await this.contractLogService.createContractLogCompanyDay(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/update-company-day')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateContractCompanyDay(
+    @Body()
+    data: {
+      contractId: number;
+      urlPath?: Express.Multer.File;
+      name?: string;
+      type?: 'creditor';
+    },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{
+    creditorEmpId?: number;
+    name?: string;
+    image?: string;
+  }> {
+    console.log(data);
+    return await this.contractLogService.updateContractLogCompanyDay({
+      companyId: data.contractId,
+      urlPath: file,
+      name: data.name,
+      type: 'creditor',
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/contract-log/upload-signed-company-day')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignedCompanyDay(
+    @Body() data: { contractId: number },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ urlContract: string }> {
+    console.log('contractId:', data.contractId);
+    console.log('urlPath:', file);
+    return await this.contractLogService.uploadSignedContractCompanyDays({
+      companyId: data.contractId,
+      urlPath: file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/get-product')
   async GetProductAndReplace(@Body() data: { pro_code: string }) {
     return await this.recommendService.GetProductAndReplace(data.pro_code);
@@ -1956,5 +2253,387 @@ export class AppController {
   @Post('/ecom/replace/replace-product-null')
   async UpdateProductAndReplaceNull(@Body() data: { pro_code: string }) {
     return await this.recommendService.RemoveReplaceProduct(data.pro_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns')
+  async getAllCampaigns() {
+    try {
+      const campaigns: Partial<CampaignEntity>[] =
+        await this.campaignsService.getAllCampaigns();
+      return { success: true, data: campaigns };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_CAMPAIGNS_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns')
+  async createCampaign(@Body() body: { name: string; description?: string }) {
+    try {
+      const campaign = await this.campaignsService.createCampaign(body);
+      return { success: true, data: campaign };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'CREATE_CAMPAIGN_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:id')
+  async deleteCampaign(@Param('id') id: string) {
+    try {
+      await this.campaignsService.deleteCampaign(id);
+      return {
+        success: true,
+        data: { message: 'Campaign deleted successfully' },
+      };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'DELETE_CAMPAIGN_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/data')
+  async getCampaignData(@Param('campaignId') campaignId: string) {
+    try {
+      const data = await this.campaignsService.getCampaignData(campaignId);
+      return { success: true, data };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_CAMPAIGN_DATA_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data')
+  async createRow(
+    @Param('campaignId') campaignId: string,
+    @Body()
+    body: {
+      set_number: number;
+      condition?: string;
+      target?: string;
+      con_percent?: string;
+    },
+  ) {
+    try {
+      const row = await this.campaignsService.createRow(campaignId, body);
+      return { success: true, data: row };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'CREATE_ROW_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/campaigns/:campaignId/data/:rowId')
+  async updateRow(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Body()
+    body: {
+      target?: string;
+      con_percent?: string;
+      condition?: string;
+      set_number?: number;
+      price_per_set?: string;
+      number_of_sets?: number;
+      unit_price?: number;
+      quantity?: number;
+      discounted_price?: number;
+    },
+  ) {
+    try {
+      const updatedRow: CampaignRowEntity =
+        await this.campaignsService.updateRow(campaignId, rowId, body);
+      return { success: true, data: updatedRow };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPDATE_ROW_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/data/:rowId')
+  async deleteRow(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+  ) {
+    try {
+      await this.campaignsService.deleteRow(campaignId, rowId);
+      return { success: true, data: { message: 'Row deleted successfully' } };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_ROW_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/columns')
+  async createRewardColumn(
+    @Param('campaignId') campaignId: string,
+    @Body()
+    body: { name: string; unit?: string; value_per_unit?: string },
+  ) {
+    try {
+      const column = await this.campaignsService.createRewardColumn(
+        campaignId,
+        body,
+      );
+      return { success: true, data: column };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'CREATE_REWARD_COLUMN_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/columns/:columnId')
+  async deleteRewardColumn(
+    @Param('campaignId') campaignId: string,
+    @Param('columnId') columnId: string,
+  ) {
+    try {
+      await this.campaignsService.deleteRewardColumn(campaignId, columnId);
+      return {
+        success: true,
+        data: { message: 'Reward column deleted successfully' },
+      };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: {
+            code: 'DELETE_REWARD_COLUMN_FAILED',
+          },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/products')
+  async getProducts() {
+    try {
+      const products: Partial<ProductEntity>[] =
+        await this.campaignsService.getProducts();
+      return { success: true, data: products };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_PRODUCTS_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/products')
+  async addProductToRow(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Body() body: { pro_code: string },
+  ) {
+    try {
+      console.log('Adding product to row:', {
+        campaignId,
+        rowId,
+        pro_code: body.pro_code,
+      });
+      const product = await this.campaignsService.addProductToRow(
+        campaignId,
+        rowId,
+        body.pro_code,
+      );
+      return { success: true, data: product };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'ADD_PRODUCT_TO_ROW_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/products-delete')
+  async removeProductFromRow(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Body() body: { pro_code: string },
+  ) {
+    try {
+      console.log('Removing product from row:', {
+        campaignId,
+        rowId,
+        pro_code: body.pro_code,
+      });
+      await this.campaignsService.removeProductFromRow(
+        campaignId,
+        rowId,
+        body.pro_code,
+      );
+      return {
+        success: true,
+        data: { message: 'Product removed from row successfully' },
+      };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'REMOVE_PRODUCT_FROM_ROW_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/rewards')
+  async addPromoReward(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Body()
+    body: {
+      reward_column_id: string;
+      quantity?: string;
+      unit?: string;
+      price?: string;
+      value?: string;
+    },
+  ) {
+    try {
+      const reward = await this.campaignsService.addPromoReward(
+        campaignId,
+        rowId,
+        body,
+      );
+      return { success: true, data: reward };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'ADD_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/campaigns/:campaignId/data/:rowId/rewards/:rewardId')
+  async updatePromoReward(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Param('rewardId') rewardId: string,
+    @Body()
+    body: {
+      quantity?: string;
+      unit?: string;
+      price?: string;
+      value?: string;
+    },
+  ) {
+    try {
+      console.log('Updating promo reward:', {
+        campaignId,
+        rowId,
+        rewardId,
+        body,
+      });
+      const updatedReward = await this.campaignsService.updatePromoReward(
+        campaignId,
+        rowId,
+        rewardId,
+        body,
+      );
+      return { success: true, data: updatedReward };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPDATE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/data/:rowId/rewards/:rewardId')
+  async deletePromoReward(
+    @Param('campaignId') campaignId: string,
+    @Param('rowId') rowId: string,
+    @Param('rewardId') rewardId: string,
+  ) {
+    try {
+      await this.campaignsService.deletePromoReward(
+        campaignId,
+        rowId,
+        rewardId,
+      );
+      return {
+        success: true,
+        data: { message: 'Promo reward deleted successfully' },
+      };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/update-collumn-reward')
+  async updateRewardColumn(
+    @Body() data: { reward_id: string; url: string; pro_code: string },
+  ) {
+    try {
+      await this.campaignsService.updateRewardColumn(
+        data.reward_id,
+        data.url,
+        data.pro_code,
+      );
+      return {
+        success: true,
+        data: { message: 'Reward column updated successfully'},
+      };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 }

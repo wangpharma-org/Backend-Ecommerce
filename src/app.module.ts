@@ -32,6 +32,8 @@ import { FixFreeModule } from './fix-free/fix-free.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { ProductKeywordModule } from './product-keyword/product-keyword.module';
 import { RecommendModule } from './recommend/recommend.module';
+import { ContractLogModule } from './contract-log/contract-log.module';
+import { ImagedebugModule } from './imagedebug/imagedebug.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 
 @Module({
@@ -53,7 +55,7 @@ import { CampaignsModule } from './campaigns/campaigns.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: configService.get<boolean>('SYNCHRONIZE') ?? true,
+        synchronize: configService.get<boolean>('SYNCHRONIZE') ?? false,
         // migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
       }),
@@ -84,6 +86,8 @@ import { CampaignsModule } from './campaigns/campaigns.module';
     SessionsModule,
     ProductKeywordModule,
     RecommendModule,
+    ContractLogModule,
+    ImagedebugModule,
     CampaignsModule,
   ],
   controllers: [AppController],
