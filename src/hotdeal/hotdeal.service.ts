@@ -299,7 +299,7 @@ export class HotdealService {
         pro_code: string;
         match: boolean;
         countFreeBies: string;
-        product2: { pro_code: string; pro_name: string };
+        product2: { pro_code: string; pro_name: string; pro_imgmain?: string };
         hotdeal: {
           pro1_amount: string;
           pro1_unit: string;
@@ -360,6 +360,7 @@ export class HotdealService {
           product2: {
             pro_code: found.product2?.pro_code || '',
             pro_name: found.product2?.pro_name || '',
+            pro_imgmain: found.product2?.pro_imgmain || '',
           },
           hotdeal: {
             pro1_amount: found.pro1_amount,

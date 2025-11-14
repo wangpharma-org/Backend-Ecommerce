@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, Not, Brackets } from 'typeorm';
@@ -7,6 +7,7 @@ import { PromotionEntity } from 'src/promotion/promotion.entity';
 import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
+import { UserEntity } from 'src/users/users.entity';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -130,6 +131,15 @@ export interface CartSummary {
   shipping_type: any;
 }
 
+export interface CartVersionState {
+  cartVersion: string;
+  cartSyncedAt: Date | null;
+}
+
+export interface CartMutationResult extends CartVersionState {
+  cart: ShoppingProductCart[];
+}
+
 @Injectable()
 export class ShoppingCartService {
   constructor(
@@ -141,10 +151,98 @@ export class ShoppingCartService {
     private readonly conRepo: Repository<PromotionConditionEntity>,
     @InjectRepository(PromotionEntity)
     private readonly promotionRepo: Repository<PromotionEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
   ) {}
+
+  private normalizeCartVersion(
+    value?: string | number | null,
+  ): string {
+    if (value === null || value === undefined) {
+      return '0';
+    }
+    return typeof value === 'string' ? value : String(value);
+  }
+
+  private toBigInt(value: string | number): bigint {
+    try {
+      return typeof value === 'string' ? BigInt(value) : BigInt(value);
+    } catch {
+      throw new ConflictException('Invalid cart version value.');
+    }
+  }
+
+  private async ensureCartVersionFresh(
+    mem_code: string,
+    clientVersion?: string | number,
+  ): Promise<void> {
+    if (clientVersion === undefined || clientVersion === null) {
+      return;
+    }
+    const { cartVersion } = await this.getCartVersionState(mem_code);
+    if (this.toBigInt(cartVersion) !== this.toBigInt(clientVersion)) {
+      throw new ConflictException(
+        'Cart data is outdated. Please refresh and try again.',
+      );
+    }
+  }
+
+  private async incrementCartVersion(
+    mem_code: string,
+  ): Promise<CartVersionState> {
+    const result = await this.userRepo
+      .createQueryBuilder()
+      .update(UserEntity)
+      .set({
+        cart_version: () => 'cart_version + 1',
+        cart_synced_at: () => 'CURRENT_TIMESTAMP',
+      })
+      .where('mem_code = :mem_code', { mem_code })
+      .execute();
+
+    if (!result.affected) {
+      throw new Error(`Member ${mem_code} not found`);
+    }
+
+    return this.getCartVersionState(mem_code);
+  }
+
+  async getCartVersionState(mem_code: string): Promise<CartVersionState> {
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: {
+        cart_version: true,
+        cart_synced_at: true,
+      },
+    });
+
+    if (!member) {
+      throw new Error(`Member ${mem_code} not found`);
+    }
+
+    return {
+      cartVersion: this.normalizeCartVersion(member.cart_version),
+      cartSyncedAt: member.cart_synced_at ?? null,
+    };
+  }
+
+  async markCartAsChanged(mem_code: string): Promise<CartVersionState> {
+    return this.incrementCartVersion(mem_code);
+  }
+
+  async getCartSnapshot(mem_code: string): Promise<CartMutationResult> {
+    const [cart, version] = await Promise.all([
+      this.getProductCart(mem_code),
+      this.getCartVersionState(mem_code),
+    ]);
+    return {
+      cart,
+      ...version,
+    };
+  }
 
   async addProductCart(data: {
     mem_code: string;
@@ -153,8 +251,10 @@ export class ShoppingCartService {
     amount: number;
     priceCondition: string;
     flashsale_end?: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -216,22 +316,30 @@ export class ShoppingCartService {
       console.log('Check Hotdeal');
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
 
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
       throw new Error('Error in Add product Cart');
     }
   }
 
-  async addProductCartHotDeal(data: {
-    mem_code: string;
-    pro_code: string;
-    pro_unit: string;
-    amount: number;
-    hotdeal_free: boolean;
-    hotdeal_promain: string;
-  }): Promise<ShoppingProductCart[]> {
+  async addProductCartHotDeal(
+    data: {
+      mem_code: string;
+      pro_code: string;
+      pro_unit: string;
+      amount: number;
+      hotdeal_free: boolean;
+      hotdeal_promain: string;
+      clientVersion?: string | number;
+    },
+    options?: { touchVersion?: boolean },
+  ): Promise<CartMutationResult> {
+    const touchVersion = options?.touchVersion ?? true;
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('Add Hotdeal Free Item:', data);
       await this.shoppingCartRepo.save({
         pro_code: data.pro_code,
@@ -244,7 +352,11 @@ export class ShoppingCartService {
         spc_datetime: new Date(),
       });
       console.log('Check Promotion for Hotdeal');
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = touchVersion
+        ? await this.incrementCartVersion(data.mem_code)
+        : await this.getCartVersionState(data.mem_code);
+      return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
       throw new Error('Error in Add product Cart');
@@ -658,8 +770,10 @@ export class ShoppingCartService {
     mem_code: string;
     type: string;
     priceOption: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
@@ -717,7 +831,9 @@ export class ShoppingCartService {
 
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
 
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
     } catch (e) {
       console.error('Error in checkedProductCart', e);
       throw new Error('Something wrong in checkedProductCart');
@@ -745,8 +861,10 @@ export class ShoppingCartService {
     pro_code: string;
     mem_code: string;
     priceOption: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       // เช็คว่าสินค้านี้มี hotdeal หรือไม่
       const hotdeal = await this.hotdealService.find(data.pro_code);
 
@@ -771,7 +889,9 @@ export class ShoppingCartService {
       });
       console.log('priceOption', data.priceOption);
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
     } catch {
       throw new Error('Somthing wrong in delete product cart');
     }
@@ -779,7 +899,14 @@ export class ShoppingCartService {
 
   async clearCheckoutCart(spc_id: number) {
     try {
+      const cartItem = await this.shoppingCartRepo.findOne({
+        where: { spc_id },
+        select: { mem_code: true },
+      });
       await this.shoppingCartRepo.delete(spc_id);
+      if (cartItem?.mem_code) {
+        await this.incrementCartVersion(cartItem.mem_code);
+      }
     } catch {
       throw new Error('Clear Checkout Cart Failed');
     }
@@ -789,8 +916,10 @@ export class ShoppingCartService {
     mem_code: string;
     type: string;
     priceOption: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('checkedProductCartAll data : ', data);
       if (data.type === 'check') {
         const productCanNotCheck = await this.shoppingCartRepo
@@ -824,7 +953,9 @@ export class ShoppingCartService {
 
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
 
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
     } catch (e) {
       console.error('Error in checkedProductCartAll', e);
       throw new Error('Somthing wrong in checkedProductCartAll');
@@ -1168,14 +1299,18 @@ export class ShoppingCartService {
           return await this.getProductCart(mem_code);
         }
 
-        return await this.addProductCartHotDeal({
-          mem_code: mem_code ?? '',
-          pro_code: hotdeal.product2.pro_code,
-          pro_unit: hotdeal.pro2_unit ?? '',
-          amount: Number(hotdealMatch?.countFreeBies),
-          hotdeal_promain: hotdeal.product.pro_code,
-          hotdeal_free: true,
-        });
+        const result = await this.addProductCartHotDeal(
+          {
+            mem_code: mem_code ?? '',
+            pro_code: hotdeal.product2.pro_code,
+            pro_unit: hotdeal.pro2_unit ?? '',
+            amount: Number(hotdealMatch?.countFreeBies),
+            hotdeal_promain: hotdeal.product.pro_code,
+            hotdeal_free: true,
+          },
+          { touchVersion: false },
+        );
+        return result.cart;
       }
     } catch (error) {
       console.error('Error in checkHotdealByProCode:', error);
@@ -1326,20 +1461,6 @@ export class ShoppingCartService {
             const quantity = Number(item.spc_amount) * Number(ratio);
             const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
 
-            console.log(
-              'Calculating item:',
-              item.pro_code,
-              'Unit:',
-              item.spc_unit,
-              'Ratio:',
-              ratio,
-              'Quantity:',
-              quantity,
-              'Price:',
-              price,
-              'IsFreebie:',
-              item.hotdeal_free,
-            );
             return sum + quantity * price;
           }, 0);
 

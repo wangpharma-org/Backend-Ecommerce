@@ -207,4 +207,9 @@ export class UserEntity {
     terms?: number;
     privacy?: number;
   };
+  @Column({ type: 'bigint', default: () => '0' })
+  cart_version: string;
+
+  @Column({ type: 'datetime', nullable: true, default: null })
+  cart_synced_at: Date | null;
 }

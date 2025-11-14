@@ -17,6 +17,9 @@ export class CampaignEntity {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
+  @Column({ type: 'varchar', length: 20, default: null, nullable: true })
+  deptor_code: string | null;
+
   @Column({ type: 'int', default: 0 })
   progress: number;
 

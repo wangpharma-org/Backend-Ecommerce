@@ -50,6 +50,7 @@ export class CampaignsService {
       relations: [
         'promo_rewards',
         'promo_rewards.reward_column',
+        'promo_rewards.reward_column.linked_product',
         'promo_products',
         'promo_products.product',
       ],
@@ -58,11 +59,17 @@ export class CampaignsService {
     return rows.map((row) => ({
       ...row,
       promo_rewards: row.promo_rewards.map((reward) => ({
+        id: reward.id,
         quantity: reward.quantity,
         unit: reward.unit,
         price: reward.price,
         value: reward.value,
-        reward_column: reward.reward_column,
+        reward_column: {
+          ...reward.reward_column,
+          linked_product: reward.reward_column.linked_product
+            ? { pro_code: reward.reward_column.linked_product.pro_code }
+            : null,
+        },
       })),
       promo_products: row.promo_products.map(
         (promoProduct) => promoProduct.product,
@@ -96,7 +103,17 @@ export class CampaignsService {
   async updateRow(
     campaignId: string,
     rowId: string,
-    data: { target?: string; con_percent?: string },
+    data: {
+      target?: string;
+      con_percent?: string;
+      condition?: string;
+      set_number?: number;
+      price_per_set?: string;
+      number_of_sets?: number;
+      unit_price?: number;
+      quantity?: number;
+      discounted_price?: number;
+    },
   ) {
     const row = await this.campaignRowRepository.findOne({
       where: { id: rowId, campaign: { id: campaignId } },
@@ -137,6 +154,20 @@ export class CampaignsService {
     return this.campaignRewardRepository.save(column);
   }
 
+  async updateRewardColumn(reward_id: string, url?: string, pro_code?: string) {
+    if (pro_code) {
+      await this.campaignRewardRepository.update(reward_id, {
+        img_url: url,
+        linked_product: { pro_code: pro_code },
+      });
+    }
+    if (url) {
+      await this.campaignRewardRepository.update(reward_id, {
+        img_url: url,
+      });
+    }
+  }
+
   async deleteRewardColumn(campaignId: string, columnId: string) {
     const result = await this.campaignRewardRepository.delete({
       id: columnId,
@@ -173,5 +204,90 @@ export class CampaignsService {
       product,
     });
     return this.promoProductRepository.save(promoProduct);
+  }
+
+  async removeProductFromRow(
+    campaignId: string,
+    rowId: string,
+    pro_code: string,
+  ) {
+    const result = await this.promoProductRepository.delete({
+      promo_row: { id: rowId, campaign: { id: campaignId } },
+      product: { pro_code },
+    });
+    if (result.affected === 0) {
+      throw new HttpException('Promo product not found', HttpStatus.NOT_FOUND);
+    }
+  }
+
+  async addPromoReward(
+    campaignId: string,
+    rowId: string,
+    data: {
+      reward_column_id: string;
+      quantity?: string;
+      unit?: string;
+      price?: string;
+      value?: string;
+    },
+  ) {
+    const row = await this.campaignRowRepository.findOne({
+      where: { id: rowId, campaign: { id: campaignId } },
+    });
+    if (!row) {
+      throw new HttpException('Row not found', HttpStatus.NOT_FOUND);
+    }
+
+    const rewardColumn = await this.campaignRewardRepository.findOne({
+      where: { id: data.reward_column_id, campaign: { id: campaignId } },
+    });
+    if (!rewardColumn) {
+      throw new HttpException('Reward column not found', HttpStatus.NOT_FOUND);
+    }
+
+    const promoReward = this.promoRewardRepository.create({
+      promo_row: row,
+      reward_column: rewardColumn,
+      quantity: data.quantity,
+      unit: data.unit,
+      price: data.price,
+      value: data.value,
+    });
+    return this.promoRewardRepository.save(promoReward);
+  }
+
+  async updatePromoReward(
+    campaignId: string,
+    rowId: string,
+    rewardId: string,
+    data: {
+      quantity?: string;
+      unit?: string;
+      price?: string;
+      value?: string;
+    },
+  ) {
+    const reward = await this.promoRewardRepository.findOne({
+      where: {
+        id: rewardId,
+        promo_row: { id: rowId, campaign: { id: campaignId } },
+      },
+    });
+    if (!reward) {
+      throw new HttpException('Promo reward not found', HttpStatus.NOT_FOUND);
+    }
+
+    Object.assign(reward, data);
+    return this.promoRewardRepository.save(reward);
+  }
+
+  async deletePromoReward(campaignId: string, rowId: string, rewardId: string) {
+    const result = await this.promoRewardRepository.delete({
+      id: rewardId,
+      promo_row: { id: rowId, campaign: { id: campaignId } },
+    });
+    if (result.affected === 0) {
+      throw new HttpException('Promo reward not found', HttpStatus.NOT_FOUND);
+    }
   }
 }

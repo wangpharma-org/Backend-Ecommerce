@@ -135,6 +135,7 @@ export class PromotionService {
         mem_code,
         price_option,
       );
+      await this.shoppingCartService.markCartAsChanged(mem_code);
     } catch (error) {
       console.error(error);
       throw new Error('Failed to check reward in cart');

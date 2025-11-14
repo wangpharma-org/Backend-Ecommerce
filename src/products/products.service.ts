@@ -441,7 +441,18 @@ export class ProductsService {
           'products.pro_stock > 0',
         )
         .leftJoinAndSelect('products.replace', 'replaceInRecommend')
-        .leftJoinAndSelect('products.inCarts', 'inCarts')
+        .leftJoinAndSelect(
+          'replace.inCarts',
+          'inCartsInReplace',
+          'inCartsInReplace.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
+        .leftJoinAndSelect(
+          'products.inCarts',
+          'inCarts',
+          'inCarts.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
         .select([
@@ -515,6 +526,11 @@ export class ProductsService {
           'replace.order_quantity',
           'replace.pro_promotion_amount',
           'replace.pro_promotion_month',
+          'inCartsInReplace.mem_code',
+          'inCartsInReplace.spc_amount',
+          'inCartsInReplace.spc_unit',
+          'inCartsInReplace.pro_code',
+          'inCarts.pro_code',
           'inCarts.mem_code',
           'inCarts.spc_amount',
           'inCarts.spc_unit',
@@ -1428,6 +1444,42 @@ export class ProductsService {
     } catch (error) {
       console.error('Error updating sale amount day:', error);
       throw new Error('Error updating sale amount day');
+    }
+  }
+
+  async getDataCreditor(keyword?: string): Promise<CreditorEntity[] | []> {
+    try {
+      console.log('Keyword for creditor search:', keyword);
+      const creditors = await this.creditorRepo
+        .createQueryBuilder('creditor')
+        .where(
+          'creditor.creditor_code LIKE :kw OR creditor.creditor_name LIKE :kw',
+          { kw: `%${keyword}%` },
+        )
+        .take(10)
+        .getMany();
+      console.log('Found creditors:', creditors);
+      return creditors;
+    } catch (error) {
+      console.error('Error fetching creditor data:', error);
+      throw new Error('Error fetching creditor data');
+    }
+  }
+
+  async saveAddress(creditor: string, address?: string): Promise<void> {
+    try {
+      const findCreditor = await this.creditorRepo.findOne({
+        where: { creditor_code: creditor, creditor_address: address },
+      });
+      if (address && !findCreditor) {
+        await this.creditorRepo.update(
+          { creditor_code: creditor },
+          { creditor_address: address },
+        );
+      }
+    } catch (error) {
+      console.error('Error saving address:', error);
+      throw new Error('Error saving address');
     }
   }
 }
