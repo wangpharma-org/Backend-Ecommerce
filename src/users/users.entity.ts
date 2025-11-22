@@ -14,6 +14,7 @@ import { DebtorEntity } from 'src/debtor/debtor.entity';
 import { EditAddress } from 'src/edit-address/edit-address.entity';
 import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ChangePassword } from 'src/change-password/change-password.entity';
+import { PolicyDocMember } from 'src/policy-doc/policy-doc-member.entity';
 
 @Entity('users')
 export class UserEntity {
@@ -196,6 +197,16 @@ export class UserEntity {
   @Column({ length: 255, nullable: true, default: null })
   tagVIP: string;
 
+  @OneToMany(() => PolicyDocMember, (member) => member.user)
+  policyDocMembers: PolicyDocMember[];
+
+  @Column({ type: 'json', nullable: true })
+  latestPolicyByType: {
+    policy?: number;
+    provision?: number;
+    terms?: number;
+    privacy?: number;
+  };
   @Column({ type: 'bigint', default: () => '0' })
   cart_version: string;
 

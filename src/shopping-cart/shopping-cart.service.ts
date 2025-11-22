@@ -321,6 +321,9 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
+      if (error instanceof ConflictException) {
+        throw error;
+      }
       throw new Error('Error in Add product Cart');
     }
   }
@@ -359,6 +362,9 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
+      if (error instanceof ConflictException) {
+        throw error;
+      }
       throw new Error('Error in Add product Cart');
     }
   }
@@ -836,6 +842,9 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (e) {
       console.error('Error in checkedProductCart', e);
+      if (e instanceof ConflictException) {
+        throw e;
+      }
       throw new Error('Something wrong in checkedProductCart');
     }
   }
@@ -892,7 +901,10 @@ export class ShoppingCartService {
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
-    } catch {
+    } catch (e) {
+      if (e instanceof ConflictException) {
+        throw e;
+      }
       throw new Error('Somthing wrong in delete product cart');
     }
   }
@@ -958,6 +970,9 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (e) {
       console.error('Error in checkedProductCartAll', e);
+      if (e instanceof ConflictException) {
+        throw e;
+      }
       throw new Error('Somthing wrong in checkedProductCartAll');
     }
   }
