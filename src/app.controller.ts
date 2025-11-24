@@ -418,6 +418,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -434,10 +435,8 @@ export class AppController {
       priceCondition,
     };
     console.log(payload);
-    const {cart,
-      cartVersion,
-      cartSyncedAt,
-    } = await this.shoppingCartService.addProductCart(payload);
+    const { cart, cartVersion, cartSyncedAt } =
+      await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
@@ -467,12 +466,8 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    //console.log(data);
-    const {
-      cart,
-      cartVersion,
-      cartSyncedAt,
-    } =
+    console.log('Check all cart data:', data);
+    const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCartAll(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
@@ -530,6 +525,7 @@ export class AppController {
     },
   ) {
     //console.log(data);
+    console.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -563,13 +559,12 @@ export class AppController {
         imageUrl: item.pro_imgmain,
       });
     }
-    return{
+    return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
     };
-    
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2627,7 +2622,7 @@ export class AppController {
       );
       return {
         success: true,
-        data: { message: 'Reward column updated successfully'},
+        data: { message: 'Reward column updated successfully' },
       };
     } catch {
       throw new HttpException(
