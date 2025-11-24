@@ -71,6 +71,7 @@ import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
 import { ProductEntity } from './products/products.entity';
 import { CampaignEntity } from './campaigns/campaigns.entity';
+import { AppVersionService } from './app-version/app-version.service';
 
 interface JwtPayload {
   username: string;
@@ -125,6 +126,7 @@ export class AppController {
     private readonly contractLogService: ContractLogService,
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
+    private readonly appVersion: AppVersionService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -2671,6 +2673,47 @@ export class AppController {
     } catch {
       throw new HttpException(
         { success: false, error: { code: 'DELETE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post('/app-version/version/get')
+  async getVersion(@Body() data: { version: string; os: string }) {
+    console.log('Get version request data:', data);
+    try {
+      return this.appVersion.getLatestVersion(data.version, data.os);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_VERSION_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Post('/app-version/version/update')
+  async postVersion(
+    @Body()
+    data: {
+      latestVersion: string;
+      forceUpdate: boolean;
+      androidStoreUrl?: string;
+      iosStoreUrl?: string;
+      note?: string;
+    },
+  ) {
+    try {
+      return this.appVersion.insertLastestVersion(data);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'POST_VERSION_FAILED' },
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
