@@ -35,6 +35,7 @@ import { RecommendModule } from './recommend/recommend.module';
 import { ContractLogModule } from './contract-log/contract-log.module';
 import { ImagedebugModule } from './imagedebug/imagedebug.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
+import { PolicyDocModule } from './policy-doc/policy-doc.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { CampaignsModule } from './campaigns/campaigns.module';
     ContractLogModule,
     ImagedebugModule,
     CampaignsModule,
+    PolicyDocModule,
   ],
   controllers: [AppController],
   providers: [AppService],

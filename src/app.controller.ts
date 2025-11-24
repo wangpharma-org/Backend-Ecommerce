@@ -59,6 +59,8 @@ import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
+import { PolicyDocService } from './policy-doc/policy-doc.service';
+import { PolicyDocMember } from './policy-doc/policy-doc-member.entity';
 import { ContractLogService } from './contract-log/contract-log.service';
 import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log/contract-log-person.entity';
@@ -119,6 +121,7 @@ export class AppController {
     private readonly employeesService: EmployeesService,
     private readonly productKeySearch: ProductKeywordService,
     private readonly recommendService: RecommendService,
+    private readonly policyDocService: PolicyDocService,
     private readonly contractLogService: ContractLogService,
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
@@ -2250,6 +2253,47 @@ export class AppController {
     return await this.recommendService.RemoveReplaceProduct(data.pro_code);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/policy/option-catagory')
+  async findOptionCatagoryPolicy(@Body('name') name?: string) {
+    console.log('Policy category name:', name);
+    return await this.policyDocService.findOptionCatagoryPolicy(name);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/policy/upload-policy')
+  async savePolicyDoc(
+    @Body() data: { content: string; category: number; type: number },
+  ) {
+    console.log('Received policy document data:', data);
+
+    if (!data) {
+      throw new Error('Missing form data. Please send category and type.');
+    }
+
+    const { content, category, type } = data;
+    return await this.policyDocService.savePolicyDoc(content, category, type);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/policy/check-policy')
+  async ensureUserHasPolicyMember(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    console.log('Checking policy for member code:', mem_code);
+    return await this.policyDocService.checkAndGetCorrectPolicy(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/policy/agree')
+  async agreeToPolicyDoc(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { policyID: number },
+  ): Promise<PolicyDocMember | void | { message: string }> {
+    const mem_code = req.user.mem_code;
+    console.log('Member code agreeing to policy:', mem_code);
+    console.log('Policy document ID:', body);
+    return await this.policyDocService.agreePolicyDoc(mem_code, body.policyID);
+  }
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns')
   async getAllCampaigns() {

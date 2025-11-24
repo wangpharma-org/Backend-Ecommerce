@@ -57,7 +57,7 @@ export class ImagedebugService {
     }
   }
 
-  @Cron('0 1 * * *') // ทุกตี 1
+  @Cron('0 1 * * *', { timeZone: 'Asia/Bangkok' }) // ทุกตี 1
   async summaryItem(): Promise<Imagedebug[]> {
     try {
       const findAllItem = await this.imagedebugRepository.find({
