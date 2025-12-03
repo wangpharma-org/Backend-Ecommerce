@@ -8,6 +8,7 @@ import { PromotionConditionEntity } from 'src/promotion/promotion-condition.enti
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { UserEntity } from 'src/users/users.entity';
+import { ProductEntity } from 'src/products/products.entity';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -156,6 +157,8 @@ export class ShoppingCartService {
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
+    @InjectRepository(ProductEntity)
+    private readonly productRepo: Repository<ProductEntity>,
   ) {}
 
   private normalizeCartVersion(
@@ -244,6 +247,18 @@ export class ShoppingCartService {
     };
   }
 
+  private async handleCheckFlashsale(pro_code: string) {
+    const data = await this.productRepo.findOne({
+      where: { pro_code },
+      relations: { flashsale: { flashsale: true }},
+    });
+    console.log('Flashsale data:', data);
+    if (!data || !data.flashsale || data.flashsale[0]?.flashsale.is_active === false) {
+      await this.shoppingCartRepo.update({ pro_code }, { flashsale_end: null });
+      throw new Error('No flashsale data found');
+    }
+  }
+
   async addProductCart(data: {
     mem_code: string;
     pro_code: string;
@@ -254,6 +269,10 @@ export class ShoppingCartService {
     clientVersion?: string | number;
   }): Promise<CartMutationResult> {
     try {
+      if (data.flashsale_end) {
+        await this.handleCheckFlashsale(data.pro_code);
+      }
+      
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
         where: {
@@ -1012,7 +1031,7 @@ export class ShoppingCartService {
         .leftJoinAndSelect('cart.product', 'product')
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
-        .leftJoinAndSelect('fs.flashsale', 'flashsale')
+        .leftJoinAndSelect('fs.flashsale', 'flashsale', 'flashsale.is_active = 1')
         .leftJoinAndSelect('product.recommend', 'recommend')
         .leftJoinAndSelect('product.replace', 'replace')
         .leftJoinAndSelect(
@@ -1374,6 +1393,13 @@ export class ShoppingCartService {
             pro_ratio3: true,
             pro_promotion_month: true,
             pro_promotion_amount: true,
+            flashsale: {
+              flashsale: {
+                time_end: true,
+                time_start: true,
+                date: true,
+              }
+            }
           },
           member: {
             mem_code: true,
