@@ -16,22 +16,25 @@ export class AppVersionService {
       order: { createdAt: 'DESC' },
     });
 
-    if (version === data?.latestVersion) {
+    if (
+      (version === data?.latestVersionAndroid && os === 'android') ||
+      (version === data?.latestVersionIOS && os === 'ios')
+    ) {
       return { isLastest: true };
     } else {
       if (os === 'android') {
         return {
           isLastest: false,
-          latestVersion: data?.latestVersion,
-          forceUpdate: data?.forceUpdate,
+          latestVersion: data?.latestVersionAndroid,
+          forceUpdate: data?.forceUpdateAndroid,
           storeUrl: data?.androidStoreUrl,
           note: data?.note,
         };
       } else {
         return {
           isLastest: false,
-          latestVersion: data?.latestVersion,
-          forceUpdate: data?.forceUpdate,
+          latestVersion: data?.latestVersionIOS,
+          forceUpdate: data?.forceUpdateIOS,
           storeUrl: data?.iosStoreUrl,
           note: data?.note,
         };
@@ -40,8 +43,10 @@ export class AppVersionService {
   }
 
   async insertLastestVersion(data: {
-    latestVersion: string;
-    forceUpdate: boolean;
+    latestVersionAndroid: string;
+    latestVersionIOS: string;
+    forceUpdateAndroid: boolean;
+    forceUpdateIOS: boolean;
     androidStoreUrl?: string;
     iosStoreUrl?: string;
     note?: string;

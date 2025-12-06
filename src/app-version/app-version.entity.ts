@@ -17,10 +17,16 @@ export class AppVersionEntity {
   id: number;
 
   @Column({ type: 'varchar', length: 20 })
-  latestVersion: string;
+  latestVersionAndroid: string;
+
+  @Column({ type: 'varchar', length: 20 })
+  latestVersionIOS: string;
 
   @Column({ default: false })
-  forceUpdate: boolean;
+  forceUpdateAndroid: boolean;
+
+  @Column({ default: false })
+  forceUpdateIOS: boolean;
 
   @Column({ type: 'varchar', nullable: true })
   androidStoreUrl: string;

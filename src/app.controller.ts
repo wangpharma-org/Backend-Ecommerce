@@ -127,7 +127,7 @@ export class AppController {
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
     private readonly appVersion: AppVersionService,
-  ) {}
+  ) { }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -344,15 +344,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -2699,8 +2699,10 @@ export class AppController {
   async postVersion(
     @Body()
     data: {
-      latestVersion: string;
-      forceUpdate: boolean;
+      latestVersionAndroid: string;
+      latestVersionIOS: string;
+      forceUpdateAndroid: boolean;
+      forceUpdateIOS: boolean;
       androidStoreUrl?: string;
       iosStoreUrl?: string;
       note?: string;
