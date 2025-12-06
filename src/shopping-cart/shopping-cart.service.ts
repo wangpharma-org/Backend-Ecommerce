@@ -797,6 +797,7 @@ export class ShoppingCartService {
     priceOption: string;
     clientVersion?: string | number;
   }): Promise<CartMutationResult> {
+    console.log('checkedProductCart data:', data);
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       if (data.type === 'check') {

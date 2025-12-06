@@ -71,6 +71,7 @@ import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
 import { ProductEntity } from './products/products.entity';
 import { CampaignEntity } from './campaigns/campaigns.entity';
+import { AppVersionService } from './app-version/app-version.service';
 
 interface JwtPayload {
   username: string;
@@ -125,7 +126,8 @@ export class AppController {
     private readonly contractLogService: ContractLogService,
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
-  ) {}
+    private readonly appVersion: AppVersionService,
+  ) { }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -342,15 +344,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -421,6 +423,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -437,10 +440,8 @@ export class AppController {
       priceCondition,
     };
     console.log(payload);
-    const {cart,
-      cartVersion,
-      cartSyncedAt,
-    } = await this.shoppingCartService.addProductCart(payload);
+    const { cart, cartVersion, cartSyncedAt } =
+      await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
@@ -470,12 +471,8 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    //console.log(data);
-    const {
-      cart,
-      cartVersion,
-      cartSyncedAt,
-    } =
+    console.log('Check all cart data:', data);
+    const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCartAll(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
@@ -533,6 +530,7 @@ export class AppController {
     },
   ) {
     //console.log(data);
+    console.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -566,13 +564,12 @@ export class AppController {
         imageUrl: item.pro_imgmain,
       });
     }
-    return{
+    return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
     };
-    
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2671,11 +2668,54 @@ export class AppController {
       );
       return {
         success: true,
-        data: { message: 'Reward column updated successfully'},
+        data: { message: 'Reward column updated successfully' },
       };
     } catch {
       throw new HttpException(
         { success: false, error: { code: 'DELETE_PROMO_REWARD_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post('/app-version/version/get')
+  async getVersion(@Body() data: { version: string; os: string }) {
+    console.log('Get version request data:', data);
+    try {
+      return this.appVersion.getLatestVersion(data.version, data.os);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_VERSION_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Post('/app-version/version/update')
+  async postVersion(
+    @Body()
+    data: {
+      latestVersionAndroid: string;
+      latestVersionIOS: string;
+      forceUpdateAndroid: boolean;
+      forceUpdateIOS: boolean;
+      androidStoreUrl?: string;
+      iosStoreUrl?: string;
+      note?: string;
+    },
+  ) {
+    try {
+      return this.appVersion.insertLastestVersion(data);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'POST_VERSION_FAILED' },
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
