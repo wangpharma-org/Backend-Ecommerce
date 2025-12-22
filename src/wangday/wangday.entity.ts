@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity({ name: 'wangday', database: 'ecommerce_db_backend' })
+@Entity({ name: 'wangday', database: 'ecommerce_db' })
 export class WangDay {
   @PrimaryGeneratedColumn()
   id: number;

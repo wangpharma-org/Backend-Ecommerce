@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-@Entity({ name: 'wangday_sumprice', database: 'ecommerce_db_backend' })
+@Entity({ name: 'wangday_sumprice', database: 'ecommerce_db' })
 export class WangdaySumPrice {
   @PrimaryGeneratedColumn({ name: 'wang_id' })
   wang_id: number;
