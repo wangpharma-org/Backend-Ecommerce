@@ -211,7 +211,12 @@ export class ShoppingCartService {
 
       console.log('Check Hotdeal');
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
-
+      await this.checkedProductCart({
+        pro_code: data.pro_code,
+        mem_code: data.mem_code,
+        type: 'check',
+        priceOption: data.priceCondition,
+      });
       return await this.getProductCart(data.mem_code);
     } catch (error) {
       console.error('Error saving product cart:', error);
