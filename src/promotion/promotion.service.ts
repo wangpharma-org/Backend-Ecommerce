@@ -548,6 +548,7 @@ export class PromotionService {
             pro_code: true,
             pro_name: true,
             pro_genericname: true,
+            pro_imgmain: true,
             pro_unit1: true,
             pro_unit2: true,
             pro_unit3: true,

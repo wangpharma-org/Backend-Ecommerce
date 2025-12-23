@@ -22,7 +22,7 @@ export class PolicyDocCatagory {
 
   @ManyToOne(() => PolicyDoc)
   @JoinColumn({ name: 'latestPolicyId' })
-  policyC: PolicyDoc;
+  lastPolicy: PolicyDoc;
 
   @OneToMany(() => PolicyDocMember, (member) => member.category)
   policyMembers: PolicyDocMember[];

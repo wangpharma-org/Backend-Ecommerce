@@ -41,7 +41,7 @@ export class PolicyDocService {
 
     const findVersion = await this.policyDocCatagoryRepository.findOne({
       where: { policyCatagoryId: category },
-      relations: ['policyC'], // เพิ่ม relations
+      relations: ['lastPolicy'], // เพิ่ม relations
     });
     console.log('Found version info:', findVersion);
 
@@ -49,7 +49,7 @@ export class PolicyDocService {
     let newVersion = '1.0.0';
     let savedPolicyDoc: PolicyDoc;
 
-    if (!versionLatest?.policyC) {
+    if (!versionLatest?.lastPolicy) {
       // กรณีไม่มี version เก่า - สร้าง version แรก
       console.log('No existing version, creating 1.0.0');
 
@@ -63,13 +63,13 @@ export class PolicyDocService {
 
       // Update CategoryDoc ให้ชี้ไปยัง PolicyDoc ใหม่
       if (versionLatest) {
-        versionLatest.policyC = savedPolicyDoc;
+        versionLatest.lastPolicy = savedPolicyDoc;
         await this.policyDocCatagoryRepository.save(versionLatest);
       }
     } else {
       // กรณีมี version เก่า - ทำ versioning
       console.log('Current versionLatest:', versionLatest);
-      const splitVersion = versionLatest.policyC.version.split('.');
+      const splitVersion = versionLatest.lastPolicy.version.split('.');
 
       // คำนวณ version ใหม่
       if (type == 1) {
@@ -95,7 +95,7 @@ export class PolicyDocService {
       savedPolicyDoc = await this.policyDocRepository.save(createData);
 
       // Update CategoryDoc ให้ชี้ไปยัง PolicyDoc ใหม่
-      versionLatest.policyC = savedPolicyDoc;
+      versionLatest.lastPolicy = savedPolicyDoc;
       await this.policyDocCatagoryRepository.save(versionLatest);
     }
 
@@ -163,12 +163,12 @@ export class PolicyDocService {
     const latestPolicies = await this.policyDocMemberRepository.find({
       where: { user_mem_code: mem_code },
       relations: ['policyDoc', 'category'],
-    });
+    }); // หา PolicyDocMember พร้อมความสัมพันธ์ policyDoc และ category
 
     const policyCategories = await this.policyDocCatagoryRepository.find({
-      relations: ['policyC'],
+      relations: ['lastPolicy'],
       select: ['policyCatagoryId', 'nameCatagory'],
-    });
+    }); // หา PolicyDocCatagory พร้อมความสัมพันธ์ lastPolicy
 
     const finalResult: {
       policyID: number;
@@ -180,12 +180,13 @@ export class PolicyDocService {
       latestVersion: string;
     }[] = [];
     for (const category of policyCategories) {
+      // วนลูปผ่านแต่ละหัวข้อของนโยบาย
       console.log('category:', category);
       const hasAgreed = latestPolicies.some(
         (policyMember) =>
           policyMember.policyCategoryId === category.policyCatagoryId &&
-          policyMember.policyDoc.version === category.policyC.version,
-      );
+          policyMember.policyDoc.version === category.lastPolicy.version,
+      ); // ตรวจสอบว่าผู้ใช้ได้ยอมรับนโยบายล่าสุดหรือไม่ เที่ยบกับ ตาราง PolicyDocMember(นโยบายที่ลูกค้าเคยอ่าน) และ PolicyDocCatagory(นโยบายล่าสุด)
       console.log(
         'hasAgreed status for category',
         category.nameCatagory,
@@ -193,23 +194,25 @@ export class PolicyDocService {
         hasAgreed,
       );
       if (!hasAgreed) {
+        // ถ้ายังไม่ยอมรับนโยบายล่าสุด ให้เพิ่มข้อมูลในผลลัพธ์
         finalResult.push({
-          policyID: category.policyC.policyId,
+          policyID: category.lastPolicy.policyId,
           category: {
             policyCatagoryId: category.policyCatagoryId,
             nameCatagory: category.nameCatagory,
           },
-          content: category.policyC.content,
-          latestVersion: category.policyC.version,
+          content: category.lastPolicy.content,
+          latestVersion: category.lastPolicy.version,
         });
       } else {
+        // ถ้าผู้ใช้ได้ยอมรับนโยบายล่าสุดแล้ว
         console.log(
           `User has agreed to latest policy for category ${category.nameCatagory}:`,
           hasAgreed,
         );
       }
     }
-    // console.log('policyCategories:', policyCategories);
+    // ส่งกลับผลลัพธ์ที่ประกอบด้วยนโยบายที่ผู้ใช้ยังไม่ได้ยอมรับ
     return finalResult;
   }
 }
