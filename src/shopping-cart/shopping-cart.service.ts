@@ -334,10 +334,17 @@ export class ShoppingCartService {
 
       console.log('Check Hotdeal');
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
-
+      await this.checkedProductCart({
+        pro_code: data.pro_code,
+        mem_code: data.mem_code,
+        type: 'check',
+        priceOption: data.priceCondition,
+      });
+      
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
+
     } catch (error) {
       console.error('Error saving product cart:', error);
       if (error instanceof ConflictException) {
