@@ -7,6 +7,8 @@ import { ProductsModule } from '../products/products.module';
 import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealModule } from 'src/hotdeal/hotdeal.module';
+import { UserEntity } from 'src/users/users.entity';
+import { ProductEntity } from 'src/products/products.entity';
 
 @Module({
   imports: [
@@ -15,6 +17,8 @@ import { HotdealModule } from 'src/hotdeal/hotdeal.module';
       PromotionEntity,
       PromotionConditionEntity,
       PromotionTierEntity,
+      UserEntity,
+      ProductEntity,
     ]),
     ProductsModule,
     forwardRef(() => HotdealModule),

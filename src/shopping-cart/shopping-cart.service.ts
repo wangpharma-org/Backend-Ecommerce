@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, Not, Brackets } from 'typeorm';
@@ -7,6 +7,8 @@ import { PromotionEntity } from 'src/promotion/promotion.entity';
 import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
+import { UserEntity } from 'src/users/users.entity';
+import { ProductEntity } from 'src/products/products.entity';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -38,7 +40,7 @@ export interface ShoppingProductCart {
 }
 
 export interface RecommendedProduct {
-  recommended_id: number;
+  recommended_id: number | null;
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
@@ -109,6 +111,10 @@ interface RawProductCart {
   order_quantity: number;
   pro_lowest_stock: number;
   recommend_rank?: number;
+  replace_pro_code?: string;
+  replace_pro_name?: string;
+  replace_pro_imgmain?: string;
+  recommended_replace_pro_code?: string;
 }
 
 // Define a DTO for the return type
@@ -126,6 +132,15 @@ export interface CartSummary {
   shipping_type: any;
 }
 
+export interface CartVersionState {
+  cartVersion: string;
+  cartSyncedAt: Date | null;
+}
+
+export interface CartMutationResult extends CartVersionState {
+  cart: ShoppingProductCart[];
+}
+
 @Injectable()
 export class ShoppingCartService {
   constructor(
@@ -137,10 +152,112 @@ export class ShoppingCartService {
     private readonly conRepo: Repository<PromotionConditionEntity>,
     @InjectRepository(PromotionEntity)
     private readonly promotionRepo: Repository<PromotionEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
+    @InjectRepository(ProductEntity)
+    private readonly productRepo: Repository<ProductEntity>,
   ) {}
+
+  private normalizeCartVersion(
+    value?: string | number | null,
+  ): string {
+    if (value === null || value === undefined) {
+      return '0';
+    }
+    return typeof value === 'string' ? value : String(value);
+  }
+
+  private toBigInt(value: string | number): bigint {
+    try {
+      return typeof value === 'string' ? BigInt(value) : BigInt(value);
+    } catch {
+      throw new ConflictException('Invalid cart version value.');
+    }
+  }
+
+  private async ensureCartVersionFresh(
+    mem_code: string,
+    clientVersion?: string | number,
+  ): Promise<void> {
+    if (clientVersion === undefined || clientVersion === null) {
+      return;
+    }
+    const { cartVersion } = await this.getCartVersionState(mem_code);
+    if (this.toBigInt(cartVersion) !== this.toBigInt(clientVersion)) {
+      throw new ConflictException(
+        'Cart data is outdated. Please refresh and try again.',
+      );
+    }
+  }
+
+  private async incrementCartVersion(
+    mem_code: string,
+  ): Promise<CartVersionState> {
+    const result = await this.userRepo
+      .createQueryBuilder()
+      .update(UserEntity)
+      .set({
+        cart_version: () => 'cart_version + 1',
+        cart_synced_at: () => 'CURRENT_TIMESTAMP',
+      })
+      .where('mem_code = :mem_code', { mem_code })
+      .execute();
+
+    if (!result.affected) {
+      throw new Error(`Member ${mem_code} not found`);
+    }
+
+    return this.getCartVersionState(mem_code);
+  }
+
+  async getCartVersionState(mem_code: string): Promise<CartVersionState> {
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: {
+        cart_version: true,
+        cart_synced_at: true,
+      },
+    });
+
+    if (!member) {
+      throw new Error(`Member ${mem_code} not found`);
+    }
+
+    return {
+      cartVersion: this.normalizeCartVersion(member.cart_version),
+      cartSyncedAt: member.cart_synced_at ?? null,
+    };
+  }
+
+  async markCartAsChanged(mem_code: string): Promise<CartVersionState> {
+    return this.incrementCartVersion(mem_code);
+  }
+
+  async getCartSnapshot(mem_code: string): Promise<CartMutationResult> {
+    const [cart, version] = await Promise.all([
+      this.getProductCart(mem_code),
+      this.getCartVersionState(mem_code),
+    ]);
+    return {
+      cart,
+      ...version,
+    };
+  }
+
+  private async handleCheckFlashsale(pro_code: string) {
+    const data = await this.productRepo.findOne({
+      where: { pro_code },
+      relations: { flashsale: { flashsale: true }},
+    });
+    console.log('Flashsale data:', data);
+    if (!data || !data.flashsale || data.flashsale[0]?.flashsale.is_active === false) {
+      await this.shoppingCartRepo.update({ pro_code }, { flashsale_end: null });
+      throw new Error('No flashsale data found');
+    }
+  }
 
   async addProductCart(data: {
     mem_code: string;
@@ -149,8 +266,14 @@ export class ShoppingCartService {
     amount: number;
     priceCondition: string;
     flashsale_end?: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      if (data.flashsale_end) {
+        await this.handleCheckFlashsale(data.pro_code);
+      }
+      
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -217,22 +340,35 @@ export class ShoppingCartService {
         type: 'check',
         priceOption: data.priceCondition,
       });
-      return await this.getProductCart(data.mem_code);
+      
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
+
     } catch (error) {
       console.error('Error saving product cart:', error);
+      if (error instanceof ConflictException) {
+        throw error;
+      }
       throw new Error('Error in Add product Cart');
     }
   }
 
-  async addProductCartHotDeal(data: {
-    mem_code: string;
-    pro_code: string;
-    pro_unit: string;
-    amount: number;
-    hotdeal_free: boolean;
-    hotdeal_promain: string;
-  }): Promise<ShoppingProductCart[]> {
+  async addProductCartHotDeal(
+    data: {
+      mem_code: string;
+      pro_code: string;
+      pro_unit: string;
+      amount: number;
+      hotdeal_free: boolean;
+      hotdeal_promain: string;
+      clientVersion?: string | number;
+    },
+    options?: { touchVersion?: boolean },
+  ): Promise<CartMutationResult> {
+    const touchVersion = options?.touchVersion ?? true;
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('Add Hotdeal Free Item:', data);
       await this.shoppingCartRepo.save({
         pro_code: data.pro_code,
@@ -245,9 +381,16 @@ export class ShoppingCartService {
         spc_datetime: new Date(),
       });
       console.log('Check Promotion for Hotdeal');
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = touchVersion
+        ? await this.incrementCartVersion(data.mem_code)
+        : await this.getCartVersionState(data.mem_code);
+      return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
+      if (error instanceof ConflictException) {
+        throw error;
+      }
       throw new Error('Error in Add product Cart');
     }
   }
@@ -659,8 +802,11 @@ export class ShoppingCartService {
     mem_code: string;
     type: string;
     priceOption: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
+    console.log('checkedProductCart data:', data);
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
@@ -718,9 +864,14 @@ export class ShoppingCartService {
 
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
 
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
     } catch (e) {
       console.error('Error in checkedProductCart', e);
+      if (e instanceof ConflictException) {
+        throw e;
+      }
       throw new Error('Something wrong in checkedProductCart');
     }
   }
@@ -746,8 +897,10 @@ export class ShoppingCartService {
     pro_code: string;
     mem_code: string;
     priceOption: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       // เช็คว่าสินค้านี้มี hotdeal หรือไม่
       const hotdeal = await this.hotdealService.find(data.pro_code);
 
@@ -772,15 +925,27 @@ export class ShoppingCartService {
       });
       console.log('priceOption', data.priceOption);
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
-      return await this.getProductCart(data.mem_code);
-    } catch {
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
+    } catch (e) {
+      if (e instanceof ConflictException) {
+        throw e;
+      }
       throw new Error('Somthing wrong in delete product cart');
     }
   }
 
   async clearCheckoutCart(spc_id: number) {
     try {
+      const cartItem = await this.shoppingCartRepo.findOne({
+        where: { spc_id },
+        select: { mem_code: true },
+      });
       await this.shoppingCartRepo.delete(spc_id);
+      if (cartItem?.mem_code) {
+        await this.incrementCartVersion(cartItem.mem_code);
+      }
     } catch {
       throw new Error('Clear Checkout Cart Failed');
     }
@@ -790,8 +955,10 @@ export class ShoppingCartService {
     mem_code: string;
     type: string;
     priceOption: string;
-  }): Promise<ShoppingProductCart[]> {
+    clientVersion?: string | number;
+  }): Promise<CartMutationResult> {
     try {
+      await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('checkedProductCartAll data : ', data);
       if (data.type === 'check') {
         const productCanNotCheck = await this.shoppingCartRepo
@@ -825,9 +992,14 @@ export class ShoppingCartService {
 
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
 
-      return await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code);
+      const version = await this.incrementCartVersion(data.mem_code);
+      return { cart, ...version };
     } catch (e) {
       console.error('Error in checkedProductCartAll', e);
+      if (e instanceof ConflictException) {
+        throw e;
+      }
       throw new Error('Somthing wrong in checkedProductCartAll');
     }
   }
@@ -867,12 +1039,17 @@ export class ShoppingCartService {
         .leftJoinAndSelect('cart.product', 'product')
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
-        .leftJoinAndSelect('fs.flashsale', 'flashsale')
+        .leftJoinAndSelect('fs.flashsale', 'flashsale', 'flashsale.is_active = 1')
         .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect('product.replace', 'replace')
         .leftJoinAndSelect(
           'recommend.products',
           'recommendedProducts',
           'recommendedProducts.pro_stock > 0',
+        )
+        .leftJoinAndSelect(
+          'recommendedProducts.replace',
+          'recommendedProductsReplace',
         )
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
@@ -893,6 +1070,9 @@ export class ShoppingCartService {
           'product.order_quantity AS order_quantity',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.pro_promotion_amount AS pro_promotion_amount',
+          'replace.pro_code AS replace_pro_code',
+          'replace.pro_imgmain AS replace_pro_imgmain',
+          'replace.pro_name AS replace_pro_name',
           'lot.lot_id AS lot_id',
           'lot.lot AS lot',
           'lot.mfg AS mfg',
@@ -916,6 +1096,7 @@ export class ShoppingCartService {
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
           'recommendedProducts.recommend_rank AS recommend_rank',
+          'recommendedProductsReplace.pro_code AS recommended_replace_pro_code',
         ])
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
@@ -968,10 +1149,21 @@ export class ShoppingCartService {
           }
         }
 
-        if (
+        if (row.replace_pro_code) {
+          grouped[key].recommend = [
+            {
+              recommended_id: 1,
+              pro_code: row.replace_pro_code,
+              pro_imgmain: row.replace_pro_imgmain ?? '',
+              pro_name: row.replace_pro_name ?? '',
+              recommend_rank: 1,
+            },
+          ];
+        } else if (
           row.recommended_id &&
           row.recommended_pro_code &&
-          row.recommended_pro_name
+          row.recommended_pro_name &&
+          row.recommended_replace_pro_code !== row.pro_code
         ) {
           const exists = grouped[key].recommend.some(
             (r) => r.pro_code === row.recommended_pro_code,
@@ -1149,14 +1341,18 @@ export class ShoppingCartService {
           return await this.getProductCart(mem_code);
         }
 
-        return await this.addProductCartHotDeal({
-          mem_code: mem_code ?? '',
-          pro_code: hotdeal.product2.pro_code,
-          pro_unit: hotdeal.pro2_unit ?? '',
-          amount: Number(hotdealMatch?.countFreeBies),
-          hotdeal_promain: hotdeal.product.pro_code,
-          hotdeal_free: true,
-        });
+        const result = await this.addProductCartHotDeal(
+          {
+            mem_code: mem_code ?? '',
+            pro_code: hotdeal.product2.pro_code,
+            pro_unit: hotdeal.pro2_unit ?? '',
+            amount: Number(hotdealMatch?.countFreeBies),
+            hotdeal_promain: hotdeal.product.pro_code,
+            hotdeal_free: true,
+          },
+          { touchVersion: false },
+        );
+        return result.cart;
       }
     } catch (error) {
       console.error('Error in checkHotdealByProCode:', error);
@@ -1205,6 +1401,13 @@ export class ShoppingCartService {
             pro_ratio3: true,
             pro_promotion_month: true,
             pro_promotion_amount: true,
+            flashsale: {
+              flashsale: {
+                time_end: true,
+                time_start: true,
+                date: true,
+              }
+            }
           },
           member: {
             mem_code: true,
@@ -1307,20 +1510,6 @@ export class ShoppingCartService {
             const quantity = Number(item.spc_amount) * Number(ratio);
             const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
 
-            console.log(
-              'Calculating item:',
-              item.pro_code,
-              'Unit:',
-              item.spc_unit,
-              'Ratio:',
-              ratio,
-              'Quantity:',
-              quantity,
-              'Price:',
-              price,
-              'IsFreebie:',
-              item.hotdeal_free,
-            );
             return sum + quantity * price;
           }, 0);
 

@@ -168,6 +168,36 @@ export class ProductsService {
     }
   }
 
+  async getProductForKeySearchForReplace() {
+    try {
+      const qb = this.productRepo.createQueryBuilder('product');
+      const data = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_imgmain',
+          'product.pro_stock',
+        ])
+        .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
+        .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
+        .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+        .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+        .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+        .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+        .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .andWhere('product.pro_name NOT LIKE :p8', { p8: 'ฟรี%' })
+        .getMany();
+      return data;
+    } catch (error) {
+      console.error('Error in getProductByCreditor', error);
+      throw error;
+    }
+  }
+
   async getProductOne(pro_code: string) {
     try {
       // console.log('getProductOne', pro_code);
@@ -253,6 +283,7 @@ export class ProductsService {
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'product.viwers',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -386,6 +417,11 @@ export class ProductsService {
     mem_code: string;
   }): Promise<ProductEntity> {
     try {
+      await this.productRepo.increment(
+        { pro_code: data.pro_code },
+        'viwers',
+        1,
+      );
       const product = await this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect('product.pharmaDetails', 'pharma')
@@ -397,13 +433,26 @@ export class ProductsService {
         )
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
+        .leftJoinAndSelect('product.replace', 'replace')
         .leftJoinAndSelect('product.recommend', 'recommend')
         .leftJoinAndSelect(
           'recommend.products',
           'products',
-          'products.pro_stock > products.pro_lowest_stock AND products.pro_stock > 0'
+          'products.pro_stock > 0',
         )
-        .leftJoinAndSelect('products.inCarts', 'inCarts')
+        .leftJoinAndSelect('products.replace', 'replaceInRecommend')
+        .leftJoinAndSelect(
+          'replace.inCarts',
+          'inCartsInReplace',
+          'inCartsInReplace.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
+        .leftJoinAndSelect(
+          'products.inCarts',
+          'inCarts',
+          'inCarts.mem_code = :mem_code',
+          { mem_code: data.mem_code },
+        )
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
         .select([
@@ -462,6 +511,26 @@ export class ProductsService {
           'products.pro_promotion_amount',
           'products.pro_promotion_month',
           'products.recommend_rank',
+          'replaceInRecommend.pro_code',
+          'replace.pro_code',
+          'replace.pro_name',
+          'replace.pro_imgmain',
+          'replace.pro_priceA',
+          'replace.pro_priceB',
+          'replace.pro_priceC',
+          'replace.pro_unit1',
+          'replace.pro_unit2',
+          'replace.pro_unit3',
+          'replace.pro_stock',
+          'replace.pro_lowest_stock',
+          'replace.order_quantity',
+          'replace.pro_promotion_amount',
+          'replace.pro_promotion_month',
+          'inCartsInReplace.mem_code',
+          'inCartsInReplace.spc_amount',
+          'inCartsInReplace.spc_unit',
+          'inCartsInReplace.pro_code',
+          'inCarts.pro_code',
           'inCarts.mem_code',
           'inCarts.spc_amount',
           'inCarts.spc_unit',
@@ -741,6 +810,7 @@ export class ProductsService {
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'product.viwers',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -892,6 +962,7 @@ export class ProductsService {
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'product.viwers',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit',
@@ -1373,6 +1444,42 @@ export class ProductsService {
     } catch (error) {
       console.error('Error updating sale amount day:', error);
       throw new Error('Error updating sale amount day');
+    }
+  }
+
+  async getDataCreditor(keyword?: string): Promise<CreditorEntity[] | []> {
+    try {
+      console.log('Keyword for creditor search:', keyword);
+      const creditors = await this.creditorRepo
+        .createQueryBuilder('creditor')
+        .where(
+          'creditor.creditor_code LIKE :kw OR creditor.creditor_name LIKE :kw',
+          { kw: `%${keyword}%` },
+        )
+        .take(10)
+        .getMany();
+      console.log('Found creditors:', creditors);
+      return creditors;
+    } catch (error) {
+      console.error('Error fetching creditor data:', error);
+      throw new Error('Error fetching creditor data');
+    }
+  }
+
+  async saveAddress(creditor: string, address?: string): Promise<void> {
+    try {
+      const findCreditor = await this.creditorRepo.findOne({
+        where: { creditor_code: creditor, creditor_address: address },
+      });
+      if (address && !findCreditor) {
+        await this.creditorRepo.update(
+          { creditor_code: creditor },
+          { creditor_address: address },
+        );
+      }
+    } catch (error) {
+      console.error('Error saving address:', error);
+      throw new Error('Error saving address');
     }
   }
 }

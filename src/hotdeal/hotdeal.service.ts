@@ -242,6 +242,7 @@ export class HotdealService {
         pro_unit1: string;
         pro_unit2: string;
         pro_unit3: string;
+        viwers: number;
         pro_stock: number;
         order_quantity: number;
         pro_lowest_stock: number;
@@ -264,6 +265,7 @@ export class HotdealService {
               pro_unit2: product.pro_unit2,
               pro_unit3: product.pro_unit3,
               pro_stock: product.pro_stock,
+              viwers: product.viwers,
               order_quantity: product.order_quantity,
               pro_lowest_stock: product.pro_lowest_stock,
             }
@@ -297,7 +299,7 @@ export class HotdealService {
         pro_code: string;
         match: boolean;
         countFreeBies: string;
-        product2: { pro_code: string; pro_name: string };
+        product2: { pro_code: string; pro_name: string; pro_imgmain?: string };
         hotdeal: {
           pro1_amount: string;
           pro1_unit: string;
@@ -358,6 +360,7 @@ export class HotdealService {
           product2: {
             pro_code: found.product2?.pro_code || '',
             pro_name: found.product2?.pro_name || '',
+            pro_imgmain: found.product2?.pro_imgmain || '',
           },
           hotdeal: {
             pro1_amount: found.pro1_amount,
