@@ -296,7 +296,7 @@ export class ProductsService {
         .setParameter('memCode', mem_code)
         .where('product.pro_promotion_month = :month', { month: numberOfMonth });
 
-      if (!isL16) {
+      if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
 
@@ -448,13 +448,13 @@ export class ProductsService {
   }): Promise<ProductEntity> {
     try {
       const isL16 = await this.isL16Member(data.mem_code);
-      const replaceCondition = !isL16
+      const replaceCondition = isL16
         ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
         : undefined;
-      const recommendCondition = !isL16
+      const recommendCondition = isL16
         ? 'products.pro_stock > 0 AND (products.pro_l16_only = 0 OR products.pro_l16_only IS NULL)'
         : 'products.pro_stock > 0';
-      const replaceInRecommendCondition = !isL16
+      const replaceInRecommendCondition = isL16
         ? 'replaceInRecommend.pro_l16_only = 0 OR replaceInRecommend.pro_l16_only IS NULL'
         : undefined;
 
@@ -588,7 +588,7 @@ export class ProductsService {
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
 
-      if (!isL16) {
+      if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
 
@@ -657,7 +657,7 @@ export class ProductsService {
           }),
         );
 
-      if (!isL16) {
+      if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
 
@@ -802,7 +802,7 @@ export class ProductsService {
           );
       }
 
-      if (!isL16) {
+      if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
 
@@ -982,7 +982,7 @@ export class ProductsService {
           }),
         );
 
-      if (!isL16) {
+      if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
 
@@ -1080,10 +1080,10 @@ export class ProductsService {
           pro_stock: MoreThan(0),
           pro_point: MoreThan(0),
           ...(isL16
-            ? {}
-            : {
+            ? {
                 pro_l16_only: In([0, null]),
-              }),
+              }
+            : {}),
         },
         select: {
           pro_code: true,

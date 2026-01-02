@@ -169,8 +169,8 @@ export class RecommendService {
         .andWhere('mainProduct.pro_stock > 0')
         .andWhere(
           isL16
-            ? '1=1'
-            : '(mainProduct.pro_l16_only = 0 OR mainProduct.pro_l16_only IS NULL)',
+            ? '(mainProduct.pro_l16_only = 0 OR mainProduct.pro_l16_only IS NULL)'
+            : '1=1',
         )
         .setParameter('memCode', mem_code)
         .select([
@@ -240,8 +240,8 @@ export class RecommendService {
         .andWhere('product.recommend_rank IS NOT NULL')
         .andWhere(
           isL16
-            ? '1=1'
-            : '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+            ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
+            : '1=1',
         )
         .select([
           'product.pro_code AS pro_code',

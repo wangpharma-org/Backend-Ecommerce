@@ -198,7 +198,7 @@ export class ShoppingOrderService {
           throw new Error('Cart is empty');
         }
 
-        if (!isL16) {
+        if (isL16) {
           const restrictedItems = cart.filter(
             (item) => item.product?.pro_l16_only === 1,
           );
@@ -207,7 +207,7 @@ export class ShoppingOrderService {
               .map((item) => item.pro_code)
               .join(', ');
             throw new BadRequestException(
-              `สินค้า L16 only ไม่สามารถสั่งซื้อได้: ${codes}`,
+              `สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้: ${codes}`,
             );
           }
         }

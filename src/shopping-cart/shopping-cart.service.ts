@@ -174,7 +174,7 @@ export class ShoppingCartService {
 
   private async ensureL16Access(mem_code: string, pro_code: string) {
     const isL16 = await this.isL16Member(mem_code);
-    if (isL16) {
+    if (!isL16) {
       return;
     }
     const product = await this.productRepo.findOne({
@@ -182,13 +182,15 @@ export class ShoppingCartService {
       select: ['pro_code', 'pro_l16_only'],
     });
     if (product?.pro_l16_only === 1) {
-      throw new BadRequestException('สินค้านี้เฉพาะสมาชิก L16 เท่านั้น');
+      throw new BadRequestException(
+        'สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้',
+      );
     }
   }
 
   private async removeL16ItemsFromCart(mem_code: string): Promise<boolean> {
     const isL16 = await this.isL16Member(mem_code);
-    if (isL16) {
+    if (!isL16) {
       return false;
     }
 

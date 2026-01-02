@@ -241,7 +241,7 @@ export class HotdealService {
       query.skip(offset);
     }
 
-    if (!isL16) {
+    if (isL16) {
       query
         .andWhere(
           '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',

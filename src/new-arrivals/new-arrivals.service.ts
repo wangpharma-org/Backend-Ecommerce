@@ -88,8 +88,8 @@ export class NewArrivalsService {
       )
       .andWhere(
         isL16
-          ? '1=1'
-          : '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+          ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
+          : '1=1',
       )
       .groupBy('product.pro_code')
       .addGroupBy('newArrival.id')

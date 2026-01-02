@@ -250,8 +250,8 @@ export class FlashsaleService {
         .andWhere('flash.is_active = :active', { active: true })
         .andWhere(
           isL16
-            ? '1=1'
-            : '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+            ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
+            : '1=1',
         )
         .select([
           'flash.promotion_id',

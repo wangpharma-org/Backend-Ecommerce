@@ -29,7 +29,7 @@ export class FavoriteService {
     mem_code: string,
     isL16: boolean,
   ): Promise<void> {
-    if (isL16) {
+    if (!isL16) {
       return;
     }
     await this.favoriteRepo.query(
@@ -113,7 +113,7 @@ export class FavoriteService {
         .setParameter('memCode', mem_code)
         .where('fav.member.mem_code = :mem_code', { mem_code });
 
-      if (!isL16) {
+      if (isL16) {
         qb.andWhere(
           '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
         );
