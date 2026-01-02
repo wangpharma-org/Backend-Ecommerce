@@ -129,6 +129,9 @@ export class ProductEntity {
   @Column({ nullable: true, default: 1, type: 'smallint' })
   pro_promotion_amount: number | null;
 
+  @Column({ type: 'boolean', default: false })
+  pro_l16_only: boolean;
+
   @Column({ default: false })
   is_detect_amount: boolean;
 

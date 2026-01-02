@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, IsNull, MoreThan, Not, Repository } from 'typeorm';
+import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
@@ -1330,6 +1330,105 @@ export class ProductsService {
     } catch (error) {
       console.error('Error updating stock:', error);
       throw new Error('Error updating stock');
+    }
+  }
+
+  async updateProductL16OnlyFromUpload(body: {
+    data: { pro_code: string; status: number | string }[];
+    filename: string;
+  }): Promise<{ message: string; total: number; }> {
+    const rows = (body.data || [])
+      .map((row) => {
+        const code = String(row.pro_code ?? '').trim();
+        const status = Number(row.status ?? 0) === 1 ? 1 : 0;
+        return { code, status };
+      })
+      .filter((row) => row.code.length > 0);
+
+    if (rows.length === 0) {
+      throw new BadRequestException('ไม่พบรหัสสินค้าในไฟล์');
+    }
+
+    const uniqueCodes = Array.from(new Set(rows.map((row) => row.code)));
+    const existingCodes = new Set<string>();
+    const chunkSize = 1000;
+
+    for (let i = 0; i < uniqueCodes.length; i += chunkSize) {
+      const chunk = uniqueCodes.slice(i, i + chunkSize);
+      const found = await this.productRepo.find({
+        where: { pro_code: In(chunk) },
+        select: ['pro_code'],
+      });
+      for (const product of found) {
+        existingCodes.add(product.pro_code);
+      }
+    }
+
+    const missingCodes = uniqueCodes.filter((code) => !existingCodes.has(code));
+    if (missingCodes.length > 0) {
+      throw new BadRequestException({
+        message: 'พบรหัสสินค้าที่ไม่อยู่ในระบบ',
+        missingCodes,
+        totalMissing: missingCodes.length,
+      });
+    }
+
+    const codesToEnable = Array.from(
+      new Set(rows.filter((row) => row.status === 1).map((row) => row.code)),
+    );
+
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update(ProductEntity)
+        .set({ pro_l16_only: 0 })
+        .execute();
+
+      if (codesToEnable.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 1 })
+          .where('pro_code IN (:...codes)', { codes: codesToEnable })
+          .execute();
+      }
+
+      const feature = 'upload-product-l16';
+      const existingLog = await queryRunner.manager.findOne(LogFileEntity, {
+        where: { feature },
+      });
+
+      if (existingLog) {
+        existingLog.filename = body.filename;
+        existingLog.uploadedAt = new Date();
+        await queryRunner.manager.save(existingLog);
+      } else {
+        const newLog = queryRunner.manager.create(LogFileEntity, {
+          feature,
+          filename: body.filename,
+          uploadedAt: new Date(),
+        });
+        await queryRunner.manager.save(newLog);
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        message: 'L16 visibility updated',
+        total: rows.length,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error('Error updating L16 visibility:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new Error('Error updating L16 visibility');
+    } finally {
+      await queryRunner.release();
     }
   }
 

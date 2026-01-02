@@ -226,6 +226,21 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/product-l16/upload')
+  async uploadProductL16Only(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    body: { data: { pro_code: string; status: number | string }[]; filename: string },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.updateProductL16OnlyFromUpload(body);
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/products/flashsale-procode')
   async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
