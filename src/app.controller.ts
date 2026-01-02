@@ -601,10 +601,14 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(@Param('mem_code') mem_code: string) {
+  async getProductCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    const memberCode = req.user.mem_code;
     const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.getCartSnapshot(mem_code);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+      await this.shoppingCartService.getCartSnapshot(memberCode);
+    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,

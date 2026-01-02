@@ -186,6 +186,32 @@ export class ShoppingCartService {
     }
   }
 
+  private async removeL16ItemsFromCart(mem_code: string): Promise<boolean> {
+    const isL16 = await this.isL16Member(mem_code);
+    if (isL16) {
+      return false;
+    }
+
+    const deleteMain = await this.shoppingCartRepo.query(
+      'DELETE FROM `shopping_cart` WHERE `mem_code` = ? AND `pro_code` IN (SELECT `pro_code` FROM `product` WHERE `pro_l16_only` = 1)',
+      [mem_code],
+    );
+
+    const deleteFreebies = await this.shoppingCartRepo.query(
+      'DELETE FROM `shopping_cart` WHERE `mem_code` = ? AND `hotdeal_free` = true AND `hotdeal_promain` IN (SELECT `pro_code` FROM `product` WHERE `pro_l16_only` = 1)',
+      [mem_code],
+    );
+
+    const removed =
+      Number(deleteMain?.affectedRows ?? deleteMain?.affected ?? 0) +
+      Number(deleteFreebies?.affectedRows ?? deleteFreebies?.affected ?? 0);
+    if (removed > 0) {
+      await this.incrementCartVersion(mem_code);
+      return true;
+    }
+    return false;
+  }
+
   private normalizeCartVersion(
     value?: string | number | null,
   ): string {
@@ -262,6 +288,7 @@ export class ShoppingCartService {
   }
 
   async getCartSnapshot(mem_code: string): Promise<CartMutationResult> {
+    await this.removeL16ItemsFromCart(mem_code);
     const [cart, version] = await Promise.all([
       this.getProductCart(mem_code),
       this.getCartVersionState(mem_code),

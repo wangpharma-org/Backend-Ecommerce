@@ -25,6 +25,19 @@ export class FavoriteService {
     return member?.mem_route?.toUpperCase() === 'L16';
   }
 
+  private async removeL16Favorites(
+    mem_code: string,
+    isL16: boolean,
+  ): Promise<void> {
+    if (isL16) {
+      return;
+    }
+    await this.favoriteRepo.query(
+      'DELETE FROM `favorite` WHERE `mem_code` = ? AND `pro_code` IN (SELECT `pro_code` FROM `product` WHERE `pro_l16_only` = 1)',
+      [mem_code],
+    );
+  }
+
   async addToFavorite(data: { mem_code: string; pro_code: string }) {
     try {
       const favorite = this.favoriteRepo.create({
@@ -84,6 +97,7 @@ export class FavoriteService {
   > {
     try {
       const isL16 = await this.isL16Member(mem_code);
+      await this.removeL16Favorites(mem_code, isL16);
       const currentMonth = new Date().getMonth() + 1;
 
       const qb = this.favoriteRepo
