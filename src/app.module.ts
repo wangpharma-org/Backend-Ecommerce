@@ -37,6 +37,8 @@ import { ImagedebugModule } from './imagedebug/imagedebug.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { PolicyDocModule } from './policy-doc/policy-doc.module';
 import { AppVersionModule } from './app-version/app-version.module';
+import { ProductReturnModule } from './product-return/product-return.module';
+import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 
 @Module({
   imports: [
@@ -93,6 +95,8 @@ import { AppVersionModule } from './app-version/app-version.module';
     CampaignsModule,
     PolicyDocModule,
     AppVersionModule,
+    ProductReturnModule,
+    BehaviorTrackingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
