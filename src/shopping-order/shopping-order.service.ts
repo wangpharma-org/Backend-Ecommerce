@@ -14,6 +14,7 @@ import { submitOrder } from 'src/logger/submitOrder.logger';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 interface CountSale {
   pro_code: string;
@@ -39,7 +40,20 @@ export class ShoppingOrderService {
     private readonly saleLogEntity: Repository<SaleLogEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(mem_code?: string): Promise<boolean> {
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   async countSaleAmount() {
@@ -133,6 +147,7 @@ export class ShoppingOrderService {
     },
     ip?: string,
   ): Promise<string[] | undefined> {
+    const isL16 = await this.isL16Member(data.mem_code);
     const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
@@ -181,6 +196,20 @@ export class ShoppingOrderService {
             item: null,
           };
           throw new Error('Cart is empty');
+        }
+
+        if (!isL16) {
+          const restrictedItems = cart.filter(
+            (item) => item.product?.pro_l16_only === 1,
+          );
+          if (restrictedItems.length > 0) {
+            const codes = restrictedItems
+              .map((item) => item.pro_code)
+              .join(', ');
+            throw new BadRequestException(
+              `สินค้า L16 only ไม่สามารถสั่งซื้อได้: ${codes}`,
+            );
+          }
         }
 
         const checkFreebies =

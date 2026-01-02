@@ -24,6 +24,7 @@ import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 import { RecommendEntity } from 'src/recommend/recommend.entity';
 import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
+import { integer } from 'aws-sdk/clients/cloudfront';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -129,8 +130,8 @@ export class ProductEntity {
   @Column({ nullable: true, default: 1, type: 'smallint' })
   pro_promotion_amount: number | null;
 
-  @Column({ type: 'boolean', default: false })
-  pro_l16_only: boolean;
+  @Column({ type: 'tinyint', default: 0 })
+  pro_l16_only: number;
 
   @Column({ default: false })
   is_detect_amount: boolean;

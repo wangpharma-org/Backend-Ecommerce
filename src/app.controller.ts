@@ -256,11 +256,13 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/favorite/:mem_code')
   async getListFavorite(
+    @Req() req: Request & { user: JwtPayload },
     @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
     //console.log('get data favorite');
-    return await this.favoriteService.getListFavorite(mem_code, sort_by);
+    const memberCode = req.user.mem_code;
+    return await this.favoriteService.getListFavorite(memberCode, sort_by);
   }
 
   @Post('/ecom/flashsale/get-list')
@@ -305,6 +307,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/search-products')
   async searchProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       keyword: string;
@@ -315,7 +318,11 @@ export class AppController {
     },
   ) {
     //console.log('data in controller:', data);
-    const result = await this.productsService.searchProducts(data);
+    const mem_code = req.user.mem_code;
+    const result = await this.productsService.searchProducts({
+      ...data,
+      mem_code,
+    });
     for (const resultItem of result.products) {
       await this.imagedebugService.UpsercetImg({
         pro_code: resultItem.pro_code,
@@ -328,6 +335,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/category-products')
   async searchCategoryProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       keyword: string;
@@ -339,20 +347,29 @@ export class AppController {
     },
   ) {
     //console.log('data in controller:', data);
-    return await this.productsService.searchCategoryProducts(data);
+    const mem_code = req.user.mem_code;
+    return await this.productsService.searchCategoryProducts({
+      ...data,
+      mem_code,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-for-u')
-  async productForYou(@Body() data: { keyword: string; pro_code: string }) {
+  async productForYou(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { keyword: string; pro_code: string },
+  ) {
     //console.log('data in controller:', data);
-    return await this.productsService.productForYou(data);
+    const mem_code = req.user.mem_code;
+    return await this.productsService.productForYou({ ...data, mem_code });
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/submit-order')
   async submitOrder(
     @Ip() ip: string,
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       emp_code?: string;
@@ -374,7 +391,11 @@ export class AppController {
       addressed: string;
     },
   ) {
-    return await this.shoppingOrderService.submitOrder(data, ip);
+    const mem_code = req.user.mem_code;
+    return await this.shoppingOrderService.submitOrder(
+      { ...data, mem_code },
+      ip,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -385,9 +406,16 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-detail')
-  async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
+  async GetProductDetail(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_code: string; mem_code: string },
+  ) {
     console.log('data in controller:', data);
-    const result = await this.productsService.getProductDetail(data);
+    const mem_code = req.user.mem_code;
+    const result = await this.productsService.getProductDetail({
+      ...data,
+      mem_code,
+    });
     await this.imagedebugService.UpsercetImg({
       pro_code: result.pro_code,
       imageUrl: result.pro_imgmain,
@@ -397,8 +425,12 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-coin/:sortBy')
-  async productCoin(@Param('sortBy') sort_by: string) {
-    const result = await this.productsService.listFree(sort_by);
+  async productCoin(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('sortBy') sort_by: string,
+  ) {
+    const mem_code = req.user.mem_code;
+    const result = await this.productsService.listFree(sort_by, mem_code);
     for (const resultItem of result) {
       await this.imagedebugService.UpsercetImg({
         pro_code: resultItem.pro_code,
@@ -440,6 +472,7 @@ export class AppController {
   ) {
     console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
+    const mem_code = req.user.mem_code;
     const payload: {
       mem_code: string;
       pro_code: string;
@@ -452,14 +485,13 @@ export class AppController {
       clientVersion?: string;
     } = {
       ...data,
+      mem_code,
       priceCondition,
     };
     console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
-      data.mem_code,
-    );
+    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
     return {
       cart,
       summaryCart: summaryCart.total,
@@ -1624,8 +1656,12 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
-  async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
-    return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
+  async getNewArrivalsLimit30(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    const memberCode = req.user.mem_code;
+    return this.newArrivalsService.getNewArrivalsLimit30(memberCode);
   }
 
   @Get('/ecom/hotdeal/find/:pro_code')
@@ -1965,6 +2001,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/recommend-products')
   async getRecommendProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       pro_code: string[];
@@ -1972,9 +2009,10 @@ export class AppController {
       mem_code: string;
     },
   ) {
+    const mem_code = req.user.mem_code;
     return await this.recommendService.GetProductRecommendByCode(
       data.recommend_id,
-      data.mem_code,
+      mem_code,
     );
   }
 

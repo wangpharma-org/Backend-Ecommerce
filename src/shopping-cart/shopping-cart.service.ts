@@ -1,4 +1,4 @@
-import { ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, Not, Brackets } from 'typeorm';
@@ -161,6 +161,31 @@ export class ShoppingCartService {
     private readonly productRepo: Repository<ProductEntity>,
   ) {}
 
+  private async isL16Member(mem_code?: string): Promise<boolean> {
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private async ensureL16Access(mem_code: string, pro_code: string) {
+    const isL16 = await this.isL16Member(mem_code);
+    if (isL16) {
+      return;
+    }
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: ['pro_code', 'pro_l16_only'],
+    });
+    if (product?.pro_l16_only === 1) {
+      throw new BadRequestException('สินค้านี้เฉพาะสมาชิก L16 เท่านั้น');
+    }
+  }
+
   private normalizeCartVersion(
     value?: string | number | null,
   ): string {
@@ -272,6 +297,8 @@ export class ShoppingCartService {
       if (data.flashsale_end) {
         await this.handleCheckFlashsale(data.pro_code);
       }
+
+      await this.ensureL16Access(data.mem_code, data.pro_code);
       
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
@@ -347,7 +374,7 @@ export class ShoppingCartService {
 
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
@@ -368,6 +395,7 @@ export class ShoppingCartService {
   ): Promise<CartMutationResult> {
     const touchVersion = options?.touchVersion ?? true;
     try {
+      await this.ensureL16Access(data.mem_code, data.pro_code);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('Add Hotdeal Free Item:', data);
       await this.shoppingCartRepo.save({
@@ -388,7 +416,7 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) {
         throw error;
       }
       throw new Error('Error in Add product Cart');

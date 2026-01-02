@@ -7,6 +7,7 @@ import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
+import { UserEntity } from 'src/users/users.entity';
 
 interface OrderItem {
   pro_code: string;
@@ -39,8 +40,30 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
   ) {}
+
+  private async isL16Member(mem_code?: string): Promise<boolean> {
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private applyL16Filter(
+    qb: { andWhere: (sql: string, params?: Record<string, unknown>) => void },
+    alias: string,
+  ) {
+    qb.andWhere(
+      `(${alias}.pro_l16_only = 0 OR ${alias}.pro_l16_only IS NULL)`,
+    );
+  }
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
     try {
@@ -261,8 +284,9 @@ export class ProductsService {
   async getFlashSale(limit: number, mem_code: string) {
     try {
       console.log(limit, mem_code);
+      const isL16 = await this.isL16Member(mem_code);
       const numberOfMonth = new Date().getMonth() + 1;
-      const data = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
           'product.inCarts',
@@ -270,7 +294,13 @@ export class ProductsService {
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', mem_code)
-        .where('product.pro_promotion_month = :month', { month: numberOfMonth })
+        .where('product.pro_promotion_month = :month', { month: numberOfMonth });
+
+      if (!isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const data = await qb
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -417,12 +447,23 @@ export class ProductsService {
     mem_code: string;
   }): Promise<ProductEntity> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code);
+      const replaceCondition = !isL16
+        ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
+        : undefined;
+      const recommendCondition = !isL16
+        ? 'products.pro_stock > 0 AND (products.pro_l16_only = 0 OR products.pro_l16_only IS NULL)'
+        : 'products.pro_stock > 0';
+      const replaceInRecommendCondition = !isL16
+        ? 'replaceInRecommend.pro_l16_only = 0 OR replaceInRecommend.pro_l16_only IS NULL'
+        : undefined;
+
       await this.productRepo.increment(
         { pro_code: data.pro_code },
         'viwers',
         1,
       );
-      const product = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect('product.pharmaDetails', 'pharma')
         .leftJoinAndSelect(
@@ -433,14 +474,18 @@ export class ProductsService {
         )
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .leftJoinAndSelect('product.replace', 'replace')
+        .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect('product.recommend', 'recommend')
         .leftJoinAndSelect(
           'recommend.products',
           'products',
-          'products.pro_stock > 0',
+          recommendCondition,
         )
-        .leftJoinAndSelect('products.replace', 'replaceInRecommend')
+        .leftJoinAndSelect(
+          'products.replace',
+          'replaceInRecommend',
+          replaceInRecommendCondition,
+        )
         .leftJoinAndSelect(
           'replace.inCarts',
           'inCartsInReplace',
@@ -541,8 +586,13 @@ export class ProductsService {
           'fs_products.time_end',
           'fs_products.date',
         ])
-        .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
-        .getOne();
+        .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
+
+      if (!isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const product = await qb.getOne();
       if (product) {
         return product;
       } else {
@@ -557,8 +607,10 @@ export class ProductsService {
   async productForYou(data: {
     keyword: string;
     pro_code: string;
+    mem_code: string;
   }): Promise<ProductEntity[]> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -605,6 +657,10 @@ export class ProductsService {
           }),
         );
 
+      if (!isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       const products = await qb
         .take(6)
         .select([
@@ -637,6 +693,7 @@ export class ProductsService {
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code);
       const now = new Date();
       const monthNumber = now.getMonth() + 1;
       const currentDate = now.toISOString().split('T')[0];
@@ -745,6 +802,10 @@ export class ProductsService {
           );
       }
 
+      if (!isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       if (data.sort_by && data.category === 8) {
         switch (data.sort_by) {
           case 1:
@@ -839,6 +900,7 @@ export class ProductsService {
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -920,6 +982,10 @@ export class ProductsService {
           }),
         );
 
+      if (!isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       if (data.sort_by) {
         switch (data.sort_by) {
           case 1:
@@ -982,7 +1048,7 @@ export class ProductsService {
     }
   }
 
-  async listFree(sort_by?: string) {
+  async listFree(sort_by?: string, mem_code?: string) {
     // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
@@ -1007,11 +1073,17 @@ export class ProductsService {
           order = { pro_name: 'ASC' };
       }
 
+      const isL16 = await this.isL16Member(mem_code);
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
           pro_stock: MoreThan(0),
           pro_point: MoreThan(0),
+          ...(isL16
+            ? {}
+            : {
+                pro_l16_only: In([0, null]),
+              }),
         },
         select: {
           pro_code: true,

@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { FlashSaleProductsEntity } from './flashsale-product.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Injectable()
 export class FlashsaleService {
@@ -14,7 +15,20 @@ export class FlashsaleService {
     private readonly flashSaleProductsRepo: Repository<FlashSaleProductsEntity>,
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(mem_code?: string): Promise<boolean> {
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   async addFlashSale(data: {
     promotion_name: string;
@@ -211,6 +225,7 @@ export class FlashsaleService {
 
   async getFlashSale(limit: number, mem_code: string) {
     try {
+      const isL16 = await this.isL16Member(mem_code);
       const now = new Date();
       const currentDate = now.toLocaleDateString('sv-SE');
       const currentTime = now.toTimeString().split(' ')[0];
@@ -233,6 +248,11 @@ export class FlashsaleService {
           nowTime: currentTime,
         })
         .andWhere('flash.is_active = :active', { active: true })
+        .andWhere(
+          isL16
+            ? '1=1'
+            : '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        )
         .select([
           'flash.promotion_id',
           'flash.promotion_name',

@@ -3,13 +3,27 @@ import { Injectable } from '@nestjs/common';
 import { FavoriteEntity } from './favorite.entity';
 import { Repository } from 'typeorm';
 import { stringify } from 'querystring';
+import { UserEntity } from 'src/users/users.entity';
 
 @Injectable()
 export class FavoriteService {
   constructor(
     @InjectRepository(FavoriteEntity)
     private readonly favoriteRepo: Repository<FavoriteEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(mem_code?: string): Promise<boolean> {
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   async addToFavorite(data: { mem_code: string; pro_code: string }) {
     try {
@@ -69,6 +83,7 @@ export class FavoriteService {
     })[]
   > {
     try {
+      const isL16 = await this.isL16Member(mem_code);
       const currentMonth = new Date().getMonth() + 1;
 
       const qb = this.favoriteRepo
@@ -83,6 +98,12 @@ export class FavoriteService {
         .leftJoinAndSelect('hotdeal.product2', 'hotdealProduct2')
         .setParameter('memCode', mem_code)
         .where('fav.member.mem_code = :mem_code', { mem_code });
+
+      if (!isL16) {
+        qb.andWhere(
+          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        );
+      }
 
       switch (sort_by) {
         case '1':
