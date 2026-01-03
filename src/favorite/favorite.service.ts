@@ -4,6 +4,7 @@ import { FavoriteEntity } from './favorite.entity';
 import { Repository } from 'typeorm';
 import { stringify } from 'querystring';
 import { UserEntity } from 'src/users/users.entity';
+import { ProductEntity } from 'src/products/products.entity';
 
 @Injectable()
 export class FavoriteService {
@@ -38,10 +39,22 @@ export class FavoriteService {
     if (!isL16) {
       return;
     }
-    await this.favoriteRepo.query(
-      'DELETE FROM `favorite` WHERE `mem_code` = ? AND `pro_code` IN (SELECT `pro_code` FROM `product` WHERE `pro_l16_only` = 1)',
-      [mem_code],
-    );
+    const l16SubQuery = this.favoriteRepo
+      .createQueryBuilder()
+      .subQuery()
+      .select('product.pro_code')
+      .from(ProductEntity, 'product')
+      .where('product.pro_l16_only = :l16')
+      .getQuery();
+
+    await this.favoriteRepo
+      .createQueryBuilder()
+      .delete()
+      .from(FavoriteEntity)
+      .where('mem_code = :mem_code', { mem_code })
+      .andWhere(`pro_code IN ${l16SubQuery}`)
+      .setParameter('l16', 1)
+      .execute();
   }
 
   async addToFavorite(data: { mem_code: string; pro_code: string }) {

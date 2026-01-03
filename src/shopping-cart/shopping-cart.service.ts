@@ -207,19 +207,35 @@ export class ShoppingCartService {
       return false;
     }
 
-    const deleteMain = await this.shoppingCartRepo.query(
-      'DELETE FROM `shopping_cart` WHERE `mem_code` = ? AND `pro_code` IN (SELECT `pro_code` FROM `product` WHERE `pro_l16_only` = 1)',
-      [mem_code],
-    );
+    const l16SubQuery = this.shoppingCartRepo
+      .createQueryBuilder()
+      .subQuery()
+      .select('product.pro_code')
+      .from(ProductEntity, 'product')
+      .where('product.pro_l16_only = :l16')
+      .getQuery();
 
-    const deleteFreebies = await this.shoppingCartRepo.query(
-      'DELETE FROM `shopping_cart` WHERE `mem_code` = ? AND `hotdeal_free` = true AND `hotdeal_promain` IN (SELECT `pro_code` FROM `product` WHERE `pro_l16_only` = 1)',
-      [mem_code],
-    );
+    const deleteMain = await this.shoppingCartRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ShoppingCartEntity)
+      .where('mem_code = :mem_code', { mem_code })
+      .andWhere(`pro_code IN ${l16SubQuery}`)
+      .setParameter('l16', 1)
+      .execute();
+
+    const deleteFreebies = await this.shoppingCartRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ShoppingCartEntity)
+      .where('mem_code = :mem_code', { mem_code })
+      .andWhere('hotdeal_free = true')
+      .andWhere(`hotdeal_promain IN ${l16SubQuery}`)
+      .setParameter('l16', 1)
+      .execute();
 
     const removed =
-      Number(deleteMain?.affectedRows ?? deleteMain?.affected ?? 0) +
-      Number(deleteFreebies?.affectedRows ?? deleteFreebies?.affected ?? 0);
+      (deleteMain.affected ?? 0) + (deleteFreebies.affected ?? 0);
     if (removed > 0) {
       await this.incrementCartVersion(mem_code);
       return true;
