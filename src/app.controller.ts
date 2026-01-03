@@ -1184,8 +1184,9 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product/keysearch-all')
-  async getKeySearch() {
-    return await this.productsService.keySearchProducts();
+  async getKeySearch(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    return await this.productsService.keySearchProducts(mem_code);
   }
 
   @UseGuards(JwtAuthGuard)

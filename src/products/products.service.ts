@@ -1504,8 +1504,9 @@ export class ProductsService {
     }
   }
 
-  async keySearchProducts() {
+  async keySearchProducts(mem_code?: string) {
     try {
+      const isL16 = await this.isL16Member(mem_code);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -1536,6 +1537,10 @@ export class ProductsService {
               });
           }),
         );
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
 
       const products = await qb
         .select([
