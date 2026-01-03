@@ -28,7 +28,13 @@ export class HotdealService {
     private readonly shoppingCartService: ShoppingCartService,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -210,8 +216,9 @@ export class HotdealService {
     limit?: number,
     offset?: number,
     mem_code?: string,
+    mem_route?: string,
   ) {
-    const isL16 = await this.isL16Member(mem_code);
+    const isL16 = await this.isL16Member(mem_code, mem_route);
     const query = this.hotdealRepo
       .createQueryBuilder('hotdeal')
       .leftJoinAndSelect('hotdeal.product', 'product')

@@ -16,7 +16,13 @@ export class RecommendService {
     private readonly userRepo: Repository<UserEntity>,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -128,9 +134,13 @@ export class RecommendService {
     }
   }
 
-  async GetProductRecommendByCode(recommend_id: number[], mem_code: string) {
+  async GetProductRecommendByCode(
+    recommend_id: number[],
+    mem_code: string,
+    mem_route?: string,
+  ) {
     try {
-      const isL16 = await this.isL16Member(mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const replacedProducts: Array<{
         pro_code: string;
         pro_name: string;

@@ -19,7 +19,13 @@ export class FlashsaleService {
     private readonly userRepo: Repository<UserEntity>,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -223,9 +229,9 @@ export class FlashsaleService {
     }
   }
 
-  async getFlashSale(limit: number, mem_code: string) {
+  async getFlashSale(limit: number, mem_code: string, mem_route?: string) {
     try {
-      const isL16 = await this.isL16Member(mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const now = new Date();
       const currentDate = now.toLocaleDateString('sv-SE');
       const currentTime = now.toTimeString().split(' ')[0];

@@ -14,7 +14,13 @@ export class FavoriteService {
     private readonly userRepo: Repository<UserEntity>,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -56,10 +62,15 @@ export class FavoriteService {
     fav_id: number;
     mem_code: string;
     sort_by?: number;
+    mem_route?: string;
   }) {
     try {
       await this.favoriteRepo.delete(data.fav_id);
-      return this.getListFavorite(data.mem_code, data.sort_by?.toString());
+      return this.getListFavorite(
+        data.mem_code,
+        data.sort_by?.toString(),
+        data.mem_route,
+      );
     } catch {
       throw new Error('Error Something in deleteFavorite');
     }
@@ -68,6 +79,7 @@ export class FavoriteService {
   async getListFavorite(
     mem_code: string,
     sort_by?: string,
+    mem_route?: string,
   ): Promise<
     (FavoriteEntity & {
       isMonthlyDeal: boolean;
@@ -96,7 +108,7 @@ export class FavoriteService {
     })[]
   > {
     try {
-      const isL16 = await this.isL16Member(mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       await this.removeL16Favorites(mem_code, isL16);
       const currentMonth = new Date().getMonth() + 1;
 

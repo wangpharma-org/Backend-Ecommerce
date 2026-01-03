@@ -45,7 +45,13 @@ export class ProductsService {
     private readonly backendService: BackendService,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -281,10 +287,10 @@ export class ProductsService {
     }
   }
 
-  async getFlashSale(limit: number, mem_code: string) {
+  async getFlashSale(limit: number, mem_code: string, mem_route?: string) {
     try {
       console.log(limit, mem_code);
-      const isL16 = await this.isL16Member(mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const numberOfMonth = new Date().getMonth() + 1;
       const qb = this.productRepo
         .createQueryBuilder('product')
@@ -445,9 +451,10 @@ export class ProductsService {
   async getProductDetail(data: {
     pro_code: string;
     mem_code: string;
+    mem_route?: string;
   }): Promise<ProductEntity> {
     try {
-      const isL16 = await this.isL16Member(data.mem_code);
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const replaceCondition = isL16
         ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
         : undefined;
@@ -608,9 +615,10 @@ export class ProductsService {
     keyword: string;
     pro_code: string;
     mem_code: string;
+    mem_route?: string;
   }): Promise<ProductEntity[]> {
     try {
-      const isL16 = await this.isL16Member(data.mem_code);
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -689,11 +697,12 @@ export class ProductsService {
     category: number;
     offset: number;
     mem_code: string;
+    mem_route?: string;
     sort_by?: number;
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
-      const isL16 = await this.isL16Member(data.mem_code);
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const now = new Date();
       const monthNumber = now.getMonth() + 1;
       const currentDate = now.toISOString().split('T')[0];
@@ -896,11 +905,12 @@ export class ProductsService {
     keyword: string;
     offset: number;
     mem_code: string;
+    mem_route?: string;
     sort_by?: number;
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
-      const isL16 = await this.isL16Member(data.mem_code);
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -1048,7 +1058,7 @@ export class ProductsService {
     }
   }
 
-  async listFree(sort_by?: string, mem_code?: string) {
+  async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
     // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
@@ -1073,7 +1083,7 @@ export class ProductsService {
           order = { pro_name: 'ASC' };
       }
 
-      const isL16 = await this.isL16Member(mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
@@ -1504,9 +1514,9 @@ export class ProductsService {
     }
   }
 
-  async keySearchProducts(mem_code?: string) {
+  async keySearchProducts(mem_code?: string, mem_route?: string) {
     try {
-      const isL16 = await this.isL16Member(mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')

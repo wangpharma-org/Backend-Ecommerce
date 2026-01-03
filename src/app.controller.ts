@@ -86,6 +86,7 @@ interface JwtPayload {
   mem_province?: string;
   mem_post?: string;
   mem_phone?: string;
+  mem_route?: string;
   permission?: boolean;
 }
 
@@ -262,14 +263,24 @@ export class AppController {
   ) {
     //console.log('get data favorite');
     const memberCode = req.user.mem_code;
-    return await this.favoriteService.getListFavorite(memberCode, sort_by);
+    return await this.favoriteService.getListFavorite(
+      memberCode,
+      sort_by,
+      req.user.mem_route,
+    );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/flashsale/get-list')
-  async getDataFlashSale(@Body() data: { limit: number; mem_code: string }) {
+  async getDataFlashSale(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { limit: number; mem_code: string },
+  ) {
+    const mem_code = req.user.mem_code;
     const func = await this.productsService.getFlashSale(
       data.limit,
-      data.mem_code,
+      mem_code,
+      req.user.mem_route,
     );
     for (const funcItem of func) {
       await this.imagedebugService.UpsercetImg({
@@ -290,10 +301,15 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/delete')
   async deleteFavorite(
+    @Req() req: Request & { user: JwtPayload },
     @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
   ) {
     //console.log(data);
-    return await this.favoriteService.deleteFavorite(data);
+    return await this.favoriteService.deleteFavorite({
+      ...data,
+      mem_code: req.user.mem_code,
+      mem_route: req.user.mem_route,
+    });
   }
 
   @Post('/ecom/login')
@@ -322,6 +338,7 @@ export class AppController {
     const result = await this.productsService.searchProducts({
       ...data,
       mem_code,
+      mem_route: req.user.mem_route,
     });
     for (const resultItem of result.products) {
       await this.imagedebugService.UpsercetImg({
@@ -351,6 +368,7 @@ export class AppController {
     return await this.productsService.searchCategoryProducts({
       ...data,
       mem_code,
+      mem_route: req.user.mem_route,
     });
   }
 
@@ -362,7 +380,11 @@ export class AppController {
   ) {
     //console.log('data in controller:', data);
     const mem_code = req.user.mem_code;
-    return await this.productsService.productForYou({ ...data, mem_code });
+    return await this.productsService.productForYou({
+      ...data,
+      mem_code,
+      mem_route: req.user.mem_route,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -393,7 +415,7 @@ export class AppController {
   ) {
     const mem_code = req.user.mem_code;
     return await this.shoppingOrderService.submitOrder(
-      { ...data, mem_code },
+      { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
   }
@@ -415,6 +437,7 @@ export class AppController {
     const result = await this.productsService.getProductDetail({
       ...data,
       mem_code,
+      mem_route: req.user.mem_route,
     });
     await this.imagedebugService.UpsercetImg({
       pro_code: result.pro_code,
@@ -430,7 +453,11 @@ export class AppController {
     @Param('sortBy') sort_by: string,
   ) {
     const mem_code = req.user.mem_code;
-    const result = await this.productsService.listFree(sort_by, mem_code);
+    const result = await this.productsService.listFree(
+      sort_by,
+      mem_code,
+      req.user.mem_route,
+    );
     for (const resultItem of result) {
       await this.imagedebugService.UpsercetImg({
         pro_code: resultItem.pro_code,
@@ -479,6 +506,7 @@ export class AppController {
       pro_unit: string;
       amount: number;
       priceCondition: string;
+      mem_route?: string;
       // is_reward: boolean;
       flashsale_end: string;
       // hotdeal_free: boolean;
@@ -487,6 +515,7 @@ export class AppController {
       ...data,
       mem_code,
       priceCondition,
+      mem_route: req.user.mem_route,
     };
     console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
@@ -607,7 +636,10 @@ export class AppController {
   ) {
     const memberCode = req.user.mem_code;
     const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.getCartSnapshot(memberCode);
+      await this.shoppingCartService.getCartSnapshot(
+        memberCode,
+        req.user.mem_route,
+      );
     const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
@@ -1009,16 +1041,20 @@ export class AppController {
     return this.hotdealService.deleteHotdeal(data.id, data.pro_code);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/simple-list')
   async getAllHotdealsSimple(
+    @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('mem_code') mem_code?: string,
   ) {
+    const memberCode = req.user.mem_code;
     return this.hotdealService.getAllHotdealsWithProductDetail(
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
-      mem_code,
+      memberCode,
+      req.user.mem_route,
     );
   }
 
@@ -1186,7 +1222,10 @@ export class AppController {
   @Get('/ecom/product/keysearch-all')
   async getKeySearch(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
-    return await this.productsService.keySearchProducts(mem_code);
+    return await this.productsService.keySearchProducts(
+      mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1264,8 +1303,16 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/get-flashsale')
-  async getFlashsaleByDate(@Body() data: { limit: number; mem_code: string }) {
-    return await this.flashsaleService.getFlashSale(data.limit, data.mem_code);
+  async getFlashsaleByDate(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { limit: number; mem_code: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.flashsaleService.getFlashSale(
+      data.limit,
+      mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1666,7 +1713,10 @@ export class AppController {
     @Param('mem_code') mem_code: string,
   ) {
     const memberCode = req.user.mem_code;
-    return this.newArrivalsService.getNewArrivalsLimit30(memberCode);
+    return this.newArrivalsService.getNewArrivalsLimit30(
+      memberCode,
+      req.user.mem_route,
+    );
   }
 
   @Get('/ecom/hotdeal/find/:pro_code')
@@ -2018,6 +2068,7 @@ export class AppController {
     return await this.recommendService.GetProductRecommendByCode(
       data.recommend_id,
       mem_code,
+      req.user.mem_route,
     );
   }
 

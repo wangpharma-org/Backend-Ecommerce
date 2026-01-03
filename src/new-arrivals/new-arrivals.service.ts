@@ -13,7 +13,13 @@ export class NewArrivalsService {
     private readonly userRepo: Repository<UserEntity>,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -72,8 +78,11 @@ export class NewArrivalsService {
     }
   }
 
-  async getNewArrivalsLimit30(memCode: string): Promise<any[]> {
-    const isL16 = await this.isL16Member(memCode);
+  async getNewArrivalsLimit30(
+    memCode: string,
+    mem_route?: string,
+  ): Promise<any[]> {
+    const isL16 = await this.isL16Member(memCode, mem_route);
     const results = await this.newArrivalsRepository
       .createQueryBuilder('newArrival')
       .leftJoinAndSelect('newArrival.product', 'product')

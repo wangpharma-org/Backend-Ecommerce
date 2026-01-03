@@ -161,7 +161,13 @@ export class ShoppingCartService {
     private readonly productRepo: Repository<ProductEntity>,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -172,8 +178,12 @@ export class ShoppingCartService {
     return member?.mem_route?.toUpperCase() === 'L16';
   }
 
-  private async ensureL16Access(mem_code: string, pro_code: string) {
-    const isL16 = await this.isL16Member(mem_code);
+  private async ensureL16Access(
+    mem_code: string,
+    pro_code: string,
+    mem_route?: string,
+  ) {
+    const isL16 = await this.isL16Member(mem_code, mem_route);
     if (!isL16) {
       return;
     }
@@ -188,8 +198,11 @@ export class ShoppingCartService {
     }
   }
 
-  private async removeL16ItemsFromCart(mem_code: string): Promise<boolean> {
-    const isL16 = await this.isL16Member(mem_code);
+  private async removeL16ItemsFromCart(
+    mem_code: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    const isL16 = await this.isL16Member(mem_code, mem_route);
     if (!isL16) {
       return false;
     }
@@ -289,8 +302,11 @@ export class ShoppingCartService {
     return this.incrementCartVersion(mem_code);
   }
 
-  async getCartSnapshot(mem_code: string): Promise<CartMutationResult> {
-    await this.removeL16ItemsFromCart(mem_code);
+  async getCartSnapshot(
+    mem_code: string,
+    mem_route?: string,
+  ): Promise<CartMutationResult> {
+    await this.removeL16ItemsFromCart(mem_code, mem_route);
     const [cart, version] = await Promise.all([
       this.getProductCart(mem_code),
       this.getCartVersionState(mem_code),
@@ -319,6 +335,7 @@ export class ShoppingCartService {
     pro_unit: string;
     amount: number;
     priceCondition: string;
+    mem_route?: string;
     flashsale_end?: string;
     clientVersion?: string | number;
   }): Promise<CartMutationResult> {
@@ -327,7 +344,7 @@ export class ShoppingCartService {
         await this.handleCheckFlashsale(data.pro_code);
       }
 
-      await this.ensureL16Access(data.mem_code, data.pro_code);
+      await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
@@ -418,13 +435,14 @@ export class ShoppingCartService {
       amount: number;
       hotdeal_free: boolean;
       hotdeal_promain: string;
+      mem_route?: string;
       clientVersion?: string | number;
     },
     options?: { touchVersion?: boolean },
   ): Promise<CartMutationResult> {
     const touchVersion = options?.touchVersion ?? true;
     try {
-      await this.ensureL16Access(data.mem_code, data.pro_code);
+      await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('Add Hotdeal Free Item:', data);
       await this.shoppingCartRepo.save({

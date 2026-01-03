@@ -44,7 +44,13 @@ export class ShoppingOrderService {
     private readonly userRepo: Repository<UserEntity>,
   ) {}
 
-  private async isL16Member(mem_code?: string): Promise<boolean> {
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
     if (!mem_code) {
       return false;
     }
@@ -130,6 +136,7 @@ export class ShoppingOrderService {
     data: {
       emp_code?: string;
       mem_code: string;
+      mem_route?: string;
       listFree:
         | [
             {
@@ -147,7 +154,7 @@ export class ShoppingOrderService {
     },
     ip?: string,
   ): Promise<string[] | undefined> {
-    const isL16 = await this.isL16Member(data.mem_code);
+    const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
     const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
