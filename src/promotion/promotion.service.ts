@@ -859,23 +859,31 @@ export class PromotionService {
     }
   }
 
-  async getRewardByTierId(tier_id: number) {
+  async getRewardByTierId(tier_id: number, mem_code?: string, mem_route?: string) {
     try {
-      return await this.promotionRewardRepo.find({
-        where: { tier: { tier_id } },
-        relations: { giftProduct: true },
-        select: {
-          reward_id: true,
-          qty: true,
-          unit: true,
-          giftProduct: {
-            pro_code: true,
-            pro_name: true,
-            pro_genericname: true,
-            pro_imgmain: true,
-          },
-        },
-      });
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+      
+      const rewardQuery = this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+        .where('reward.tier.tier_id = :tier_id', { tier_id })
+        .select([
+          'reward.reward_id',
+          'reward.qty',
+          'reward.unit',
+          'giftProduct.pro_code',
+          'giftProduct.pro_name',
+          'giftProduct.pro_genericname',
+          'giftProduct.pro_imgmain',
+        ]);
+      
+      if (isL16) {
+        rewardQuery.andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+      }
+      
+      return await rewardQuery.getMany();
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get reward by tier id`);
