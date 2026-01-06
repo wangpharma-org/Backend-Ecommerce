@@ -3,13 +3,59 @@ import { Injectable } from '@nestjs/common';
 import { FavoriteEntity } from './favorite.entity';
 import { Repository } from 'typeorm';
 import { stringify } from 'querystring';
+import { UserEntity } from 'src/users/users.entity';
+import { ProductEntity } from 'src/products/products.entity';
 
 @Injectable()
 export class FavoriteService {
   constructor(
     @InjectRepository(FavoriteEntity)
     private readonly favoriteRepo: Repository<FavoriteEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private async removeL16Favorites(
+    mem_code: string,
+    isL16: boolean,
+  ): Promise<void> {
+    if (!isL16) {
+      return;
+    }
+    const l16SubQuery = this.favoriteRepo
+      .createQueryBuilder()
+      .subQuery()
+      .select('product.pro_code')
+      .from(ProductEntity, 'product')
+      .where('product.pro_l16_only = :l16')
+      .getQuery();
+
+    await this.favoriteRepo
+      .createQueryBuilder()
+      .delete()
+      .from(FavoriteEntity)
+      .where('mem_code = :mem_code', { mem_code })
+      .andWhere(`pro_code IN ${l16SubQuery}`)
+      .setParameter('l16', 1)
+      .execute();
+  }
 
   async addToFavorite(data: { mem_code: string; pro_code: string }) {
     try {
@@ -29,10 +75,15 @@ export class FavoriteService {
     fav_id: number;
     mem_code: string;
     sort_by?: number;
+    mem_route?: string;
   }) {
     try {
       await this.favoriteRepo.delete(data.fav_id);
-      return this.getListFavorite(data.mem_code, data.sort_by?.toString());
+      return this.getListFavorite(
+        data.mem_code,
+        data.sort_by?.toString(),
+        data.mem_route,
+      );
     } catch {
       throw new Error('Error Something in deleteFavorite');
     }
@@ -41,6 +92,7 @@ export class FavoriteService {
   async getListFavorite(
     mem_code: string,
     sort_by?: string,
+    mem_route?: string,
   ): Promise<
     (FavoriteEntity & {
       isMonthlyDeal: boolean;
@@ -69,7 +121,8 @@ export class FavoriteService {
     })[]
   > {
     try {
-      const currentMonth = new Date().getMonth() + 1;
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+      await this.removeL16Favorites(mem_code, isL16);
 
       const qb = this.favoriteRepo
         .createQueryBuilder('fav')

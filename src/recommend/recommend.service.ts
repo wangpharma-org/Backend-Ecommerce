@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { RecommendEntity } from './recommend.entity';
 import { Repository, In, Not, MoreThan } from 'typeorm';
 import { ProductEntity } from 'src/products/products.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Injectable()
 export class RecommendService {
@@ -11,7 +12,26 @@ export class RecommendService {
     private readonly recommendEntity: Repository<RecommendEntity>,
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   async insertTag(tag: string) {
     try {
@@ -114,8 +134,13 @@ export class RecommendService {
     }
   }
 
-  async GetProductRecommendByCode(recommend_id: number[], mem_code: string) {
+  async GetProductRecommendByCode(
+    recommend_id: number[],
+    mem_code: string,
+    mem_route?: string,
+  ) {
     try {
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const replacedProducts: Array<{
         pro_code: string;
         pro_name: string;
@@ -152,6 +177,11 @@ export class RecommendService {
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
         .where('cart.spc_id IS NOT NULL')
         .andWhere('mainProduct.pro_stock > 0')
+        .andWhere(
+          isL16
+            ? '(mainProduct.pro_l16_only = 0 OR mainProduct.pro_l16_only IS NULL)'
+            : '1=1',
+        )
         .setParameter('memCode', mem_code)
         .select([
           'mainProduct.pro_code AS pro_code',
@@ -218,6 +248,11 @@ export class RecommendService {
         .where('recommend.id IN (:...recommend_id)', { recommend_id })
         .andWhere('product.pro_stock > 0')
         .andWhere('product.recommend_rank IS NOT NULL')
+        .andWhere(
+          isL16
+            ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
+            : '1=1',
+        )
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',

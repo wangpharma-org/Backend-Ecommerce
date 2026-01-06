@@ -8,6 +8,7 @@ import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendModule } from 'src/backend/backend.module';
 import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
+import { UserEntity } from 'src/users/users.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
       ProductPharmaEntity,
       CreditorEntity,
       LogFileEntity,
+      UserEntity,
     ]),
     BackendModule,
     ImagedebugModule,

@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FlashSaleEntity } from './flashsale.entity';
 import { FlashSaleProductsEntity } from './flashsale-product.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
       FlashSaleEntity,
       FlashSaleProductsEntity,
       ShoppingCartEntity,
+      UserEntity,
     ]),
   ],
   providers: [FlashsaleService],

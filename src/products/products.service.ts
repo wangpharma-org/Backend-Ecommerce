@@ -1,12 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, IsNull, MoreThan, Not, Repository } from 'typeorm';
+import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
+import { UserEntity } from 'src/users/users.entity';
 
 interface OrderItem {
   pro_code: string;
@@ -39,8 +40,36 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private applyL16Filter(
+    qb: { andWhere: (sql: string, params?: Record<string, unknown>) => void },
+    alias: string,
+  ) {
+    qb.andWhere(
+      `(${alias}.pro_l16_only = 0 OR ${alias}.pro_l16_only IS NULL)`,
+    );
+  }
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
     try {
@@ -258,11 +287,12 @@ export class ProductsService {
     }
   }
 
-  async getFlashSale(limit: number, mem_code: string) {
+  async getFlashSale(limit: number, mem_code: string, mem_route?: string) {
     try {
       console.log(limit, mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const numberOfMonth = new Date().getMonth() + 1;
-      const data = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
           'product.inCarts',
@@ -270,7 +300,13 @@ export class ProductsService {
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', mem_code)
-        .where('product.pro_promotion_month = :month', { month: numberOfMonth })
+        .where('product.pro_promotion_month = :month', { month: numberOfMonth });
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const data = await qb
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -415,14 +451,26 @@ export class ProductsService {
   async getProductDetail(data: {
     pro_code: string;
     mem_code: string;
+    mem_route?: string;
   }): Promise<ProductEntity> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+      const replaceCondition = isL16
+        ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
+        : undefined;
+      const recommendCondition = isL16
+        ? 'products.pro_stock > 0 AND (products.pro_l16_only = 0 OR products.pro_l16_only IS NULL)'
+        : 'products.pro_stock > 0';
+      const replaceInRecommendCondition = isL16
+        ? 'replaceInRecommend.pro_l16_only = 0 OR replaceInRecommend.pro_l16_only IS NULL'
+        : undefined;
+
       await this.productRepo.increment(
         { pro_code: data.pro_code },
         'viwers',
         1,
       );
-      const product = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect('product.pharmaDetails', 'pharma')
         .leftJoinAndSelect(
@@ -433,14 +481,18 @@ export class ProductsService {
         )
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .leftJoinAndSelect('product.replace', 'replace')
+        .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect('product.recommend', 'recommend')
         .leftJoinAndSelect(
           'recommend.products',
           'products',
-          'products.pro_stock > 0',
+          recommendCondition,
         )
-        .leftJoinAndSelect('products.replace', 'replaceInRecommend')
+        .leftJoinAndSelect(
+          'products.replace',
+          'replaceInRecommend',
+          replaceInRecommendCondition,
+        )
         .leftJoinAndSelect(
           'replace.inCarts',
           'inCartsInReplace',
@@ -541,8 +593,13 @@ export class ProductsService {
           'fs_products.time_end',
           'fs_products.date',
         ])
-        .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
-        .getOne();
+        .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const product = await qb.getOne();
       if (product) {
         return product;
       } else {
@@ -557,8 +614,11 @@ export class ProductsService {
   async productForYou(data: {
     keyword: string;
     pro_code: string;
+    mem_code: string;
+    mem_route?: string;
   }): Promise<ProductEntity[]> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -605,6 +665,10 @@ export class ProductsService {
           }),
         );
 
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       const products = await qb
         .take(6)
         .select([
@@ -633,10 +697,12 @@ export class ProductsService {
     category: number;
     offset: number;
     mem_code: string;
+    mem_route?: string;
     sort_by?: number;
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const now = new Date();
       const monthNumber = now.getMonth() + 1;
       const currentDate = now.toISOString().split('T')[0];
@@ -745,6 +811,10 @@ export class ProductsService {
           );
       }
 
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       if (data.sort_by && data.category === 8) {
         switch (data.sort_by) {
           case 1:
@@ -835,10 +905,12 @@ export class ProductsService {
     keyword: string;
     offset: number;
     mem_code: string;
+    mem_route?: string;
     sort_by?: number;
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -920,6 +992,10 @@ export class ProductsService {
           }),
         );
 
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       if (data.sort_by) {
         switch (data.sort_by) {
           case 1:
@@ -982,7 +1058,7 @@ export class ProductsService {
     }
   }
 
-  async listFree(sort_by?: string) {
+  async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
     // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
@@ -1007,11 +1083,17 @@ export class ProductsService {
           order = { pro_name: 'ASC' };
       }
 
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
           pro_stock: MoreThan(0),
           pro_point: MoreThan(0),
+          ...(isL16
+            ? {
+                pro_l16_only: In([0, null]),
+              }
+            : {}),
         },
         select: {
           pro_code: true,
@@ -1333,8 +1415,108 @@ export class ProductsService {
     }
   }
 
-  async keySearchProducts() {
+  async updateProductL16OnlyFromUpload(body: {
+    data: { pro_code: string; status: number | string }[];
+    filename: string;
+  }): Promise<{ message: string; total: number; }> {
+    const rows = (body.data || [])
+      .map((row) => {
+        const code = String(row.pro_code ?? '').trim();
+        const status = Number(row.status ?? 0) === 1 ? 1 : 0;
+        return { code, status };
+      })
+      .filter((row) => row.code.length > 0);
+
+    if (rows.length === 0) {
+      throw new BadRequestException('ไม่พบรหัสสินค้าในไฟล์');
+    }
+
+    const uniqueCodes = Array.from(new Set(rows.map((row) => row.code)));
+    const existingCodes = new Set<string>();
+    const chunkSize = 1000;
+
+    for (let i = 0; i < uniqueCodes.length; i += chunkSize) {
+      const chunk = uniqueCodes.slice(i, i + chunkSize);
+      const found = await this.productRepo.find({
+        where: { pro_code: In(chunk) },
+        select: ['pro_code'],
+      });
+      for (const product of found) {
+        existingCodes.add(product.pro_code);
+      }
+    }
+
+    const missingCodes = uniqueCodes.filter((code) => !existingCodes.has(code));
+    if (missingCodes.length > 0) {
+      throw new BadRequestException({
+        message: 'พบรหัสสินค้าที่ไม่อยู่ในระบบ',
+        missingCodes,
+        totalMissing: missingCodes.length,
+      });
+    }
+
+    const codesToEnable = Array.from(
+      new Set(rows.filter((row) => row.status === 1).map((row) => row.code)),
+    );
+
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
     try {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update(ProductEntity)
+        .set({ pro_l16_only: 0 })
+        .execute();
+
+      if (codesToEnable.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 1 })
+          .where('pro_code IN (:...codes)', { codes: codesToEnable })
+          .execute();
+      }
+
+      const feature = 'upload-product-l16';
+      const existingLog = await queryRunner.manager.findOne(LogFileEntity, {
+        where: { feature },
+      });
+
+      if (existingLog) {
+        existingLog.filename = body.filename;
+        existingLog.uploadedAt = new Date();
+        await queryRunner.manager.save(existingLog);
+      } else {
+        const newLog = queryRunner.manager.create(LogFileEntity, {
+          feature,
+          filename: body.filename,
+          uploadedAt: new Date(),
+        });
+        await queryRunner.manager.save(newLog);
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        message: 'L16 visibility updated',
+        total: rows.length,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error('Error updating L16 visibility:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new Error('Error updating L16 visibility');
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async keySearchProducts(mem_code?: string, mem_route?: string) {
+    try {
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -1365,6 +1547,10 @@ export class ProductsService {
               });
           }),
         );
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
 
       const products = await qb
         .select([

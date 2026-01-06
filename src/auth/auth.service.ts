@@ -264,6 +264,7 @@ export class AuthService {
       mem_province: user.mem_province ?? '',
       mem_post: user.mem_post ?? '',
       mem_phone: user.mem_phone ?? '',
+      mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
     };
 
@@ -325,6 +326,7 @@ export class AuthService {
           mem_province: user.mem_province ?? '',
           mem_post: user.mem_post ?? '',
           mem_phone: user.mem_phone ?? '',
+          mem_route: user.mem_route ?? '',
           permission: user.permision_admin,
         };
 

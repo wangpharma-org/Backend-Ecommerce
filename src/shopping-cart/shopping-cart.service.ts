@@ -1,4 +1,4 @@
-import { ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, Not, Brackets } from 'typeorm';
@@ -161,6 +161,88 @@ export class ShoppingCartService {
     private readonly productRepo: Repository<ProductEntity>,
   ) {}
 
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private async ensureL16Access(
+    mem_code: string,
+    pro_code: string,
+    mem_route?: string,
+  ) {
+    const isL16 = await this.isL16Member(mem_code, mem_route);
+    if (!isL16) {
+      return;
+    }
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: ['pro_code', 'pro_l16_only'],
+    });
+    if (product?.pro_l16_only === 1) {
+      throw new BadRequestException(
+        'สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้',
+      );
+    }
+  }
+
+  private async removeL16ItemsFromCart(
+    mem_code: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    const isL16 = await this.isL16Member(mem_code, mem_route);
+    if (!isL16) {
+      return false;
+    }
+
+    const l16SubQuery = this.shoppingCartRepo
+      .createQueryBuilder()
+      .subQuery()
+      .select('product.pro_code')
+      .from(ProductEntity, 'product')
+      .where('product.pro_l16_only = :l16')
+      .getQuery();
+
+    const deleteMain = await this.shoppingCartRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ShoppingCartEntity)
+      .where('mem_code = :mem_code', { mem_code })
+      .andWhere(`pro_code IN ${l16SubQuery}`)
+      .setParameter('l16', 1)
+      .execute();
+
+    const deleteFreebies = await this.shoppingCartRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ShoppingCartEntity)
+      .where('mem_code = :mem_code', { mem_code })
+      .andWhere('hotdeal_free = true')
+      .andWhere(`hotdeal_promain IN ${l16SubQuery}`)
+      .setParameter('l16', 1)
+      .execute();
+
+    const removed =
+      (deleteMain.affected ?? 0) + (deleteFreebies.affected ?? 0);
+    if (removed > 0) {
+      await this.incrementCartVersion(mem_code);
+      return true;
+    }
+    return false;
+  }
+
   private normalizeCartVersion(
     value?: string | number | null,
   ): string {
@@ -236,7 +318,11 @@ export class ShoppingCartService {
     return this.incrementCartVersion(mem_code);
   }
 
-  async getCartSnapshot(mem_code: string): Promise<CartMutationResult> {
+  async getCartSnapshot(
+    mem_code: string,
+    mem_route?: string,
+  ): Promise<CartMutationResult> {
+    await this.removeL16ItemsFromCart(mem_code, mem_route);
     const [cart, version] = await Promise.all([
       this.getProductCart(mem_code),
       this.getCartVersionState(mem_code),
@@ -265,6 +351,7 @@ export class ShoppingCartService {
     pro_unit: string;
     amount: number;
     priceCondition: string;
+    mem_route?: string;
     flashsale_end?: string;
     clientVersion?: string | number;
   }): Promise<CartMutationResult> {
@@ -272,6 +359,8 @@ export class ShoppingCartService {
       if (data.flashsale_end) {
         await this.handleCheckFlashsale(data.pro_code);
       }
+
+      await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
@@ -347,7 +436,7 @@ export class ShoppingCartService {
 
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
@@ -362,12 +451,14 @@ export class ShoppingCartService {
       amount: number;
       hotdeal_free: boolean;
       hotdeal_promain: string;
+      mem_route?: string;
       clientVersion?: string | number;
     },
     options?: { touchVersion?: boolean },
   ): Promise<CartMutationResult> {
     const touchVersion = options?.touchVersion ?? true;
     try {
+      await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       console.log('Add Hotdeal Free Item:', data);
       await this.shoppingCartRepo.save({
@@ -388,7 +479,7 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
