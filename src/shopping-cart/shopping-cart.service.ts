@@ -428,6 +428,7 @@ export class ShoppingCartService {
         mem_code: data.mem_code,
         type: 'check',
         priceOption: data.priceCondition,
+        mem_route: data.mem_route,
       });
       
       const cart = await this.getProductCart(data.mem_code);
@@ -489,6 +490,7 @@ export class ShoppingCartService {
   async checkPromotionReward(mem_code: string, priceOption: string) {
     console.log('Checking promotion rewards for member:', mem_code);
     const today = new Date();
+    const isL16 = await this.isL16Member(mem_code);
 
     // 1) ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
@@ -744,6 +746,7 @@ export class ShoppingCartService {
         remainingBudget -= multiplier * threshold;
 
         for (const rw of tier.rewards || []) {
+          if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
           const code = rw.giftProduct?.pro_code;
           if (!code) continue;
           const key = `${code}|${rw.unit}`;
@@ -809,6 +812,7 @@ export class ShoppingCartService {
         remainingBudget -= multiplier * threshold;
 
         for (const rw of tier.rewards || []) {
+          if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
           const code = rw.giftProduct?.pro_code;
           if (!code) continue;
           const key = `${code}|${rw.unit}`;
@@ -893,12 +897,13 @@ export class ShoppingCartService {
     mem_code: string;
     type: string;
     priceOption: string;
+    mem_route?: string;
     clientVersion?: string | number;
   }): Promise<CartMutationResult> {
     console.log('checkedProductCart data:', data);
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
-      await this.ensureL16Access(data.mem_code, data.pro_code);
+      await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
@@ -1118,6 +1123,7 @@ export class ShoppingCartService {
 
   async getProductCart(mem_code: string): Promise<ShoppingProductCart[]> {
     try {
+      await this.removeL16ItemsFromCart(mem_code);
       await this.shoppingCartRepo
         .createQueryBuilder()
         .delete()
