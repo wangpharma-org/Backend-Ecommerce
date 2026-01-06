@@ -123,7 +123,6 @@ export class FavoriteService {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
       await this.removeL16Favorites(mem_code, isL16);
-      const currentMonth = new Date().getMonth() + 1;
 
       const qb = this.favoriteRepo
         .createQueryBuilder('fav')
@@ -137,12 +136,6 @@ export class FavoriteService {
         .leftJoinAndSelect('hotdeal.product2', 'hotdealProduct2')
         .setParameter('memCode', mem_code)
         .where('fav.member.mem_code = :mem_code', { mem_code });
-
-      if (isL16) {
-        qb.andWhere(
-          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
-        );
-      }
 
       switch (sort_by) {
         case '1':

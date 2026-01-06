@@ -663,7 +663,8 @@ export class ShoppingOrderService {
     memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
     try {
-      const orders = await this.shoppingOrderRepo
+      const isL16 = await this.isL16Member(memCode);
+      const query = this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
         .leftJoinAndSelect(
@@ -678,7 +679,15 @@ export class ShoppingOrderService {
         .where('header.mem_code = :memCode', { memCode })
         .andWhere(
           '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)',
-        )
+        );
+
+      if (isL16) {
+        query.andWhere(
+          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        );
+      }
+
+      const orders = await query
         .orderBy('header.soh_datetime', 'DESC')
         .take(20)
         .select([
