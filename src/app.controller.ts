@@ -820,8 +820,15 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/reward/list/:tier_id')
-  async listPromotionRewards(@Param('tier_id') tier_id: string) {
-    return this.promotionService.getRewardsByTier(Number(tier_id));
+  async listPromotionRewards(
+    @Param('tier_id') tier_id: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.promotionService.getRewardsByTier(
+      Number(tier_id),
+      req.user.mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -896,8 +903,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/get-tier-for-customer')
-  async getTierAll() {
-    return this.promotionService.getAllTiers();
+  async getTierAll(@Req() req: Request & { user: JwtPayload }) {
+    return this.promotionService.getAllTiers(
+      req.user.mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
