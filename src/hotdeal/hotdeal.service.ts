@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
 import { Repository } from 'typeorm';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { UserEntity } from 'src/users/users.entity';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -20,10 +21,29 @@ export class HotdealService {
   constructor(
     @InjectRepository(HotdealEntity)
     private readonly hotdealRepo: Repository<HotdealEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly productService: ProductsService,
     @Inject(forwardRef(() => ShoppingCartService))
     private readonly shoppingCartService: ShoppingCartService,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   // ตรวจสอบแล้วว่าใช้ได้
   async find(pro_code: string): Promise<HotdealEntity | null> {
@@ -196,7 +216,9 @@ export class HotdealService {
     limit?: number,
     offset?: number,
     mem_code?: string,
+    mem_route?: string,
   ) {
+    const isL16 = await this.isL16Member(mem_code, mem_route);
     const query = this.hotdealRepo
       .createQueryBuilder('hotdeal')
       .leftJoinAndSelect('hotdeal.product', 'product')
@@ -224,6 +246,16 @@ export class HotdealService {
     }
     if (offset) {
       query.skip(offset);
+    }
+
+    if (isL16) {
+      query
+        .andWhere(
+          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        )
+        .andWhere(
+          '(product2.pro_l16_only = 0 OR product2.pro_l16_only IS NULL)',
+        );
     }
 
     const hotdeals = await query.getMany();

@@ -14,6 +14,7 @@ import { submitOrder } from 'src/logger/submitOrder.logger';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 interface CountSale {
   pro_code: string;
@@ -39,7 +40,26 @@ export class ShoppingOrderService {
     private readonly saleLogEntity: Repository<SaleLogEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   async countSaleAmount() {
@@ -116,6 +136,7 @@ export class ShoppingOrderService {
     data: {
       emp_code?: string;
       mem_code: string;
+      mem_route?: string;
       listFree:
         | [
             {
@@ -133,6 +154,7 @@ export class ShoppingOrderService {
     },
     ip?: string,
   ): Promise<string[] | undefined> {
+    const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
     const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
@@ -181,6 +203,20 @@ export class ShoppingOrderService {
             item: null,
           };
           throw new Error('Cart is empty');
+        }
+
+        if (isL16) {
+          const restrictedItems = cart.filter(
+            (item) => item.product?.pro_l16_only === 1,
+          );
+          if (restrictedItems.length > 0) {
+            const codes = restrictedItems
+              .map((item) => item.pro_code)
+              .join(', ');
+            throw new BadRequestException(
+              `สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้: ${codes}`,
+            );
+          }
         }
 
         const checkFreebies =
@@ -627,7 +663,8 @@ export class ShoppingOrderService {
     memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
     try {
-      const orders = await this.shoppingOrderRepo
+      const isL16 = await this.isL16Member(memCode);
+      const query = this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
         .leftJoinAndSelect(
@@ -642,7 +679,15 @@ export class ShoppingOrderService {
         .where('header.mem_code = :memCode', { memCode })
         .andWhere(
           '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)',
-        )
+        );
+
+      if (isL16) {
+        query.andWhere(
+          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        );
+      }
+
+      const orders = await query
         .orderBy('header.soh_datetime', 'DESC')
         .take(20)
         .select([
