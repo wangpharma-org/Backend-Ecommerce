@@ -19,6 +19,7 @@ import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
 import { AuthService } from 'src/auth/auth.service';
 import { ProductEntity } from 'src/products/products.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Injectable()
 export class PromotionService {
@@ -40,12 +41,31 @@ export class PromotionService {
     private readonly authService: AuthService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
       accessKeyId: process.env.DO_SPACES_KEY,
       secretAccessKey: process.env.DO_SPACES_SECRET,
     });
+  }
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
   }
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
@@ -232,11 +252,16 @@ export class PromotionService {
     }
   }
 
-  async getAllTiers() {
+  async getAllTiers(
+    mem_code?: string,
+    mem_route?: string,
+  ) {
     const Today = new Date();
     const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
     const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
     try {
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+      
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
@@ -246,27 +271,29 @@ export class PromotionService {
           },
         },
       });
-      const reward = await this.promotionRewardRepo.find({
-        where: {
-          tier: {
-            tier_id: In(poster.map((p) => p.tier_id)),
-          },
-        },
-        relations: {
-          tier: true,
-          giftProduct: true,
-        },
-        select: {
-          tier: {
-            tier_id: true,
-          },
-          giftProduct: {
-            pro_code: true,
-            pro_name: true,
-            pro_imgmain: true,
-          },
-        },
-      });
+      
+      const rewardQuery = this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoinAndSelect('reward.tier', 'tier')
+        .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+        .where('tier.tier_id IN (:...tierIds)', {
+          tierIds: poster.map((p) => p.tier_id),
+        })
+        .select([
+          'reward',
+          'tier.tier_id',
+          'giftProduct.pro_code',
+          'giftProduct.pro_name', 
+          'giftProduct.pro_imgmain',
+        ]);
+      
+      if (isL16) {
+        rewardQuery.andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+      }
+      
+      const reward = await rewardQuery.getMany();
 
       const limitedReward = Object.values(
         reward.reduce(
@@ -535,28 +562,40 @@ export class PromotionService {
     }
   }
 
-  async getRewardsByTier(tier_id: number) {
+  async getRewardsByTier(
+    tier_id: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
     try {
-      return await this.promotionRewardRepo.find({
-        where: { tier: { tier_id } },
-        relations: { giftProduct: true },
-        select: {
-          reward_id: true,
-          qty: true,
-          unit: true,
-          giftProduct: {
-            pro_code: true,
-            pro_name: true,
-            pro_genericname: true,
-            pro_imgmain: true,
-            pro_unit1: true,
-            pro_unit2: true,
-            pro_unit3: true,
-            free_product_count: true,
-            free_product_limit: true,
-          },
-        },
-      });
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+      
+      const query = this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+        .where('reward.tier_id = :tier_id', { tier_id })
+        .select([
+          'reward.reward_id',
+          'reward.qty',
+          'reward.unit',
+          'giftProduct.pro_code',
+          'giftProduct.pro_name',
+          'giftProduct.pro_genericname',
+          'giftProduct.pro_imgmain',
+          'giftProduct.pro_unit1',
+          'giftProduct.pro_unit2',
+          'giftProduct.pro_unit3',
+          'giftProduct.free_product_count',
+          'giftProduct.free_product_limit',
+        ]);
+      
+      if (isL16) {
+        query.andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+      }
+      
+      return await query.getMany();
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get rewards by tier`);

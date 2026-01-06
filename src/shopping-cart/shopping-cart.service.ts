@@ -1125,6 +1125,17 @@ export class ShoppingCartService {
         .andWhere('spc_amount <= 0')
         .execute();
 
+      const isL16 = await this.isL16Member(mem_code);
+      const replaceCondition = isL16
+        ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
+        : undefined;
+      const recommendCondition = isL16
+        ? 'recommendedProducts.pro_stock > 0 AND (recommendedProducts.pro_l16_only = 0 OR recommendedProducts.pro_l16_only IS NULL)'
+        : 'recommendedProducts.pro_stock > 0';
+      const replaceInRecommendCondition = isL16
+        ? 'recommendedProductsReplace.pro_l16_only = 0 OR recommendedProductsReplace.pro_l16_only IS NULL'
+        : undefined;
+
       const raw: RawProductCart[] = await this.shoppingCartRepo
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')
@@ -1132,15 +1143,16 @@ export class ShoppingCartService {
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect('fs.flashsale', 'flashsale', 'flashsale.is_active = 1')
         .leftJoinAndSelect('product.recommend', 'recommend')
-        .leftJoinAndSelect('product.replace', 'replace')
+        .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect(
           'recommend.products',
           'recommendedProducts',
-          'recommendedProducts.pro_stock > 0',
+          recommendCondition,
         )
         .leftJoinAndSelect(
           'recommendedProducts.replace',
           'recommendedProductsReplace',
+          replaceInRecommendCondition,
         )
         .where('cart.mem_code = :mem_code', { mem_code })
         .select([
