@@ -428,6 +428,7 @@ export class ShoppingCartService {
         mem_code: data.mem_code,
         type: 'check',
         priceOption: data.priceCondition,
+        mem_route: data.mem_route,
       });
       
       const cart = await this.getProductCart(data.mem_code);
@@ -893,12 +894,13 @@ export class ShoppingCartService {
     mem_code: string;
     type: string;
     priceOption: string;
+    mem_route?: string;
     clientVersion?: string | number;
   }): Promise<CartMutationResult> {
     console.log('checkedProductCart data:', data);
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
-      await this.ensureL16Access(data.mem_code, data.pro_code);
+      await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },

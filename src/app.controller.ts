@@ -613,8 +613,9 @@ export class AppController {
       pro_code: string;
       type: string;
       priceOption: string;
+      mem_route?: string;
       clientVersion?: string;
-    } = { ...data, priceOption };
+    } = { ...data, priceOption, mem_route: req.user.mem_route };
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
