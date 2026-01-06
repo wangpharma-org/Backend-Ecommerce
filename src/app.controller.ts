@@ -2122,8 +2122,8 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
-  async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
-    return await this.promotionService.getRewardByTierId(tier_id);
+  async getPromotionTierListReward(@Param('tier_id') tier_id: number, @Req() req: any) {
+    return await this.promotionService.getRewardByTierId(tier_id, req.user?.mem_code, req.user?.mem_route);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -898,6 +898,7 @@ export class ShoppingCartService {
     console.log('checkedProductCart data:', data);
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
+      await this.ensureL16Access(data.mem_code, data.pro_code);
       if (data.type === 'check') {
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
