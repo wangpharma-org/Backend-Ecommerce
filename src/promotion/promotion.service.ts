@@ -256,10 +256,10 @@ export class PromotionService {
     mem_code?: string,
     mem_route?: string,
   ) {
-    const Today = new Date();
-    const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const isL16 = await this.isL16Member(mem_code, mem_route);
       
       const poster = await this.promotionTierRepo.find({
@@ -272,12 +272,25 @@ export class PromotionService {
         },
       });
       
+      if (!poster.length) {
+        console.log('No active promotions found');
+        return { poster: [], reward: [] };
+      }
+
+      const tierIds = poster
+        .map((p) => p.tier_id)
+        .filter((id): id is number => id !== undefined && id !== null);
+      if (!tierIds.length) {
+        console.log('No tier IDs found for active promotions');
+        return { poster, reward: [] };
+      }
+      
       const rewardQuery = this.promotionRewardRepo
         .createQueryBuilder('reward')
         .leftJoinAndSelect('reward.tier', 'tier')
         .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
         .where('tier.tier_id IN (:...tierIds)', {
-          tierIds: poster.map((p) => p.tier_id),
+          tierIds,
         })
         .select([
           'reward',
@@ -308,8 +321,9 @@ export class PromotionService {
       ).flat();
 
       return { poster, reward: limitedReward };
-    } catch {
-      throw new Error(`Failed to get tiers`);
+    } catch (error) {
+      console.error('Error in getAllTiers:', error);
+      throw new Error(`Failed to get tiers: ${error.message}`);
     }
   }
 
