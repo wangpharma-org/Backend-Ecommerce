@@ -613,8 +613,9 @@ export class AppController {
       pro_code: string;
       type: string;
       priceOption: string;
+      mem_route?: string;
       clientVersion?: string;
-    } = { ...data, priceOption };
+    } = { ...data, priceOption, mem_route: req.user.mem_route };
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -820,8 +821,15 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/reward/list/:tier_id')
-  async listPromotionRewards(@Param('tier_id') tier_id: string) {
-    return this.promotionService.getRewardsByTier(Number(tier_id));
+  async listPromotionRewards(
+    @Param('tier_id') tier_id: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.promotionService.getRewardsByTier(
+      Number(tier_id),
+      req.user.mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -896,8 +904,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/get-tier-for-customer')
-  async getTierAll() {
-    return this.promotionService.getAllTiers();
+  async getTierAll(@Req() req: Request & { user: JwtPayload }) {
+    return this.promotionService.getAllTiers(
+      req.user.mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2112,8 +2123,8 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
-  async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
-    return await this.promotionService.getRewardByTierId(tier_id);
+  async getPromotionTierListReward(@Param('tier_id') tier_id: number, @Req() req: any) {
+    return await this.promotionService.getRewardByTierId(tier_id, req.user?.mem_code, req.user?.mem_route);
   }
 
   @UseGuards(JwtAuthGuard)
