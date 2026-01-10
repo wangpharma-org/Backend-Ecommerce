@@ -72,6 +72,19 @@ import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
 import { ProductEntity } from './products/products.entity';
 import { CampaignEntity } from './campaigns/campaigns.entity';
 import { AppVersionService } from './app-version/app-version.service';
+import { ProductReturnService } from './product-return/product-return.service';
+import {
+  ReturnStatus,
+  ReturnReason,
+  ResolutionType,
+  InitiatorType,
+} from './product-return/return-enums';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  BehaviorTrackingService,
+  TrackEventDto,
+  BatchTrackDto,
+} from './behavior-tracking/behavior-tracking.service';
 
 interface JwtPayload {
   username: string;
@@ -128,6 +141,8 @@ export class AppController {
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
     private readonly appVersion: AppVersionService,
+    private readonly productReturnService: ProductReturnService,
+    private readonly behaviorTrackingService: BehaviorTrackingService,
   ) { }
 
   @Get('/ecom/get-data/:soh_running')
@@ -2836,6 +2851,693 @@ export class AppController {
           success: false,
           error: { code: 'POST_VERSION_FAILED' },
         },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // ========== Product Return APIs ==========
+
+  // Customer: Get eligible orders for return
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/eligible-orders/:mem_code')
+  async getEligibleOrders(@Param('mem_code') mem_code: string) {
+    try {
+      return await this.productReturnService.getEligibleOrders(mem_code);
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Get order items for return selection
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/order-items/:soh_running')
+  async getOrderItemsForReturn(
+    @Param('soh_running') soh_running: string,
+    @Req() req: { user: JwtPayload },
+  ) {
+    try {
+      return await this.productReturnService.getOrderItems(
+        soh_running,
+        req.user.mem_code,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Create return request
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/returns/create')
+  async createReturn(
+    @Body()
+    data: {
+      soh_id: number;
+      mem_code: string;
+      reason: ReturnReason;
+      reason_detail?: string;
+      resolution_type: ResolutionType;
+      items: {
+        pro_code: string;
+        qty: number;
+        unit: string;
+        price_per_unit: number;
+        item_reason?: string;
+        expiry_date?: string;
+      }[];
+      notes?: string;
+    },
+  ) {
+    try {
+      return await this.productReturnService.createReturn({
+        ...data,
+        initiator_type: InitiatorType.CUSTOMER,
+      });
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Upload evidence images
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/returns/:return_id/images')
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'files', maxCount: 5 }]))
+  async uploadReturnImages(
+    @Param('return_id') return_id: string,
+    @UploadedFile() files: Express.Multer.File[],
+    @Body('description') description?: string,
+  ) {
+    try {
+      return await this.productReturnService.uploadImages(
+        parseInt(return_id),
+        files || [],
+        description,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Submit return request
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/returns/:return_id/submit')
+  async submitReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+  ) {
+    try {
+      return await this.productReturnService.submitReturn(
+        parseInt(return_id),
+        req.user.mem_code,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Get my returns
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/my-returns/:mem_code')
+  async getMyReturns(
+    @Param('mem_code') mem_code: string,
+    @Query('status') status?: ReturnStatus,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      return await this.productReturnService.getMyReturns(mem_code, {
+        status,
+        limit: limit ? parseInt(limit) : undefined,
+        offset: offset ? parseInt(offset) : undefined,
+      });
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Get return detail
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/:return_id')
+  async getReturnDetail(@Param('return_id') return_id: string) {
+    try {
+      return await this.productReturnService.getReturnDetail(
+        parseInt(return_id),
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Delete draft return
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/returns/:return_id')
+  async deleteDraftReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+  ) {
+    try {
+      return await this.productReturnService.deleteDraftReturn(
+        parseInt(return_id),
+        req.user.mem_code,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // ========== Admin Product Return APIs ==========
+
+  // Admin: Get pending returns for sales review
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/returns/pending-sales')
+  async getPendingSales(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      return await this.productReturnService.getPendingSales({
+        limit: limit ? parseInt(limit) : undefined,
+        offset: offset ? parseInt(offset) : undefined,
+      });
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get pending returns for manager review
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/returns/pending-manager')
+  async getPendingManager(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      return await this.productReturnService.getPendingManager({
+        limit: limit ? parseInt(limit) : undefined,
+        offset: offset ? parseInt(offset) : undefined,
+      });
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get all returns with filters
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/returns')
+  async getAllReturns(
+    @Query('status') status?: ReturnStatus,
+    @Query('reason') reason?: ReturnReason,
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+    @Query('mem_code') mem_code?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      return await this.productReturnService.getAllReturns({
+        status,
+        reason,
+        from_date,
+        to_date,
+        mem_code,
+        limit: limit ? parseInt(limit) : undefined,
+        offset: offset ? parseInt(offset) : undefined,
+      });
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Sales approve
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/returns/:return_id/sales-approve')
+  async salesApproveReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+    @Body('comment') comment?: string,
+  ) {
+    try {
+      return await this.productReturnService.salesApprove(
+        parseInt(return_id),
+        req.user.mem_code,
+        req.user.name,
+        comment,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Sales reject
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/returns/:return_id/sales-reject')
+  async salesRejectReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+    @Body('comment') comment: string,
+  ) {
+    try {
+      return await this.productReturnService.salesReject(
+        parseInt(return_id),
+        req.user.mem_code,
+        req.user.name,
+        comment,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Manager approve
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/returns/:return_id/manager-approve')
+  async managerApproveReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+    @Body() data?: { comment?: string; resolution_type?: ResolutionType },
+  ) {
+    try {
+      return await this.productReturnService.managerApprove(
+        parseInt(return_id),
+        req.user.mem_code,
+        req.user.name,
+        data,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Manager reject
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/returns/:return_id/manager-reject')
+  async managerRejectReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+    @Body('comment') comment: string,
+  ) {
+    try {
+      return await this.productReturnService.managerReject(
+        parseInt(return_id),
+        req.user.mem_code,
+        req.user.name,
+        comment,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Complete return
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/returns/:return_id/complete')
+  async completeReturn(
+    @Param('return_id') return_id: string,
+    @Body('notes') notes?: string,
+  ) {
+    try {
+      return await this.productReturnService.completeReturn(
+        parseInt(return_id),
+        notes,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get return statistics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/returns/stats')
+  async getReturnStats(
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.productReturnService.getStats({ from_date, to_date });
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // ========== Behavior Tracking APIs ==========
+
+  // Track single event
+  @Post('/ecom/tracking/event')
+  async trackEvent(
+    @Body() data: TrackEventDto,
+    @Ip() ip: string,
+    @Req() req: any,
+  ) {
+    try {
+      data.ip_address = ip;
+      data.user_agent = req.headers['user-agent'];
+      return await this.behaviorTrackingService.trackEvent(data);
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Track batch events
+  @Post('/ecom/tracking/batch')
+  async trackBatch(
+    @Body() data: BatchTrackDto,
+    @Ip() ip: string,
+    @Req() req: any,
+  ) {
+    try {
+      // Add IP and user agent to all events
+      const userAgent = req.headers['user-agent'];
+      data.events = data.events.map((e) => ({
+        ...e,
+        ip_address: ip,
+        user_agent: userAgent,
+      }));
+      return await this.behaviorTrackingService.trackBatch(data);
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Get user behavior (for personalization)
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/tracking/user/:mem_code')
+  async getUserBehavior(
+    @Param('mem_code') mem_code: string,
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getUserBehavior(
+        mem_code,
+        from_date,
+        to_date,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get product analytics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/product/:pro_code')
+  async getProductAnalytics(
+    @Param('pro_code') pro_code: string,
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getProductAnalytics(
+        pro_code,
+        from_date,
+        to_date,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get search analytics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/searches')
+  async getSearchAnalytics(
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getSearchAnalytics(
+        from_date,
+        to_date,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get dashboard stats
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/dashboard')
+  async getTrackingDashboard(
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getDashboardStats(
+        from_date,
+        to_date,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get daily trend
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/daily-trend')
+  async getDailyTrend(
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getDailyTrend(
+        from_date,
+        to_date,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get top products
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/top-products')
+  async getTopProducts(
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getTopProducts(
+        from_date,
+        to_date,
+        limit ? parseInt(limit) : 10,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get recent activity feed
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/recent-activity')
+  async getRecentActivity(@Query('limit') limit?: string) {
+    try {
+      return await this.behaviorTrackingService.getRecentActivity(
+        limit ? parseInt(limit) : 50,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get user journeys
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/user-journeys')
+  async getUserJourneys(@Query('limit') limit?: string) {
+    try {
+      return await this.behaviorTrackingService.getUserJourneys(
+        limit ? parseInt(limit) : 20,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get zero result searches
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/zero-result-searches')
+  async getZeroResultSearches(
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getZeroResultSearches(
+        from_date,
+        to_date,
+        limit ? parseInt(limit) : 30,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get stock alerts based on demand
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/stock-alerts')
+  async getStockAlerts(
+    @Query('days') days?: string,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getStockAlerts(
+        days ? parseInt(days) : 7,
+        limit ? parseInt(limit) : 20,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get cart conversion analytics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/cart-analytics')
+  async getCartConversionAnalytics(
+    @Query('days') days?: string,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getCartConversionAnalytics(
+        days ? parseInt(days) : 30,
+        limit ? parseInt(limit) : 20,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get customer segments
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/customer-segments')
+  async getCustomerSegments(@Query('days') days?: string) {
+    try {
+      return await this.behaviorTrackingService.getCustomerSegments(
+        days ? parseInt(days) : 90,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get retention analysis
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/retention')
+  async getRetentionAnalysis(@Query('weeks') weeks?: string) {
+    try {
+      return await this.behaviorTrackingService.getRetentionAnalysis(
+        weeks ? parseInt(weeks) : 8,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get repeat purchase patterns
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/repeat-purchases')
+  async getRepeatPurchasePatterns(@Query('days') days?: string) {
+    try {
+      return await this.behaviorTrackingService.getRepeatPurchasePatterns(
+        days ? parseInt(days) : 180,
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
         HttpStatus.BAD_REQUEST,
       );
     }
