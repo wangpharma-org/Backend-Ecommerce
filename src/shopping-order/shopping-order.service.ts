@@ -24,6 +24,7 @@ interface CountSale {
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
+  private readonly logger = submitOrder;
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -176,7 +177,52 @@ export class ShoppingOrderService {
       totalPrice: totalsummaryfromCart.total,
       item: null,
     };
+    let basketSnapshot: {
+      item_count: number;
+      total_qty: number;
+      items: Array<{
+        spc_id: number;
+        pro_code: string;
+        amount: number;
+        unit: string | null;
+        is_reward: boolean;
+        hotdeal_free: boolean;
+      }>;
+    } | null = null;
+    let basketSnapshotError: string | null = null;
+    let runningNumbers: string[] = [];
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
+    try {
+      const cartSnapshot =
+        await this.shoppingCartService.handleGetCartToOrder(data.mem_code);
+      const items = (cartSnapshot ?? []).map((item) => ({
+        spc_id: item.spc_id,
+        pro_code: item.pro_code,
+        amount: Number(item.spc_amount),
+        unit: item.spc_unit ?? null,
+        is_reward: item.is_reward,
+        hotdeal_free: item.hotdeal_free,
+      }));
+      basketSnapshot = {
+        item_count: items.length,
+        total_qty: items.reduce((sum, item) => sum + Number(item.amount), 0),
+        items,
+      };
+    } catch (error) {
+      basketSnapshotError =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.logger.info('submit_order_attempt', {
+      event: 'submit_order_attempt',
+      status: 'attempt',
+      mem_code: data.mem_code,
+      priceOption: data.priceOption,
+      paymentOptions: data.paymentOptions,
+      shippingOptions: data.shippingOptions,
+      total_price: totalsummaryfromCart.total,
+      basket_snapshot: basketSnapshot,
+      basket_snapshot_error: basketSnapshotError,
+    });
     try {
       submitLogContext.push({
         mem_code: data.mem_code,
@@ -184,7 +230,7 @@ export class ShoppingOrderService {
       });
       console.log('submitOrder data:', data);
       const numberOfMonth = new Date().getMonth() + 1;
-      const runningNumbers: string[] = [];
+      runningNumbers = [];
       const allIdCartForDelete: number[] = [];
       let totalSumPrice = 0;
       let totalSumPoint = 0;
@@ -616,7 +662,20 @@ export class ShoppingOrderService {
       for (const id of allIdCartForDelete) {
         await this.shoppingCartService.clearCheckoutCart(id);
       }
-      submitOrder.info('data ', { submitLogContext });
+      this.logger.info('submit_order_trace', {
+        event: 'submit_order_trace',
+        mem_code: data.mem_code,
+        submitLogContext,
+      });
+      this.logger.info('submit_order_result', {
+        event: 'submit_order_result',
+        status: 'success',
+        mem_code: data.mem_code,
+        running_numbers: runningNumbers,
+        total_price: totalsummaryfromCart.total,
+        basket_snapshot: basketSnapshot,
+        basket_snapshot_error: basketSnapshotError,
+      });
       if (data.emp_code) {
         const raw = this.saleLogEntity.create({
           sh_running: runningNumbers.join(', '),
@@ -630,13 +689,18 @@ export class ShoppingOrderService {
       }
       return runningNumbers;
     } catch (error) {
-      submitOrder.error('Error submitting order', {
+      this.logger.error('Error submitting order', {
+        event: 'submit_order_result',
+        status: 'error',
         error: error instanceof Error ? error.message : String(error),
         member: orderContext?.memberCode || data.mem_code,
         totalPrice: totalsummaryfromCart.total,
         priceOption: orderContext?.priceOption || data.priceOption,
         orderContext,
         data,
+        running_numbers: runningNumbers,
+        basket_snapshot: basketSnapshot,
+        basket_snapshot_error: basketSnapshotError,
       });
       console.error('Error: ', error);
       const payload = {

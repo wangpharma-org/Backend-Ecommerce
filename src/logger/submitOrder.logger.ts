@@ -14,10 +14,8 @@ export const submitOrder = winston.createLogger({
     level: 'info',
     format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.simple(),
-        winston.format.printf(({ timestamp, message, ...meta }) => {
-            return `[${timestamp}]\n${JSON.stringify(meta)}`;
-        }),
+        winston.format.errors({ stack: true }),
+        winston.format.json(),
     ),
     transports: [
         dailyRotateFileTransport,
