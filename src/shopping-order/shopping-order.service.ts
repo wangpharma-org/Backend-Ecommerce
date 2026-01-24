@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -10,7 +10,8 @@ import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
-import { submitOrder } from 'src/logger/submitOrder.logger';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger as WinstonLogger } from 'winston';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
@@ -24,7 +25,7 @@ interface CountSale {
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
-  private readonly logger = submitOrder;
+  private readonly logger: WinstonLogger;
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -32,6 +33,8 @@ export class ShoppingOrderService {
     private readonly shoppingOrderRepo: Repository<ShoppingOrderEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly httpService: HttpService,
+    @Inject(WINSTON_MODULE_PROVIDER)
+    logger: WinstonLogger,
     @InjectRepository(FailedEntity)
     private readonly failedEntity: Repository<FailedEntity>,
     @InjectRepository(ProductEntity)
@@ -43,7 +46,12 @@ export class ShoppingOrderService {
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
-  ) {}
+  ) {
+    this.logger = logger.child({
+      context: ShoppingOrderService.name,
+      scope: 'submitOrder',
+    });
+  }
 
   private async isL16Member(
     mem_code?: string,
