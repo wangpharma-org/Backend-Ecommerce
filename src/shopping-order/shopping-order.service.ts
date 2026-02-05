@@ -10,8 +10,7 @@ import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
-import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
-import type { Logger as WinstonLogger } from 'winston';
+import { Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
@@ -25,7 +24,7 @@ interface CountSale {
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
-  private readonly logger: WinstonLogger;
+  private readonly logger = new Logger(ShoppingOrderService.name);
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -33,8 +32,6 @@ export class ShoppingOrderService {
     private readonly shoppingOrderRepo: Repository<ShoppingOrderEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly httpService: HttpService,
-    @Inject(WINSTON_MODULE_PROVIDER)
-    logger: WinstonLogger,
     @InjectRepository(FailedEntity)
     private readonly failedEntity: Repository<FailedEntity>,
     @InjectRepository(ProductEntity)
@@ -46,12 +43,7 @@ export class ShoppingOrderService {
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
-  ) {
-    this.logger = logger.child({
-      context: ShoppingOrderService.name,
-      scope: 'submitOrder',
-    });
-  }
+  ) {}
 
   private async isL16Member(
     mem_code?: string,
@@ -220,7 +212,7 @@ export class ShoppingOrderService {
       basketSnapshotError =
         error instanceof Error ? error.message : String(error);
     }
-    this.logger.info('submit_order_attempt', {
+    this.logger.log('submit_order_attempt', {
       event: 'submit_order_attempt',
       status: 'attempt',
       mem_code: data.mem_code,
@@ -670,12 +662,12 @@ export class ShoppingOrderService {
       for (const id of allIdCartForDelete) {
         await this.shoppingCartService.clearCheckoutCart(id);
       }
-      this.logger.info('submit_order_trace', {
+      this.logger.log('submit_order_trace', {
         event: 'submit_order_trace',
         mem_code: data.mem_code,
         submitLogContext,
       });
-      this.logger.info('submit_order_result', {
+      this.logger.log('submit_order_result', {
         event: 'submit_order_result',
         status: 'success',
         mem_code: data.mem_code,
