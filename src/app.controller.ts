@@ -72,6 +72,7 @@ import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
 import { ProductEntity } from './products/products.entity';
 import { CampaignEntity } from './campaigns/campaigns.entity';
 import { AppVersionService } from './app-version/app-version.service';
+import { TrackOrderService } from './track-order/track-order.service';
 
 interface JwtPayload {
   username: string;
@@ -128,7 +129,8 @@ export class AppController {
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
     private readonly appVersion: AppVersionService,
-  ) { }
+    private readonly trackOrderService: TrackOrderService,
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -231,7 +233,10 @@ export class AppController {
   async uploadProductL16Only(
     @Req() req: Request & { user: JwtPayload },
     @Body()
-    body: { data: { pro_code: string; status: number | string }[]; filename: string },
+    body: {
+      data: { pro_code: string; status: number | string }[];
+      filename: string;
+    },
   ) {
     const permission = req.user.permission;
     if (permission === true) {
@@ -398,15 +403,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -631,10 +636,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
-  ) {
+  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
@@ -1058,7 +1060,6 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('mem_code') mem_code?: string,
   ) {
     const memberCode = req.user.mem_code;
     return this.hotdealService.getAllHotdealsWithProductDetail(
@@ -1719,10 +1720,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
-  async getNewArrivalsLimit30(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
-  ) {
+  async getNewArrivalsLimit30(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
     return this.newArrivalsService.getNewArrivalsLimit30(
       memberCode,
@@ -2123,8 +2121,15 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
-  async getPromotionTierListReward(@Param('tier_id') tier_id: number, @Req() req: any) {
-    return await this.promotionService.getRewardByTierId(tier_id, req.user?.mem_code, req.user?.mem_route);
+  async getPromotionTierListReward(
+    @Param('tier_id') tier_id: number,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return await this.promotionService.getRewardByTierId(
+      tier_id,
+      req.user?.mem_code,
+      req.user?.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2835,6 +2840,21 @@ export class AppController {
         {
           success: false,
           error: { code: 'POST_VERSION_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('/track-order/:sh_running')
+  async trackOrder(@Param('sh_running') sh_running: string) {
+    try {
+      return this.trackOrderService.getOrderLocation(sh_running);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'TRACK_ORDER_FAILED' },
         },
         HttpStatus.BAD_REQUEST,
       );

@@ -37,6 +37,7 @@ import { ImagedebugModule } from './imagedebug/imagedebug.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { PolicyDocModule } from './policy-doc/policy-doc.module';
 import { AppVersionModule } from './app-version/app-version.module';
+import { TrackOrderModule } from './track-order/track-order.module';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { AppVersionModule } from './app-version/app-version.module';
     CampaignsModule,
     PolicyDocModule,
     AppVersionModule,
+    TrackOrderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
