@@ -1514,6 +1514,12 @@ export class ProductsService {
     }
   }
 
+  async getProductL16Status(): Promise<{ pro_code: string; pro_l16_only: number }[]> {
+    return this.productRepo.find({
+      select: ['pro_code', 'pro_l16_only'],
+    });
+  }
+
   async keySearchProducts(mem_code?: string, mem_route?: string) {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
