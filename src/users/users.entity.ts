@@ -212,4 +212,7 @@ export class UserEntity {
 
   @Column({ type: 'datetime', nullable: true, default: null })
   cart_synced_at: Date | null;
+
+  @Column({ type: 'enum', enum: ['User', 'Admin', 'Sales'], default: 'User' })
+  role: 'User' | 'Admin' | 'Sales' = 'User';
 }

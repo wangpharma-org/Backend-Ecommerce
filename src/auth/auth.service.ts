@@ -271,6 +271,7 @@ export class AuthService {
       mem_phone: user.mem_phone ?? '',
       mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
+      role: user.role,
     };
 
     const payload_reflesh = {
@@ -333,6 +334,7 @@ export class AuthService {
           mem_phone: user.mem_phone ?? '',
           mem_route: user.mem_route ?? '',
           permission: user.permision_admin,
+          role: user.role,
         };
 
         const payload_reflesh = {
