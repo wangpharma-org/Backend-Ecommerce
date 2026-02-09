@@ -44,10 +44,24 @@ export class ChangePasswordService {
     private readonly httpService: HttpService, // เพิ่ม HttpService
   ) {
     const mg = new Mailgun(formData);
-    this.mailgun = mg.client({
-      username: 'api',
-      key: process.env.MAILGUN_API_KEY || '',
-    }) as MailgunClient;
+    const apiKey = process.env.MAILGUN_API_KEY;
+    // Bypass Mailgun in dev mode if no valid API key
+    if (apiKey && apiKey !== 'dummy_key_for_dev') {
+      this.mailgun = mg.client({
+        username: 'api',
+        key: apiKey,
+      }) as MailgunClient;
+    } else {
+      // Mock mailgun client for dev
+      this.mailgun = {
+        messages: {
+          create: async () => {
+            console.log('[DEV] Mailgun bypassed - email not sent');
+            return { id: 'dev-mock', message: 'Queued (dev mode)' };
+          },
+        },
+      } as MailgunClient;
+    }
     this.MG_DOMAIN = process.env.MAILGUN_DOMAIN || '';
   }
 

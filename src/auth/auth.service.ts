@@ -147,6 +147,11 @@ export class AuthService {
   }
 
   async updateDataToOldSystem(data: UserEntity) {
+    // Skip external API call in dev mode
+    if (process.env.DISABLE_EXTERNAL_API === 'true') {
+      console.log('[DEV] External API call to wangpharma.com skipped');
+      return;
+    }
     try {
       const response = await lastValueFrom(
         this.httpService.post(
@@ -266,6 +271,7 @@ export class AuthService {
       mem_phone: user.mem_phone ?? '',
       mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
+      role: user.role,
     };
 
     const payload_reflesh = {
@@ -328,6 +334,7 @@ export class AuthService {
           mem_phone: user.mem_phone ?? '',
           mem_route: user.mem_route ?? '',
           permission: user.permision_admin,
+          role: user.role,
         };
 
         const payload_reflesh = {
