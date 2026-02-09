@@ -3542,4 +3542,14 @@ export class AppController {
       );
     }
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/change-role/:mem_code')
+  async changeUserRole(
+    @Param('mem_code') mem_code: string,
+    @Body('newRole') newRole: 'User' | 'Admin' | 'Sales',
+  ) {
+    console.log('Changing user role for mem_code:', mem_code);
+    return await this.usersService.changeUserRole(mem_code, newRole);
+  }
 }
