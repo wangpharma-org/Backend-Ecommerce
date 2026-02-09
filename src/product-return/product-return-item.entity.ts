@@ -30,7 +30,7 @@ export class ProductReturnItemEntity {
   @JoinColumn({ name: 'pro_code', referencedColumnName: 'pro_code' })
   product: ProductEntity;
 
-  @Column({ type: 'varchar', length: 30 })
+  @Column({ type: 'varchar', length: 20 })
   pro_code: string;
 
   @Column({ type: 'int' })
