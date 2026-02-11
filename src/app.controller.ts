@@ -257,6 +257,17 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/product-l16/export')
+  async exportProductL16Status(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.getProductL16Status();
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/products/flashsale-procode')
   async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
