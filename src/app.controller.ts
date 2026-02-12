@@ -129,17 +129,17 @@ export class AppController {
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
     private readonly appVersion: AppVersionService,
-  ) { }
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
   async getImageUrl(
-    @Query('location') location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
+    @Query('location')
+    location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
   ) {
     return this.bannerService.GetImageUrl(location);
   }
