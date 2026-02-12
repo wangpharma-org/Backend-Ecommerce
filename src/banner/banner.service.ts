@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { BannerEntity, BannerLocation, BannerDisplayType, TextColor, TextPosition } from './banner.entity';
+import {
+  BannerEntity,
+  BannerLocation,
+  BannerDisplayType,
+  TextColor,
+  TextPosition,
+} from './banner.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   LessThan,
@@ -27,6 +33,10 @@ export interface UploadBannerDto {
   text_color?: TextColor;
   text_position?: TextPosition;
   bg_gradient?: string;
+  is_drug?: boolean;
+  advertise_code?: string;
+  creditor?: string;
+  product_list?: string;
 }
 
 @Injectable()
@@ -86,12 +96,12 @@ export class BannerService {
   /**
    * Upload banner with all fields
    */
-  async UploadImage(
-    file: Express.Multer.File | null,
-    data: UploadBannerDto,
-  ) {
+  async UploadImage(file: Express.Multer.File | null, data: UploadBannerDto) {
     console.log('=== UploadImage START ===');
-    console.log('File received:', file ? `${file.originalname} (${file.size} bytes)` : 'No file');
+    console.log(
+      'File received:',
+      file ? `${file.originalname} (${file.size} bytes)` : 'No file',
+    );
     console.log('Data received:', JSON.stringify(data, null, 2));
 
     try {
@@ -120,7 +130,9 @@ export class BannerService {
           console.log('S3 upload success:', imageUrl);
         } else {
           // Local testing mode - use random placeholder image from picsum
-          console.log('⚠️ S3 credentials not configured, using placeholder image');
+          console.log(
+            '⚠️ S3 credentials not configured, using placeholder image',
+          );
           const randomSeed = Date.now();
           imageUrl = `https://picsum.photos/seed/${randomSeed}/1200/400`;
           console.log('Placeholder URL:', imageUrl);
@@ -148,6 +160,10 @@ export class BannerService {
         text_position: data.text_position || 'left',
         bg_gradient: data.bg_gradient,
         is_active: true,
+        is_drug: data.is_drug,
+        advertise_code: data.advertise_code,
+        creditor: data.creditor,
+        product_list: data.product_list,
       });
       console.log('Banner entity created:', JSON.stringify(banner, null, 2));
 
@@ -161,9 +177,14 @@ export class BannerService {
       };
     } catch (error) {
       console.error('=== Upload Banner Error ===');
-      console.error('Error message:', error instanceof Error ? error.message : error);
+      console.error(
+        'Error message:',
+        error instanceof Error ? error.message : error,
+      );
       console.error('Full error:', error);
-      throw new Error(`Upload Banner failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Upload Banner failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
