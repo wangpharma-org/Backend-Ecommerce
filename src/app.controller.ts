@@ -129,7 +129,7 @@ export class AppController {
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
     private readonly appVersion: AppVersionService,
-  ) { }
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -139,7 +139,8 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
   async getImageUrl(
-    @Query('location') location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
+    @Query('location')
+    location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
   ) {
     return this.bannerService.GetImageUrl(location);
   }
@@ -177,7 +178,8 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadBanner(
     @UploadedFile() file: Express.Multer.File,
-    @Body() data: {
+    @Body()
+    data: {
       date_start: Date;
       date_end: Date;
       banner_name?: string;
@@ -194,6 +196,10 @@ export class AppController {
       text_color?: 'light' | 'dark';
       text_position?: 'left' | 'center' | 'right';
       bg_gradient?: string;
+      is_drug?: boolean;
+      advertise_code?: string;
+      creditor?: string;
+      product_list?: string;
     },
   ) {
     console.log('=== Controller uploadBanner ===');
@@ -265,7 +271,10 @@ export class AppController {
   async uploadProductL16Only(
     @Req() req: Request & { user: JwtPayload },
     @Body()
-    body: { data: { pro_code: string; status: number | string }[]; filename: string },
+    body: {
+      data: { pro_code: string; status: number | string }[];
+      filename: string;
+    },
   ) {
     const permission = req.user.permission;
     if (permission === true) {
@@ -397,7 +406,6 @@ export class AppController {
       limit: number;
     },
   ) {
-    //console.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     return await this.productsService.searchCategoryProducts({
       ...data,
@@ -432,15 +440,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -2862,5 +2870,25 @@ export class AppController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/products-banner')
+  async searchProductsBanner(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.searchProductsBanner();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/get-creditor')
+  async getCreditors(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.getCreditors();
   }
 }
