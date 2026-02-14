@@ -3,6 +3,83 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SiteConfigEntity, ConfigType } from './site-config.entity';
 
+// Interface definitions for site config values
+interface PaymentMethod {
+  icon: string;
+  title: string;
+  description: string;
+  note: string;
+}
+
+interface Service {
+  icon: string;
+  title: string;
+  description: string;
+}
+
+interface DownloadButton {
+  label: string;
+  url: string;
+  icon: string;
+  sublabel: string;
+}
+
+interface AppDownloadSection {
+  title: string;
+  description: string;
+  subtitle: string;
+  buttons: DownloadButton[];
+}
+
+interface BankAccount {
+  name: string;
+  number: string;
+  logo: string;
+  bgColor: string;
+  textColor: string;
+  color: 'green' | 'blue' | 'purple' | 'orange' | 'yellow' | 'red';
+}
+
+interface FiledBanks {
+  title: string;
+  accounts: BankAccount[];
+  accountName: string;
+}
+
+interface Policy {
+  icon: string;
+  title: string;
+  description: string;
+  link: string;
+}
+
+interface HeroSection {
+  title: string;
+  subtitle: string;
+  stats: {
+    years: string;
+    yearsLabel: string;
+    description: string;
+  };
+}
+
+interface PaymentMethodsSection {
+  title: string;
+  subtitle: string;
+  methods: PaymentMethod[];
+}
+
+// Union type for all possible config values
+type ConfigValueType =
+  | string
+  | string[]
+  | Service[]
+  | Policy[]
+  | PaymentMethodsSection
+  | HeroSection
+  | AppDownloadSection
+  | FiledBanks;
+
 // Default configs for landing page
 const DEFAULT_CONFIGS = [
   // Company Info
@@ -134,14 +211,32 @@ const DEFAULT_CONFIGS = [
   // Payment Methods
   {
     config_key: 'payment_methods',
-    config_value: JSON.stringify([
-      { name: 'โอนเงินผ่านธนาคาร', icon: 'bank' },
-      { name: 'บัตรเครดิต/เดบิต', icon: 'credit-card' },
-      { name: 'พร้อมเพย์', icon: 'promptpay' },
-      { name: 'เครดิต (สำหรับสมาชิก)', icon: 'credit' },
-    ]),
+    config_value: JSON.stringify({
+      title: 'วิธีชำระเงิน',
+      subtitle: 'เรารับชำระเงินหลากหลายช่องทาง เพื่อความสะดวกของลูกค้า',
+      methods: [
+        {
+          icon: 'credit-card',
+          title: 'เช็ค',
+          description: 'ชำระด้วยเช็คธนาคาร สั่งจ่าย บจก. วังเภสัชฟาร์มาซูติคอล',
+          note: 'วันที่เช็คล่วงหน้าไม่เกิน 30 วัน',
+        },
+        {
+          icon: 'building-library',
+          title: 'โอนเงิน',
+          description: 'โอนเงินผ่านธนาคาร กสิกรไทย, กรุงเทพ, ไทยพาณิชย์',
+          note: 'แจ้งหลักฐานการโอนเงินภายใน 24 ชั่วโมง',
+        },
+        {
+          icon: 'banknotes',
+          title: 'เงินสด',
+          description: 'ชำระเงินสดเมื่อรับสินค้า (COD)',
+          note: 'เฉพาะเขตพื้นที่ที่กำหนด',
+        },
+      ],
+    }),
     config_type: ConfigType.JSON,
-    description: 'วิธีการชำระเงิน (JSON array)',
+    description: 'วิธีการชำระเงิน (JSON object)',
     category: 'payment',
   },
   // Stats
@@ -165,6 +260,158 @@ const DEFAULT_CONFIGS = [
     config_type: ConfigType.TEXT,
     description: 'ระยะเวลาจัดส่ง',
     category: 'stats',
+  },
+  {
+    config_key: 'filedbanks',
+    config_value: JSON.stringify({
+      title: 'บัญชีธนาคารสำหรับโอนเงิน',
+      accounts: [
+        {
+          name: 'ธนาคารกสิกรไทย',
+          number: 'xxx-x-xxxxx-x',
+          logo: 'https://www.dpa.or.th/storage/uploads/bank/dpa_bank_kbank@2x.png',
+          bgColor: '#f0fdf4',
+          textColor: '#16a34a',
+          color: 'green',
+        },
+        {
+          name: 'ธนาคารกรุงเทพ',
+          number: 'xxx-x-xxxxx-x',
+          logo: 'https://th1-cdn.pgimgs.com/agent/900168945/APHO.130978972.R550X550.png',
+          bgColor: '#eff6ff',
+          textColor: '#2563eb',
+          color: 'blue',
+        },
+        {
+          name: 'ธนาคารไทยพาณิชย์',
+          number: 'xxx-x-xxxxx-x',
+          logo: 'https://www.dpa.or.th/storage/uploads/bank/dpa_bank_sb@2x.png',
+          bgColor: '#faf5ff',
+          textColor: '#9333ea',
+          color: 'purple',
+        },
+      ],
+      accountName: 'บริษัท วังเภสัชฟาร์มาซูติคอล จำกัด',
+    }),
+    config_type: ConfigType.JSON,
+    description: 'ข้อมูลบัญชีธนาคารสำหรับโอนเงิน (JSON object)',
+    category: 'payment',
+  },
+  {
+    config_key: 'app_download_section',
+    config_value: JSON.stringify({
+      title: 'สั่งจองสินค้า ยา และ\nเวชภัณฑ์ ได้ง่ายๆ\nตลอด 24 ชั่วโมง',
+      description:
+        'สำหรับร้านขายยา คลินิก สถานพยาบาล ที่มีใบอนุญาต และ\nโรงพยาบาลทั่วประเทศ',
+      subtitle: 'แอปพลิเคชัน WangPharma',
+      buttons: [
+        {
+          label: 'App Store',
+          url: 'https://apps.apple.com/th/app/wangpharma/id1589145660',
+          icon: 'appstore',
+          sublabel: 'ดาวน์โหลดบน',
+        },
+        {
+          label: 'Google Play',
+          url: 'https://play.google.com/store/apps/details?id=com.wangpharma.wangshop_new&hl=th',
+          icon: 'googleplay',
+          sublabel: 'ดาวน์โหลดบน',
+        },
+      ],
+    }),
+    config_type: ConfigType.JSON,
+    description: 'ส่วนดาวน์โหลดแอป WangPharma (JSON object)',
+    category: 'app',
+  },
+  {
+    config_key: 'policies',
+    config_value: JSON.stringify([
+      {
+        icon: 'TruckIcon',
+        title: 'นโยบายการจัดส่ง',
+        description:
+          'จัดส่งทั่วประเทศภายใน 1-2 วันทำการ ฟรีค่าจัดส่งเมื่อสั่งซื้อขั้นต่ำ 3,000 บาท',
+        link: '/policy-delivery',
+      },
+      {
+        icon: 'ArrowPathIcon',
+        title: 'นโยบายการคืนสินค้า',
+        description:
+          'รับคืนสินค้าภายใน 7 วัน กรณีสินค้าชำรุดหรือไม่ตรงตามที่สั่ง',
+        link: '/policy-return',
+      },
+      {
+        icon: 'QuestionMarkCircleIcon',
+        title: 'ศูนย์ช่วยเหลือ',
+        description: 'ทีมงานพร้อมตอบคำถามและช่วยเหลือคุณตลอดเวลาทำการ',
+        link: '/help',
+      },
+      {
+        icon: 'DocumentTextIcon',
+        title: 'ข้อตกลงและเงื่อนไข',
+        description: 'เงื่อนไขการใช้บริการและข้อตกลงต่างๆ สำหรับลูกค้า',
+        link: '/terms',
+      },
+      {
+        icon: 'ShieldCheckIcon',
+        title: 'นโยบายความเป็นส่วนตัว',
+        description: 'เราให้ความสำคัญกับความเป็นส่วนตัวและข้อมูลของคุณ',
+        link: '/privacy',
+      },
+      {
+        icon: 'PhoneIcon',
+        title: 'ติดต่อฝ่ายขาย',
+        description:
+          'ติดต่อทีมขายโดยตรง โทร 074-366681-5 หรือ Line: @wangpharma',
+        link: '#contact',
+      },
+    ]),
+    config_type: ConfigType.JSON,
+    description: 'ข้อมูลนโยบายและลิงก์ช่วยเหลือ (JSON array)',
+    category: 'policy',
+  },
+  {
+    config_key: 'line',
+    config_value: '@wangpharma',
+    config_type: ConfigType.TEXT,
+    description: 'ข้อมูลการติดต่อผ่าน Line',
+    category: 'contact',
+  },
+  {
+    config_key: 'office_days',
+    config_value: 'จันทร์ - อาทิตย์',
+    config_type: ConfigType.TEXT,
+    description: 'ข้อมูลวันทำการของสำนักงาน',
+    category: 'contact',
+  },
+  {
+    config_key: 'office_hours',
+    config_value: '08:00 - 18:00 น.',
+    config_type: ConfigType.TEXT,
+    description: 'ข้อมูลเวลาทำการของสำนักงาน',
+    category: 'contact',
+  },
+  {
+    config_key: 'response_time',
+    config_value: '30 นาที',
+    config_type: ConfigType.TEXT,
+    description: 'ข้อมูลเวลาตอบกลับของสำนักงาน',
+    category: 'contact',
+  },
+  {
+    config_key: 'hero_section',
+    config_value: JSON.stringify({
+      title: 'วังเภสัช',
+      subtitle: 'ผู้นำด้านการจัดจำหน่ายเวชภัณฑ์ในภาคใต้',
+      stats: {
+        years: '32+',
+        yearsLabel: 'ปี',
+        description: 'ประสบการณ์ในธุรกิจ\nเวชภัณฑ์และเวชสำอาง',
+      },
+    }),
+    config_type: ConfigType.JSON,
+    description: 'ข้อมูล Hero Section หน้าแรก (JSON object)',
+    category: 'hero',
   },
 ];
 
@@ -224,20 +471,29 @@ export class SiteConfigService implements OnModuleInit {
   }
 
   // Public: Get all public configs
-  async getAllPublicConfigs(): Promise<Record<string, any>> {
+  async getAllPublicConfigs(): Promise<
+    Record<string, { value: ConfigValueType; hidden: boolean }>
+  > {
     const configs = await this.configRepo.find();
 
-    const result: Record<string, any> = {};
+    const result: Record<string, { value: ConfigValueType; hidden: boolean }> =
+      {};
     configs.forEach((config) => {
+      let value: ConfigValueType;
       if (config.config_type === ConfigType.JSON) {
         try {
-          result[config.config_key] = JSON.parse(config.config_value);
+          value = JSON.parse(config.config_value) as ConfigValueType;
         } catch {
-          result[config.config_key] = config.config_value;
+          value = config.config_value;
         }
       } else {
-        result[config.config_key] = config.config_value;
+        value = config.config_value;
       }
+
+      result[config.config_key] = {
+        value,
+        hidden: config.hidden,
+      };
     });
     return result;
   }
@@ -258,6 +514,7 @@ export class SiteConfigService implements OnModuleInit {
   async updateConfig(
     key: string,
     value: string,
+    hidden: boolean,
     type?: ConfigType,
   ): Promise<SiteConfigEntity> {
     const config = await this.configRepo.findOne({
@@ -269,6 +526,7 @@ export class SiteConfigService implements OnModuleInit {
       if (type) {
         config.config_type = type;
       }
+      config.hidden = hidden;
       return this.configRepo.save(config);
     }
 
@@ -278,6 +536,7 @@ export class SiteConfigService implements OnModuleInit {
         config_key: key,
         config_value: value,
         config_type: type || ConfigType.TEXT,
+        hidden: hidden,
       }),
     );
   }

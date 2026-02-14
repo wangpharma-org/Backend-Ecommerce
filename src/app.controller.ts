@@ -136,6 +136,7 @@ export class AppController {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
   async getImageUrl(
     @Query('location')
