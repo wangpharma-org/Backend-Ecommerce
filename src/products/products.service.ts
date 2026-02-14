@@ -43,7 +43,7 @@ export class ProductsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
-  ) { }
+  ) {}
 
   private async isL16Member(
     mem_code?: string,
@@ -66,7 +66,9 @@ export class ProductsService {
     qb: { andWhere: (sql: string, params?: Record<string, unknown>) => void },
     alias: string,
   ) {
-    qb.andWhere(`(${alias}.pro_l16_only = 0 OR ${alias}.pro_l16_only IS NULL)`);
+    qb.andWhere(
+      `(${alias}.pro_l16_only = 0 OR ${alias}.pro_l16_only IS NULL)`,
+    );
   }
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
@@ -298,9 +300,7 @@ export class ProductsService {
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', mem_code)
-        .where('product.pro_promotion_month = :month', {
-          month: numberOfMonth,
-        });
+        .where('product.pro_promotion_month = :month', { month: numberOfMonth });
 
       if (isL16) {
         this.applyL16Filter(qb, 'product');
@@ -483,7 +483,11 @@ export class ProductsService {
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect('product.recommend', 'recommend')
-        .leftJoinAndSelect('recommend.products', 'products', recommendCondition)
+        .leftJoinAndSelect(
+          'recommend.products',
+          'products',
+          recommendCondition,
+        )
         .leftJoinAndSelect(
           'products.replace',
           'replaceInRecommend',
@@ -1087,8 +1091,8 @@ export class ProductsService {
           pro_point: MoreThan(0),
           ...(isL16
             ? {
-              pro_l16_only: In([0, null]),
-            }
+                pro_l16_only: In([0, null]),
+              }
             : {}),
         },
         select: {
@@ -1414,7 +1418,7 @@ export class ProductsService {
   async updateProductL16OnlyFromUpload(body: {
     data: { pro_code: string; status: number | string }[];
     filename: string;
-  }): Promise<{ message: string; total: number }> {
+  }): Promise<{ message: string; total: number; }> {
     const rows = (body.data || [])
       .map((row) => {
         const code = String(row.pro_code ?? '').trim();
@@ -1662,75 +1666,6 @@ export class ProductsService {
     } catch (error) {
       console.error('Error saving address:', error);
       throw new Error('Error saving address');
-    }
-  }
-
-  async searchProductsBanner() {
-    try {
-      const qb = this.productRepo
-        .createQueryBuilder('product')
-        .leftJoin('product.creditor', 'creditor')
-        .where('product.pro_priceA != 0')
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
-              .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
-              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
-              .andWhere('product.pro_name NOT LIKE :prefix3', {
-                prefix3: 'ส่งเสริม%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix4', {
-                prefix4: 'รีเบท%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
-              .andWhere('product.pro_name NOT LIKE :prefix6', {
-                prefix6: '/%',
-              })
-              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
-              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
-              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
-              .andWhere('product.invisible_id IS NULL')
-              .andWhere('product.pro_name NOT LIKE :prefix7', {
-                prefix7: 'ค่า%',
-              })
-              .andWhere('product.pro_code NOT LIKE :prefix8', {
-                prefix8: '@M%',
-              });
-          }),
-        );
-
-      const products = await qb
-        .select([
-          'product.pro_code',
-          'product.pro_name',
-          'product.pro_priceA',
-          'product.pro_priceB',
-          'product.pro_priceC',
-          'product.pro_imgmain',
-          'product.pro_genericname',
-          'product.pro_unit1',
-          'product.pro_nameSale',
-          'product.pro_nameEN',
-          'product.pro_keysearch',
-          'creditor.creditor_code',
-        ])
-        .getMany();
-      return products;
-    } catch (error) {
-      console.error('Error searching products:', error);
-      throw new Error('Error searching products');
-    }
-  }
-
-  async getCreditors(): Promise<CreditorEntity[]> {
-    try {
-      const creditors = await this.creditorRepo.find({
-        order: { creditor_code: 'ASC' },
-      });
-      return creditors;
-    } catch (error) {
-      console.error('Error fetching creditors:', error);
-      throw new Error('Error fetching creditors');
     }
   }
 }
