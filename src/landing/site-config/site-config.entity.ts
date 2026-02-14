@@ -17,33 +17,30 @@ export enum ConfigType {
 @Entity({ name: 'landing_site_configs' })
 export class SiteConfigEntity {
   @PrimaryGeneratedColumn()
-  id!: number;
+  id: number;
 
   @Column({ length: 100, unique: true })
-  config_key!: string;
+  config_key: string;
 
   @Column({ type: 'text' })
-  config_value!: string;
+  config_value: string;
 
   @Column({
     type: 'enum',
     enum: ConfigType,
     default: ConfigType.TEXT,
   })
-  config_type!: ConfigType;
+  config_type: ConfigType;
 
   @Column({ length: 200, nullable: true })
-  description!: string;
+  description: string;
 
   @Column({ length: 100, nullable: true })
-  category!: string;
-
-  @Column({ type: 'boolean', default: false })
-  hidden!: boolean;
+  category: string;
 
   @CreateDateColumn()
-  created_at!: Date;
+  created_at: Date;
 
   @UpdateDateColumn()
-  updated_at!: Date;
+  updated_at: Date;
 }
