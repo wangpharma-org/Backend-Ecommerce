@@ -181,7 +181,6 @@ export class PolicyDocService {
     }[] = [];
     for (const category of policyCategories) {
       // วนลูปผ่านแต่ละหัวข้อของนโยบาย
-      console.log('category:', category);
       const hasAgreed = latestPolicies.some(
         (policyMember) =>
           policyMember.policyCategoryId === category.policyCatagoryId &&
