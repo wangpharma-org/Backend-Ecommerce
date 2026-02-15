@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ProductEntity } from '../products/products.entity';
+import { timeStamp } from 'node:console';
 
 @Entity({ name: 'shopping_order' })
 export class ShoppingOrderEntity {
@@ -33,6 +34,12 @@ export class ShoppingOrderEntity {
 
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_total_decimal: number;
+
+  @Column({ type: 'boolean', default: false, nullable: true })
+  is_rt: boolean;
+
+  @Column({ type: 'date', nullable: true, default: null })
+  rt_date: Date;
 
   @ManyToOne(() => ShoppingHeadEntity, (header) => header.details)
   @JoinColumn({ name: 'soh_running', referencedColumnName: 'soh_running' })
