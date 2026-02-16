@@ -39,6 +39,7 @@ import { PolicyDocModule } from './policy-doc/policy-doc.module';
 import { AppVersionModule } from './app-version/app-version.module';
 import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
+import { NotifyRtModule } from './notify-rt/notify-rt.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.mo
     AppVersionModule,
     ProductReturnModule,
     BehaviorTrackingModule,
+    NotifyRtModule,
   ],
   controllers: [AppController],
   providers: [AppService],

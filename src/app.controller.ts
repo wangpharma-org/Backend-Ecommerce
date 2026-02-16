@@ -85,6 +85,7 @@ import {
   TrackEventDto,
   BatchTrackDto,
 } from './behavior-tracking/behavior-tracking.service';
+import { NotifyRtService } from './notify-rt/notify-rt.service';
 
 interface JwtPayload {
   username: string;
@@ -143,7 +144,8 @@ export class AppController {
     private readonly appVersion: AppVersionService,
     private readonly productReturnService: ProductReturnService,
     private readonly behaviorTrackingService: BehaviorTrackingService,
-  ) { }
+    private readonly notifyRtService: NotifyRtService,
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -246,7 +248,10 @@ export class AppController {
   async uploadProductL16Only(
     @Req() req: Request & { user: JwtPayload },
     @Body()
-    body: { data: { pro_code: string; status: number | string }[]; filename: string },
+    body: {
+      data: { pro_code: string; status: number | string }[];
+      filename: string;
+    },
   ) {
     const permission = req.user.permission;
     if (permission === true) {
@@ -424,15 +429,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -2149,8 +2154,15 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
-  async getPromotionTierListReward(@Param('tier_id') tier_id: number, @Req() req: any) {
-    return await this.promotionService.getRewardByTierId(tier_id, req.user?.mem_code, req.user?.mem_route);
+  async getPromotionTierListReward(
+    @Param('tier_id') tier_id: number,
+    @Req() req: any,
+  ) {
+    return await this.promotionService.getRewardByTierId(
+      tier_id,
+      req.user?.mem_code,
+      req.user?.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -3562,5 +3574,19 @@ export class AppController {
   ) {
     console.log('Changing user role for mem_code:', mem_code);
     return await this.usersService.changeUserRole(mem_code, newRole);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/get-notification-rt/:mem_code')
+  async getRTNotifications(@Param('mem_code') mem_code: string) {
+    return await this.notifyRtService.getRTOrdersInTheLast3Days(mem_code);
+  }
+
+  @Post('/ecom/update-notification-rt')
+  async updateRTNotification(
+    @Body() data: { soh_running: string; pro_code: string },
+  ) {
+    console.log('Updating RT notification with data:', data);
+    return await this.notifyRtService.updateRTStatus(data);
   }
 }
