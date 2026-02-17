@@ -413,6 +413,56 @@ const DEFAULT_CONFIGS = [
     description: 'ข้อมูล Hero Section หน้าแรก (JSON object)',
     category: 'hero',
   },
+  {
+    config_key: 'button_links',
+    config_value: JSON.stringify([
+      {
+        image:
+          'https://wang-storage.sgp1.digitaloceanspaces.com/banners/1771059632182-exlsy7-traditional.png',
+        title: 'ยาแผนโบราณ',
+        description: 'ยาสมุนไพรและยาแผนโบราณ',
+        href: '/login',
+      },
+      {
+        image:
+          'https://wang-storage.sgp1.digitaloceanspaces.com/banners/1771059647418-33vdc5-promotion.png',
+        title: 'โปรโมชั่น',
+        description: 'สินค้าลดราคาพิเศษ',
+        href: '/login',
+      },
+      {
+        image:
+          'https://wang-storage.sgp1.digitaloceanspaces.com/banners/1771059663191-ml29e8-packing.png',
+        title: 'บรรจุเสร็จ',
+        description: 'ยาแผนปัจจุบัน',
+        href: '/login',
+      },
+      {
+        image:
+          'https://wang-storage.sgp1.digitaloceanspaces.com/banners/1771059683154-n2exab-household.png',
+        title: 'ประจำบ้าน',
+        description: 'ยาสามัญประจำบ้าน',
+        href: '/login',
+      },
+      {
+        image:
+          'https://wang-storage.sgp1.digitaloceanspaces.com/banners/1771059695015-vlegzb-free.png',
+        title: 'ของแถม',
+        description: 'สินค้าพร้อมของแถม',
+        href: '/login',
+      },
+      {
+        image:
+          'https://wang-storage.sgp1.digitaloceanspaces.com/banners/1771059705663-7txays-equipment.png',
+        title: 'เครื่องมือแพทย์',
+        description: 'อุปกรณ์การแพทย์',
+        href: '/login',
+      },
+    ]),
+    config_type: ConfigType.JSON,
+    description: 'ข้อมูลปุ่มลิงก์ (JSON object)',
+    category: 'button',
+  },
 ];
 
 @Injectable()
