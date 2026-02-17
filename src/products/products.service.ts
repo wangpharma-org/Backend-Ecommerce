@@ -1514,6 +1514,23 @@ export class ProductsService {
     }
   }
 
+  async getProductL16Status(): Promise<{ pro_code: string; pro_name: string; pro_l16_only: number }[]> {
+    return this.productRepo.createQueryBuilder('product')
+      .select(['product.pro_code','product.pro_name', 'product.pro_l16_only'])
+      .where('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
+      .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
+      .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+      .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+      .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+      .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+      .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+      .andWhere('product.pro_code NOT LIKE :p8', { p8: '@%' })
+      .andWhere('product.pro_priceA > 0')
+      .andWhere('product.pro_priceB > 0')
+      .andWhere('product.pro_priceC > 0')
+      .getMany();
+  }
+
   async keySearchProducts(mem_code?: string, mem_route?: string) {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
