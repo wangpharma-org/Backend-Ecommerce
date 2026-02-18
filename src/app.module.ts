@@ -40,6 +40,7 @@ import { AppVersionModule } from './app-version/app-version.module';
 import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 import { NotifyRtModule } from './notify-rt/notify-rt.module';
+import { envValidationSchema } from './env.validation';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { NotifyRtModule } from './notify-rt/notify-rt.module';
     UsersModule,
     ConfigModule.forRoot({
       isGlobal: true,
+      validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
