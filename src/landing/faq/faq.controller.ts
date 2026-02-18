@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   UseGuards,
-  Query,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { FaqService } from './faq.service';
@@ -18,13 +17,13 @@ export class FaqController {
   constructor(private readonly faqService: FaqService) {}
 
   // Public: Get all active FAQs
-  @Get('landing/faq')
+  @Get('landing/faqs')
   async getActiveFaqs(): Promise<FaqEntity[]> {
     return this.faqService.getActiveFaqs();
   }
 
   // Public: Get FAQs by category
-  @Get('landing/faq/category/:category')
+  @Get('landing/faqs/category/:category')
   async getFaqsByCategory(
     @Param('category') category: string,
   ): Promise<FaqEntity[]> {
@@ -33,28 +32,28 @@ export class FaqController {
 
   // Admin: Get all FAQs
   @UseGuards(JwtAuthGuard)
-  @Get('admin/landing/faq')
+  @Get('admin/landing/faqs')
   async getAllFaqs(): Promise<FaqEntity[]> {
     return this.faqService.getAllFaqs();
   }
 
   // Admin: Get FAQ by ID
   @UseGuards(JwtAuthGuard)
-  @Get('admin/landing/faq/:id')
+  @Get('admin/landing/faqs/:id')
   async getFaqById(@Param('id') id: string): Promise<FaqEntity | null> {
     return this.faqService.getFaqById(+id);
   }
 
   // Admin: Create FAQ
   @UseGuards(JwtAuthGuard)
-  @Post('admin/landing/faq')
+  @Post('admin/landing/faqs')
   async createFaq(@Body() data: Partial<FaqEntity>): Promise<FaqEntity> {
     return this.faqService.createFaq(data);
   }
 
   // Admin: Update FAQ
   @UseGuards(JwtAuthGuard)
-  @Put('admin/landing/faq/:id')
+  @Put('admin/landing/faqs/:id')
   async updateFaq(
     @Param('id') id: string,
     @Body() data: Partial<FaqEntity>,
@@ -64,21 +63,21 @@ export class FaqController {
 
   // Admin: Delete FAQ
   @UseGuards(JwtAuthGuard)
-  @Delete('admin/landing/faq/:id')
+  @Delete('admin/landing/faqs/:id')
   async deleteFaq(@Param('id') id: string): Promise<void> {
     return this.faqService.deleteFaq(+id);
   }
 
   // Admin: Toggle FAQ status
   @UseGuards(JwtAuthGuard)
-  @Put('admin/landing/faq/:id/toggle')
+  @Put('admin/landing/faqs/:id/toggle')
   async toggleFaqStatus(@Param('id') id: string): Promise<FaqEntity | null> {
     return this.faqService.toggleFaqStatus(+id);
   }
 
   // Admin: Reorder FAQs
   @UseGuards(JwtAuthGuard)
-  @Put('admin/landing/faq/reorder')
+  @Put('admin/landing/faqs/reorder')
   async reorderFaqs(@Body() body: { ids: number[] }): Promise<void> {
     return this.faqService.reorderFaqs(body.ids);
   }
