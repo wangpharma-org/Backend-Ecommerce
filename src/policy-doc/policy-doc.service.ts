@@ -182,10 +182,17 @@ export class PolicyDocService {
     for (const category of policyCategories) {
       // วนลูปผ่านแต่ละหัวข้อของนโยบาย
       console.log('category:', category);
+
+      // ถ้า category ยังไม่มี lastPolicy ให้ข้ามไป
+      if (!category.lastPolicy) {
+        console.log(`Skipping category ${category.nameCatagory} - no lastPolicy`);
+        continue;
+      }
+
       const hasAgreed = latestPolicies.some(
         (policyMember) =>
           policyMember.policyCategoryId === category.policyCatagoryId &&
-          policyMember.policyDoc.version === category.lastPolicy.version,
+          policyMember.policyDoc?.version === category.lastPolicy.version,
       ); // ตรวจสอบว่าผู้ใช้ได้ยอมรับนโยบายล่าสุดหรือไม่ เที่ยบกับ ตาราง PolicyDocMember(นโยบายที่ลูกค้าเคยอ่าน) และ PolicyDocCatagory(นโยบายล่าสุด)
       console.log(
         'hasAgreed status for category',

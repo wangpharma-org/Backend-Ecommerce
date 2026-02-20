@@ -38,6 +38,10 @@ import { CampaignsModule } from './campaigns/campaigns.module';
 import { PolicyDocModule } from './policy-doc/policy-doc.module';
 import { AppVersionModule } from './app-version/app-version.module';
 import { TrackOrderModule } from './track-order/track-order.module';
+import { ProductReturnModule } from './product-return/product-return.module';
+import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
+import { NotifyRtModule } from './notify-rt/notify-rt.module';
+import { envValidationSchema } from './env.validation';
 
 @Module({
   imports: [
@@ -46,6 +50,7 @@ import { TrackOrderModule } from './track-order/track-order.module';
     UsersModule,
     ConfigModule.forRoot({
       isGlobal: true,
+      validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -95,6 +100,9 @@ import { TrackOrderModule } from './track-order/track-order.module';
     PolicyDocModule,
     AppVersionModule,
     TrackOrderModule,
+    ProductReturnModule,
+    BehaviorTrackingModule,
+    NotifyRtModule,
   ],
   controllers: [AppController],
   providers: [AppService],

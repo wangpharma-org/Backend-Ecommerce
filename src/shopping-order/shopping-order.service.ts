@@ -193,8 +193,9 @@ export class ShoppingOrderService {
     let runningNumbers: string[] = [];
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
     try {
-      const cartSnapshot =
-        await this.shoppingCartService.handleGetCartToOrder(data.mem_code);
+      const cartSnapshot = await this.shoppingCartService.handleGetCartToOrder(
+        data.mem_code,
+      );
       const items = (cartSnapshot ?? []).map((item) => ({
         spc_id: item.spc_id,
         pro_code: item.pro_code,
@@ -367,13 +368,13 @@ export class ShoppingOrderService {
 
             const isFreebie = Boolean(
               item.hotdeal_free === true &&
-                Array.isArray(checkFreebies) &&
-                checkFreebies.some(
-                  (f) =>
-                    f &&
-                    String(f.spc_unit) === String(item.spc_unit) &&
-                    String(f.pro_code) === String(item.pro_code),
-                ),
+              Array.isArray(checkFreebies) &&
+              checkFreebies.some(
+                (f) =>
+                  f &&
+                  String(f.spc_unit) === String(item.spc_unit) &&
+                  String(f.pro_code) === String(item.pro_code),
+              ),
             );
 
             console.log('Freebie check:', { isFreebie, item, checkFreebies });
