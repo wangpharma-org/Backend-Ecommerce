@@ -146,7 +146,6 @@ export class AppController {
     private readonly productReturnService: ProductReturnService,
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
-  ) {}
     private readonly trackOrderService: TrackOrderService,
   ) {}
 
