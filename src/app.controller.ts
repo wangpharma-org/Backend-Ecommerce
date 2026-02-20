@@ -2846,7 +2846,7 @@ export class AppController {
     }
   }
 
-  @Get('/track-order/:sh_running')
+  @Get('/ecom/track-order/:sh_running')
   async trackOrder(@Param('sh_running') sh_running: string) {
     try {
       return this.trackOrderService.getOrderLocation(sh_running);

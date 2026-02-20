@@ -125,12 +125,6 @@ export class TrackOrderService {
         };
       }
 
-      const carRandomForTest = this.randomCarNumberForTest();
-
-      if (!checkOrderStatus.car_number) {
-        checkOrderStatus.car_number = carRandomForTest;
-      }
-
       if (
         checkOrderStatus.emp_code &&
         checkOrderStatus.car_number &&
@@ -226,23 +220,6 @@ export class TrackOrderService {
       });
       throw new Error('Error fetching order location data');
     }
-  }
-
-  randomCarNumberForTest() {
-    const carNumber = [
-      'นข7453',
-      'ผธ4175',
-      'ผพ1737',
-      'ผพ-6550',
-      'บม7241',
-      'ผธ3723',
-      'บฉ7831',
-      '830026',
-      'ผพ5302',
-      'ผน8474',
-    ];
-    const randomIndex = Math.floor(Math.random() * carNumber.length);
-    return carNumber[randomIndex];
   }
 
   @Cron('0 0 * * *')
