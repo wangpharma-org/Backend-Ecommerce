@@ -1441,4 +1441,376 @@ export class BehaviorTrackingService {
       products_by_cycle: productCycleData.slice(0, 20), // Top 20 products
     };
   }
+
+  // Helper: Calculate box plot statistics from an array of numbers
+  private calculateBoxPlotStats(values: number[]): {
+    min: number;
+    q1: number;
+    median: number;
+    q3: number;
+    max: number;
+    mean: number;
+    count: number;
+    outliers: number[];
+  } {
+    if (values.length === 0) {
+      return {
+        min: 0,
+        q1: 0,
+        median: 0,
+        q3: 0,
+        max: 0,
+        mean: 0,
+        count: 0,
+        outliers: [],
+      };
+    }
+
+    const sorted = [...values].sort((a, b) => a - b);
+    const n = sorted.length;
+
+    const getPercentile = (arr: number[], p: number): number => {
+      const index = (p / 100) * (arr.length - 1);
+      const lower = Math.floor(index);
+      const upper = Math.ceil(index);
+      if (lower === upper) return arr[lower];
+      return arr[lower] + (arr[upper] - arr[lower]) * (index - lower);
+    };
+
+    const min = sorted[0];
+    const max = sorted[n - 1];
+    const q1 = getPercentile(sorted, 25);
+    const median = getPercentile(sorted, 50);
+    const q3 = getPercentile(sorted, 75);
+    const mean = Math.round(
+      (sorted.reduce((a, b) => a + b, 0) / n) * 10,
+    ) / 10;
+
+    // IQR method for outliers
+    const iqr = q3 - q1;
+    const lowerFence = q1 - 1.5 * iqr;
+    const upperFence = q3 + 1.5 * iqr;
+    const outliers = sorted.filter((v) => v < lowerFence || v > upperFence);
+
+    return {
+      min: Math.round(min * 10) / 10,
+      q1: Math.round(q1 * 10) / 10,
+      median: Math.round(median * 10) / 10,
+      q3: Math.round(q3 * 10) / 10,
+      max: Math.round(max * 10) / 10,
+      mean,
+      count: n,
+      outliers,
+    };
+  }
+
+  // Get purchase interval data for box plot visualization
+  async getPurchaseIntervalBoxPlot(
+    days = 180,
+    groupBy: 'overall' | 'product' | 'segment' | 'month' = 'overall',
+  ) {
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days);
+
+    // Get all checkout_complete events
+    const purchases = await this.trackingRepo
+      .createQueryBuilder('t')
+      .select('t.mem_code', 'mem_code')
+      .addSelect('t.created_at', 'purchase_date')
+      .addSelect('t.pro_code', 'pro_code')
+      .where("t.event_type = 'checkout_complete'")
+      .andWhere('t.mem_code IS NOT NULL')
+      .andWhere('t.created_at >= :fromDate', { fromDate })
+      .orderBy('t.mem_code')
+      .addOrderBy('t.created_at', 'ASC')
+      .getRawMany();
+
+    if (purchases.length === 0) {
+      return { group_by: groupBy, groups: [], clusters: [] };
+    }
+
+    // Group purchases by customer and calculate intervals
+    const customerPurchases: Record<
+      string,
+      { dates: Date[]; products: string[] }
+    > = {};
+
+    for (const purchase of purchases) {
+      if (!customerPurchases[purchase.mem_code]) {
+        customerPurchases[purchase.mem_code] = { dates: [], products: [] };
+      }
+      customerPurchases[purchase.mem_code].dates.push(
+        new Date(purchase.purchase_date),
+      );
+      if (purchase.pro_code) {
+        customerPurchases[purchase.mem_code].products.push(purchase.pro_code);
+      }
+    }
+
+    // Calculate all intervals per customer
+    const customerIntervals: Record<string, number[]> = {};
+    const allIntervals: number[] = [];
+
+    for (const [memCode, data] of Object.entries(customerPurchases)) {
+      const dates = data.dates.sort((a, b) => a.getTime() - b.getTime());
+      if (dates.length < 2) continue;
+
+      const intervals: number[] = [];
+      for (let i = 1; i < dates.length; i++) {
+        const daysDiff = Math.floor(
+          (dates[i].getTime() - dates[i - 1].getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+        intervals.push(daysDiff);
+      }
+      customerIntervals[memCode] = intervals;
+      allIntervals.push(...intervals);
+    }
+
+    if (allIntervals.length === 0) {
+      return { group_by: groupBy, groups: [], clusters: [] };
+    }
+
+    // Build groups based on groupBy parameter
+    const groups: {
+      label: string;
+      key: string;
+      intervals: number[];
+      stats: ReturnType<typeof this.calculateBoxPlotStats>;
+    }[] = [];
+
+    if (groupBy === 'overall') {
+      groups.push({
+        label: 'ภาพรวม',
+        key: 'overall',
+        intervals: allIntervals,
+        stats: this.calculateBoxPlotStats(allIntervals),
+      });
+    } else if (groupBy === 'product') {
+      // Group intervals by product
+      const productIntervals: Record<string, number[]> = {};
+
+      for (const purchase of purchases) {
+        if (!purchase.pro_code) continue;
+
+        const customerProPurchases = purchases.filter(
+          (p) =>
+            p.mem_code === purchase.mem_code &&
+            p.pro_code === purchase.pro_code,
+        );
+
+        if (customerProPurchases.length >= 2) {
+          if (!productIntervals[purchase.pro_code]) {
+            productIntervals[purchase.pro_code] = [];
+          }
+
+          const sortedDates = customerProPurchases
+            .map((p) => new Date(p.purchase_date))
+            .sort((a, b) => a.getTime() - b.getTime());
+
+          for (let i = 1; i < sortedDates.length; i++) {
+            const interval = Math.floor(
+              (sortedDates[i].getTime() - sortedDates[i - 1].getTime()) /
+                (1000 * 60 * 60 * 24),
+            );
+            productIntervals[purchase.pro_code].push(interval);
+          }
+        }
+      }
+
+      // Get product names
+      const proCodes = Object.keys(productIntervals);
+      let productMap = new Map<string, string>();
+      if (proCodes.length > 0) {
+        const products = await this.productRepo
+          .createQueryBuilder('p')
+          .select(['p.pro_code', 'p.pro_name'])
+          .where('p.pro_code IN (:...codes)', { codes: proCodes })
+          .getMany();
+        productMap = new Map(products.map((p) => [p.pro_code, p.pro_name]));
+      }
+
+      // Sort by interval count descending, take top 15
+      const sortedProducts = Object.entries(productIntervals)
+        .sort((a, b) => b[1].length - a[1].length)
+        .slice(0, 15);
+
+      for (const [proCode, intervals] of sortedProducts) {
+        if (intervals.length > 0) {
+          groups.push({
+            label: productMap.get(proCode) || proCode,
+            key: proCode,
+            intervals,
+            stats: this.calculateBoxPlotStats(intervals),
+          });
+        }
+      }
+    } else if (groupBy === 'segment') {
+      // Get segment classification for each customer
+      const now = new Date();
+      const userMetrics = await this.trackingRepo
+        .createQueryBuilder('t')
+        .select('t.mem_code', 'mem_code')
+        .addSelect('COUNT(*)', 'total_events')
+        .addSelect('COUNT(DISTINCT DATE(t.created_at))', 'active_days')
+        .addSelect('MAX(t.created_at)', 'last_activity')
+        .addSelect('MIN(t.created_at)', 'first_activity')
+        .addSelect(
+          `SUM(CASE WHEN t.event_type = 'product_view' THEN 1 ELSE 0 END)`,
+          'product_views',
+        )
+        .addSelect(
+          `SUM(CASE WHEN t.event_type = 'product_add_cart' THEN 1 ELSE 0 END)`,
+          'add_to_cart',
+        )
+        .addSelect(
+          `SUM(CASE WHEN t.event_type = 'checkout_complete' THEN 1 ELSE 0 END)`,
+          'orders',
+        )
+        .where('t.mem_code IS NOT NULL')
+        .andWhere('t.created_at >= :fromDate', { fromDate })
+        .groupBy('t.mem_code')
+        .getRawMany();
+
+      // Classify each customer into segment
+      const customerSegmentMap: Record<string, string> = {};
+      for (const user of userMetrics) {
+        const orders = parseInt(user.orders || '0');
+        const activeDays = parseInt(user.active_days || '0');
+        const productViews = parseInt(user.product_views || '0');
+        const addToCart = parseInt(user.add_to_cart || '0');
+        const lastActivity = new Date(user.last_activity);
+        const firstActivity = new Date(user.first_activity);
+        const daysSinceLastActivity = Math.floor(
+          (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        const customerAge = Math.floor(
+          (now.getTime() - firstActivity.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        let segment: string;
+        if (orders >= 5 && activeDays >= 10 && daysSinceLastActivity <= 14) {
+          segment = 'vip';
+        } else if (
+          orders >= 2 &&
+          daysSinceLastActivity <= 30 &&
+          activeDays >= 5
+        ) {
+          segment = 'loyal';
+        } else if (
+          orders >= 1 &&
+          daysSinceLastActivity <= 30 &&
+          addToCart >= 3
+        ) {
+          segment = 'potential';
+        } else if (
+          orders === 0 &&
+          productViews >= 10 &&
+          daysSinceLastActivity <= 30
+        ) {
+          segment = 'browsers';
+        } else if (orders >= 1 && daysSinceLastActivity > 30) {
+          segment = 'at_risk';
+        } else if (customerAge <= 7) {
+          segment = 'new_users';
+        } else {
+          segment = 'browsers';
+        }
+
+        customerSegmentMap[user.mem_code] = segment;
+      }
+
+      // Group intervals by segment
+      const segmentIntervals: Record<string, number[]> = {};
+      for (const [memCode, intervals] of Object.entries(customerIntervals)) {
+        const segment = customerSegmentMap[memCode] || 'browsers';
+        if (!segmentIntervals[segment]) {
+          segmentIntervals[segment] = [];
+        }
+        segmentIntervals[segment].push(...intervals);
+      }
+
+      const segmentLabels: Record<string, string> = {
+        vip: 'VIP',
+        loyal: 'Loyal',
+        potential: 'Potential',
+        browsers: 'Browsers',
+        at_risk: 'At Risk',
+        new_users: 'New Users',
+      };
+
+      const segmentOrder = [
+        'vip',
+        'loyal',
+        'potential',
+        'browsers',
+        'at_risk',
+        'new_users',
+      ];
+      for (const seg of segmentOrder) {
+        const intervals = segmentIntervals[seg];
+        if (intervals && intervals.length > 0) {
+          groups.push({
+            label: segmentLabels[seg] || seg,
+            key: seg,
+            intervals,
+            stats: this.calculateBoxPlotStats(intervals),
+          });
+        }
+      }
+    } else if (groupBy === 'month') {
+      // Group intervals by month of the second purchase in each pair
+      const monthIntervals: Record<string, number[]> = {};
+
+      for (const [, data] of Object.entries(customerPurchases)) {
+        const dates = data.dates.sort((a, b) => a.getTime() - b.getTime());
+        for (let i = 1; i < dates.length; i++) {
+          const daysDiff = Math.floor(
+            (dates[i].getTime() - dates[i - 1].getTime()) /
+              (1000 * 60 * 60 * 24),
+          );
+          const monthKey = `${dates[i].getFullYear()}-${String(dates[i].getMonth() + 1).padStart(2, '0')}`;
+          if (!monthIntervals[monthKey]) {
+            monthIntervals[monthKey] = [];
+          }
+          monthIntervals[monthKey].push(daysDiff);
+        }
+      }
+
+      // Sort by month chronologically
+      const sortedMonths = Object.keys(monthIntervals).sort();
+      for (const month of sortedMonths) {
+        const intervals = monthIntervals[month];
+        if (intervals.length > 0) {
+          groups.push({
+            label: month,
+            key: month,
+            intervals,
+            stats: this.calculateBoxPlotStats(intervals),
+          });
+        }
+      }
+    }
+
+    // Cluster detection (for all modes, based on allIntervals)
+    const clusterBins = [
+      { min: 1, max: 7, label: 'รายสัปดาห์', center: 7 },
+      { min: 8, max: 14, label: 'ราย 2 สัปดาห์', center: 14 },
+      { min: 15, max: 21, label: 'ราย 3 สัปดาห์', center: 21 },
+      { min: 22, max: 35, label: 'รายเดือน', center: 30 },
+      { min: 36, max: 60, label: 'ราย 2 เดือน', center: 45 },
+      { min: 61, max: Infinity, label: 'มากกว่า 2 เดือน', center: 90 },
+    ];
+
+    const clusters = clusterBins
+      .map((bin) => {
+        const count = allIntervals.filter(
+          (v) => v >= bin.min && v <= bin.max,
+        ).length;
+        return { center: bin.center, count, label: bin.label };
+      })
+      .filter((c) => c.count > 0);
+
+    return { group_by: groupBy, groups, clusters };
+  }
 }

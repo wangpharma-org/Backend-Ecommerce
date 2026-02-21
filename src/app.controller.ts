@@ -3566,6 +3566,26 @@ export class AppController {
     }
   }
 
+  // Admin: Get purchase interval box plot data
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/purchase-intervals-boxplot')
+  async getPurchaseIntervalBoxPlot(
+    @Query('days') days?: string,
+    @Query('group_by') groupBy?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getPurchaseIntervalBoxPlot(
+        days ? parseInt(days) : 180,
+        (groupBy as 'overall' | 'product' | 'segment' | 'month') || 'overall',
+      );
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/change-role/:mem_code')
   async changeUserRole(
