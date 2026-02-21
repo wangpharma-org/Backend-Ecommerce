@@ -86,6 +86,7 @@ import {
   BatchTrackDto,
 } from './behavior-tracking/behavior-tracking.service';
 import { NotifyRtService } from './notify-rt/notify-rt.service';
+import { TrackOrderService } from './track-order/track-order.service';
 
 interface JwtPayload {
   username: string;
@@ -145,6 +146,7 @@ export class AppController {
     private readonly productReturnService: ProductReturnService,
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
+    private readonly trackOrderService: TrackOrderService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -662,10 +664,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
-  ) {
+  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
@@ -1089,7 +1088,6 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('mem_code') mem_code?: string,
   ) {
     const memberCode = req.user.mem_code;
     return this.hotdealService.getAllHotdealsWithProductDetail(
@@ -1750,10 +1748,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
-  async getNewArrivalsLimit30(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
-  ) {
+  async getNewArrivalsLimit30(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
     return this.newArrivalsService.getNewArrivalsLimit30(
       memberCode,
@@ -2156,7 +2151,7 @@ export class AppController {
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
   async getPromotionTierListReward(
     @Param('tier_id') tier_id: number,
-    @Req() req: any,
+    @Req() req: Request & { user: JwtPayload },
   ) {
     return await this.promotionService.getRewardByTierId(
       tier_id,
@@ -2873,6 +2868,21 @@ export class AppController {
         {
           success: false,
           error: { code: 'POST_VERSION_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('/ecom/track-order/:sh_running')
+  async trackOrder(@Param('sh_running') sh_running: string) {
+    try {
+      return this.trackOrderService.getOrderLocation(sh_running);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'TRACK_ORDER_FAILED' },
         },
         HttpStatus.BAD_REQUEST,
       );
