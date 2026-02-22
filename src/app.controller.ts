@@ -85,8 +85,8 @@ import {
   TrackEventDto,
   BatchTrackDto,
 } from './behavior-tracking/behavior-tracking.service';
-import { NotifyRtService } from './notify-rt/notify-rt.service';
 import { TrackOrderService } from './track-order/track-order.service';
+import { NotifyRtService } from './notifyapp/notifyapp.service';
 
 interface JwtPayload {
   username: string;
@@ -3598,5 +3598,18 @@ export class AppController {
   ) {
     console.log('Updating RT notification with data:', data);
     return await this.notifyRtService.updateRTStatus(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/qc/add-token-for-notification')
+  async addTokenForNotification(
+    @Body()
+    data: {
+      mem_code: string;
+      token: string;
+    },
+  ) {
+    console.log('Adding token for notification with data:', data);
+    return await this.notifyRtService.addTokenForNotification(data);
   }
 }
