@@ -3,15 +3,34 @@ import { MoreThanOrEqual, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 import { NotificationTokenEntity } from './notification-token.entity';
+import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Kafka, Producer } from 'kafkajs';
 
 @Injectable()
-export class NotifyRtService {
+export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
+  private producer: Producer;
+
   constructor(
     @InjectRepository(ShoppingOrderEntity)
     private readonly shoppingOrderRepository: Repository<ShoppingOrderEntity>,
     @InjectRepository(NotificationTokenEntity)
     private readonly notificationTokenRepository: Repository<NotificationTokenEntity>,
-  ) {}
+  ) {
+    const kafka = new Kafka({
+      clientId: process.env.KAFKA_CLIENT_ID || 'notifyapp',
+      brokers: [process.env.KAFKA_BROKERS || 'localhost:9092'],
+    });
+
+    this.producer = kafka.producer();
+  }
+
+  async onModuleInit() {
+    await this.producer.connect();
+  }
+
+  async onModuleDestroy() {
+    await this.producer.disconnect();
+  }
 
   async getRTOrdersInTheLast3Days(
     mem_code: string,
@@ -90,6 +109,7 @@ export class NotifyRtService {
               updated_at: new Date(),
             },
           );
+          await this.sendTokenToKafka(data.mem_code, data.token);
           return {
             success: true,
             message: 'Notification token updated successfully',
@@ -103,6 +123,7 @@ export class NotifyRtService {
               updated_at: new Date(),
             },
           );
+          await this.sendTokenToKafka(data.mem_code, data.token);
           return {
             success: true,
             message: 'Notification token reactivated successfully',
@@ -118,6 +139,7 @@ export class NotifyRtService {
         });
 
         await this.notificationTokenRepository.save(newToken);
+        await this.sendTokenToKafka(data.mem_code, data.token);
         return {
           success: true,
           message: 'Notification token added successfully',
@@ -130,5 +152,16 @@ export class NotifyRtService {
         message: 'Failed to add notification token',
       };
     }
+  }
+
+  async sendTokenToKafka(mem_code: string, token: string) {
+    const payload = { mem_code, token };
+    await this.producer.send({
+      topic: process.env.KAFKA_TOPIC || 'noti_token',
+      messages: [{ value: JSON.stringify(payload) }],
+    });
+    console.log(
+      `Sent token for mem_code ${mem_code} token ${token} to Kafka topic ${process.env.KAFKA_TOPIC || 'noti_token'} successfully`,
+    );
   }
 }
