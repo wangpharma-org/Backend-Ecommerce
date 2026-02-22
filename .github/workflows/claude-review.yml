@@ -25,20 +25,10 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            Always respond in Thai language (ภาษาไทย). ตอบเป็นภาษาไทยเสมอ
+            ตอบเป็นภาษาไทยเสมอ
 
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            Review PR #${{ github.event.pull_request.number }} ใน ${{ github.repository }}
+            ดู diff แล้ว comment สรุปสั้นๆ เรื่อง: bugs, security, code quality
+            ใช้ gh pr comment เพื่อแสดงผล
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
-
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*)"'
+          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr files:*),Bash(gh pr comment:*)"'
