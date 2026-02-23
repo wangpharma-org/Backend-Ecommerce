@@ -3603,13 +3603,13 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/qc/add-token-for-notification')
   async addTokenForNotification(
-    @Body()
-    data: {
-      mem_code: string;
-      token: string;
-    },
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { token: string },
   ) {
-    console.log('Adding token for notification with data:', data);
-    return await this.notifyRtService.addTokenForNotification(data);
+    const mem_code = req.user.mem_code;
+    return await this.notifyRtService.addTokenForNotification({
+      mem_code,
+      token: body.token,
+    });
   }
 }
