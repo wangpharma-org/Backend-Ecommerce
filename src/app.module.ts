@@ -40,7 +40,7 @@ import { AppVersionModule } from './app-version/app-version.module';
 import { TrackOrderModule } from './track-order/track-order.module';
 import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
-import { NotifyRtModule } from './notify-rt/notify-rt.module';
+import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { envValidationSchema } from './env.validation';
 
 @Module({
