@@ -10,6 +10,7 @@ import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { SaleLogEntity } from './salelog-order.entity';
 import { UserEntity } from 'src/users/users.entity';
+import { LoggerModule } from '../logger/logger.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UserEntity } from 'src/users/users.entity';
     ]),
     ShoppingCartModule,
     HttpModule,
+    LoggerModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],

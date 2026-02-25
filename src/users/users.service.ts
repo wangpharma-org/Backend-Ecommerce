@@ -251,4 +251,29 @@ export class UsersService {
       throw new Error('Error retrieving VIP users');
     }
   }
+
+  async changeUserRole(
+    mem_code: string,
+    newRole: 'User' | 'Admin' | 'Sales',
+  ): Promise<UserEntity> {
+    try {
+      const user = await this.userRepo.findOne({
+        where: { mem_code: mem_code },
+      });
+
+      console.log('User found for role change:', user);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      await this.userRepo.update({ mem_code: mem_code }, { role: newRole });
+      console.log(`Successfully updated role to ${newRole} for ${mem_code}`);
+
+      return this.findOneByMemCode(mem_code);
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw new Error('Error updating user role');
+    }
+  }
 }

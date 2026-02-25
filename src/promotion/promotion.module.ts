@@ -11,6 +11,7 @@ import { CodePromotionEntity } from './code-promotion.entity';
 import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProductEntity } from 'src/products/products.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ProductEntity } from 'src/products/products.entity';
       ShoppingCartEntity,
       CodePromotionEntity,
       ProductEntity,
+      UserEntity,
     ]),
     ShoppingCartModule,
     AuthModule,

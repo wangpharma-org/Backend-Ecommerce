@@ -34,6 +34,12 @@ export class ShoppingOrderEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_total_decimal: number;
 
+  @Column({ type: 'boolean', default: false, nullable: true })
+  is_rt: boolean;
+
+  @Column({ type: 'date', nullable: true, default: null })
+  rt_date: Date;
+
   @ManyToOne(() => ShoppingHeadEntity, (header) => header.details)
   @JoinColumn({ name: 'soh_running', referencedColumnName: 'soh_running' })
   orderHeader: ShoppingHeadEntity;
