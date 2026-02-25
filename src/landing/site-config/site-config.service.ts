@@ -239,28 +239,28 @@ const DEFAULT_CONFIGS = [
     description: 'วิธีการชำระเงิน (JSON object)',
     category: 'payment',
   },
-  // Stats
-  {
-    config_key: 'stats_years',
-    config_value: '32',
-    config_type: ConfigType.TEXT,
-    description: 'จำนวนปีประสบการณ์',
-    category: 'stats',
-  },
-  {
-    config_key: 'stats_products',
-    config_value: '10000',
-    config_type: ConfigType.TEXT,
-    description: 'จำนวนรายการสินค้า',
-    category: 'stats',
-  },
-  {
-    config_key: 'stats_delivery',
-    config_value: '1-2 วัน',
-    config_type: ConfigType.TEXT,
-    description: 'ระยะเวลาจัดส่ง',
-    category: 'stats',
-  },
+  // // Stats
+  // {
+  //   config_key: 'stats_years',
+  //   config_value: '32',
+  //   config_type: ConfigType.TEXT,
+  //   description: 'จำนวนปีประสบการณ์',
+  //   category: 'stats',
+  // },
+  // {
+  //   config_key: 'stats_products',
+  //   config_value: '10000',
+  //   config_type: ConfigType.TEXT,
+  //   description: 'จำนวนรายการสินค้า',
+  //   category: 'stats',
+  // },
+  // {
+  //   config_key: 'stats_delivery',
+  //   config_value: '1-2 วัน',
+  //   config_type: ConfigType.TEXT,
+  //   description: 'ระยะเวลาจัดส่ง',
+  //   category: 'stats',
+  // },
   {
     config_key: 'filedbanks',
     config_value: JSON.stringify({
@@ -462,6 +462,13 @@ const DEFAULT_CONFIGS = [
     config_type: ConfigType.JSON,
     description: 'ข้อมูลปุ่มลิงก์ (JSON object)',
     category: 'button',
+  },
+  {
+    config_key: 'register_link',
+    config_value: '',
+    config_type: ConfigType.URL,
+    description: 'ลิงก์สำหรับสมัครสมาชิก',
+    category: 'link',
   },
 ];
 
