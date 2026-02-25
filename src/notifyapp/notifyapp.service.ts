@@ -6,6 +6,8 @@ import { NotificationTokenEntity } from './notification-token.entity';
 import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
 
+type NotificationTokenEventType = 'upsert' | 'remove';
+
 @Injectable()
 export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
   private producer: Producer;
@@ -93,6 +95,14 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     token: string;
   }): Promise<{ success: boolean; message: string }> {
     try {
+      const normalizedToken = data.token?.trim();
+      if (!normalizedToken) {
+        return {
+          success: false,
+          message: 'Token is required',
+        };
+      }
+
       // ตรวจสอบว่ามี token เดิมอยู่แล้วหรือไม่
       const existingToken = await this.notificationTokenRepository.findOne({
         where: { mem_code: data.mem_code },
@@ -100,16 +110,16 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
 
       if (existingToken) {
         // อัพเดท token ถ้าเปลี่ยนแปลง
-        if (existingToken.token !== data.token) {
+        if (existingToken.token !== normalizedToken) {
           await this.notificationTokenRepository.update(
             { id: existingToken.id },
             {
-              token: data.token,
+              token: normalizedToken,
               is_active: true,
               updated_at: new Date(),
             },
           );
-          await this.sendTokenToKafka(data.mem_code, data.token);
+          await this.sendTokenToKafka(data.mem_code, normalizedToken, 'upsert');
           return {
             success: true,
             message: 'Notification token updated successfully',
@@ -123,7 +133,7 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
               updated_at: new Date(),
             },
           );
-          await this.sendTokenToKafka(data.mem_code, data.token);
+          await this.sendTokenToKafka(data.mem_code, normalizedToken, 'upsert');
           return {
             success: true,
             message: 'Notification token reactivated successfully',
@@ -133,13 +143,13 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
         // สร้างใหม่
         const newToken = this.notificationTokenRepository.create({
           mem_code: data.mem_code,
-          token: data.token,
+          token: normalizedToken,
           token_type: 'fcm',
           is_active: true,
         });
 
         await this.notificationTokenRepository.save(newToken);
-        await this.sendTokenToKafka(data.mem_code, data.token);
+        await this.sendTokenToKafka(data.mem_code, normalizedToken, 'upsert');
         return {
           success: true,
           message: 'Notification token added successfully',
@@ -154,14 +164,79 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async sendTokenToKafka(mem_code: string, token: string) {
-    const payload = { mem_code, token };
+  async removeTokenForNotification(data: {
+    mem_code: string;
+    token: string;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const normalizedToken = data.token?.trim();
+      if (!normalizedToken) {
+        return {
+          success: false,
+          message: 'Token is required',
+        };
+      }
+
+      const existingToken = await this.notificationTokenRepository.findOne({
+        where: { mem_code: data.mem_code },
+      });
+
+      if (!existingToken) {
+        await this.sendTokenToKafka(data.mem_code, normalizedToken, 'remove');
+        return {
+          success: true,
+          message: 'Notification token already removed',
+        };
+      }
+
+      if (existingToken.token !== normalizedToken) {
+        await this.sendTokenToKafka(data.mem_code, normalizedToken, 'remove');
+        return {
+          success: true,
+          message: 'Token mismatch, remove event published for provided token',
+        };
+      }
+
+      await this.notificationTokenRepository.update(
+        { id: existingToken.id },
+        {
+          is_active: false,
+          updated_at: new Date(),
+        },
+      );
+
+      await this.sendTokenToKafka(data.mem_code, normalizedToken, 'remove');
+
+      return {
+        success: true,
+        message: 'Notification token removed successfully',
+      };
+    } catch (error) {
+      console.error('Error in removeTokenForNotification:', error);
+      return {
+        success: false,
+        message: 'Failed to remove notification token',
+      };
+    }
+  }
+
+  async sendTokenToKafka(
+    mem_code: string,
+    token: string,
+    event_type: NotificationTokenEventType = 'upsert',
+  ) {
+    const payload = {
+      event_type,
+      mem_code,
+      token,
+      occurred_at: new Date().toISOString(),
+    };
     await this.producer.send({
       topic: process.env.KAFKA_TOPIC || 'noti_token',
       messages: [{ value: JSON.stringify(payload) }],
     });
     console.log(
-      `Sent token for mem_code ${mem_code} token ${token} to Kafka topic ${process.env.KAFKA_TOPIC || 'noti_token'} successfully`,
+      `Sent ${event_type} token event for mem_code ${mem_code} token ${token} to Kafka topic ${process.env.KAFKA_TOPIC || 'noti_token'} successfully`,
     );
   }
 }
