@@ -15,9 +15,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors();
 
-  // Only connect to Kafka if not disabled (for local dev without Kafka)
-  const disableKafka = configService.get<string>('DISABLE_KAFKA') === 'true';
-  if (!disableKafka) {
+  const enableKafka = configService.get<string>('ENABLE_KAFKA', 'true') === 'true';
+  if (enableKafka) {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.KAFKA,
       options: {

@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Ip,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -85,7 +86,8 @@ import {
   TrackEventDto,
   BatchTrackDto,
 } from './behavior-tracking/behavior-tracking.service';
-import { NotifyRtService } from './notify-rt/notify-rt.service';
+import { TrackOrderService } from './track-order/track-order.service';
+import { NotifyRtService } from './notifyapp/notifyapp.service';
 
 interface JwtPayload {
   username: string;
@@ -145,6 +147,7 @@ export class AppController {
     private readonly productReturnService: ProductReturnService,
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
+    private readonly trackOrderService: TrackOrderService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -152,10 +155,27 @@ export class AppController {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
-  async getImageUrl() {
-    return this.bannerService.GetImageUrl();
+  async getImageUrl(
+    @Query('location')
+    location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
+  ) {
+    return this.bannerService.GetImageUrl(location);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/banner/:id')
+  async deleteBanner(@Param('id') id: string) {
+    return this.bannerService.deleteBannerById(Number(id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/ecom/banner/:id')
+  async updateBanner(
+    @Param('id') id: string,
+    @Body() data: Partial<BannerEntity>,
+  ) {
+    return this.bannerService.updateBanner(Number(id), data);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -176,14 +196,35 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadBanner(
     @UploadedFile() file: Express.Multer.File,
-    @Body() data: { date_start: Date; date_end: Date },
+    @Body()
+    data: {
+      date_start: Date;
+      date_end: Date;
+      banner_name?: string;
+      banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      link_url?: string;
+      display_type?: 'image_only' | 'text_only' | 'image_with_text';
+      title?: string;
+      subtitle?: string;
+      description?: string;
+      cta_text?: string;
+      cta_url?: string;
+      cta_secondary_text?: string;
+      cta_secondary_url?: string;
+      text_color?: 'light' | 'dark';
+      text_position?: 'left' | 'center' | 'right';
+      bg_gradient?: string;
+      is_drug?: boolean;
+      advertise_code?: string;
+      creditor?: string;
+      product_list?: string;
+    },
   ) {
-    const uploadUrl = await this.bannerService.UploadImage(
-      file,
-      data.date_start,
-      data.date_end,
-    );
-    return uploadUrl?.Location;
+    console.log('=== Controller uploadBanner ===');
+    console.log('File:', file ? file.originalname : 'No file');
+    console.log('Data:', JSON.stringify(data, null, 2));
+    const result = await this.bannerService.UploadImage(file, data);
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -394,7 +435,6 @@ export class AppController {
       limit: number;
     },
   ) {
-    //console.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     return await this.productsService.searchCategoryProducts({
       ...data,
@@ -662,10 +702,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
-  ) {
+  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
@@ -1089,7 +1126,6 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('mem_code') mem_code?: string,
   ) {
     const memberCode = req.user.mem_code;
     return this.hotdealService.getAllHotdealsWithProductDetail(
@@ -1750,10 +1786,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
-  async getNewArrivalsLimit30(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
-  ) {
+  async getNewArrivalsLimit30(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
     return this.newArrivalsService.getNewArrivalsLimit30(
       memberCode,
@@ -2156,7 +2189,7 @@ export class AppController {
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
   async getPromotionTierListReward(
     @Param('tier_id') tier_id: number,
-    @Req() req: any,
+    @Req() req: Request & { user: JwtPayload },
   ) {
     return await this.promotionService.getRewardByTierId(
       tier_id,
@@ -2879,6 +2912,41 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/products-banner')
+  async searchProductsBanner(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.searchProductsBanner();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/get-creditor')
+  async getCreditors(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.getCreditors();
+  }
+  
+  @Get('/ecom/track-order/:sh_running')
+  async trackOrder(@Param('sh_running') sh_running: string) {
+    try {
+      return this.trackOrderService.getOrderLocation(sh_running);
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'TRACK_ORDER_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   // ========== Product Return APIs ==========
 
   // Customer: Get eligible orders for return
@@ -3588,5 +3656,18 @@ export class AppController {
   ) {
     console.log('Updating RT notification with data:', data);
     return await this.notifyRtService.updateRTStatus(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/qc/add-token-for-notification')
+  async addTokenForNotification(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { token: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.notifyRtService.addTokenForNotification({
+      mem_code,
+      token: body.token,
+    });
   }
 }

@@ -7,7 +7,6 @@ import {
 } from 'typeorm';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ProductEntity } from '../products/products.entity';
-import { timeStamp } from 'node:console';
 
 @Entity({ name: 'shopping_order' })
 export class ShoppingOrderEntity {
