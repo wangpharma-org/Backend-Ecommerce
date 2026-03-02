@@ -3670,4 +3670,17 @@ export class AppController {
       token: body.token,
     });
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/qc/remove-token-for-notification')
+  async removeTokenForNotification(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { token: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.notifyRtService.removeTokenForNotification({
+      mem_code,
+      token: body.token,
+    });
+  }
 }
