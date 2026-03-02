@@ -1,12 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  Repository,
-  Between,
-  MoreThanOrEqual,
-  In,
-  FindOptionsWhere,
-} from 'typeorm';
+import { Repository, Between, MoreThanOrEqual, In } from 'typeorm';
 import { TrackingEventEntity, EventType } from './tracking-event.entity';
 import { ProductEntity } from '../products/products.entity';
 
