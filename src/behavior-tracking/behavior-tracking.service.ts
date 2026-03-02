@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, MoreThanOrEqual, In } from 'typeorm';
+import {
+  Repository,
+  Between,
+  MoreThanOrEqual,
+  In,
+  FindOptionsWhere,
+} from 'typeorm';
 import { TrackingEventEntity, EventType } from './tracking-event.entity';
 import { ProductEntity } from '../products/products.entity';
 
@@ -1812,5 +1818,77 @@ export class BehaviorTrackingService {
       .filter((c) => c.count > 0);
 
     return { group_by: groupBy, groups, clusters };
+  async getUserJourneySankey(from_date?: string, to_date?: string) {
+    const where: FindOptionsWhere<TrackingEventEntity> = {};
+
+    if (from_date && to_date) {
+      where.created_at = Between(new Date(from_date), new Date(to_date));
+    } else if (from_date) {
+      where.created_at = MoreThanOrEqual(new Date(from_date));
+    }
+
+    const events = await this.trackingRepo.find({
+      where,
+      order: {
+        session_id: 'ASC',
+        created_at: 'ASC',
+      },
+    });
+
+    return this.buildSankeyData(events);
+  }
+
+  private buildSankeyData(events: TrackingEventEntity[]) {
+    const sessionMap = new Map<string, TrackingEventEntity[]>();
+
+    for (const event of events) {
+      if (!sessionMap.has(event.session_id)) {
+        sessionMap.set(event.session_id, []);
+      }
+      sessionMap.get(event.session_id)!.push(event);
+    }
+
+    const linkCounter = new Map<string, number>();
+    const nodeSet = new Set<string>();
+
+    for (const [, sessionEvents] of sessionMap) {
+      const visited = new Set<string>();
+
+      for (let i = 0; i < sessionEvents.length - 1; i++) {
+        let sourcePage = sessionEvents[i].page_path;
+        let targetPage = sessionEvents[i + 1].page_path;
+
+        if (!sourcePage || !targetPage) continue;
+
+        sourcePage = this.normalizePath(sourcePage);
+        targetPage = this.normalizePath(targetPage);
+
+        if (sourcePage === targetPage) continue;
+
+        if (visited.has(targetPage)) continue;
+
+        visited.add(sourcePage);
+        visited.add(targetPage);
+
+        nodeSet.add(sourcePage);
+        nodeSet.add(targetPage);
+
+        const key = `${sourcePage}__${targetPage}`;
+        linkCounter.set(key, (linkCounter.get(key) || 0) + 1);
+      }
+    }
+
+    const nodes = Array.from(nodeSet).map((name) => ({ name }));
+
+    const links = Array.from(linkCounter.entries()).map(([key, value]) => {
+      const [source, target] = key.split('__');
+      return { source, target, value };
+    });
+
+    return { nodes, links };
+  }
+
+  private normalizePath(path: string): string {
+    return path.split('?')[0]; // ตัด query string ออก
   }
 }
