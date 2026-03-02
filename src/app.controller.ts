@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Ip,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -154,10 +155,27 @@ export class AppController {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
-  async getImageUrl() {
-    return this.bannerService.GetImageUrl();
+  async getImageUrl(
+    @Query('location')
+    location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
+  ) {
+    return this.bannerService.GetImageUrl(location);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/banner/:id')
+  async deleteBanner(@Param('id') id: string) {
+    return this.bannerService.deleteBannerById(Number(id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/ecom/banner/:id')
+  async updateBanner(
+    @Param('id') id: string,
+    @Body() data: Partial<BannerEntity>,
+  ) {
+    return this.bannerService.updateBanner(Number(id), data);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -178,14 +196,35 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadBanner(
     @UploadedFile() file: Express.Multer.File,
-    @Body() data: { date_start: Date; date_end: Date },
+    @Body()
+    data: {
+      date_start: Date;
+      date_end: Date;
+      banner_name?: string;
+      banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      link_url?: string;
+      display_type?: 'image_only' | 'text_only' | 'image_with_text';
+      title?: string;
+      subtitle?: string;
+      description?: string;
+      cta_text?: string;
+      cta_url?: string;
+      cta_secondary_text?: string;
+      cta_secondary_url?: string;
+      text_color?: 'light' | 'dark';
+      text_position?: 'left' | 'center' | 'right';
+      bg_gradient?: string;
+      is_drug?: boolean;
+      advertise_code?: string;
+      creditor?: string;
+      product_list?: string;
+    },
   ) {
-    const uploadUrl = await this.bannerService.UploadImage(
-      file,
-      data.date_start,
-      data.date_end,
-    );
-    return uploadUrl?.Location;
+    console.log('=== Controller uploadBanner ===');
+    console.log('File:', file ? file.originalname : 'No file');
+    console.log('Data:', JSON.stringify(data, null, 2));
+    const result = await this.bannerService.UploadImage(file, data);
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -396,7 +435,6 @@ export class AppController {
       limit: number;
     },
   ) {
-    //console.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     return await this.productsService.searchCategoryProducts({
       ...data,
@@ -2874,6 +2912,26 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/products-banner')
+  async searchProductsBanner(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.searchProductsBanner();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/get-creditor')
+  async getCreditors(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.getCreditors();
+  }
+  
   @Get('/ecom/track-order/:sh_running')
   async trackOrder(@Param('sh_running') sh_running: string) {
     try {

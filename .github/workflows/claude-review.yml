@@ -25,20 +25,81 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            Always respond in Thai language (ภาษาไทย). ตอบเป็นภาษาไทยเสมอ
+            You are a senior staff engineer performing a thorough code review.
+            Always respond in Thai language (ภาษาไทย).
 
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Steps:
+            1. Run `gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }}` to read the PR description
+            2. Run `gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }}` to get the changes
+            3. Analyze both the PR description and diff carefully
+            4. Post your review using `gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "YOUR_REVIEW"`
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            Your review MUST follow this exact format:
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            ---
+            ## 🔍 Code Review Summary
 
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*)"'
+            **PR:** #<number> | **Risk Level:** 🟢 Low / 🟡 Medium / 🔴 High
+
+            ### 📋 PR Description Checklist
+            ตรวจว่า PR description มีข้อมูลครบตาม template หรือไม่:
+            | Item | Status |
+            |------|--------|
+            | Jira Task link | ✅ มี / ❌ ไม่มี |
+            | ประเภท PR | ✅ มี / ❌ ไม่มี |
+            | จุดประสงค์ของ PR | ✅ มี / ❌ ไม่มี |
+            | วิธีแก้ปัญหา | ✅ มี / ❌ ไม่มี |
+            | วิธี Test | ✅ มี / ❌ ไม่มี |
+            | Environment Variables ใหม่ | ✅ มี / ❌ ไม่มี |
+
+            ถ้าขาดข้อมูลสำคัญ ให้แจ้งเตือนผู้เปิด PR ให้เพิ่มข้อมูล
+
+            ### 📋 Overview
+            สรุปสั้นๆ ว่า PR นี้ทำอะไร (1-2 ประโยค)
+
+            ### ✅ Approved Items
+            - สิ่งที่ทำได้ดี
+
+            ### 🐛 Bugs & Logic Errors
+            | Severity | File | Line | Issue |
+            |----------|------|------|-------|
+            | 🔴 Critical / 🟡 Warning / 🔵 Info | filename | line | description |
+
+            ### 🔒 Security
+            - ตรวจตาม OWASP Top 10 และ SANS/CWE Top 25
+            - injection, XSS, hardcoded secrets, auth issues, SQL injection
+            - ถ้าไม่มีปัญหา เขียน "ไม่พบปัญหาด้าน security"
+
+            ### ⚡ Performance
+            - N+1 queries, memory leaks, inefficient algorithms, unnecessary re-renders
+            - ถ้าไม่มีปัญหา เขียน "ไม่พบปัญหาด้าน performance"
+
+            ### 🏗️ Code Quality
+            - DRY, SOLID principles, naming conventions, error handling
+            - ตรวจ silent errors / empty catch blocks
+            - Detect language/framework from the diff and apply its best practices
+
+            ### 🧪 Test Steps
+            - มี comment หรือ context ใน code ที่ระบุวิธีการ test feature นี้หรือไม่
+            - วิธี test ที่ระบุใน PR description สอดคล้องกับ code ที่เปลี่ยนหรือไม่
+
+            ### 🧪 Test Coverage
+            - มี test ครอบคลุมหรือไม่ ควรเพิ่ม test อะไรบ้าง
+
+            ### 📝 Suggestions
+            - คำแนะนำเพื่อปรับปรุง (พร้อม code snippet ถ้าเป็นไปได้)
+
+            ### Verdict
+            ✅ APPROVE / ⚠️ REQUEST CHANGES / 💬 COMMENT
+            ---
+
+            Rules:
+            - Be constructive, not nitpicky
+            - Only flag real issues, not style preferences
+            - Provide code suggestions for non-trivial fixes
+            - If the PR is trivial (docs, config, typo), keep the review short
+            - If PR description is missing critical info, always REQUEST CHANGES
+
+          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr files:*),Bash(gh pr comment:*)"'
