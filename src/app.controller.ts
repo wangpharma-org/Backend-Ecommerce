@@ -3652,6 +3652,9 @@ export class AppController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  // Admin: Get user journey sankey
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/user-journey-sankey')
   async getUserJourneySankey(

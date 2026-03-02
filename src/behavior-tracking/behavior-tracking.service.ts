@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, MoreThanOrEqual, In } from 'typeorm';
+import { Repository, Between, MoreThanOrEqual, In, FindOptionsWhere } from 'typeorm';
 import { TrackingEventEntity, EventType } from './tracking-event.entity';
 import { ProductEntity } from '../products/products.entity';
 
@@ -53,7 +53,7 @@ export class BehaviorTrackingService {
     from_date?: string,
     to_date?: string,
   ) {
-    const where: any = { mem_code };
+    const where: FindOptionsWhere<TrackingEventEntity> = { mem_code };
 
     if (from_date && to_date) {
       where.created_at = Between(new Date(from_date), new Date(to_date));
@@ -1812,6 +1812,8 @@ export class BehaviorTrackingService {
       .filter((c) => c.count > 0);
 
     return { group_by: groupBy, groups, clusters };
+  }
+
   async getUserJourneySankey(from_date?: string, to_date?: string) {
     const where: FindOptionsWhere<TrackingEventEntity> = {};
 
