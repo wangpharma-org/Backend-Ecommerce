@@ -31,7 +31,7 @@ export interface BatchTrackDto {
   events: TrackEventDto[];
 }
 
-type CustomerSegmentKey =
+export type CustomerSegmentKey =
   | 'vip'
   | 'loyal'
   | 'potential'
@@ -44,27 +44,27 @@ interface CountResult {
   count?: string;
 }
 
-interface EventCountResult {
+export interface EventCountResult {
   event_type?: EventType;
   count?: string;
 }
 
-interface TopProductViewResult {
+export interface TopProductViewResult {
   pro_code?: string;
   view_count?: string;
 }
 
-interface SearchTermResult {
+export interface SearchTermResult {
   query?: string;
   count?: string;
 }
 
-interface RecentSearchResult {
+export interface RecentSearchResult {
   query?: string;
   last_searched?: string | Date;
 }
 
-interface TopPageResult {
+export interface TopPageResult {
   page_path?: string;
   visit_count?: string;
 }
@@ -78,12 +78,12 @@ interface DailyEventResult {
   unique_users?: string;
 }
 
-interface HourlyEventResult {
+export interface HourlyEventResult {
   hour?: number | string;
   count?: string;
 }
 
-interface DeviceBreakdownResult {
+export interface DeviceBreakdownResult {
   device?: string;
   count?: string;
 }
@@ -168,7 +168,7 @@ interface PurchaseResult {
   pro_code?: string;
 }
 
-interface CustomerSegmentMetrics {
+export interface CustomerSegmentMetrics {
   total_events: number;
   active_days: number;
   orders: number;
@@ -177,7 +177,7 @@ interface CustomerSegmentMetrics {
   sessions: number;
 }
 
-interface CustomerSegmentResult {
+export interface CustomerSegmentResult {
   mem_code: string;
   segment: CustomerSegmentKey;
   segment_label: string;
@@ -189,9 +189,9 @@ interface CustomerSegmentResult {
   first_activity: Date;
 }
 
-type StockAlertLevel = 'critical' | 'warning' | 'watch' | 'ok';
+export type StockAlertLevel = 'critical' | 'warning' | 'watch' | 'ok';
 
-interface StockAlertResult {
+export interface StockAlertResult {
   pro_code: string;
   pro_name: string;
   pro_imgmain: string;
@@ -205,13 +205,13 @@ interface StockAlertResult {
   message: string;
 }
 
-type CartConversionStatus =
+export type CartConversionStatus =
   | 'high_conversion'
   | 'low_conversion'
   | 'price_sensitive'
   | 'normal';
 
-interface CartConversionResult {
+export interface CartConversionResult {
   pro_code: string;
   pro_name: string;
   pro_imgmain: string;
