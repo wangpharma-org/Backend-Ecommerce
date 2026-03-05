@@ -1589,19 +1589,28 @@ export class BehaviorTrackingService {
     } else if (groupBy === 'product') {
       // Group intervals by product
       const productIntervals: Record<string, number[]> = {};
-
+      
+      // Group purchases by unique customer + product combination to prevent duplicates
+      const uniqueCustomerProducts = new Map<string, any[]>();
+      
       for (const purchase of purchases) {
         if (!purchase.pro_code) continue;
+        
+        const key = `${purchase.mem_code}_${purchase.pro_code}`;
+        
+        if (!uniqueCustomerProducts.has(key)) {
+          uniqueCustomerProducts.set(key, []);
+        }
+        uniqueCustomerProducts.get(key)!.push(purchase);
+      }
 
-        const customerProPurchases = purchases.filter(
-          (p) =>
-            p.mem_code === purchase.mem_code &&
-            p.pro_code === purchase.pro_code,
-        );
-
+      // Calculate intervals for each unique customer-product combination
+      for (const [key, customerProPurchases] of uniqueCustomerProducts) {
+        const proCode = key.split('_')[1];
+        
         if (customerProPurchases.length >= 2) {
-          if (!productIntervals[purchase.pro_code]) {
-            productIntervals[purchase.pro_code] = [];
+          if (!productIntervals[proCode]) {
+            productIntervals[proCode] = [];
           }
 
           const sortedDates = customerProPurchases
@@ -1613,7 +1622,7 @@ export class BehaviorTrackingService {
               (sortedDates[i].getTime() - sortedDates[i - 1].getTime()) /
                 (1000 * 60 * 60 * 24),
             );
-            productIntervals[purchase.pro_code].push(interval);
+            productIntervals[proCode].push(interval);
           }
         }
       }
@@ -1821,14 +1830,21 @@ export class BehaviorTrackingService {
       where.created_at = Between(new Date(from_date), new Date(to_date));
     } else if (from_date) {
       where.created_at = MoreThanOrEqual(new Date(from_date));
+    } else {
+      // Set default date range if not provided to prevent unbounded queries
+      const defaultFromDate = new Date();
+      defaultFromDate.setDate(defaultFromDate.getDate() - 30); // Last 30 days
+      where.created_at = MoreThanOrEqual(defaultFromDate);
     }
 
+    // Add pagination and ordering with LIMIT to prevent OOM
     const events = await this.trackingRepo.find({
       where,
       order: {
         session_id: 'ASC',
         created_at: 'ASC',
       },
+      take: 50000, // Limit to 50k events to prevent OOM
     });
 
     return this.buildSankeyData(events);
