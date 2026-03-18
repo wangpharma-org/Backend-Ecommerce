@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecommendEntity } from './recommend.entity';
-import { Repository, In, Not, MoreThan } from 'typeorm';
+import { Repository, Not, IsNull } from 'typeorm';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class RecommendService {
@@ -287,12 +288,19 @@ export class RecommendService {
     }
   }
 
-  async AddReplaceProduct(pro_code: string, replace_pro_code: string) {
+  async AddReplaceProduct(
+    pro_code: string,
+    replace_pro_code: string,
+    note?: string,
+    date_end?: Date,
+  ) {
     try {
       await this.productEntity.update(
         { pro_code },
         {
           replace: { pro_code: replace_pro_code },
+          replace_note: note || null,
+          replace_date_exp: date_end || null,
         },
       );
     } catch (error) {
@@ -330,6 +338,66 @@ export class RecommendService {
       await this.productEntity.update({ pro_code }, { replace: null });
     } catch (error) {
       throw new Error(`Failed to remove replace product: ${error}`);
+    }
+  }
+
+  async getAllReplaceProducts(page: number, limit: number) {
+    try {
+      const [productsWithReplace, total] =
+        await this.productEntity.findAndCount({
+          where: {
+            replace: Not(IsNull()),
+          },
+          relations: {
+            replace: true,
+          },
+          select: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+            pro_imgmain: true,
+            replace_note: true,
+            replace_date_exp: true,
+            replace: {
+              pro_code: true,
+              pro_name: true,
+              pro_genericname: true,
+              pro_imgmain: true,
+            },
+          },
+          skip: (page - 1) * limit,
+          take: limit,
+        });
+      console.log('Products with replace:', productsWithReplace);
+      console.log('Total:', total);
+      return {
+        productsWithReplace,
+        pagination: {
+          total: total,
+          page: page,
+          limit: limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get all replace products: ${error}`);
+    }
+  }
+
+  @Cron('0 0 * * *', {
+    timeZone: 'Asia/Bangkok',
+  })
+  async clearExpiredReplacements() {
+    try {
+      const now = new Date();
+      await this.productEntity
+        .createQueryBuilder()
+        .update(ProductEntity)
+        .set({ replace: null, replace_note: null, replace_date_exp: null })
+        .where('replace_date_exp < :now', { now })
+        .execute();
+    } catch (error) {
+      console.error(`Failed to clear expired replacements: ${error}`);
     }
   }
 }
