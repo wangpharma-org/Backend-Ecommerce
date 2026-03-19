@@ -2358,11 +2358,20 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/replace-product')
   async ReplaceProduct(
-    @Body() data: { pro_code: string; replace_pro_code: string },
+    @Body()
+    data: {
+      pro_code: string;
+      replace_pro_code: string;
+      note?: string;
+      date_end?: Date;
+    },
   ) {
+    console.log('data:', data);
     return await this.recommendService.AddReplaceProduct(
       data.pro_code,
       data.replace_pro_code,
+      data?.note,
+      data?.date_end,
     );
   }
 
@@ -3689,6 +3698,7 @@ export class AppController {
     });
   }
 
+<<<<<<< feature/ECWC-44
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/upload-banner')
   @UseInterceptors(FileInterceptor('file'))
@@ -3709,5 +3719,14 @@ export class AppController {
   @Delete('/ecom/admin/hotdeal/delete-banner/:id')
   async deleteHotdealBanner(@Param('id') id: number) {
     return await this.hotdealService.deleteBannerHotdeal(id);
+=======
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/replace-product')
+  async getReplacementProduct(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return await this.recommendService.getAllReplaceProducts(page, limit);
+>>>>>>> develop
   }
 }
