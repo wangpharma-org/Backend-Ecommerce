@@ -6,6 +6,8 @@ import { HotdealEntity } from './hotdeal.entity';
 import { Repository } from 'typeorm';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { UserEntity } from 'src/users/users.entity';
+import * as AWS from 'aws-sdk';
+import { BannerHotdealEntity } from './hotdeal-banner.entity';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -18,6 +20,7 @@ export interface HotdealInput {
 
 @Injectable()
 export class HotdealService {
+  private s3: AWS.S3;
   constructor(
     @InjectRepository(HotdealEntity)
     private readonly hotdealRepo: Repository<HotdealEntity>,
@@ -26,7 +29,15 @@ export class HotdealService {
     private readonly productService: ProductsService,
     @Inject(forwardRef(() => ShoppingCartService))
     private readonly shoppingCartService: ShoppingCartService,
-  ) {}
+    @InjectRepository(BannerHotdealEntity)
+    private readonly bannerHotdealRepo: Repository<BannerHotdealEntity>,
+  ) {
+    this.s3 = new AWS.S3({
+      endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
+      accessKeyId: process.env.DO_SPACES_KEY,
+      secretAccessKey: process.env.DO_SPACES_SECRET,
+    });
+  }
 
   private async isL16Member(
     mem_code?: string,
@@ -132,19 +143,19 @@ export class HotdealService {
     datainput: HotdealInput,
     id?: number,
     order?: number,
+    special_deal?: boolean,
   ): Promise<string> {
     try {
-      console.log('Hotdeal Input Data:', datainput, id, order);
       if (id) {
         const existingHotdeal = await this.hotdealRepo.findOne({
           where: { id: id },
         });
-        if (existingHotdeal && existingHotdeal.order !== order) {
+        if (existingHotdeal) {
           const hotdealId = existingHotdeal.id === id;
           if (hotdealId) {
             await this.hotdealRepo.update(
               { id: existingHotdeal.id },
-              { order: order },
+              { order: order, special_deal: special_deal },
             );
           }
         }
@@ -193,6 +204,7 @@ export class HotdealService {
       pro_name: hotdeal.product?.pro_name || null,
       pro2_name: hotdeal.product2?.pro_name || null,
       order: hotdeal.order,
+      special_deal: hotdeal.special_deal,
     }));
   }
 
@@ -284,23 +296,23 @@ export class HotdealService {
       const pickProductFields = (product: ProductType | null | undefined) =>
         product
           ? {
-              pro_code: product.pro_code,
-              pro_name: product.pro_name,
-              pro_priceA: product.pro_priceA,
-              pro_priceB: product.pro_priceB,
-              pro_priceC: product.pro_priceC,
-              pro_imgmain: product.pro_imgmain,
-              pro_ratio1: product.pro_ratio1,
-              pro_ratio2: product.pro_ratio2,
-              pro_ratio3: product.pro_ratio3,
-              pro_unit1: product.pro_unit1,
-              pro_unit2: product.pro_unit2,
-              pro_unit3: product.pro_unit3,
-              pro_stock: product.pro_stock,
-              viwers: product.viwers,
-              order_quantity: product.order_quantity,
-              pro_lowest_stock: product.pro_lowest_stock,
-            }
+            pro_code: product.pro_code,
+            pro_name: product.pro_name,
+            pro_priceA: product.pro_priceA,
+            pro_priceB: product.pro_priceB,
+            pro_priceC: product.pro_priceC,
+            pro_imgmain: product.pro_imgmain,
+            pro_ratio1: product.pro_ratio1,
+            pro_ratio2: product.pro_ratio2,
+            pro_ratio3: product.pro_ratio3,
+            pro_unit1: product.pro_unit1,
+            pro_unit2: product.pro_unit2,
+            pro_unit3: product.pro_unit3,
+            pro_stock: product.pro_stock,
+            viwers: product.viwers,
+            order_quantity: product.order_quantity,
+            pro_lowest_stock: product.pro_lowest_stock,
+          }
           : null;
 
       return {
@@ -313,10 +325,12 @@ export class HotdealService {
         product2: pickProductFields(hotdeal.product2 as ProductType),
         shopping_cart: mem_code
           ? {
-              product_cart: (hotdeal.product as ProductType)?.inCarts || [],
-              product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
-            }
+            product_cart: (hotdeal.product as ProductType)?.inCarts || [],
+            product2_cart: (hotdeal.product2 as ProductType)?.inCarts || [],
+          }
           : 'ไม่เจอข้อมูล',
+        order: hotdeal.order,
+        special_deal: hotdeal.special_deal,
       };
     });
     return result;
@@ -328,17 +342,17 @@ export class HotdealService {
     shopping_cart: { pro1_unit: string; pro1_amount: string }[],
   ): Promise<
     | {
-        pro_code: string;
-        match: boolean;
-        countFreeBies: string;
-        product2: { pro_code: string; pro_name: string; pro_imgmain?: string };
-        hotdeal: {
-          pro1_amount: string;
-          pro1_unit: string;
-          pro2_amount: string;
-          pro2_unit: string;
-        };
-      }
+      pro_code: string;
+      match: boolean;
+      countFreeBies: string;
+      product2: { pro_code: string; pro_name: string; pro_imgmain?: string };
+      hotdeal: {
+        pro1_amount: string;
+        pro1_unit: string;
+        pro2_amount: string;
+        pro2_unit: string;
+      };
+    }
     | undefined
   > {
     try {
@@ -356,24 +370,16 @@ export class HotdealService {
         );
         fromFrontend += convertedFrontend ?? 0;
       }
-
-      // console.log('Total amount from frontend in smallest unit:', fromFrontend, pro_code);
-      // console.log('=======================================')
-
-      // console.log("before call convertToSmallestUnit From Database", pro_code, found?.pro1_amount, found?.pro1_unit);
       const fromDatabase = await this.convertToSmallestUnit(
         pro_code,
         found?.pro1_amount ?? '',
         found?.pro1_unit ?? '',
       );
-      // console.log('Converted amount from database in smallest unit:', fromDatabase);
 
       let match = false;
       if (found) {
         const amountInCart = fromFrontend ?? 0;
-        // console.log('Amount in cart (smallest unit):', amountInCart);
         const cal = Math.floor(amountInCart / (fromDatabase ?? 0));
-        // console.log('Calculation result (cal):', cal);
 
         const hotdealFreebies = found?.pro2_amount
           ? Math.floor(cal * Number(found.pro2_amount))
@@ -382,8 +388,6 @@ export class HotdealService {
         if ((fromDatabase ?? 0) > 0 && cal >= 1) {
           match = true;
         }
-        // console.log('Hotdeal freebies count:', hotdealFreebies);
-        // console.log('Match status:', match);
 
         return {
           pro_code,
@@ -418,7 +422,6 @@ export class HotdealService {
   ): Promise<number | null> {
     const product = await this.productService.getProductOne(pro_code);
     if (!product) {
-      // console.log(`No product found for pro_code ${pro_code}`);
       return null;
     }
 
@@ -430,9 +433,6 @@ export class HotdealService {
 
     const found = units.find((u) => u.unit === spc_unit);
     if (!found || !found.ratio) {
-      // console.log(
-      //   `No matching unit found for product ${pro_code} with unit ${spc_unit}`,
-      // );
       return null;
     }
     return Number(spc_amount) * Number(found.ratio);
@@ -462,5 +462,77 @@ export class HotdealService {
         order: true,
       },
     });
+  }
+
+  async uploadBannerHotdeal(file: Express.Multer.File | null, id_hotdeal: number) {
+    let imageUrl: string | undefined = undefined;
+    try {
+      if (!file) {
+        throw new Error('No file uploaded');
+      }
+      const hotdeal = await this.hotdealRepo.findOne({ where: { id: id_hotdeal } });
+      if (!hotdeal) {
+        throw new Error('Hotdeal not found');
+      }
+      const findBannerHotdeal = await this.bannerHotdealRepo.findOne({ where: { hotdeal: { id: id_hotdeal } } });
+      if (findBannerHotdeal) {
+        throw new Error('Banner for this hotdeal already exists');
+      }
+      const hasValidCredentials =
+        process.env.DO_SPACES_KEY &&
+        process.env.DO_SPACES_KEY !== 'placeholder' &&
+        process.env.DO_SPACES_SECRET &&
+        process.env.DO_SPACES_SECRET !== 'placeholder';
+      if (hasValidCredentials) {
+
+        const params = {
+          Bucket: 'wang-storage',
+          Key: `hotdeal-banners/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file?.originalname}`,
+          Body: file?.buffer,
+          ContentType: file?.mimetype,
+          ACL: 'public-read',
+        };
+        const uploadResult = await this.s3.upload(params).promise();
+        imageUrl = uploadResult.Location;
+      } else {
+        console.log(
+          '⚠️ S3 credentials not configured, using placeholder image',
+        );
+        const randomSeed = Date.now();
+        imageUrl = `https://picsum.photos/seed/${randomSeed}/1200/400`;
+        console.log('Placeholder URL:', imageUrl);
+      }
+
+      const bannerHotdeal = this.bannerHotdealRepo.create({
+        banner_url: imageUrl,
+        hotdeal: { id: hotdeal.id },
+      });
+      await this.bannerHotdealRepo.save(bannerHotdeal);
+    } catch (error) {
+      console.error('Error uploading banner for hotdeal:', error);
+      throw new Error('Something Error in uploadBannerHotdeal');
+    }
+  }
+
+  async getAllHotdealsWithBanners() {
+    try {
+      return await this.bannerHotdealRepo.find({
+        relations: ['hotdeal', 'hotdeal.product', 'hotdeal.product2'],
+        order: { banner_hotdeal_id: 'ASC' },
+      });
+    } catch (error) {
+      console.error('Error fetching hotdeals with banners:', error);
+      throw new Error('Something Error in getAllHotdealsWithBanners');
+    }
+  }
+  
+  async deleteBannerHotdeal(id: number) {
+    try {
+      await this.bannerHotdealRepo.delete(id);
+      return { message: 'Banner hotdeal deleted successfully' };
+    } catch (error) {
+      console.error('Error deleting banner hotdeal:', error);
+      throw new Error('Something Error in deleteBannerHotdeal');
+    }
   }
 }
