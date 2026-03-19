@@ -37,7 +37,7 @@ export class HotdealEntity {
   @Column({ type: 'int', default: 0 })
   order!: number;
 
-  @Column({ default: true })
+  @Column({ default: false })
   special_deal!: boolean;
 
   @OneToOne(() => BannerHotdealEntity, (banner) => banner.hotdeal, {
