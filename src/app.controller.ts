@@ -148,7 +148,7 @@ export class AppController {
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
-  ) { }
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -3698,8 +3698,7 @@ export class AppController {
     });
   }
 
-<<<<<<< feature/ECWC-44
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/upload-banner')
   @UseInterceptors(FileInterceptor('file'))
   async uploadHotdealBanner(
@@ -3709,17 +3708,18 @@ export class AppController {
     return await this.hotdealService.uploadBannerHotdeal(file, body.id);
   }
 
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/hotdeal/get-banner')
   async getHotdealBanner() {
     return await this.hotdealService.getAllHotdealsWithBanners();
   }
 
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Delete('/ecom/admin/hotdeal/delete-banner/:id')
   async deleteHotdealBanner(@Param('id') id: number) {
     return await this.hotdealService.deleteBannerHotdeal(id);
-=======
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/replace-product')
   async getReplacementProduct(
@@ -3727,6 +3727,5 @@ export class AppController {
     @Query('limit') limit: number = 10,
   ) {
     return await this.recommendService.getAllReplaceProducts(page, limit);
->>>>>>> develop
   }
 }
