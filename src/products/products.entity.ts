@@ -25,6 +25,7 @@ import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 import { RecommendEntity } from 'src/recommend/recommend.entity';
 import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
 import { integer } from 'aws-sdk/clients/cloudfront';
+import { text } from 'aws-sdk/clients/customerprofiles';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -244,4 +245,10 @@ export class ProductEntity {
 
   @OneToMany(() => ProductEntity, (product) => product.replace)
   replacedBy: ProductEntity[];
+
+  @Column({ nullable: true, type: 'text' })
+  replace_note!: string | null;
+
+  @Column({ nullable: true, type: 'date' })
+  replace_date_exp!: Date | null;
 }
