@@ -528,6 +528,34 @@ export class HotdealService {
   
   async deleteBannerHotdeal(id: number) {
     try {
+      const banner = await this.bannerHotdealRepo.findOne({
+        where: { banner_hotdeal_id: id },
+      });
+
+      if (banner && banner.banner_url) {
+        const bannerUrl = banner.banner_url;
+        if (bannerUrl.includes('digitaloceanspaces.com') && bannerUrl.includes('hotdeal-banners/')) {
+          const key = bannerUrl.substring(bannerUrl.indexOf('hotdeal-banners/'));
+          const hasValidCredentials =
+            process.env.DO_SPACES_KEY &&
+            process.env.DO_SPACES_KEY !== 'placeholder' &&
+            process.env.DO_SPACES_SECRET &&
+            process.env.DO_SPACES_SECRET !== 'placeholder';
+
+          if (hasValidCredentials) {
+            try {
+              const params = {
+                Bucket: 'wang-storage',
+                Key: decodeURIComponent(key),
+              };
+              await this.s3.deleteObject(params).promise();
+            } catch (s3Error) {
+              console.error('Error deleting image from S3:', s3Error);
+            }
+          }
+        }
+      }
+
       await this.bannerHotdealRepo.delete(id);
       return { message: 'Banner hotdeal deleted successfully' };
     } catch (error) {
