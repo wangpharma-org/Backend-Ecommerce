@@ -5,10 +5,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductsModule } from 'src/products/products.module';
 import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { UserEntity } from 'src/users/users.entity';
+import { BannerHotdealEntity } from './hotdeal-banner.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([HotdealEntity, UserEntity]),
+    TypeOrmModule.forFeature([HotdealEntity, UserEntity, BannerHotdealEntity]),
     ProductsModule,
     forwardRef(() => ShoppingCartModule),
   ],

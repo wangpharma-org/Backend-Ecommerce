@@ -469,15 +469,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -1100,13 +1100,18 @@ export class AppController {
     @Body()
     body: {
       data: HotdealInput;
-      pro_code?: string;
       id?: number;
       order?: number;
+      special_deal?: boolean;
     },
   ) {
     console.log('Saving Hotdeal:', body);
-    return this.hotdealService.saveHotdeal(body.data, body.id, body.order);
+    return this.hotdealService.saveHotdeal(
+      body.data,
+      body.id,
+      body.order,
+      body.special_deal,
+    );
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')
@@ -2964,9 +2969,9 @@ export class AppController {
   async getEligibleOrders(@Param('mem_code') mem_code: string) {
     try {
       return await this.productReturnService.getEligibleOrders(mem_code);
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -2984,9 +2989,9 @@ export class AppController {
         soh_running,
         req.user.mem_code,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3019,9 +3024,9 @@ export class AppController {
         ...data,
         initiator_type: InitiatorType.CUSTOMER,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3042,9 +3047,9 @@ export class AppController {
         files || [],
         description,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3062,9 +3067,9 @@ export class AppController {
         parseInt(return_id),
         req.user.mem_code,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3085,9 +3090,9 @@ export class AppController {
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3101,9 +3106,9 @@ export class AppController {
       return await this.productReturnService.getReturnDetail(
         parseInt(return_id),
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3121,9 +3126,9 @@ export class AppController {
         parseInt(return_id),
         req.user.mem_code,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3143,9 +3148,9 @@ export class AppController {
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3163,9 +3168,9 @@ export class AppController {
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3193,9 +3198,9 @@ export class AppController {
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3216,9 +3221,9 @@ export class AppController {
         req.user.name,
         comment,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3239,9 +3244,9 @@ export class AppController {
         req.user.name,
         comment,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3262,9 +3267,9 @@ export class AppController {
         req.user.name,
         data,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3285,9 +3290,9 @@ export class AppController {
         req.user.name,
         comment,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3305,9 +3310,9 @@ export class AppController {
         parseInt(return_id),
         notes,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3322,9 +3327,9 @@ export class AppController {
   ) {
     try {
       return await this.productReturnService.getStats({ from_date, to_date });
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3343,9 +3348,9 @@ export class AppController {
       data.ip_address = ip;
       data.user_agent = req.headers['user-agent'];
       return await this.behaviorTrackingService.trackEvent(data);
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3367,9 +3372,9 @@ export class AppController {
         user_agent: userAgent,
       }));
       return await this.behaviorTrackingService.trackBatch(data);
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3389,9 +3394,9 @@ export class AppController {
         from_date,
         to_date,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3411,9 +3416,9 @@ export class AppController {
         from_date,
         to_date,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3431,9 +3436,9 @@ export class AppController {
         from_date,
         to_date,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3451,9 +3456,9 @@ export class AppController {
         from_date,
         to_date,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3471,9 +3476,9 @@ export class AppController {
         from_date,
         to_date,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3493,9 +3498,9 @@ export class AppController {
         to_date,
         limit ? parseInt(limit) : 10,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3509,9 +3514,9 @@ export class AppController {
       return await this.behaviorTrackingService.getRecentActivity(
         limit ? parseInt(limit) : 50,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3525,9 +3530,9 @@ export class AppController {
       return await this.behaviorTrackingService.getUserJourneys(
         limit ? parseInt(limit) : 20,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3547,9 +3552,9 @@ export class AppController {
         to_date,
         limit ? parseInt(limit) : 30,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3567,9 +3572,9 @@ export class AppController {
         days ? parseInt(days) : 7,
         limit ? parseInt(limit) : 20,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3587,9 +3592,9 @@ export class AppController {
         days ? parseInt(days) : 30,
         limit ? parseInt(limit) : 20,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3603,9 +3608,9 @@ export class AppController {
       return await this.behaviorTrackingService.getCustomerSegments(
         days ? parseInt(days) : 90,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3619,9 +3624,9 @@ export class AppController {
       return await this.behaviorTrackingService.getRetentionAnalysis(
         weeks ? parseInt(weeks) : 8,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3635,9 +3640,9 @@ export class AppController {
       return await this.behaviorTrackingService.getRepeatPurchasePatterns(
         days ? parseInt(days) : 180,
       );
-    } catch (error) {
+    } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: error.message },
+        { success: false, message: (error as Error).message },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3691,6 +3696,28 @@ export class AppController {
       mem_code,
       token: body.token,
     });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/hotdeal/upload-banner')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadHotdealBanner(
+    @Body() body: { id: number },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.hotdealService.uploadBannerHotdeal(file, body.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/hotdeal/get-banner')
+  async getHotdealBanner() {
+    return await this.hotdealService.getAllHotdealsWithBanners();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/admin/hotdeal/delete-banner/:id')
+  async deleteHotdealBanner(@Param('id') id: number) {
+    return await this.hotdealService.deleteBannerHotdeal(id);
   }
 
   @UseGuards(JwtAuthGuard)
