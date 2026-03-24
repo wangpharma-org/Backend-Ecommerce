@@ -10,6 +10,7 @@ import {
   LessThanOrEqual,
   In,
 } from 'typeorm';
+import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
@@ -43,6 +44,8 @@ export class PromotionService {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(ShoppingOrderEntity)
+    private readonly shoppingOrderRepo: Repository<ShoppingOrderEntity>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -927,6 +930,158 @@ export class PromotionService {
       );
     } catch {
       throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async getGiftProcodesInOrder(soh_running: string): Promise<string[]> {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+      const orderItems = await this.shoppingOrderRepo
+        .createQueryBuilder('o')
+        .where('o.soh_running = :soh_running', { soh_running })
+        .select(['o.pro_code'])
+        .getMany();
+
+      if (!orderItems.length) return [];
+
+      const orderProcodes = orderItems.map((i) => i.pro_code);
+
+      const activeRewards = await this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoin('reward.tier', 'tier')
+        .leftJoin('tier.promotion', 'promotion')
+        .leftJoin('reward.giftProduct', 'giftProduct')
+        .where('promotion.status = true')
+        .andWhere('promotion.start_date <= :endOfDay', { endOfDay })
+        .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
+        .select(['reward.reward_id', 'giftProduct.pro_code'])
+        .getMany();
+
+      const rewardProcodes = activeRewards.map((r) => r.giftProduct.pro_code);
+
+      return orderProcodes.filter((p) => rewardProcodes.includes(p));
+    } catch (error) {
+      console.error('getGiftProcodesInOrder error:', error);
+      return [];
+    }
+  }
+
+  async checkGiftsAfterRt(
+    soh_running: string,
+    rt_procode: string,
+  ): Promise<{
+    shouldRtGifts: boolean;
+    giftsToRt: {
+      pro_code: string;
+      pro_name: string;
+      qty: number;
+      unit: string;
+      tier_name: string;
+    }[];
+  }> {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+      // 1. ดึง items ทั้งหมดในออเดอร์นี้
+      const orderItems = await this.shoppingOrderRepo
+        .createQueryBuilder('o')
+        .where('o.soh_running = :soh_running', { soh_running })
+        .select(['o.pro_code', 'o.spo_total_decimal', 'o.spo_qty', 'o.spo_unit'])
+        .getMany();
+
+      if (!orderItems.length) {
+        return { shouldRtGifts: false, giftsToRt: [] };
+      }
+
+      // 2. ดึง tiers ทั้งหมดของ promotion ที่ active อยู่
+      const activeTiers = await this.promotionTierRepo.find({
+        where: {
+          promotion: {
+            status: true,
+            start_date: LessThanOrEqual(startOfDay),
+            end_date: MoreThanOrEqual(endOfDay),
+          },
+        },
+        relations: {
+          conditions: { product: true },
+          rewards: { giftProduct: true },
+          promotion: true,
+        },
+        select: {
+          tier_id: true,
+          tier_name: true,
+          min_amount: true,
+          all_products: true,
+          conditions: { cond_id: true, product: { pro_code: true } },
+          rewards: {
+            reward_id: true,
+            qty: true,
+            unit: true,
+            giftProduct: { pro_code: true, pro_name: true },
+          },
+          promotion: { promo_id: true },
+        },
+      });
+
+      const giftsToRt: {
+        pro_code: string;
+        pro_name: string;
+        qty: number;
+        unit: string;
+        tier_name: string;
+      }[] = [];
+
+      for (const tier of activeTiers) {
+        const rewardProcodes = tier.rewards.map((r) => r.giftProduct.pro_code);
+
+        // หา gift items ที่มีอยู่ในออเดอร์นี้จริงๆ
+        const giftItemsInOrder = orderItems.filter((i) =>
+          rewardProcodes.includes(i.pro_code),
+        );
+        if (giftItemsInOrder.length === 0) continue;
+
+        // คำนวณ condition products
+        const conditionProcodes = tier.all_products
+          ? orderItems
+              .filter((i) => !rewardProcodes.includes(i.pro_code))
+              .map((i) => i.pro_code)
+          : tier.conditions.map((c) => c.product.pro_code);
+
+        // ยอดรวมหลังตัด rt_procode ออก
+        const remainingTotal = orderItems
+          .filter(
+            (i) =>
+              conditionProcodes.includes(i.pro_code) &&
+              i.pro_code !== rt_procode,
+          )
+          .reduce((sum, i) => sum + Number(i.spo_total_decimal), 0);
+
+        if (remainingTotal < Number(tier.min_amount)) {
+          for (const giftItem of giftItemsInOrder) {
+            if (giftsToRt.find((g) => g.pro_code === giftItem.pro_code)) continue;
+            const reward = tier.rewards.find(
+              (r) => r.giftProduct.pro_code === giftItem.pro_code,
+            );
+            giftsToRt.push({
+              pro_code: giftItem.pro_code,
+              pro_name: reward?.giftProduct?.pro_name ?? giftItem.pro_code,
+              qty: reward?.qty ?? 1,
+              unit: reward?.unit ?? '',
+              tier_name: tier.tier_name,
+            });
+          }
+        }
+      }
+
+      return { shouldRtGifts: giftsToRt.length > 0, giftsToRt };
+    } catch (error) {
+      console.error('checkGiftsAfterRt error:', error);
+      return { shouldRtGifts: false, giftsToRt: [] };
     }
   }
 }

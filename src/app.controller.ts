@@ -3728,4 +3728,20 @@ export class AppController {
   ) {
     return await this.recommendService.getAllReplaceProducts(page, limit);
   }
+
+  // TODO: playground — เรียกตอน order_insert เพื่อรู้ว่า item ไหนเป็น gift
+  @Get('/order-picking/gift-items')
+  async getGiftItemsInOrder(@Query('soh_running') soh_running: string) {
+    const giftProcodes = await this.promotionService.getGiftProcodesInOrder(soh_running);
+    return { giftProcodes };
+  }
+
+  // TODO: playground — เรียกจาก Order Picking BE เมื่อมีการ RT สินค้า
+  @Get('/order-picking/promotion-check')
+  async checkPromotionAfterRt(
+    @Query('soh_running') soh_running: string,
+    @Query('rt_procode') rt_procode: string,
+  ) {
+    return this.promotionService.checkGiftsAfterRt(soh_running, rt_procode);
+  }
 }

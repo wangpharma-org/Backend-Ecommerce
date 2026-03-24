@@ -12,6 +12,7 @@ import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
+import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { UserEntity } from 'src/users/users.entity';
       CodePromotionEntity,
       ProductEntity,
       UserEntity,
+      ShoppingOrderEntity,
     ]),
     ShoppingCartModule,
     AuthModule,
