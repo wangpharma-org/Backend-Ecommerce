@@ -88,6 +88,7 @@ import {
 } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
+import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 
 interface JwtPayload {
   username: string;
@@ -104,6 +105,12 @@ interface JwtPayload {
   mem_phone?: string;
   mem_route?: string;
   permission?: boolean;
+}
+
+interface CompanyDayContextPayload {
+  promo_name?: string;
+  tier?: string;
+  source?: string;
 }
 
 @Controller()
@@ -148,7 +155,37 @@ export class AppController {
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
+
+  private normalizeCompanyDayContext(
+    context?: CompanyDayContextPayload,
+  ): { promo_name: string; tier: string; source: string } | null {
+    if (!context) return null;
+    const promoName = context.promo_name?.trim();
+    const tier = context.tier?.trim();
+    if (!promoName || !tier) return null;
+    return {
+      promo_name: promoName,
+      tier,
+      source: context.source?.trim() || 'web',
+    };
+  }
+
+  private emitCompanyDayEvent(
+    event: 'addcart' | 'purchase',
+    memCode: string,
+    context?: CompanyDayContextPayload,
+  ): void {
+    const normalized = this.normalizeCompanyDayContext(context);
+    if (!normalized || !memCode?.trim()) return;
+
+    void this.companyDayAnalyticService.sendAnalytic({
+      ...normalized,
+      event,
+      mem_code: memCode.trim(),
+    });
+  }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -482,13 +519,16 @@ export class AppController {
       paymentOptions: string;
       shippingOptions: string;
       addressed: string;
+      company_day_context?: CompanyDayContextPayload;
     },
   ) {
     const mem_code = req.user.mem_code;
-    return await this.shoppingOrderService.submitOrder(
+    const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
+    this.emitCompanyDayEvent('purchase', mem_code, data.company_day_context);
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -565,7 +605,9 @@ export class AppController {
       amount: number;
       // pro_freebie: number;
       flashsale_end: string;
+      cartVersion?: string | number;
       clientVersion?: string;
+      company_day_context?: CompanyDayContextPayload;
     },
   ) {
     console.log('Add to cart data:', data);
@@ -581,17 +623,24 @@ export class AppController {
       // is_reward: boolean;
       flashsale_end: string;
       // hotdeal_free: boolean;
-      clientVersion?: string;
+      clientVersion?: string | number;
     } = {
-      ...data,
       mem_code,
+      pro_code: data.pro_code,
+      pro_unit: data.pro_unit,
+      amount: data.amount,
       priceCondition,
       mem_route: req.user.mem_route,
+      flashsale_end: data.flashsale_end,
+      clientVersion: data.clientVersion ?? data.cartVersion,
     };
     console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+    if (Number(data.amount) > 0) {
+      this.emitCompanyDayEvent('addcart', mem_code, data.company_day_context);
+    }
     return {
       cart,
       summaryCart: summaryCart.total,
