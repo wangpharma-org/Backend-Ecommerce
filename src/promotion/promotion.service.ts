@@ -954,7 +954,7 @@ export class PromotionService {
 
       const uploadParams = {
         Bucket: 'wang-storage',
-        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file.originalname}`,
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         Body: file.buffer,
         ContentType: file.mimetype,
         ACL: 'public-read',
