@@ -113,6 +113,18 @@ interface CompanyDayContextPayload {
   source?: string;
 }
 
+interface CompanyDayTierCandidate {
+  tier_name?: string;
+  min_amount?: number | string;
+  promotion?: {
+    promo_name?: string;
+  };
+}
+
+interface CompanyDayProductTierCandidate {
+  tier?: CompanyDayTierCandidate;
+}
+
 @Controller()
 export class AppController {
   // Add simple lock to prevent race condition
@@ -168,8 +180,32 @@ export class AppController {
     return {
       promo_name: promoName,
       tier,
-      source: context.source?.trim() || 'web',
+      source: this.normalizeCompanyDaySource(context.source),
     };
+  }
+
+  private normalizeCompanyDaySource(source?: string): string {
+    const raw = source?.trim();
+    if (!raw) return 'web';
+    if (!raw.startsWith('/')) return raw;
+
+    const pathname = raw.split('?')[0].split('#')[0];
+    const sourceByPath: Record<string, string> = {
+      '/': 'Home',
+      '/cart': 'Cart',
+      '/product-list': 'Product List',
+      '/product-detail': 'Product Detail',
+      '/hotdeal': 'Hotdeal',
+    };
+
+    if (sourceByPath[pathname]) return sourceByPath[pathname];
+
+    const firstSegment = pathname.split('/').filter(Boolean)[0];
+    if (!firstSegment) return 'Home';
+
+    return firstSegment
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   private emitCompanyDayEvent(
@@ -185,6 +221,83 @@ export class AppController {
       event,
       mem_code: memCode.trim(),
     });
+  }
+
+  private pickCompanyDayContextFromCandidates(
+    tiers: CompanyDayTierCandidate[] | undefined,
+    cartTotal: number,
+    source: string,
+  ): CompanyDayContextPayload | undefined {
+    if (!tiers?.length || !Number.isFinite(cartTotal) || cartTotal < 0) {
+      return undefined;
+    }
+
+    const normalized = tiers
+      .map((tier) => ({
+        tier_name: tier.tier_name?.trim() || '',
+        min_amount: Number(tier.min_amount || 0),
+        promo_name: tier.promotion?.promo_name?.trim() || '',
+      }))
+      .filter((tier) => tier.tier_name && Number.isFinite(tier.min_amount))
+      .sort((a, b) => a.min_amount - b.min_amount);
+
+    if (!normalized.length) return undefined;
+
+    const eligible = [...normalized]
+      .reverse()
+      .find((tier) => cartTotal >= tier.min_amount);
+    const selectedTier = eligible ?? normalized[0];
+
+    return {
+      promo_name:
+        selectedTier.promo_name || `Company Day - ${selectedTier.tier_name}`,
+      tier: selectedTier.tier_name,
+      source,
+    };
+  }
+
+  private async resolveCompanyDayContextFromProductCartTotal(
+    proCode: string,
+    memCode: string,
+    cartTotal: number,
+  ): Promise<CompanyDayContextPayload | undefined> {
+    if (!proCode?.trim() || !memCode?.trim()) return undefined;
+
+    try {
+      const productTierRows = (await this.promotionService.getTierWithProCode(
+        proCode.trim(),
+        memCode.trim(),
+      )) as CompanyDayProductTierCandidate[];
+      const tierCandidates = (productTierRows || [])
+        .map((item) => item?.tier)
+        .filter(Boolean) as CompanyDayTierCandidate[];
+
+      return this.pickCompanyDayContextFromCandidates(
+        tierCandidates,
+        cartTotal,
+        'cart_product_tier_progress',
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async resolveCompanyDayContextFromCartTotal(
+    cartTotal: number,
+  ): Promise<CompanyDayContextPayload | undefined> {
+    if (!Number.isFinite(cartTotal) || cartTotal <= 0) return undefined;
+
+    try {
+      const tiers =
+        (await this.promotionService.getTierAllProduct()) as CompanyDayTierCandidate[];
+      return this.pickCompanyDayContextFromCandidates(
+        tiers,
+        cartTotal,
+        'cart_tier_progress',
+      );
+    } catch {
+      return undefined;
+    }
   }
 
   @Get('/ecom/get-data/:soh_running')
@@ -506,15 +619,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -638,14 +751,38 @@ export class AppController {
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    if (Number(data.amount) > 0) {
-      this.emitCompanyDayEvent('addcart', mem_code, data.company_day_context);
+    const requestContext = this.normalizeCompanyDayContext(
+      data.company_day_context,
+    );
+    const productContext =
+      Number(data.amount) > 0
+        ? this.normalizeCompanyDayContext(
+            await this.resolveCompanyDayContextFromProductCartTotal(
+              data.pro_code,
+              mem_code,
+              Number(summaryCart?.total || 0),
+            ),
+          )
+        : null;
+    const fallbackContext =
+      Number(data.amount) > 0
+        ? this.normalizeCompanyDayContext(
+            await this.resolveCompanyDayContextFromCartTotal(
+              Number(summaryCart?.total || 0),
+            ),
+          )
+        : null;
+    const resolvedContext = productContext ?? fallbackContext ?? requestContext;
+
+    if (Number(data.amount) > 0 && resolvedContext) {
+      this.emitCompanyDayEvent('addcart', mem_code, resolvedContext);
     }
     return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
+      companyDayContext: resolvedContext ?? undefined,
     };
   }
 
