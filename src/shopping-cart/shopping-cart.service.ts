@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  forwardRef,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, Not, Brackets } from 'typeorm';
@@ -159,7 +165,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
-  ) {}
+  ) { }
 
   private async isL16Member(
     mem_code?: string,
@@ -234,8 +240,7 @@ export class ShoppingCartService {
       .setParameter('l16', 1)
       .execute();
 
-    const removed =
-      (deleteMain.affected ?? 0) + (deleteFreebies.affected ?? 0);
+    const removed = (deleteMain.affected ?? 0) + (deleteFreebies.affected ?? 0);
     if (removed > 0) {
       await this.incrementCartVersion(mem_code);
       return true;
@@ -243,9 +248,7 @@ export class ShoppingCartService {
     return false;
   }
 
-  private normalizeCartVersion(
-    value?: string | number | null,
-  ): string {
+  private normalizeCartVersion(value?: string | number | null): string {
     if (value === null || value === undefined) {
       return '0';
     }
@@ -336,10 +339,14 @@ export class ShoppingCartService {
   private async handleCheckFlashsale(pro_code: string) {
     const data = await this.productRepo.findOne({
       where: { pro_code },
-      relations: { flashsale: { flashsale: true }},
+      relations: { flashsale: { flashsale: true } },
     });
     console.log('Flashsale data:', data);
-    if (!data || !data.flashsale || data.flashsale[0]?.flashsale.is_active === false) {
+    if (
+      !data ||
+      !data.flashsale ||
+      data.flashsale[0]?.flashsale.is_active === false
+    ) {
       await this.shoppingCartRepo.update({ pro_code }, { flashsale_end: null });
       throw new Error('No flashsale data found');
     }
@@ -361,7 +368,7 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
-      
+
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
         where: {
@@ -430,14 +437,16 @@ export class ShoppingCartService {
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
       });
-      
+
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
-
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException || error instanceof BadRequestException) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
@@ -480,7 +489,10 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException || error instanceof BadRequestException) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
@@ -705,14 +717,22 @@ export class ShoppingCartService {
       .innerJoin('tier.promotion', 'promo')
       .innerJoin('cond.product', 'prod')
       .select(['promo.promo_id AS promo_id', 'prod.pro_code AS pro_code'])
-      .getRawMany<{ promo_id: number; pro_code: string }>();
+      .select([
+        'promo.promo_id AS promo_id',
+        'tier.tier_id AS tier_id',
+        'prod.pro_code AS pro_code',
+      ])
+      .where('promo.status = :status', { status: true })
+      .andWhere('promo.start_date <= :today', { today })
+      .andWhere('promo.end_date >= :today', { today })
+      .getRawMany<{ promo_id: number; tier_id: number; pro_code: string }>();
 
-    const promoConditionMap = new Map<number, Set<string>>();
-    for (const { promo_id, pro_code } of promoConditions) {
-      if (!promoConditionMap.has(promo_id)) {
-        promoConditionMap.set(promo_id, new Set());
+    const tierConditionMap = new Map<number, Set<string>>();
+    for (const { tier_id, pro_code } of promoConditions) {
+      if (!tierConditionMap.has(tier_id)) {
+        tierConditionMap.set(tier_id, new Set());
       }
-      promoConditionMap.get(promo_id)!.add(pro_code);
+      tierConditionMap.get(tier_id)!.add(pro_code);
     }
 
     // 8) โปรโมชั่นที่ all_products = true (แจกของทุกสินค้า)
@@ -771,45 +791,37 @@ export class ShoppingCartService {
     // 9) โปรโมชั่นแบบมี condition ต่อโปรโมชัน (คำนวณจาก baseEligibleCart + conditionCodes)
     for (const promo of promotions) {
       if (!promo.tiers?.length) continue;
+      for (const tier of promo.tiers) {
+        if (allProductTiers.some((apt) => apt.tier_id === tier.tier_id))
+          continue;
 
-      const conditionCodes = promoConditionMap.get(promo.promo_id) || new Set();
+        const conditionCodes = tierConditionMap.get(tier.tier_id);
+        if (!conditionCodes || conditionCodes.size === 0) continue;
 
-      // ใช้ baseEligibleCart แล้วกรองเฉพาะสินค้าตาม condition ของ "โปรโมชันนี้"
-      const remaining = baseEligibleCart.reduce((sum, line) => {
-        if (!conditionCodes.has(line.pro_code)) return sum;
+        const tierTotal = baseEligibleCart.reduce((sum, line) => {
+          if (!conditionCodes.has(line.pro_code)) return sum;
 
-        const p = line.product;
-        const ratio =
-          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-          1;
-        const price =
-          priceOption === 'A'
-            ? Number(p.pro_priceA)
-            : priceOption === 'B'
-              ? Number(p.pro_priceB)
-              : Number(p.pro_priceC);
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+          const price =
+            priceOption === 'A'
+              ? Number(p.pro_priceA)
+              : priceOption === 'B'
+                ? Number(p.pro_priceB)
+                : Number(p.pro_priceC);
 
-        return sum + Number(line.spc_amount) * price * Number(ratio);
-      }, 0);
+          return sum + Number(line.spc_amount) * price * Number(ratio);
+        }, 0);
 
-      console.log(`promo_id=${promo.promo_id}, remaining=${remaining}`);
-      if (remaining <= 0) continue;
-
-      const tiersDesc = [...promo.tiers].sort(
-        (a, b) => Number(b.min_amount) - Number(a.min_amount),
-      );
-
-      let remainingBudget = remaining;
-      for (const tier of tiersDesc) {
         const threshold = Number(tier.min_amount);
-        if (!threshold || remainingBudget < threshold) continue;
+        if (!threshold || tierTotal < threshold) continue;
 
-        const multiplier = Math.floor(remainingBudget / threshold);
+        const multiplier = Math.floor(tierTotal / threshold);
         if (multiplier <= 0) continue;
-
-        remainingBudget -= multiplier * threshold;
 
         for (const rw of tier.rewards || []) {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
@@ -1148,7 +1160,11 @@ export class ShoppingCartService {
         .leftJoinAndSelect('cart.product', 'product')
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
-        .leftJoinAndSelect('fs.flashsale', 'flashsale', 'flashsale.is_active = 1')
+        .leftJoinAndSelect(
+          'fs.flashsale',
+          'flashsale',
+          'flashsale.is_active = 1',
+        )
         .leftJoinAndSelect('product.recommend', 'recommend')
         .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect(
@@ -1316,13 +1332,10 @@ export class ShoppingCartService {
             pro_code: group.pro_code, // เพิ่ม pro_code ใน orderItems
           }));
 
-          console.log('orderItems:', orderItems);
-
           // คำนวณหน่วยที่เล็กที่สุดสำหรับ pro_code นี้
           return this.productsService.calculateSmallestUnit(orderItems);
         }),
       );
-      console.log('totalSmallestUnit:', totalSmallestUnit);
 
       const ProductMaptotalSmallestUnit = totalSmallestUnit.map(
         (total, index) => ({
@@ -1516,8 +1529,8 @@ export class ShoppingCartService {
                 time_end: true,
                 time_start: true,
                 date: true,
-              }
-            }
+              },
+            },
           },
           member: {
             mem_code: true,
