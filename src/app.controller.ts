@@ -88,7 +88,10 @@ import {
 } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
-import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+import {
+  CompanyDayAnalyticService,
+  CompanyDayContextPayload,
+} from './company-day-analytic/company-day-analytic.service';
 
 interface JwtPayload {
   username: string;
@@ -105,24 +108,6 @@ interface JwtPayload {
   mem_phone?: string;
   mem_route?: string;
   permission?: boolean;
-}
-
-interface CompanyDayContextPayload {
-  promo_name?: string;
-  tier?: string;
-  source?: string;
-}
-
-interface CompanyDayTierCandidate {
-  tier_name?: string;
-  min_amount?: number | string;
-  promotion?: {
-    promo_name?: string;
-  };
-}
-
-interface CompanyDayProductTierCandidate {
-  tier?: CompanyDayTierCandidate;
 }
 
 @Controller()
@@ -169,136 +154,6 @@ export class AppController {
     private readonly trackOrderService: TrackOrderService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
-
-  private normalizeCompanyDayContext(
-    context?: CompanyDayContextPayload,
-  ): { promo_name: string; tier: string; source: string } | null {
-    if (!context) return null;
-    const promoName = context.promo_name?.trim();
-    const tier = context.tier?.trim();
-    if (!promoName || !tier) return null;
-    return {
-      promo_name: promoName,
-      tier,
-      source: this.normalizeCompanyDaySource(context.source),
-    };
-  }
-
-  private normalizeCompanyDaySource(source?: string): string {
-    const raw = source?.trim();
-    if (!raw) return 'web';
-    if (!raw.startsWith('/')) return raw;
-
-    const pathname = raw.split('?')[0].split('#')[0];
-    const sourceByPath: Record<string, string> = {
-      '/': 'Home',
-      '/cart': 'Cart',
-      '/product-list': 'Product List',
-      '/product-detail': 'Product Detail',
-      '/hotdeal': 'Hotdeal',
-    };
-
-    if (sourceByPath[pathname]) return sourceByPath[pathname];
-
-    const firstSegment = pathname.split('/').filter(Boolean)[0];
-    if (!firstSegment) return 'Home';
-
-    return firstSegment
-      .replace(/[-_]/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-  }
-
-  private emitCompanyDayEvent(
-    event: 'addcart' | 'purchase',
-    memCode: string,
-    context?: CompanyDayContextPayload,
-  ): void {
-    const normalized = this.normalizeCompanyDayContext(context);
-    if (!normalized || !memCode?.trim()) return;
-
-    void this.companyDayAnalyticService.sendAnalytic({
-      ...normalized,
-      event,
-      mem_code: memCode.trim(),
-    });
-  }
-
-  private pickCompanyDayContextFromCandidates(
-    tiers: CompanyDayTierCandidate[] | undefined,
-    cartTotal: number,
-    source: string,
-  ): CompanyDayContextPayload | undefined {
-    if (!tiers?.length || !Number.isFinite(cartTotal) || cartTotal < 0) {
-      return undefined;
-    }
-
-    const normalized = tiers
-      .map((tier) => ({
-        tier_name: tier.tier_name?.trim() || '',
-        min_amount: Number(tier.min_amount || 0),
-        promo_name: tier.promotion?.promo_name?.trim() || '',
-      }))
-      .filter((tier) => tier.tier_name && Number.isFinite(tier.min_amount))
-      .sort((a, b) => a.min_amount - b.min_amount);
-
-    if (!normalized.length) return undefined;
-
-    const eligible = [...normalized]
-      .reverse()
-      .find((tier) => cartTotal >= tier.min_amount);
-    const selectedTier = eligible ?? normalized[0];
-
-    return {
-      promo_name:
-        selectedTier.promo_name || `Company Day - ${selectedTier.tier_name}`,
-      tier: selectedTier.tier_name,
-      source,
-    };
-  }
-
-  private async resolveCompanyDayContextFromProductCartTotal(
-    proCode: string,
-    memCode: string,
-    cartTotal: number,
-  ): Promise<CompanyDayContextPayload | undefined> {
-    if (!proCode?.trim() || !memCode?.trim()) return undefined;
-
-    try {
-      const productTierRows = (await this.promotionService.getTierWithProCode(
-        proCode.trim(),
-        memCode.trim(),
-      )) as CompanyDayProductTierCandidate[];
-      const tierCandidates = (productTierRows || [])
-        .map((item) => item?.tier)
-        .filter(Boolean) as CompanyDayTierCandidate[];
-
-      return this.pickCompanyDayContextFromCandidates(
-        tierCandidates,
-        cartTotal,
-        'cart_product_tier_progress',
-      );
-    } catch {
-      return undefined;
-    }
-  }
-
-  private async resolveCompanyDayContextFromCartTotal(
-    cartTotal: number,
-  ): Promise<CompanyDayContextPayload | undefined> {
-    if (!Number.isFinite(cartTotal) || cartTotal <= 0) return undefined;
-
-    try {
-      const tiers =
-        (await this.promotionService.getTierAllProduct()) as CompanyDayTierCandidate[];
-      return this.pickCompanyDayContextFromCandidates(
-        tiers,
-        cartTotal,
-        'cart_tier_progress',
-      );
-    } catch {
-      return undefined;
-    }
-  }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -640,7 +495,11 @@ export class AppController {
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
-    this.emitCompanyDayEvent('purchase', mem_code, data.company_day_context);
+    this.companyDayAnalyticService.emitEvent(
+      'purchase',
+      mem_code,
+      data.company_day_context,
+    );
     return result;
   }
 
@@ -751,13 +610,13 @@ export class AppController {
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    const requestContext = this.normalizeCompanyDayContext(
+    const requestContext = this.companyDayAnalyticService.normalizeContext(
       data.company_day_context,
     );
     const productContext =
       Number(data.amount) > 0
-        ? this.normalizeCompanyDayContext(
-            await this.resolveCompanyDayContextFromProductCartTotal(
+        ? this.companyDayAnalyticService.normalizeContext(
+            await this.companyDayAnalyticService.resolveContextFromProductCartTotal(
               data.pro_code,
               mem_code,
               Number(summaryCart?.total || 0),
@@ -766,8 +625,8 @@ export class AppController {
         : null;
     const fallbackContext =
       Number(data.amount) > 0
-        ? this.normalizeCompanyDayContext(
-            await this.resolveCompanyDayContextFromCartTotal(
+        ? this.companyDayAnalyticService.normalizeContext(
+            await this.companyDayAnalyticService.resolveContextFromCartTotal(
               Number(summaryCart?.total || 0),
             ),
           )
@@ -775,7 +634,11 @@ export class AppController {
     const resolvedContext = productContext ?? fallbackContext ?? requestContext;
 
     if (Number(data.amount) > 0 && resolvedContext) {
-      this.emitCompanyDayEvent('addcart', mem_code, resolvedContext);
+      this.companyDayAnalyticService.emitEvent(
+        'addcart',
+        mem_code,
+        resolvedContext,
+      );
     }
     return {
       cart,
