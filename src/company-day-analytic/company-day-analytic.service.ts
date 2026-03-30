@@ -71,7 +71,7 @@ export class CompanyDayAnalyticService
   }
 
   emitEvent(
-    event: 'addcart' | 'purchase',
+    event: 'view' | 'addcart' | 'purchase',
     memCode: string,
     context?: CompanyDayContextPayload,
   ): void {

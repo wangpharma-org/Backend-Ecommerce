@@ -495,10 +495,23 @@ export class AppController {
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
+    const computedPurchaseContext = this.companyDayAnalyticService.normalizeContext(
+        await this.companyDayAnalyticService.resolveContextFromCartTotal(
+          Number(data.total_price || 0),
+        ),
+      );
+    const purchaseContext = computedPurchaseContext
+      ? this.companyDayAnalyticService.normalizeContext({
+          promo_name: computedPurchaseContext.promo_name,
+          tier: computedPurchaseContext.tier,
+          source:
+            data.company_day_context?.source ?? computedPurchaseContext.source,
+        })
+      : null;
     this.companyDayAnalyticService.emitEvent(
       'purchase',
       mem_code,
-      data.company_day_context,
+      purchaseContext ?? undefined,
     );
     return result;
   }
@@ -610,9 +623,6 @@ export class AppController {
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    const requestContext = this.companyDayAnalyticService.normalizeContext(
-      data.company_day_context,
-    );
     const productContext =
       Number(data.amount) > 0
         ? this.companyDayAnalyticService.normalizeContext(
@@ -631,7 +641,14 @@ export class AppController {
             ),
           )
         : null;
-    const resolvedContext = productContext ?? fallbackContext ?? requestContext;
+    const computedContext = productContext ?? fallbackContext;
+    const resolvedContext = computedContext
+      ? this.companyDayAnalyticService.normalizeContext({
+          promo_name: computedContext.promo_name,
+          tier: computedContext.tier,
+          source: data.company_day_context?.source ?? computedContext.source,
+        })
+      : null;
 
     if (Number(data.amount) > 0 && resolvedContext) {
       this.companyDayAnalyticService.emitEvent(
@@ -647,6 +664,22 @@ export class AppController {
       cartSyncedAt,
       companyDayContext: resolvedContext ?? undefined,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/company-day/view')
+  async trackCompanyDayView(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      promo_name: string;
+      tier: string;
+      source?: string;
+    },
+  ) {
+    const mem_code = req.user.mem_code;
+    this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    return { success: true };
   }
 
   @UseGuards(JwtAuthGuard)
