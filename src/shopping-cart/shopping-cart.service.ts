@@ -165,7 +165,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
-  ) { }
+  ) {}
 
   private async isL16Member(
     mem_code?: string,
@@ -721,7 +721,6 @@ export class ShoppingCartService {
       .innerJoin('cond.tier', 'tier')
       .innerJoin('tier.promotion', 'promo')
       .innerJoin('cond.product', 'prod')
-      .select(['promo.promo_id AS promo_id', 'prod.pro_code AS pro_code'])
       .select([
         'promo.promo_id AS promo_id',
         'tier.tier_id AS tier_id',
@@ -732,12 +731,12 @@ export class ShoppingCartService {
       .andWhere('promo.end_date >= :today', { today })
       .getRawMany<{ promo_id: number; tier_id: number; pro_code: string }>();
 
-    const tierConditionMap = new Map<number, Set<string>>();
+    const promoConditionMap = new Map<number, Set<string>>();
     for (const { tier_id, pro_code } of promoConditions) {
-      if (!tierConditionMap.has(tier_id)) {
-        tierConditionMap.set(tier_id, new Set());
+      if (!promoConditionMap.has(tier_id)) {
+        promoConditionMap.set(tier_id, new Set());
       }
-      tierConditionMap.get(tier_id)!.add(pro_code);
+      promoConditionMap.get(tier_id)!.add(pro_code);
     }
 
     // 8) โปรโมชั่นที่ all_products = true (แจกของทุกสินค้า)
@@ -803,18 +802,23 @@ export class ShoppingCartService {
       }
     }
 
-    // 9) โปรโมชั่นแบบมี condition ต่อโปรโมชัน (คำนวณจาก baseEligibleCart + conditionCodes)
+    // 9) โปรโมชั่นแบบมี condition ต่อโปรโมชัน (คำนวณแบบ tier-by-tier กับ budget constraint)
     for (const promo of promotions) {
       if (!promo.tiers?.length) continue;
       for (const tier of promo.tiers) {
         if (allProductTiers.some((apt) => apt.tier_id === tier.tier_id))
           continue;
 
-        const conditionCodes = tierConditionMap.get(tier.tier_id);
-        if (!conditionCodes || conditionCodes.size === 0) continue;
+        const allConditionCodes = new Set<string>();
+        for (const tier of promo.tiers) {
+          const tierCodes = promoConditionMap.get(tier.tier_id) || new Set();
+          tierCodes.forEach((code) => allConditionCodes.add(code));
+        }
 
-        const tierTotal = baseEligibleCart.reduce((sum, line) => {
-          if (!conditionCodes.has(line.pro_code)) return sum;
+        if (allConditionCodes.size === 0) continue;
+
+        const totalAmount = baseEligibleCart.reduce((sum, line) => {
+          if (!allConditionCodes.has(line.pro_code)) return sum;
 
           const p = line.product;
           const ratio =
@@ -832,33 +836,55 @@ export class ShoppingCartService {
           return sum + Number(line.spc_amount) * price * Number(ratio);
         }, 0);
 
-        const threshold = Number(tier.min_amount);
-        if (!threshold || tierTotal < threshold) continue;
+        console.log(`promo_id=${promo.promo_id}, totalAmount=${totalAmount}`);
+        if (totalAmount <= 0) continue;
 
-        const multiplier = Math.floor(tierTotal / threshold);
+        const tiersDesc = [...promo.tiers].sort(
+          (a, b) => Number(b.min_amount) - Number(a.min_amount),
+        );
+
+        const remainingBudget = totalAmount;
+        let selectedTier: (typeof tiersDesc)[0] | null = null;
+
+        for (const tier of tiersDesc) {
+          const threshold = Number(tier.min_amount);
+          if (threshold && remainingBudget >= threshold) {
+            selectedTier = tier;
+            console.log(
+              `Selected tier_id=${tier.tier_id} for promo_id=${promo.promo_id}`,
+            );
+            break;
+          }
+        }
+
+        if (!selectedTier) continue;
+
+        const threshold = Number(selectedTier.min_amount);
+        const multiplier = Math.floor(remainingBudget / threshold);
         if (multiplier <= 0) continue;
 
-        remainingBudget -= multiplier * threshold;
-
-        // Tag สินค้าหลักที่ตรง condition ของโปรนี้
+        // Tag สินค้าหลักที่เข้าเงื่อนไขของ promotion นี้
+        const tierConditionCodes =
+          promoConditionMap.get(selectedTier.tier_id) || new Set();
         for (const line of baseEligibleCart) {
-          if (!conditionCodes.has(line.pro_code)) continue;
+          if (!tierConditionCodes.has(line.pro_code)) continue;
           if (!conditionTagMap.has(line.spc_id)) {
             conditionTagMap.set(line.spc_id, {
               promo_id: promo.promo_id,
-              tier_id: tier.tier_id,
+              tier_id: selectedTier.tier_id,
             });
           }
         }
 
-        for (const rw of tier.rewards || []) {
+        // เพิ่มของแถม
+        for (const rw of selectedTier.rewards || []) {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
           const code = rw.giftProduct?.pro_code;
           if (!code) continue;
           const key = `${code}|${rw.unit}`;
           const addQty = Number(rw.qty ?? 0) * multiplier;
           const prev = shouldHaveMap.get(key);
-          const promo_id = promo.promo_id;
+
           if (prev) {
             prev.qty += addQty;
           } else {
@@ -866,8 +892,8 @@ export class ShoppingCartService {
               pro_code: code,
               unit: rw.unit,
               qty: addQty,
-              promo_id,
-              tier_id: tier.tier_id,
+              promo_id: promo.promo_id,
+              tier_id: selectedTier.tier_id,
             });
           }
         }
