@@ -881,8 +881,7 @@ export class ShoppingOrderService {
       if (
         totalAmount &&
         minAmount &&
-        typeof minAmount.minAmount === 'number' &&
-        totalAmount < minAmount.minAmount
+        totalAmount < Number(minAmount.minAmount)
       ) {
         return {
           status: false,
@@ -894,6 +893,7 @@ export class ShoppingOrderService {
       console.log(
         `Order ${dataOrder.spo_id} with promotion_id ${dataOrder.promotion_id} and tier_id ${dataOrder.tier_id} meets the minimum amount requirement. Total: ${totalAmount}, Min: ${minAmount?.minAmount}`,
       );
+      console.log(typeof totalAmount, typeof minAmount?.minAmount);
       return { status: true };
     } catch (error) {
       console.log(error);
