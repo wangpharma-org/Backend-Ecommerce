@@ -387,9 +387,13 @@ export class AppController {
   @Post('/ecom/login')
   async signin(
     @Body() data: { username: string; password: string },
+    @Req() req: Request,
   ): Promise<SigninResponse> {
-    //console.log('data in controller:', data);
-    return await this.authService.signin(data);
+    const xClient = req.headers['x-client'] as string;
+    return await this.authService.signin({
+      ...data,
+      source: xClient,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -469,15 +473,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -1605,8 +1609,11 @@ export class AppController {
   // }
 
   @Post('/ecom/refresh_token')
-  async refreshToken(@Body() body: { token: string }) {
-    return this.authService.refreshToken(body.token);
+  async refreshToken(@Body() body: { token: string }, @Req() req: Request) {
+    return this.authService.refreshToken(
+      body.token,
+      req.headers['x-client'] as string,
+    );
   }
 
   // Session Management APIs
@@ -3737,5 +3744,13 @@ export class AppController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.promotionService.updateTierPoster(Number(tier_id), file);
+  }
+
+  @Post('/ecom/get-tier-price')
+  async getTierPrice(@Body() body: { sh_running: string; pro_code: string }) {
+    return await this.shoppingOrderService.checkOrderTurnBackReward(
+      body.sh_running,
+      body.pro_code,
+    );
   }
 }

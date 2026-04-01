@@ -40,6 +40,15 @@ export class ShoppingOrderEntity {
   @Column({ type: 'date', nullable: true, default: null })
   rt_date: Date;
 
+  @Column({ type: 'int', nullable: true })
+  promotion_id: number;
+
+  @Column({ type: 'int', nullable: true })
+  tier_id: number;
+
+  @Column({ type: 'boolean', default: false })
+  is_reward: boolean;
+
   @ManyToOne(() => ShoppingHeadEntity, (header) => header.details)
   @JoinColumn({ name: 'soh_running', referencedColumnName: 'soh_running' })
   orderHeader: ShoppingHeadEntity;

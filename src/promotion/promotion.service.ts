@@ -490,9 +490,9 @@ export class PromotionService {
     }
   }
 
-  deleteTier(tier_id: number) {
+  async deleteTier(tier_id: number) {
     try {
-      return this.promotionTierRepo.delete({ tier_id });
+      return await this.promotionTierRepo.softDelete({ tier_id });
     } catch {
       throw new Error(`Failed to delete tier`);
     }
@@ -506,7 +506,7 @@ export class PromotionService {
       if (!promotion) {
         throw new Error(`Promotion with id ${promo_id} not found`);
       }
-      await this.promotionRepo.remove(promotion);
+      await this.promotionRepo.softDelete({ promo_id });
     } catch {
       throw new Error(`Failed to delete promotion`);
     }
@@ -973,6 +973,45 @@ export class PromotionService {
     } catch (error) {
       console.error('Error updating tier poster:', error);
       throw new Error(`Failed to update tier poster`);
+    }
+  }
+
+  async getTierPrice(promotion_id: number, tier_id: number) {
+    try {
+      const data = await this.promotionRepo.findOne({
+        withDeleted: true,
+        where: {
+          promo_id: promotion_id,
+          tiers: {
+            tier_id: tier_id,
+          },
+        },
+        relations: {
+          tiers: true,
+        },
+        select: {
+          tiers: {
+            tier_id: true,
+            min_amount: true,
+          },
+        },
+      });
+
+      const minAmount = data?.tiers.find(
+        (t) => t.tier_id === tier_id,
+      )?.min_amount;
+
+      console.log('data : ', data);
+
+      console.log(
+        `Min amount for promotion ${promotion_id} and tier ${tier_id}:`,
+        minAmount,
+      );
+
+      return { minAmount: minAmount };
+    } catch (error) {
+      console.error(error);
+      throw new Error(`Failed to get tier price`);
     }
   }
 }
