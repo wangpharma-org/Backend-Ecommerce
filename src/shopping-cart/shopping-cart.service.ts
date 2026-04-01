@@ -599,7 +599,6 @@ export class ShoppingCartService {
     console.log('Products in promotion conditions:', productInCondition);
 
     const productCodes = new Set(productInCondition.map((p) => p.pro_code));
-    // ❌ อย่าลบ reward และอย่า return ที่นี่ ปล่อยให้ไปเช็ค allProductTiers ต่อ
 
     // 4) เตรียมตะกร้าพื้นฐาน (ใช้กับ all_products) และตะกร้าแบบมีเงื่อนไขสินค้า
     const promoMonth = new Date().getMonth() + 1;
@@ -710,6 +709,12 @@ export class ShoppingCartService {
       }
     >();
 
+    // Map สำหรับ tag สินค้าหลักที่เข้าเงื่อนไขโปรโมชั่น (keyed by spc_id)
+    const conditionTagMap = new Map<
+      number,
+      { promo_id: number; tier_id: number }
+    >();
+
     // 7) Map ของ product ใน condition
     const promoConditions = await this.conRepo
       .createQueryBuilder('cond')
@@ -764,6 +769,16 @@ export class ShoppingCartService {
         if (multiplier <= 0) continue;
 
         remainingBudget -= multiplier * threshold;
+
+        // Tag สินค้าหลักทุกชิ้นใน baseEligibleCart ว่าเข้าโปรนี้
+        for (const line of baseEligibleCart) {
+          if (!conditionTagMap.has(line.spc_id)) {
+            conditionTagMap.set(line.spc_id, {
+              promo_id: tier.promotion.promo_id,
+              tier_id: tier.tier_id,
+            });
+          }
+        }
 
         for (const rw of tier.rewards || []) {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
@@ -822,6 +837,19 @@ export class ShoppingCartService {
 
         const multiplier = Math.floor(tierTotal / threshold);
         if (multiplier <= 0) continue;
+
+        remainingBudget -= multiplier * threshold;
+
+        // Tag สินค้าหลักที่ตรง condition ของโปรนี้
+        for (const line of baseEligibleCart) {
+          if (!conditionCodes.has(line.pro_code)) continue;
+          if (!conditionTagMap.has(line.spc_id)) {
+            conditionTagMap.set(line.spc_id, {
+              promo_id: promo.promo_id,
+              tier_id: tier.tier_id,
+            });
+          }
+        }
 
         for (const rw of tier.rewards || []) {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
@@ -891,17 +919,51 @@ export class ShoppingCartService {
             tier_id,
           }),
         );
-      } else if (Number(existing.spc_amount) !== Number(qty)) {
+      } else if (
+        Number(existing.spc_amount) !== Number(qty) ||
+        existing.tier_id !== tier_id ||
+        existing.promo_id !== promo_id
+      ) {
         ops.push(
           this.shoppingCartRepo.update(
             { spc_id: existing.spc_id },
-            { spc_amount: qty, spc_datetime: new Date() },
+            { spc_amount: qty, tier_id, promo_id, spc_datetime: new Date() },
           ),
         );
       }
     }
 
     if (ops.length) await Promise.all(ops);
+
+    // 11) Sync promo_id/tier_id บนสินค้าหลัก (non-reward) ตาม conditionTagMap
+    const conditionSyncOps: Promise<any>[] = [];
+    for (const line of baseEligibleCart) {
+      const tag = conditionTagMap.get(line.spc_id);
+      if (tag) {
+        if (
+          (line.promo_id ?? null) !== tag.promo_id ||
+          (line.tier_id ?? null) !== tag.tier_id
+        ) {
+          conditionSyncOps.push(
+            this.shoppingCartRepo.update(
+              { spc_id: line.spc_id },
+              { promo_id: tag.promo_id, tier_id: tag.tier_id },
+            ),
+          );
+        }
+      } else if (line.promo_id != null || line.tier_id != null) {
+        conditionSyncOps.push(
+          this.shoppingCartRepo.update(
+            { spc_id: line.spc_id },
+            {
+              promo_id: null as unknown as number,
+              tier_id: null as unknown as number,
+            },
+          ),
+        );
+      }
+    }
+    if (conditionSyncOps.length) await Promise.all(conditionSyncOps);
   }
 
   async checkedProductCart(data: {
