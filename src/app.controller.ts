@@ -469,15 +469,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -3727,5 +3727,13 @@ export class AppController {
     @Query('limit') limit: number = 10,
   ) {
     return await this.recommendService.getAllReplaceProducts(page, limit);
+  }
+
+  @Post('/ecom/get-tier-price')
+  async getTierPrice(@Body() body: { sh_running: string; pro_code: string }) {
+    return await this.shoppingOrderService.checkOrderTurnBackReward(
+      body.sh_running,
+      body.pro_code,
+    );
   }
 }

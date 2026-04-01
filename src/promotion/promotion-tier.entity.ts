@@ -6,6 +6,7 @@ import {
   JoinColumn,
   Index,
   OneToMany,
+  DeleteDateColumn,
 } from 'typeorm';
 import { PromotionEntity } from './promotion.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -33,6 +34,9 @@ export class PromotionTierEntity {
 
   @Column({ default: false })
   all_products: boolean;
+
+  @DeleteDateColumn({ nullable: true })
+  deleted_at: Date;
 
   @OneToMany(() => PromotionConditionEntity, (cond) => cond.tier, {
     cascade: true,
