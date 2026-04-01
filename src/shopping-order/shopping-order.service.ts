@@ -813,7 +813,11 @@ export class ShoppingOrderService {
   async checkOrderTurnBackReward(sh_running: string, pro_code: string) {
     try {
       const dataOrder = await this.shoppingOrderRepo.findOne({
-        where: { orderHeader: { soh_running: sh_running }, pro_code },
+        where: {
+          orderHeader: { soh_running: sh_running },
+          pro_code,
+          is_reward: false,
+        },
         relations: {
           orderHeader: true,
         },
