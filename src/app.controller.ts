@@ -387,9 +387,13 @@ export class AppController {
   @Post('/ecom/login')
   async signin(
     @Body() data: { username: string; password: string },
+    @Req() req: Request,
   ): Promise<SigninResponse> {
-    //console.log('data in controller:', data);
-    return await this.authService.signin(data);
+    const xClient = req.headers['x-client'] as string;
+    return await this.authService.signin({
+      ...data,
+      source: xClient,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1605,8 +1609,11 @@ export class AppController {
   // }
 
   @Post('/ecom/refresh_token')
-  async refreshToken(@Body() body: { token: string }) {
-    return this.authService.refreshToken(body.token);
+  async refreshToken(@Body() body: { token: string }, @Req() req: Request) {
+    return this.authService.refreshToken(
+      body.token,
+      req.headers['x-client'] as string,
+    );
   }
 
   // Session Management APIs
