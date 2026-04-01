@@ -247,6 +247,7 @@ export class AuthService {
   async signin(data: {
     username: string;
     password: string;
+    source: 'web' | 'app' | 'unknown';
   }): Promise<SigninResponse> {
     const user = await this.userService.findOne(data.username);
     if (!user) {
@@ -282,9 +283,10 @@ export class AuthService {
     const access_token = await this.jwtService.signAsync(payload, {
       expiresIn: '15m',
     });
+    const refreshTokenExpiresIn = data.source === 'app' ? '7d' : '18h';
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
       secret: process.env.ACCESS_TOKEN_SECRET,
-      expiresIn: '18h',
+      expiresIn: refreshTokenExpiresIn,
     });
 
     await this.refreshTokenRepo.save({
@@ -294,7 +296,7 @@ export class AuthService {
     return { token: access_token, refresh_token: refresh_token };
   }
 
-  async refreshToken(refresh_token: string) {
+  async refreshToken(refresh_token: string, source: 'web' | 'app' | 'unknown') {
     try {
       console.log(refresh_token);
       const existingToken = await this.refreshTokenRepo.findOne({
@@ -345,9 +347,10 @@ export class AuthService {
         const access_token = await this.jwtService.signAsync(payload, {
           expiresIn: '15m',
         });
+        const refreshTokenExpiresIn = source === 'app' ? '7d' : '18h';
         const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
           secret: process.env.ACCESS_TOKEN_SECRET,
-          expiresIn: '18h',
+          expiresIn: refreshTokenExpiresIn,
         });
 
         await this.refreshTokenRepo.save({

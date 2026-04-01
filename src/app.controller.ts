@@ -387,9 +387,22 @@ export class AppController {
   @Post('/ecom/login')
   async signin(
     @Body() data: { username: string; password: string },
+    @Req() req: Request & { user: JwtPayload },
   ): Promise<SigninResponse> {
     //console.log('data in controller:', data);
-    return await this.authService.signin(data);
+    const userAgent = (req.headers['user-agent'] as string) || '';
+    console.log('User-Agent:', userAgent);
+    let source: 'web' | 'app' | 'unknown' = 'unknown';
+    if (
+      /Dart\/|dart:io|Mobile|Android|iPhone|iPad|Flutter|okhttp/i.test(
+        userAgent,
+      )
+    ) {
+      source = 'app';
+    } else if (/Chrome|Firefox|Safari|Edge|MSIE/i.test(userAgent)) {
+      source = 'web';
+    }
+    return await this.authService.signin({ ...data, source });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1605,8 +1618,19 @@ export class AppController {
   // }
 
   @Post('/ecom/refresh_token')
-  async refreshToken(@Body() body: { token: string }) {
-    return this.authService.refreshToken(body.token);
+  async refreshToken(@Body() body: { token: string }, @Req() req: Request) {
+    const userAgent = (req.headers['user-agent'] as string) || '';
+    let source: 'web' | 'app' | 'unknown' = 'unknown';
+    if (
+      /Dart\/|dart:io|Mobile|Android|iPhone|iPad|Flutter|okhttp/i.test(
+        userAgent,
+      )
+    ) {
+      source = 'app';
+    } else if (/Chrome|Firefox|Safari|Edge|MSIE/i.test(userAgent)) {
+      source = 'web';
+    }
+    return this.authService.refreshToken(body.token, source);
   }
 
   // Session Management APIs
