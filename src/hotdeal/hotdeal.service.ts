@@ -435,9 +435,6 @@ export class HotdealService {
     if (!found || !found.ratio) {
       return null;
     }
-    console.log(
-      `Converting`, Number(spc_amount) * Number(found.ratio),
-    );
     return Number(spc_amount) * Number(found.ratio);
   }
 
