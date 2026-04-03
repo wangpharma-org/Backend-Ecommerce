@@ -43,7 +43,7 @@ export class ProductsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
-  ) { }
+  ) {}
 
   private async isL16Member(
     mem_code?: string,
@@ -1087,8 +1087,8 @@ export class ProductsService {
           pro_point: MoreThan(0),
           ...(isL16
             ? {
-              pro_l16_only: In([0, null]),
-            }
+                pro_l16_only: In([0, null]),
+              }
             : {}),
         },
         select: {
@@ -1127,7 +1127,7 @@ export class ProductsService {
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array
-    return products.map((product: any) => ({
+    return products.map((product) => ({
       ...product,
       units: [
         { unit: product.pro_unit1, ratio: product.pro_ratio1 },
@@ -1146,7 +1146,12 @@ export class ProductsService {
 
         const productsWithUnits = await this.getProductsWithUnits(pro_code);
 
-        const product = productsWithUnits.find((p) => p.pro_code === pro_code);
+        const product:
+          | {
+              pro_code: string;
+              units: { unit: string; ratio: number }[];
+            }
+          | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
@@ -1510,9 +1515,12 @@ export class ProductsService {
     }
   }
 
-  async getProductL16Status(): Promise<{ pro_code: string; pro_name: string; pro_l16_only: number }[]> {
-    return this.productRepo.createQueryBuilder('product')
-      .select(['product.pro_code','product.pro_name', 'product.pro_l16_only'])
+  async getProductL16Status(): Promise<
+    { pro_code: string; pro_name: string; pro_l16_only: number }[]
+  > {
+    return this.productRepo
+      .createQueryBuilder('product')
+      .select(['product.pro_code', 'product.pro_name', 'product.pro_l16_only'])
       .where('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
       .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
       .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
