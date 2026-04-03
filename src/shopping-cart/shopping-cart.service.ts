@@ -45,7 +45,7 @@ export interface ShoppingProductCart {
   recommended_id?: number;
   recommend_rank?: number;
   is_reward: boolean;
-  hotdeal: HotdealEntity[] | null;
+  hotdeal: HotdealEntity[] | undefined;
   pointHotdeal?: number | null;
 }
 
@@ -1293,18 +1293,31 @@ export class ShoppingCartService {
 
       const grouped: Record<string, ShoppingProductCart> = {};
 
+      const allProCodes = [...new Set(raw.map((r) => r.pro_code))];
+      const allHotdeals =
+        await this.hotdealService.getHotdealByProCode(allProCodes);
+
+      const hotdealFromProCodePromises = allProCodes.map((proCode) =>
+        this.hotdealService.getHotdealFromproCode(proCode, mem_code),
+      );
+      const hotdealFromProCodeResults = await Promise.all(
+        hotdealFromProCodePromises,
+      );
+      const hotdealFromProCodeMap = new Map(
+        allProCodes.map((proCode, index) => [
+          proCode,
+          hotdealFromProCodeResults[index],
+        ]),
+      );
+
       for (const row of raw) {
         const key = `${row.pro_code}_${row.is_reward ? 'reward' : 'normal'}`;
 
-        const hotdealFreeProCodes =
-          await this.hotdealService.getHotdealByProCode([row.pro_code]);
+        const getHotdealFromproCode = hotdealFromProCodeMap.get(row.pro_code);
 
-        const getHotdealFromproCode =
-          await this.hotdealService.getHotdealFromproCode(
-            row.pro_code,
-            mem_code,
-          );
-
+        const hotdeal = allHotdeals?.filter(
+          (hd) => hd.product.pro_code === row.pro_code,
+        );
         if (!grouped[key]) {
           grouped[key] = {
             pro_code: row.pro_code,
@@ -1332,7 +1345,7 @@ export class ShoppingCartService {
             lots: [],
             recommend: [],
             is_reward: !!row.is_reward,
-            hotdeal: hotdealFreeProCodes,
+            hotdeal: hotdeal,
             pointHotdeal: getHotdealFromproCode?.remainingPoints,
           };
         }
