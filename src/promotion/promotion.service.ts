@@ -8,7 +8,6 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
-  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -928,6 +927,52 @@ export class PromotionService {
       );
     } catch {
       throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async updateTierPoster(tier_id: number, file: Express.Multer.File) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+      });
+
+      if (!tier) {
+        throw new Error(`Tier with id ${tier_id} not found`);
+      }
+
+      if (!file) {
+        throw new Error('No file provided for updating tier poster');
+      }
+
+      if (tier.tier_postter) {
+        const deleteParams = {
+          Bucket: 'wang-storage',
+          Key: tier.tier_postter.split('/').slice(-1)[0],
+        };
+        await this.s3.deleteObject(deleteParams).promise();
+      }
+
+      const uploadParams = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read',
+      };
+
+      const imgData = await this.s3.upload(uploadParams).promise();
+
+      await this.promotionTierRepo.update(tier_id, {
+        tier_postter: imgData.Location,
+      });
+
+      return {
+        message: 'Tier poster updated successfully',
+        url: imgData.Location,
+      };
+    } catch (error) {
+      console.error('Error updating tier poster:', error);
+      throw new Error(`Failed to update tier poster`);
     }
   }
 

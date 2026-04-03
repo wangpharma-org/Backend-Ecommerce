@@ -3752,6 +3752,16 @@ export class AppController {
     return await this.recommendService.getAllReplaceProducts(page, limit);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('ecom/promotion/update-tier-poster')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateTierPoster(
+    @Body('tier_id') tier_id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.promotionService.updateTierPoster(Number(tier_id), file);
+  }
+
   @Post('/ecom/get-tier-price')
   async getTierPrice(@Body() body: { sh_running: string; pro_code: string }) {
     return await this.shoppingOrderService.checkOrderTurnBackReward(
