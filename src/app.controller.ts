@@ -2493,7 +2493,6 @@ export class AppController {
   @Get('/ecom/policy/check-policy')
   async ensureUserHasPolicyMember(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
-    console.log('Checking policy for member code:', mem_code);
     return await this.policyDocService.checkAndGetCorrectPolicy(mem_code);
   }
 
@@ -2508,6 +2507,23 @@ export class AppController {
     console.log('Policy document ID:', body);
     return await this.policyDocService.agreePolicyDoc(mem_code, body.policyID);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/policy/all-policies')
+  async getAllPolicies(): Promise<
+    {
+      policyID: number;
+      category: {
+        policyCatagoryId: number;
+        nameCatagory: string;
+      };
+      content: string;
+      latestVersion: string;
+    }[]
+  > {
+    return await this.policyDocService.getAllPolicies();
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns')
   async getAllCampaigns() {
