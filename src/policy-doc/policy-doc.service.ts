@@ -185,7 +185,6 @@ export class PolicyDocService {
 
       // ถ้า category ยังไม่มี lastPolicy ให้ข้ามไป
       if (!category.lastPolicy) {
-        console.log(`Skipping category ${category.nameCatagory} - no lastPolicy`);
         continue;
       }
 
@@ -212,11 +211,7 @@ export class PolicyDocService {
           latestVersion: category.lastPolicy.version,
         });
       } else {
-        // ถ้าผู้ใช้ได้ยอมรับนโยบายล่าสุดแล้ว
-        console.log(
-          `User has agreed to latest policy for category ${category.nameCatagory}:`,
-          hasAgreed,
-        );
+        // ถ้าผู้ใช้ได้ยอมรับนโยบายล่าสุดแล้
       }
     }
     // ส่งกลับผลลัพธ์ที่ประกอบด้วยนโยบายที่ผู้ใช้ยังไม่ได้ยอมรับ

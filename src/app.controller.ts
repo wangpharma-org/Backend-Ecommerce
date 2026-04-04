@@ -487,28 +487,83 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
+    // --- ส่วนที่ 1: เตรียมและคำนวณข้อมูล Analytics ก่อนสั่งซื้อ (ป้องกันตะกร้าโดนเคลียร์) ---
+    let purchaseContextToUse: CompanyDayContextPayload | null | undefined =
+      data.company_day_context;
+    try {
+      const { cart } = await this.shoppingCartService.getCartSnapshot(
+        mem_code,
+        req.user.mem_route,
+      );
+      const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+      const cartTotal = Number(summaryCart?.total || data.total_price || 0);
+
+      let computedContext: CompanyDayContextPayload | undefined;
+
+      // เช็คว่ามีโปรโมชันเจาะจงสินค้าหรือไม่ (แบบเดียวกับ addcart)
+      if (cart && cart.length > 0) {
+        for (const item of cart) {
+          const productContext =
+            await this.companyDayAnalyticService.resolveContextFromProductCartTotal(
+              item.pro_code,
+              mem_code,
+              cartTotal,
+            );
+          if (productContext) {
+            computedContext = productContext;
+            break; // เจอโปรแรกที่เข้าเงื่อนไข ให้หยุดหาเลย
+          }
+        }
+      }
+
+      // ถ้าไม่เจอโปรโมชันระดับสินค้า ให้หาจากยอดรวมตะกร้า
+      if (!computedContext) {
+        computedContext =
+          await this.companyDayAnalyticService.resolveContextFromCartTotal(
+            cartTotal,
+          );
+      }
+
+      // ผสมข้อมูล ถ้า Backend คำนวณได้ให้ใช้เป็นหลัก โดยดึง source จากฝั่งหน้าบ้านมาด้วย
+      if (computedContext) {
+        purchaseContextToUse = {
+          ...data.company_day_context,
+          promo_name: computedContext.promo_name,
+          tier: computedContext.tier,
+          source: data.company_day_context?.source ?? computedContext.source,
+        };
+      }
+    } catch (error) {
+      this.companyDayAnalyticService['logger']?.warn?.(`
+        Analytics Calculation Error: ${error}`);
+      // หากพัง จะ Fallback กลับไปใช้ data.company_day_context จาก Frontend ทันที
+    }
+
+    // --- ส่วนที่ 2: ดำเนินการสั่งซื้อ (Flow หลัก) ---
     const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
-    const computedPurchaseContext = this.companyDayAnalyticService.normalizeContext(
-        await this.companyDayAnalyticService.resolveContextFromCartTotal(
-          Number(data.total_price || 0),
-        ),
-      );
-    const purchaseContext = computedPurchaseContext
-      ? this.companyDayAnalyticService.normalizeContext({
-          promo_name: computedPurchaseContext.promo_name,
-          tier: computedPurchaseContext.tier,
-          source:
-            data.company_day_context?.source ?? computedPurchaseContext.source,
-        })
-      : null;
-    this.companyDayAnalyticService.emitEvent(
-      'purchase',
-      mem_code,
-      purchaseContext ?? undefined,
-    );
+
+    // --- ส่วนที่ 3: ส่งข้อมูล Analytics (Fire & Forget ไม่ให้ขัดจังหวะ Return Order) ---
+    try {
+      const normalizedPurchaseContext =
+        this.companyDayAnalyticService.normalizeContext(
+          purchaseContextToUse ?? undefined,
+        );
+
+      if (normalizedPurchaseContext) {
+        this.companyDayAnalyticService.emitEvent(
+          'purchase',
+          mem_code,
+          normalizedPurchaseContext,
+        );
+      }
+    } catch (error) {
+      this.companyDayAnalyticService['logger']?.warn?.(`
+        Analytics Emit Error: ${error}`);
+    }
+
     return result;
   }
 
