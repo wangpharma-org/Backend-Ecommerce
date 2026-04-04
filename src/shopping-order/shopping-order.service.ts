@@ -15,6 +15,10 @@ import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
 import { UserEntity } from 'src/users/users.entity';
+import {
+  CompanyDayAnalyticService,
+  CompanyDayContextPayload,
+} from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
 
 interface CountSale {
@@ -44,6 +48,7 @@ export class ShoppingOrderService {
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
   ) {}
 
@@ -808,6 +813,29 @@ export class ShoppingOrderService {
       console.log(error);
       throw new Error('Failed to fetch order data.');
     }
+  }
+
+  async sendEventToAnalytics(
+    mem_code: string,
+    mem_route?: string,
+    totalPrice?: number,
+    companyDayContext?: CompanyDayContextPayload,
+  ) {
+    const { cart } = await this.shoppingCartService.getCartSnapshot(
+      mem_code,
+      mem_route,
+    );
+    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+    const cartSnapshot = cart?.map((item) => ({ pro_code: item.pro_code })) || [];
+    const cartTotal = Number(summaryCart?.total || 0);
+
+    this.companyDayAnalyticService.trackPurchaseEventSafely(
+      mem_code,
+      cartSnapshot,
+      cartTotal,
+      Number(totalPrice || 0),
+      companyDayContext,
+    );
   }
 
   async checkOrderTurnBackReward(sh_running: string, pro_code: string) {

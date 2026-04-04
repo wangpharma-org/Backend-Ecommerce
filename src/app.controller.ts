@@ -491,27 +491,20 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
+    try {
+      await this.shoppingOrderService.sendEventToAnalytics(
+        mem_code,
+        req.user.mem_route,
+        data.total_price,
+        data.company_day_context,
+      );
+    } catch (error) {
+      console.log('Error sending analytics event:', error);
+    }
+
     const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
-    );
-    const computedPurchaseContext = this.companyDayAnalyticService.normalizeContext(
-        await this.companyDayAnalyticService.resolveContextFromCartTotal(
-          Number(data.total_price || 0),
-        ),
-      );
-    const purchaseContext = computedPurchaseContext
-      ? this.companyDayAnalyticService.normalizeContext({
-          promo_name: computedPurchaseContext.promo_name,
-          tier: computedPurchaseContext.tier,
-          source:
-            data.company_day_context?.source ?? computedPurchaseContext.source,
-        })
-      : null;
-    this.companyDayAnalyticService.emitEvent(
-      'purchase',
-      mem_code,
-      purchaseContext ?? undefined,
     );
     return result;
   }
