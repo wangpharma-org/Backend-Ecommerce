@@ -11,6 +11,7 @@ import { ProductEntity } from '../products/products.entity';
 import { SaleLogEntity } from './salelog-order.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { LoggerModule } from '../logger/logger.module';
+import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { LoggerModule } from '../logger/logger.module';
     ShoppingCartModule,
     HttpModule,
     LoggerModule,
+    CompanyDayAnalyticModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],

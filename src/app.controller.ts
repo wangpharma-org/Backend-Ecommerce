@@ -487,36 +487,21 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
-    // เตรียมข้อมูลสำหรับ analytics (fire & forget)
-    let cartSnapshot: Array<{ pro_code: string }> = [];
-    let cartTotal = 0;
     try {
-      const { cart } = await this.shoppingCartService.getCartSnapshot(
+      await this.shoppingOrderService.sendEventToAnalytics(
         mem_code,
         req.user.mem_route,
+        data.total_price,
+        data.company_day_context,
       );
-      const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-      cartSnapshot = cart?.map((item) => ({ pro_code: item.pro_code })) || [];
-      cartTotal = Number(summaryCart?.total || 0);
     } catch (error) {
-      // ถ้าหา cart snapshot ไม่ได้ ก็ไม่เป็นไร จะใช้ fallback
+      console.log('Error sending analytics event:', error);
     }
 
-    // เริ่ม analytics tracking (fire & forget - ไม่รอผลลัพธ์)
-    this.companyDayAnalyticService.trackPurchaseEventSafely(
-      mem_code,
-      cartSnapshot,
-      cartTotal,
-      Number(data.total_price || 0),
-      data.company_day_context,
-    );
-
-    // ดำเนินการสั่งซื้อ (main flow)
     const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
-
     return result;
   }
 
