@@ -81,11 +81,11 @@ import {
   InitiatorType,
 } from './product-return/return-enums';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import {
-  BehaviorTrackingService,
-  TrackEventDto,
-  BatchTrackDto,
-} from './behavior-tracking/behavior-tracking.service';
+// import {
+//   BehaviorTrackingService,
+//   TrackEventDto,
+//   BatchTrackDto,
+// } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import {
@@ -149,7 +149,7 @@ export class AppController {
     private readonly campaignsService: CampaignsService,
     private readonly appVersion: AppVersionService,
     private readonly productReturnService: ProductReturnService,
-    private readonly behaviorTrackingService: BehaviorTrackingService,
+    // private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
@@ -3266,535 +3266,535 @@ export class AppController {
 
   // ========== Behavior Tracking APIs ==========
   // Track single event
-  @Post('/ecom/tracking/event')
-  async trackEvent(
-    @Body() data: TrackEventDto,
-    @Ip() ip: string,
-    @Req() req: Request & { user: JwtPayload },
-  ) {
-    try {
-      data.ip_address = ip;
-      data.user_agent = req.headers['user-agent'];
-      return await this.behaviorTrackingService.trackEvent(data);
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // @Post('/ecom/tracking/event')
+  // async trackEvent(
+  //   @Body() data: TrackEventDto,
+  //   @Ip() ip: string,
+  //   @Req() req: Request & { user: JwtPayload },
+  // ) {
+  //   try {
+  //     data.ip_address = ip;
+  //     data.user_agent = req.headers['user-agent'];
+  //     return await this.behaviorTrackingService.trackEvent(data);
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Track batch events
-  @Post('/ecom/tracking/batch')
-  async trackBatch(
-    @Body() data: BatchTrackDto,
-    @Ip() ip: string,
-    @Req() req: Request & { user: JwtPayload },
-  ) {
-    try {
-      // Add IP and user agent to all events
-      const userAgent = req.headers['user-agent'];
-      data.events = data.events.map((e) => ({
-        ...e,
-        ip_address: ip,
-        user_agent: userAgent,
-      }));
-      return await this.behaviorTrackingService.trackBatch(data);
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Track batch events
+  // @Post('/ecom/tracking/batch')
+  // async trackBatch(
+  //   @Body() data: BatchTrackDto,
+  //   @Ip() ip: string,
+  //   @Req() req: Request & { user: JwtPayload },
+  // ) {
+  //   try {
+  //     // Add IP and user agent to all events
+  //     const userAgent = req.headers['user-agent'];
+  //     data.events = data.events.map((e) => ({
+  //       ...e,
+  //       ip_address: ip,
+  //       user_agent: userAgent,
+  //     }));
+  //     return await this.behaviorTrackingService.trackBatch(data);
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Get user behavior (for personalization)
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/tracking/user/:mem_code')
-  async getUserBehavior(
-    @Param('mem_code') mem_code: string,
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
-    try {
-      return await this.behaviorTrackingService.getUserBehavior(
-        mem_code,
-        from_date,
-        to_date,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Get user behavior (for personalization)
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/tracking/user/:mem_code')
+  // async getUserBehavior(
+  //   @Param('mem_code') mem_code: string,
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  // ) {
+  //   try {
+  //     return await this.behaviorTrackingService.getUserBehavior(
+  //       mem_code,
+  //       from_date,
+  //       to_date,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get product analytics
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/product/:pro_code')
-  async getProductAnalytics(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('pro_code') pro_code: string,
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getProductAnalytics(
-        pro_code,
-        from_date,
-        to_date,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get product analytics
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/product/:pro_code')
+  // async getProductAnalytics(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Param('pro_code') pro_code: string,
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getProductAnalytics(
+  //       pro_code,
+  //       from_date,
+  //       to_date,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get search analytics
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/searches')
-  async getSearchAnalytics(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getSearchAnalytics(
-        from_date,
-        to_date,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get search analytics
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/searches')
+  // async getSearchAnalytics(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getSearchAnalytics(
+  //       from_date,
+  //       to_date,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get dashboard stats
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/dashboard')
-  async getTrackingDashboard(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getDashboardStats(
-        from_date,
-        to_date,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get dashboard stats
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/dashboard')
+  // async getTrackingDashboard(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getDashboardStats(
+  //       from_date,
+  //       to_date,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get daily trend
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/daily-trend')
-  async getDailyTrend(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getDailyTrend(
-        from_date,
-        to_date,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get daily trend
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/daily-trend')
+  // async getDailyTrend(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getDailyTrend(
+  //       from_date,
+  //       to_date,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get top products
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/top-products')
-  async getTopProducts(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getTopProducts(
-        from_date,
-        to_date,
-        limit ? parseInt(limit) : 10,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get top products
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/top-products')
+  // async getTopProducts(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  //   @Query('limit') limit?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getTopProducts(
+  //       from_date,
+  //       to_date,
+  //       limit ? parseInt(limit) : 10,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get recent activity feed
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/recent-activity')
-  async getRecentActivity(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('limit') limit?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getRecentActivity(
-        limit ? parseInt(limit) : 50,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get recent activity feed
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/recent-activity')
+  // async getRecentActivity(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('limit') limit?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getRecentActivity(
+  //       limit ? parseInt(limit) : 50,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get user journeys
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/user-journeys')
-  async getUserJourneys(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('limit') limit?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getUserJourneys(
-        limit ? parseInt(limit) : 20,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get user journeys
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/user-journeys')
+  // async getUserJourneys(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('limit') limit?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getUserJourneys(
+  //       limit ? parseInt(limit) : 20,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get zero result searches
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/zero-result-searches')
-  async getZeroResultSearches(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getZeroResultSearches(
-        from_date,
-        to_date,
-        limit ? parseInt(limit) : 30,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get zero result searches
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/zero-result-searches')
+  // async getZeroResultSearches(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('from_date') from_date?: string,
+  //   @Query('to_date') to_date?: string,
+  //   @Query('limit') limit?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getZeroResultSearches(
+  //       from_date,
+  //       to_date,
+  //       limit ? parseInt(limit) : 30,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get stock alerts based on demand
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/stock-alerts')
-  async getStockAlerts(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('days') days?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getStockAlerts(
-        days ? parseInt(days) : 7,
-        limit ? parseInt(limit) : 20,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get stock alerts based on demand
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/stock-alerts')
+  // async getStockAlerts(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('days') days?: string,
+  //   @Query('limit') limit?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getStockAlerts(
+  //       days ? parseInt(days) : 7,
+  //       limit ? parseInt(limit) : 20,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get cart conversion analytics
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/cart-analytics')
-  async getCartConversionAnalytics(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('days') days?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getCartConversionAnalytics(
-        days ? parseInt(days) : 30,
-        limit ? parseInt(limit) : 20,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get cart conversion analytics
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/cart-analytics')
+  // async getCartConversionAnalytics(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('days') days?: string,
+  //   @Query('limit') limit?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getCartConversionAnalytics(
+  //       days ? parseInt(days) : 30,
+  //       limit ? parseInt(limit) : 20,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get customer segments
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/customer-segments')
-  async getCustomerSegments(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('days') days?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getCustomerSegments(
-        days ? parseInt(days) : 90,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get customer segments
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/customer-segments')
+  // async getCustomerSegments(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('days') days?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getCustomerSegments(
+  //       days ? parseInt(days) : 90,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get retention analysis
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/retention')
-  async getRetentionAnalysis(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('weeks') weeks?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getRetentionAnalysis(
-        weeks ? parseInt(weeks) : 8,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get retention analysis
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/retention')
+  // async getRetentionAnalysis(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('weeks') weeks?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getRetentionAnalysis(
+  //       weeks ? parseInt(weeks) : 8,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get repeat purchase patterns
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/repeat-purchases')
-  async getRepeatPurchasePatterns(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('days') days?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getRepeatPurchasePatterns(
-        days ? parseInt(days) : 180,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get repeat purchase patterns
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/repeat-purchases')
+  // async getRepeatPurchasePatterns(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('days') days?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getRepeatPurchasePatterns(
+  //       days ? parseInt(days) : 180,
+  //     );
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get purchase interval box plot data
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/purchase-intervals-boxplot')
-  async getPurchaseIntervalBoxPlot(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('days') days?: string,
-    @Query('group_by') groupBy?: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    try {
-      return await this.behaviorTrackingService.getPurchaseIntervalBoxPlot(
-        days ? parseInt(days) : 180,
-        (groupBy as 'overall' | 'product' | 'segment' | 'month') || 'overall',
-      );
-    } catch (error) {
-      throw new HttpException(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unknown error occurred',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Admin: Get purchase interval box plot data
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/purchase-intervals-boxplot')
+  // async getPurchaseIntervalBoxPlot(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('days') days?: string,
+  //   @Query('group_by') groupBy?: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   try {
+  //     return await this.behaviorTrackingService.getPurchaseIntervalBoxPlot(
+  //       days ? parseInt(days) : 180,
+  //       (groupBy as 'overall' | 'product' | 'segment' | 'month') || 'overall',
+  //     );
+  //   } catch (error) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Admin: Get user journey sankey
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/tracking/user-journey-sankey')
-  async getUserJourneySankey(
-    @Req() req: Request & { user: JwtPayload },
-    @Query('from_date') from_date: string,
-    @Query('to_date') to_date: string,
-  ) {
-    const permission = req.user.permission;
-    if (permission !== true) {
-      throw new Error('You do not have permission to access this resource');
-    }
-    return await this.behaviorTrackingService.getUserJourneySankey(
-      from_date,
-      to_date,
-    );
-  }
+  // // Admin: Get user journey sankey
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/ecom/admin/tracking/user-journey-sankey')
+  // async getUserJourneySankey(
+  //   @Req() req: Request & { user: JwtPayload },
+  //   @Query('from_date') from_date: string,
+  //   @Query('to_date') to_date: string,
+  // ) {
+  //   const permission = req.user.permission;
+  //   if (permission !== true) {
+  //     throw new Error('You do not have permission to access this resource');
+  //   }
+  //   return await this.behaviorTrackingService.getUserJourneySankey(
+  //     from_date,
+  //     to_date,
+  //   );
+  // }
 
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/change-role/:mem_code')
