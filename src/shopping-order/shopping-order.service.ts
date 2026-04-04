@@ -836,6 +836,8 @@ export class ShoppingOrderService {
       Number(totalPrice || 0),
       companyDayContext,
     );
+  }
+
   async checkOrderTurnBackReward(sh_running: string, pro_code: string) {
     try {
       const dataOrder = await this.shoppingOrderRepo.findOne({
