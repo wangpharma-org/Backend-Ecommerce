@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, forwardRef, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  forwardRef,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, Not, Brackets } from 'typeorm';
@@ -234,8 +240,7 @@ export class ShoppingCartService {
       .setParameter('l16', 1)
       .execute();
 
-    const removed =
-      (deleteMain.affected ?? 0) + (deleteFreebies.affected ?? 0);
+    const removed = (deleteMain.affected ?? 0) + (deleteFreebies.affected ?? 0);
     if (removed > 0) {
       await this.incrementCartVersion(mem_code);
       return true;
@@ -243,9 +248,7 @@ export class ShoppingCartService {
     return false;
   }
 
-  private normalizeCartVersion(
-    value?: string | number | null,
-  ): string {
+  private normalizeCartVersion(value?: string | number | null): string {
     if (value === null || value === undefined) {
       return '0';
     }
@@ -336,10 +339,14 @@ export class ShoppingCartService {
   private async handleCheckFlashsale(pro_code: string) {
     const data = await this.productRepo.findOne({
       where: { pro_code },
-      relations: { flashsale: { flashsale: true }},
+      relations: { flashsale: { flashsale: true } },
     });
     console.log('Flashsale data:', data);
-    if (!data || !data.flashsale || data.flashsale[0]?.flashsale.is_active === false) {
+    if (
+      !data ||
+      !data.flashsale ||
+      data.flashsale[0]?.flashsale.is_active === false
+    ) {
       await this.shoppingCartRepo.update({ pro_code }, { flashsale_end: null });
       throw new Error('No flashsale data found');
     }
@@ -361,7 +368,7 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
-      
+
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       const existing = await this.shoppingCartRepo.findOne({
         where: {
@@ -430,14 +437,16 @@ export class ShoppingCartService {
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
       });
-      
+
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
-
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException || error instanceof BadRequestException) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
@@ -480,7 +489,10 @@ export class ShoppingCartService {
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
-      if (error instanceof ConflictException || error instanceof BadRequestException) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       throw new Error('Error in Add product Cart');
@@ -587,7 +599,6 @@ export class ShoppingCartService {
     console.log('Products in promotion conditions:', productInCondition);
 
     const productCodes = new Set(productInCondition.map((p) => p.pro_code));
-    // ❌ อย่าลบ reward และอย่า return ที่นี่ ปล่อยให้ไปเช็ค allProductTiers ต่อ
 
     // 4) เตรียมตะกร้าพื้นฐาน (ใช้กับ all_products) และตะกร้าแบบมีเงื่อนไขสินค้า
     const promoMonth = new Date().getMonth() + 1;
@@ -698,6 +709,12 @@ export class ShoppingCartService {
       }
     >();
 
+    // Map สำหรับ tag สินค้าหลักที่เข้าเงื่อนไขโปรโมชั่น (keyed by spc_id)
+    const conditionTagMap = new Map<
+      number,
+      { promo_id: number; tier_id: number }
+    >();
+
     // 7) Map ของ product ใน condition
     const promoConditions = await this.conRepo
       .createQueryBuilder('cond')
@@ -744,6 +761,16 @@ export class ShoppingCartService {
         if (multiplier <= 0) continue;
 
         remainingBudget -= multiplier * threshold;
+
+        // Tag สินค้าหลักทุกชิ้นใน baseEligibleCart ว่าเข้าโปรนี้
+        for (const line of baseEligibleCart) {
+          if (!conditionTagMap.has(line.spc_id)) {
+            conditionTagMap.set(line.spc_id, {
+              promo_id: tier.promotion.promo_id,
+              tier_id: tier.tier_id,
+            });
+          }
+        }
 
         for (const rw of tier.rewards || []) {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
@@ -810,6 +837,17 @@ export class ShoppingCartService {
         if (multiplier <= 0) continue;
 
         remainingBudget -= multiplier * threshold;
+
+        // Tag สินค้าหลักที่ตรง condition ของโปรนี้
+        for (const line of baseEligibleCart) {
+          if (!conditionCodes.has(line.pro_code)) continue;
+          if (!conditionTagMap.has(line.spc_id)) {
+            conditionTagMap.set(line.spc_id, {
+              promo_id: promo.promo_id,
+              tier_id: tier.tier_id,
+            });
+          }
+        }
 
         for (const rw of tier.rewards || []) {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
@@ -879,17 +917,51 @@ export class ShoppingCartService {
             tier_id,
           }),
         );
-      } else if (Number(existing.spc_amount) !== Number(qty)) {
+      } else if (
+        Number(existing.spc_amount) !== Number(qty) ||
+        existing.tier_id !== tier_id ||
+        existing.promo_id !== promo_id
+      ) {
         ops.push(
           this.shoppingCartRepo.update(
             { spc_id: existing.spc_id },
-            { spc_amount: qty, spc_datetime: new Date() },
+            { spc_amount: qty, tier_id, promo_id, spc_datetime: new Date() },
           ),
         );
       }
     }
 
     if (ops.length) await Promise.all(ops);
+
+    // 11) Sync promo_id/tier_id บนสินค้าหลัก (non-reward) ตาม conditionTagMap
+    const conditionSyncOps: Promise<any>[] = [];
+    for (const line of baseEligibleCart) {
+      const tag = conditionTagMap.get(line.spc_id);
+      if (tag) {
+        if (
+          (line.promo_id ?? null) !== tag.promo_id ||
+          (line.tier_id ?? null) !== tag.tier_id
+        ) {
+          conditionSyncOps.push(
+            this.shoppingCartRepo.update(
+              { spc_id: line.spc_id },
+              { promo_id: tag.promo_id, tier_id: tag.tier_id },
+            ),
+          );
+        }
+      } else if (line.promo_id != null || line.tier_id != null) {
+        conditionSyncOps.push(
+          this.shoppingCartRepo.update(
+            { spc_id: line.spc_id },
+            {
+              promo_id: null as unknown as number,
+              tier_id: null as unknown as number,
+            },
+          ),
+        );
+      }
+    }
+    if (conditionSyncOps.length) await Promise.all(conditionSyncOps);
   }
 
   async checkedProductCart(data: {
@@ -1148,7 +1220,11 @@ export class ShoppingCartService {
         .leftJoinAndSelect('cart.product', 'product')
         .leftJoinAndSelect('product.lot', 'lot')
         .leftJoinAndSelect('product.flashsale', 'fs')
-        .leftJoinAndSelect('fs.flashsale', 'flashsale', 'flashsale.is_active = 1')
+        .leftJoinAndSelect(
+          'fs.flashsale',
+          'flashsale',
+          'flashsale.is_active = 1',
+        )
         .leftJoinAndSelect('product.recommend', 'recommend')
         .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect(
@@ -1516,8 +1592,8 @@ export class ShoppingCartService {
                 time_end: true,
                 time_start: true,
                 date: true,
-              }
-            }
+              },
+            },
           },
           member: {
             mem_code: true,

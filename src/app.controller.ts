@@ -388,9 +388,13 @@ export class AppController {
   @Post('/ecom/login')
   async signin(
     @Body() data: { username: string; password: string },
+    @Req() req: Request,
   ): Promise<SigninResponse> {
-    //console.log('data in controller:', data);
-    return await this.authService.signin(data);
+    const xClient = req.headers['x-client'] as string;
+    return await this.authService.signin({
+      ...data,
+      source: xClient,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1676,8 +1680,11 @@ export class AppController {
   // }
 
   @Post('/ecom/refresh_token')
-  async refreshToken(@Body() body: { token: string }) {
-    return this.authService.refreshToken(body.token);
+  async refreshToken(@Body() body: { token: string }, @Req() req: Request) {
+    return this.authService.refreshToken(
+      body.token,
+      req.headers['x-client'] as string,
+    );
   }
 
   // Session Management APIs
@@ -2557,7 +2564,6 @@ export class AppController {
   @Get('/ecom/policy/check-policy')
   async ensureUserHasPolicyMember(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
-    console.log('Checking policy for member code:', mem_code);
     return await this.policyDocService.checkAndGetCorrectPolicy(mem_code);
   }
 
@@ -2572,6 +2578,23 @@ export class AppController {
     console.log('Policy document ID:', body);
     return await this.policyDocService.agreePolicyDoc(mem_code, body.policyID);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/policy/all-policies')
+  async getAllPolicies(): Promise<
+    {
+      policyID: number;
+      category: {
+        policyCatagoryId: number;
+        nameCatagory: string;
+      };
+      content: string;
+      latestVersion: string;
+    }[]
+  > {
+    return await this.policyDocService.getAllPolicies();
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns')
   async getAllCampaigns() {
@@ -3864,5 +3887,23 @@ export class AppController {
     @Query('limit') limit: number = 10,
   ) {
     return await this.recommendService.getAllReplaceProducts(page, limit);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('ecom/promotion/update-tier-poster')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateTierPoster(
+    @Body('tier_id') tier_id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.promotionService.updateTierPoster(Number(tier_id), file);
+  }
+
+  @Post('/ecom/get-tier-price')
+  async getTierPrice(@Body() body: { sh_running: string; pro_code: string }) {
+    return await this.shoppingOrderService.checkOrderTurnBackReward(
+      body.sh_running,
+      body.pro_code,
+    );
   }
 }

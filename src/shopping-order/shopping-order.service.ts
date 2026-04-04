@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
@@ -19,6 +19,7 @@ import {
   CompanyDayAnalyticService,
   CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
+import { PromotionService } from 'src/promotion/promotion.service';
 
 interface CountSale {
   pro_code: string;
@@ -48,6 +49,7 @@ export class ShoppingOrderService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    private readonly promotionService: PromotionService,
   ) {}
 
   private async isL16Member(
@@ -208,6 +210,8 @@ export class ShoppingOrderService {
         unit: item.spc_unit ?? null,
         is_reward: item.is_reward,
         hotdeal_free: item.hotdeal_free,
+        promotion_id: item.promo_id,
+        tier_id: item.tier_id,
       }));
       basketSnapshot = {
         item_count: items.length,
@@ -400,6 +404,9 @@ export class ShoppingOrderService {
               spo_price_unit: price / item.spc_amount,
               spo_total_decimal: price,
               pro_code: item.pro_code,
+              promotion_id: item.promo_id,
+              tier_id: item.tier_id,
+              is_reward: item.is_reward,
             });
           });
 
@@ -481,6 +488,9 @@ export class ShoppingOrderService {
               spo_qty: item.spc_amount,
               spo_price_unit: 0,
               spo_total_decimal: 0,
+              is_reward: true,
+              promotion_id: item.promo_id,
+              tier_id: item.tier_id,
             });
 
             orderRewards.push(orderItem);
@@ -826,6 +836,95 @@ export class ShoppingOrderService {
       Number(totalPrice || 0),
       companyDayContext,
     );
+  async checkOrderTurnBackReward(sh_running: string, pro_code: string) {
+    try {
+      const dataOrder = await this.shoppingOrderRepo.findOne({
+        where: {
+          orderHeader: { soh_running: sh_running },
+          pro_code,
+          is_reward: false,
+        },
+        relations: {
+          orderHeader: true,
+        },
+        select: {
+          spo_id: true,
+          pro_code: true,
+          tier_id: true,
+          promotion_id: true,
+        },
+      });
+
+      if (!dataOrder) {
+        console.log(
+          `No order found for sh_running: ${sh_running} and pro_code: ${pro_code}`,
+        );
+        return { status: true };
+      }
+
+      if (!dataOrder.promotion_id || !dataOrder.tier_id) {
+        console.log(
+          `Order ${dataOrder.spo_id} does not have promotion_id or tier_id, skipping reward check.`,
+        );
+        return { status: true };
+      }
+
+      const minAmount = await this.promotionService.getTierPrice(
+        dataOrder?.promotion_id,
+        dataOrder?.tier_id,
+      );
+
+      const totalAmount = await this.shoppingOrderRepo.sum(
+        'spo_total_decimal',
+        {
+          orderHeader: { soh_running: sh_running },
+          is_reward: false,
+          promotion_id: dataOrder.promotion_id,
+          tier_id: dataOrder.tier_id,
+          pro_code: Not(pro_code),
+        },
+      );
+
+      const RewardProCodeInPromotion = await this.shoppingOrderRepo.find({
+        where: {
+          orderHeader: { soh_running: sh_running },
+          promotion_id: dataOrder.promotion_id,
+          tier_id: dataOrder.tier_id,
+          is_reward: true,
+        },
+        select: { pro_code: true },
+      });
+
+      if (totalAmount === null) {
+        return {
+          status: false,
+          pro_code_in_promotion: RewardProCodeInPromotion?.map(
+            (item) => item.pro_code,
+          ),
+        };
+      }
+
+      if (
+        totalAmount &&
+        minAmount &&
+        totalAmount < Number(minAmount.minAmount)
+      ) {
+        return {
+          status: false,
+          pro_code_in_promotion: RewardProCodeInPromotion?.map(
+            (item) => item.pro_code,
+          ),
+        };
+      }
+      console.log(
+        `Order ${dataOrder.spo_id} with promotion_id ${dataOrder.promotion_id} and tier_id ${dataOrder.tier_id} meets the minimum amount requirement. Total: ${totalAmount}, Min: ${minAmount?.minAmount}`,
+      );
+      console.log(typeof totalAmount, typeof minAmount?.minAmount);
+      return { status: true };
+    } catch (error) {
+      console.log(error);
+      throw new Error('Failed to check order turn back reward. ' + error);
+    }
   }
 }
 

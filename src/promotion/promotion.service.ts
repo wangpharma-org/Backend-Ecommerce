@@ -8,7 +8,6 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
-  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -254,16 +253,13 @@ export class PromotionService {
     }
   }
 
-  async getAllTiers(
-    mem_code?: string,
-    mem_route?: string,
-  ) {
+  async getAllTiers(mem_code?: string, mem_route?: string) {
     try {
       const Today = new Date();
       const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
       const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      
+
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
@@ -288,7 +284,7 @@ export class PromotionService {
           },
         },
       });
-      
+
       if (!poster.length) {
         console.log('No active promotions found');
         return { poster: [], reward: [] };
@@ -301,7 +297,7 @@ export class PromotionService {
         console.log('No tier IDs found for active promotions');
         return { poster, reward: [] };
       }
-      
+
       const rewardQuery = this.promotionRewardRepo
         .createQueryBuilder('reward')
         .leftJoinAndSelect('reward.tier', 'tier')
@@ -313,16 +309,16 @@ export class PromotionService {
           'reward',
           'tier.tier_id',
           'giftProduct.pro_code',
-          'giftProduct.pro_name', 
+          'giftProduct.pro_name',
           'giftProduct.pro_imgmain',
         ]);
-      
+
       if (isL16) {
         rewardQuery.andWhere(
           '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
         );
       }
-      
+
       const reward = await rewardQuery.getMany();
 
       const limitedReward = Object.values(
@@ -340,7 +336,7 @@ export class PromotionService {
       return { poster, reward: limitedReward };
     } catch (error) {
       console.error('Error in getAllTiers:', error);
-      throw new Error(`Failed to get tiers: ${error.message}`);
+      throw new Error(`Failed to get tiers: ${error}`);
     }
   }
 
@@ -511,9 +507,9 @@ export class PromotionService {
     }
   }
 
-  deleteTier(tier_id: number) {
+  async deleteTier(tier_id: number) {
     try {
-      return this.promotionTierRepo.delete({ tier_id });
+      return await this.promotionTierRepo.softDelete({ tier_id });
     } catch {
       throw new Error(`Failed to delete tier`);
     }
@@ -527,7 +523,7 @@ export class PromotionService {
       if (!promotion) {
         throw new Error(`Promotion with id ${promo_id} not found`);
       }
-      await this.promotionRepo.remove(promotion);
+      await this.promotionRepo.softDelete({ promo_id });
     } catch {
       throw new Error(`Failed to delete promotion`);
     }
@@ -600,7 +596,7 @@ export class PromotionService {
   ) {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      
+
       const query = this.promotionRewardRepo
         .createQueryBuilder('reward')
         .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
@@ -619,13 +615,13 @@ export class PromotionService {
           'giftProduct.free_product_count',
           'giftProduct.free_product_limit',
         ]);
-      
+
       if (isL16) {
         query.andWhere(
           '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
         );
       }
-      
+
       return await query.getMany();
     } catch (error) {
       console.error(error);
@@ -907,10 +903,14 @@ export class PromotionService {
     }
   }
 
-  async getRewardByTierId(tier_id: number, mem_code?: string, mem_route?: string) {
+  async getRewardByTierId(
+    tier_id: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      
+
       const rewardQuery = this.promotionRewardRepo
         .createQueryBuilder('reward')
         .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
@@ -924,13 +924,13 @@ export class PromotionService {
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
         ]);
-      
+
       if (isL16) {
         rewardQuery.andWhere(
           '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
         );
       }
-      
+
       return await rewardQuery.getMany();
     } catch (error) {
       console.error(error);
@@ -961,6 +961,91 @@ export class PromotionService {
       );
     } catch {
       throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async updateTierPoster(tier_id: number, file: Express.Multer.File) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+      });
+
+      if (!tier) {
+        throw new Error(`Tier with id ${tier_id} not found`);
+      }
+
+      if (!file) {
+        throw new Error('No file provided for updating tier poster');
+      }
+
+      if (tier.tier_postter) {
+        const deleteParams = {
+          Bucket: 'wang-storage',
+          Key: tier.tier_postter.split('/').slice(-1)[0],
+        };
+        await this.s3.deleteObject(deleteParams).promise();
+      }
+
+      const uploadParams = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read',
+      };
+
+      const imgData = await this.s3.upload(uploadParams).promise();
+
+      await this.promotionTierRepo.update(tier_id, {
+        tier_postter: imgData.Location,
+      });
+
+      return {
+        message: 'Tier poster updated successfully',
+        url: imgData.Location,
+      };
+    } catch (error) {
+      console.error('Error updating tier poster:', error);
+      throw new Error(`Failed to update tier poster`);
+    }
+  }
+
+  async getTierPrice(promotion_id: number, tier_id: number) {
+    try {
+      const data = await this.promotionRepo.findOne({
+        withDeleted: true,
+        where: {
+          promo_id: promotion_id,
+          tiers: {
+            tier_id: tier_id,
+          },
+        },
+        relations: {
+          tiers: true,
+        },
+        select: {
+          tiers: {
+            tier_id: true,
+            min_amount: true,
+          },
+        },
+      });
+
+      const minAmount = data?.tiers.find(
+        (t) => t.tier_id === tier_id,
+      )?.min_amount;
+
+      console.log('data : ', data);
+
+      console.log(
+        `Min amount for promotion ${promotion_id} and tier ${tier_id}:`,
+        minAmount,
+      );
+
+      return { minAmount: minAmount };
+    } catch (error) {
+      console.error(error);
+      throw new Error(`Failed to get tier price`);
     }
   }
 }

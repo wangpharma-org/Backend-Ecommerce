@@ -12,6 +12,7 @@ import { SaleLogEntity } from './salelog-order.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { LoggerModule } from '../logger/logger.module';
 import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
+import { PromotionModule } from 'src/promotion/promotion.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-a
     HttpModule,
     LoggerModule,
     CompanyDayAnalyticModule,
+    PromotionModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],
