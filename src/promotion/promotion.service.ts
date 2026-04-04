@@ -195,6 +195,8 @@ export class PromotionService {
           'tier.description',
           'tier.tier_postter',
           'tier.detail',
+          'promotion.promo_id',
+          'promotion.promo_name',
 
           'condition.cond_id',
 
@@ -264,6 +266,21 @@ export class PromotionService {
             status: true,
             start_date: LessThanOrEqual(startOfDay),
             end_date: MoreThanOrEqual(endOfDay),
+          },
+        },
+        relations: {
+          promotion: true,
+        },
+        select: {
+          tier_id: true,
+          tier_name: true,
+          tier_postter: true,
+          min_amount: true,
+          description: true,
+          all_products: true,
+          promotion: {
+            promo_id: true,
+            promo_name: true,
           },
         },
       });
@@ -797,6 +814,8 @@ export class PromotionService {
         .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'condition.cond_id',
+          'promotion.promo_id',
+          'promotion.promo_name',
           'tier.tier_id',
           'tier.tier_name',
           'tier.min_amount',
@@ -861,6 +880,21 @@ export class PromotionService {
             status: true,
             start_date: LessThanOrEqual(startOfDay),
             end_date: MoreThanOrEqual(endOfDay),
+          },
+        },
+        relations: {
+          promotion: true,
+        },
+        select: {
+          tier_id: true,
+          tier_name: true,
+          tier_postter: true,
+          min_amount: true,
+          description: true,
+          all_products: true,
+          promotion: {
+            promo_id: true,
+            promo_name: true,
           },
         },
       });
