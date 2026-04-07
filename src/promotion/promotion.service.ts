@@ -519,16 +519,16 @@ export class PromotionService {
         relations: ['promotion'],
       });
 
-      const findTierisNotProduct = await this.promotionTierRepo
+      const findTierisProduct = await this.promotionTierRepo
         .createQueryBuilder('tier')
         .leftJoin('tier.promotion', 'promotion')
         .where('tier.all_products = true')
         .andWhere('tier.promotion.promo_id = :promo_id', {
-          promo_id: tier?.promotion.promo_id,
+          promo_id: tier?.promotion?.promo_id,
         })
         .getMany();
 
-      if (findTierisNotProduct.length > 0)
+      if (findTierisProduct.length > 0)
         return 'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active';
 
       const newCondition = this.promotionConditionRepo.create({
@@ -778,7 +778,7 @@ export class PromotionService {
         .leftJoin('tier.promotion', 'promotion')
         .where('tier.all_products = false')
         .andWhere('tier.promotion.promo_id = :promo_id', {
-          promo_id: tier?.promotion.promo_id,
+          promo_id: tier?.promotion?.promo_id,
         })
         .getMany();
 
