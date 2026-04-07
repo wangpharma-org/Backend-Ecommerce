@@ -491,16 +491,16 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
-    try {
-      await this.shoppingOrderService.sendEventToAnalytics(
-        mem_code,
-        req.user.mem_route,
-        data.total_price,
-        data.company_day_context,
-      );
-    } catch (error) {
-      console.log('Error sending analytics event:', error);
-    }
+    // try {
+    //   await this.shoppingOrderService.sendEventToAnalytics(
+    //     mem_code,
+    //     req.user.mem_route,
+    //     data.total_price,
+    //     data.company_day_context,
+    //   );
+    // } catch (error) {
+    //   console.log('Error sending analytics event:', error);
+    // }
 
     const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
@@ -629,7 +629,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/company-day/view')
-  trackCompanyDayView(
+  async trackCompanyDayView(
     @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
@@ -641,7 +641,7 @@ export class AppController {
   ) {
     console.log('Company Day View Event:', data);
     const mem_code = req.user.mem_code;
-    this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    await this.companyDayAnalyticService.emitEvent('view', mem_code, data);
     return { success: true };
   }
 
