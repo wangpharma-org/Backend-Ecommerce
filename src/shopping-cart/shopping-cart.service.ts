@@ -15,6 +15,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -165,6 +166,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
 
   private async isL16Member(
@@ -361,6 +363,7 @@ export class ShoppingCartService {
     mem_route?: string;
     flashsale_end?: string;
     clientVersion?: string | number;
+    company_day_context?: { promo_name: string; tier: string; source: string };
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -440,6 +443,39 @@ export class ShoppingCartService {
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
+      //ทำฟีเจอร์เเฟคตรงนี้
+      if (Number(data.amount) > 0) {
+        const summaryCart = await this.summaryCart(data.mem_code);
+        const productContext = this.companyDayAnalyticService.normalizeContext(
+          await this.companyDayAnalyticService.resolveContextFromProductCartTotal(
+            data.pro_code,
+            data.mem_code,
+            Number(summaryCart?.total || 0),
+          ),
+        );
+        const fallbackContext = this.companyDayAnalyticService.normalizeContext(
+          await this.companyDayAnalyticService.resolveContextFromCartTotal(
+            Number(summaryCart?.total || 0),
+          ),
+        );
+        const computedContext = productContext ?? fallbackContext;
+        const resolvedContext = computedContext
+          ? this.companyDayAnalyticService.normalizeContext({
+              promo_name: computedContext.promo_name,
+              tier: computedContext.tier,
+              source:
+                data.company_day_context?.source ?? computedContext.source,
+            })
+          : null;
+
+        if (resolvedContext) {
+          this.companyDayAnalyticService.emitEvent(
+            'addcart',
+            data.mem_code,
+            resolvedContext,
+          );
+        }
+      }
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);

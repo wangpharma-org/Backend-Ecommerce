@@ -11,6 +11,7 @@ import { COMPANY_DAY_ANALYTIC_KAFKA_CLIENT } from './company-day-analytic.consta
 import { PromotionService } from '../promotion/promotion.service';
 
 export interface CompanyDayAnalyticDto {
+  promo_id: number;
   promo_name: string;
   event: 'view' | 'addcart' | 'purchase';
   source: string;
@@ -19,9 +20,10 @@ export interface CompanyDayAnalyticDto {
 }
 
 export interface CompanyDayContextPayload {
-  promo_name?: string;
-  tier?: string;
-  source?: string;
+  promo_id: number;
+  promo_name: string;
+  tier: string;
+  source: string;
 }
 
 interface CompanyDayTierCandidate {
@@ -56,14 +58,19 @@ export class CompanyDayAnalyticService
     await this.kafkaClient.close();
   }
 
-  normalizeContext(
-    context?: CompanyDayContextPayload,
-  ): { promo_name: string; tier: string; source: string } | null {
+  normalizeContext(context?: CompanyDayContextPayload): {
+    promo_id: number;
+    promo_name: string;
+    tier: string;
+    source: string;
+  } | null {
     if (!context) return null;
+    const promoId = context.promo_id;
     const promoName = context.promo_name?.trim();
     const tier = context.tier?.trim();
     if (!promoName || !tier) return null;
     return {
+      promo_id: promoId,
       promo_name: promoName,
       tier,
       source: this.normalizeSource(context.source),

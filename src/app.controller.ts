@@ -590,7 +590,6 @@ export class AppController {
   ) {
     console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
-    const mem_code = req.user.mem_code;
     const payload: {
       mem_code: string;
       pro_code: string;
@@ -602,8 +601,9 @@ export class AppController {
       flashsale_end: string;
       // hotdeal_free: boolean;
       clientVersion?: string | number;
+      company_day_context?: CompanyDayContextPayload;
     } = {
-      mem_code,
+      mem_code: data.mem_code,
       pro_code: data.pro_code,
       pro_unit: data.pro_unit,
       amount: data.amount,
@@ -611,51 +611,19 @@ export class AppController {
       mem_route: req.user.mem_route,
       flashsale_end: data.flashsale_end,
       clientVersion: data.clientVersion ?? data.cartVersion,
+      company_day_context: data.company_day_context,
     };
     console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    const productContext =
-      Number(data.amount) > 0
-        ? this.companyDayAnalyticService.normalizeContext(
-            await this.companyDayAnalyticService.resolveContextFromProductCartTotal(
-              data.pro_code,
-              mem_code,
-              Number(summaryCart?.total || 0),
-            ),
-          )
-        : null;
-    const fallbackContext =
-      Number(data.amount) > 0
-        ? this.companyDayAnalyticService.normalizeContext(
-            await this.companyDayAnalyticService.resolveContextFromCartTotal(
-              Number(summaryCart?.total || 0),
-            ),
-          )
-        : null;
-    const computedContext = productContext ?? fallbackContext;
-    const resolvedContext = computedContext
-      ? this.companyDayAnalyticService.normalizeContext({
-          promo_name: computedContext.promo_name,
-          tier: computedContext.tier,
-          source: data.company_day_context?.source ?? computedContext.source,
-        })
-      : null;
-
-    if (Number(data.amount) > 0 && resolvedContext) {
-      this.companyDayAnalyticService.emitEvent(
-        'addcart',
-        mem_code,
-        resolvedContext,
-      );
-    }
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
     return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
-      companyDayContext: resolvedContext ?? undefined,
     };
   }
 
@@ -665,11 +633,13 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
+      promo_id: number;
       promo_name: string;
       tier: string;
-      source?: string;
+      source: string;
     },
   ) {
+    console.log('Company Day View Event:', data);
     const mem_code = req.user.mem_code;
     this.companyDayAnalyticService.emitEvent('view', mem_code, data);
     return { success: true };
