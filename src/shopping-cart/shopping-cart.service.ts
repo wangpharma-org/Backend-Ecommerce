@@ -15,6 +15,10 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import {
+  CompanyDayAnalyticService,
+  type CompanyDayContextPayload,
+} from 'src/company-day-analytic/company-day-analytic.service';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -147,6 +151,16 @@ export interface CartMutationResult extends CartVersionState {
   cart: ShoppingProductCart[];
 }
 
+export interface CompanyDayRewardContext {
+  promo_id: number;
+  promo_name: string;
+  tier: string;
+}
+
+export interface CartMutationWithCompanyDayContext extends CartMutationResult {
+  companyDayRewardContext?: CompanyDayRewardContext | null;
+}
+
 @Injectable()
 export class ShoppingCartService {
   constructor(
@@ -165,6 +179,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
 
   private async isL16Member(
@@ -361,7 +376,7 @@ export class ShoppingCartService {
     mem_route?: string;
     flashsale_end?: string;
     clientVersion?: string | number;
-    company_day_context?: { promo_name: string; tier: string; source: string };
+    company_day_source?: string;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -425,14 +440,8 @@ export class ShoppingCartService {
           hotdeal_free: false,
         });
       }
-
-      console.log('Check Promotion');
-
-      await this.checkPromotionReward(data.mem_code, data.priceCondition);
-
-      console.log('Check Hotdeal');
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
-      await this.checkedProductCart({
+      const checkedResult = await this.checkedProductCart({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
         type: 'check',
@@ -442,17 +451,21 @@ export class ShoppingCartService {
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
-      //ทำฟีเจอร์เเฟคตรงนี้
       if (Number(data.amount) > 0) {
-        // const resolvedContext = data.company_day_context
-        // if (resolvedContext) {
-        //   this.companyDayAnalyticService.emitEvent(
-        //     promo_id
-        //     'addcart',
-        //     data.mem_code,
-        //     resolvedContext,
-        //   );
-        // }
+        const source = data.company_day_source?.trim() || 'Cart';
+        const companyDayContext = checkedResult.companyDayRewardContext;
+        if (companyDayContext) {
+          const payload: CompanyDayContextPayload = {
+            ...companyDayContext,
+            source,
+          };
+          console.log('Emitting company day event with context:', payload);
+          this.companyDayAnalyticService.emitEvent(
+            'addcart',
+            data.mem_code,
+            payload,
+          );
+        }
       }
       return { cart, ...version };
     } catch (error) {
@@ -495,7 +508,6 @@ export class ShoppingCartService {
         hotdeal_promain: data.hotdeal_promain,
         spc_datetime: new Date(),
       });
-      console.log('Check Promotion for Hotdeal');
       const cart = await this.getProductCart(data.mem_code);
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
@@ -513,10 +525,15 @@ export class ShoppingCartService {
     }
   }
 
-  async checkPromotionReward(mem_code: string, priceOption: string) {
-    console.log('Checking promotion rewards for member:', mem_code);
+  async checkPromotionReward(
+    mem_code: string,
+    priceOption: string,
+  ): Promise<CompanyDayRewardContext | null> {
     const today = new Date();
     const isL16 = await this.isL16Member(mem_code);
+    const selectedTierContexts: Array<
+      CompanyDayRewardContext & { min_amount: number }
+    > = [];
 
     // 1) ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
@@ -542,9 +559,7 @@ export class ShoppingCartService {
         where: { tier_id: In(distinctTierIds) },
         relations: { conditions: { product: true }, rewards: true },
       });
-
       const rewardsToRemove: ShoppingCartEntity[] = [];
-
       for (const reward of rewardUseCodeItems) {
         const tier = tiers.find((t) => t.tier_id === reward.tier_id);
         if (!tier) {
@@ -596,8 +611,6 @@ export class ShoppingCartService {
       }
     }
 
-    console.log('Calculating promotion-eligible products in cart');
-
     // 4) เตรียมตะกร้าพื้นฐาน (ใช้กับ all_products) และตะกร้าแบบมีเงื่อนไขสินค้า
     const promoMonth = new Date().getMonth() + 1;
     const perProductTotalUnits = new Map<string, number>();
@@ -637,7 +650,7 @@ export class ShoppingCartService {
         (c) => c.is_reward && c.spc_checked && c.use_code === false,
       );
       if (rewardLines.length) await this.shoppingCartRepo.remove(rewardLines);
-      return;
+      return null;
     }
 
     const shouldHaveMap = new Map<
@@ -721,6 +734,15 @@ export class ShoppingCartService {
       if (tierValue >= threshold) {
         const multiplier = Math.floor(tierValue / threshold);
         if (multiplier <= 0) continue;
+
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
 
         // Mark items as used and tag them
         for (const line of eligibleItemsForTier) {
@@ -824,6 +846,15 @@ export class ShoppingCartService {
         if (multiplier <= 0) continue;
 
         remainingBudget -= multiplier * threshold;
+
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
 
         // Tag สินค้าหลักที่เหลือ ว่าเข้าโปรนี้
         for (const line of remainingEligibleCart) {
@@ -946,6 +977,27 @@ export class ShoppingCartService {
       }
     }
     if (conditionSyncOps.length) await Promise.all(conditionSyncOps);
+
+    if (selectedTierContexts.length === 0) {
+      return null;
+    }
+
+    selectedTierContexts.sort((a, b) => {
+      if (b.min_amount !== a.min_amount) {
+        return b.min_amount - a.min_amount;
+      }
+      if (a.promo_id !== b.promo_id) {
+        return a.promo_id - b.promo_id;
+      }
+      return a.tier.localeCompare(b.tier);
+    });
+
+    const topTier = selectedTierContexts[0];
+    return {
+      promo_id: topTier.promo_id,
+      promo_name: topTier.promo_name,
+      tier: topTier.tier,
+    };
   }
 
   async checkedProductCart(data: {
@@ -955,8 +1007,7 @@ export class ShoppingCartService {
     priceOption: string;
     mem_route?: string;
     clientVersion?: string | number;
-  }): Promise<CartMutationResult> {
-    console.log('checkedProductCart data:', data);
+  }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
@@ -1015,11 +1066,14 @@ export class ShoppingCartService {
         throw new Error('Something wrong in checkedProductCart');
       }
 
-      await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
+      const companyDayRewardContext = await this.checkPromotionReward(
+        data.mem_code,
+        data.priceOption ?? 'C',
+      );
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
-      return { cart, ...version };
+      return { cart, ...version, companyDayRewardContext };
     } catch (e) {
       console.error('Error in checkedProductCart', e);
       if (e instanceof ConflictException) {
@@ -1469,7 +1523,6 @@ export class ShoppingCartService {
           pro1_amount: String(Number(item.spc_amount)),
         })),
       );
-      console.log('Hotdeal match result:', hotdealMatch, pro_code);
       if (!hotdealMatch?.match) {
         if (hotdeal && hotdeal.product2?.pro_code) {
           await this.shoppingCartRepo.delete({

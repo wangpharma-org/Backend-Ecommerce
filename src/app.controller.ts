@@ -84,10 +84,8 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
-import {
-  CompanyDayAnalyticService,
-  CompanyDayContextPayload,
-} from './company-day-analytic/company-day-analytic.service';
+import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+
 
 interface JwtPayload {
   username: string;
@@ -487,20 +485,17 @@ export class AppController {
       paymentOptions: string;
       shippingOptions: string;
       addressed: string;
-      company_day_context?: CompanyDayContextPayload;
     },
   ) {
     const mem_code = req.user.mem_code;
-    // try {
-    //   await this.shoppingOrderService.sendEventToAnalytics(
-    //     mem_code,
-    //     req.user.mem_route,
-    //     data.total_price,
-    //     data.company_day_context,
-    //   );
-    // } catch (error) {
-    //   console.log('Error sending analytics event:', error);
-    // }
+    try {
+      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Failed to send purchase event to analytics for mem_code ${mem_code}: ${message}`,
+      );
+    }
 
     const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
@@ -585,10 +580,9 @@ export class AppController {
       flashsale_end: string;
       cartVersion?: string | number;
       clientVersion?: string;
-      company_day_context?: CompanyDayContextPayload;
+      company_day_source?: string;
     },
   ) {
-    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -601,7 +595,7 @@ export class AppController {
       flashsale_end: string;
       // hotdeal_free: boolean;
       clientVersion?: string | number;
-      company_day_context?: CompanyDayContextPayload;
+      company_day_source?: string;
     } = {
       mem_code: data.mem_code,
       pro_code: data.pro_code,
@@ -611,9 +605,8 @@ export class AppController {
       mem_route: req.user.mem_route,
       flashsale_end: data.flashsale_end,
       clientVersion: data.clientVersion ?? data.cartVersion,
-      company_day_context: data.company_day_context,
+      company_day_source: data.company_day_source,
     };
-    console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -629,7 +622,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/company-day/view')
-  async trackCompanyDayView(
+  trackCompanyDayView(
     @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
@@ -639,9 +632,8 @@ export class AppController {
       source: string;
     },
   ) {
-    console.log('Company Day View Event:', data);
     const mem_code = req.user.mem_code;
-    await this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    this.companyDayAnalyticService.emitEvent('view', mem_code, data);
     return { success: true };
   }
 

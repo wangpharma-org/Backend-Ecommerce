@@ -1,8 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { firstValueFrom } from 'rxjs';
 import { ClientKafka } from '@nestjs/microservices';
 import { COMPANY_DAY_ANALYTIC_KAFKA_CLIENT } from './company-day-analytic.constants';
-import { PromotionService } from '../promotion/promotion.service';
 
 export interface CompanyDayAnalyticDto {
   promo_id: number;
@@ -27,11 +25,10 @@ export class CompanyDayAnalyticService {
   constructor(
     @Inject(COMPANY_DAY_ANALYTIC_KAFKA_CLIENT)
     private readonly kafkaClient: ClientKafka,
-    private readonly promotionService: PromotionService,
   ) {}
 
-  async emitEvent(
-    event: string,
+  emitEvent(
+    event: CompanyDayAnalyticDto['event'],
     memCode: string,
     context: CompanyDayContextPayload,
   ) {
@@ -42,13 +39,10 @@ export class CompanyDayAnalyticService {
         mem_code: memCode,
         event: event,
       };
-      await firstValueFrom(
-        this.kafkaClient.emit('company_day_analytic', eventData),
-      );
+      this.kafkaClient.emit('company_day_analytic', eventData);
       this.logger.debug('Company day event emitted successfully');
     } catch (error) {
       this.logger.error('Failed to emit company day event', error);
     }
   }
-
 }
