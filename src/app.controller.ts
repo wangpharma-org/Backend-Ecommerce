@@ -3874,4 +3874,30 @@ export class AppController {
       body.pro_code,
     );
   }
+
+  @Get('/ecom/get-product-image/:pro_code')
+  async getProductImage(@Param('pro_code') pro_code: string) {
+    try {
+      const product =
+        await this.productsService.getProductImageByCode(pro_code);
+      if (!product) {
+        throw new HttpException(
+          {
+            success: false,
+            error: { code: 'PRODUCT_NOT_FOUND' },
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      return product;
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_PRODUCT_IMAGE_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
 }
