@@ -248,6 +248,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/feature-flags')
+  async getAllFlags() {
+    return this.featureFlagsService.getAllFlags();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/feature-flag/update-flag')
   async updateFlag(@Body() data: { flag: string; status: boolean }) {
     return this.featureFlagsService.updateFlag(data);
@@ -633,7 +639,7 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
-    this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    void this.companyDayAnalyticService.emitEvent('view', mem_code, data);
     return { success: true };
   }
 

@@ -3,9 +3,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { COMPANY_DAY_ANALYTIC_KAFKA_CLIENT } from './company-day-analytic.constants';
 import { CompanyDayAnalyticService } from './company-day-analytic.service';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 
 @Module({
   imports: [
+    FeatureFlagsModule,
     ClientsModule.registerAsync([
       {
         name: COMPANY_DAY_ANALYTIC_KAFKA_CLIENT,

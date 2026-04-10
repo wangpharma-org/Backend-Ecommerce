@@ -459,8 +459,7 @@ export class ShoppingCartService {
             ...companyDayContext,
             source,
           };
-          console.log('Emitting company day event with context:', payload);
-          this.companyDayAnalyticService.emitEvent(
+          void this.companyDayAnalyticService.emitEvent(
             'addcart',
             data.mem_code,
             payload,
