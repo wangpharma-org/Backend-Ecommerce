@@ -478,15 +478,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -3875,6 +3875,42 @@ export class AppController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/hotdeal/:pro_code')
+  async getHotdealByProCode(
+    @Param('pro_code') pro_code: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.hotdealService.getHotdealFromproCode(pro_code, mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/hotdeal/add-other-product')
+  async createHotdeal(
+    @Body()
+    body: {
+      freebies: {
+        pro_code: string;
+        unit: string;
+        amount: number;
+        pro_code1: string;
+      }[];
+    },
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    console.log('Creating hotdeal with data:', {
+      mem_code,
+      freebies: body.freebies,
+    });
+    const results = await this.shoppingCartService.addHotdealToCart(
+      mem_code,
+      body.freebies,
+    );
+    return results;
+  }
+  
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
     try {

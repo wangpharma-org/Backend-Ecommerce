@@ -1128,7 +1128,7 @@ export class ProductsService {
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array
-    return products.map((product: any) => ({
+    return products.map((product) => ({
       ...product,
       units: [
         { unit: product.pro_unit1, ratio: product.pro_ratio1 },
@@ -1147,7 +1147,12 @@ export class ProductsService {
 
         const productsWithUnits = await this.getProductsWithUnits(pro_code);
 
-        const product = productsWithUnits.find((p) => p.pro_code === pro_code);
+        const product:
+          | {
+              pro_code: string;
+              units: { unit: string; ratio: number }[];
+            }
+          | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
