@@ -859,7 +859,7 @@ export class ShoppingOrderService {
       const tier = selectedTier.tier_name?.trim();
       if (!promoName || !tier) return;
 
-      this.companyDayAnalyticService.emitEvent('purchase', mem_code, {
+      void this.companyDayAnalyticService.emitEvent('purchase', mem_code, {
         promo_id: promoId,
         promo_name: promoName,
         tier,
