@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 import { COMPANY_DAY_ANALYTIC_KAFKA_CLIENT } from './company-day-analytic.constants';
+import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 
 export interface CompanyDayAnalyticDto {
   promo_id: number;
@@ -25,15 +26,25 @@ export class CompanyDayAnalyticService {
   constructor(
     @Inject(COMPANY_DAY_ANALYTIC_KAFKA_CLIENT)
     private readonly kafkaClient: ClientKafka,
+    private readonly featureFlagsService: FeatureFlagsService,
   ) {}
 
-  emitEvent(
+  async emitEvent(
     event: CompanyDayAnalyticDto['event'],
     memCode: string,
     context: CompanyDayContextPayload,
   ) {
-    this.logger.debug(`Emitting company day event: ${JSON.stringify(event)}`);
     try {
+      console.log('emitcalled');
+      const isEnabled = await this.featureFlagsService.getFlag('comdayevent');
+      if (!isEnabled) {
+        this.logger.debug(
+          'Company day event disabled by feature flag, skipping emit',
+        );
+        console.log('flag is true so not emitting');
+        return;
+      }
+      console.log('flag is false so emitting');
       const eventData = {
         ...context,
         mem_code: memCode,
