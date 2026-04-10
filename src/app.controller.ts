@@ -84,10 +84,8 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
-import {
-  CompanyDayAnalyticService,
-  CompanyDayContextPayload,
-} from './company-day-analytic/company-day-analytic.service';
+import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+
 
 interface JwtPayload {
   username: string;
@@ -487,19 +485,16 @@ export class AppController {
       paymentOptions: string;
       shippingOptions: string;
       addressed: string;
-      company_day_context?: CompanyDayContextPayload;
     },
   ) {
     const mem_code = req.user.mem_code;
     try {
-      await this.shoppingOrderService.sendEventToAnalytics(
-        mem_code,
-        req.user.mem_route,
-        data.total_price,
-        data.company_day_context,
-      );
+      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
     } catch (error) {
-      console.log('Error sending analytics event:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Failed to send purchase event to analytics for mem_code ${mem_code}: ${message}`,
+      );
     }
 
     const result = await this.shoppingOrderService.submitOrder(
@@ -585,12 +580,10 @@ export class AppController {
       flashsale_end: string;
       cartVersion?: string | number;
       clientVersion?: string;
-      company_day_context?: CompanyDayContextPayload;
+      company_day_source?: string;
     },
   ) {
-    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
-    const mem_code = req.user.mem_code;
     const payload: {
       mem_code: string;
       pro_code: string;
@@ -602,8 +595,9 @@ export class AppController {
       flashsale_end: string;
       // hotdeal_free: boolean;
       clientVersion?: string | number;
+      company_day_source?: string;
     } = {
-      mem_code,
+      mem_code: data.mem_code,
       pro_code: data.pro_code,
       pro_unit: data.pro_unit,
       amount: data.amount,
@@ -611,51 +605,18 @@ export class AppController {
       mem_route: req.user.mem_route,
       flashsale_end: data.flashsale_end,
       clientVersion: data.clientVersion ?? data.cartVersion,
+      company_day_source: data.company_day_source,
     };
-    console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    const productContext =
-      Number(data.amount) > 0
-        ? this.companyDayAnalyticService.normalizeContext(
-            await this.companyDayAnalyticService.resolveContextFromProductCartTotal(
-              data.pro_code,
-              mem_code,
-              Number(summaryCart?.total || 0),
-            ),
-          )
-        : null;
-    const fallbackContext =
-      Number(data.amount) > 0
-        ? this.companyDayAnalyticService.normalizeContext(
-            await this.companyDayAnalyticService.resolveContextFromCartTotal(
-              Number(summaryCart?.total || 0),
-            ),
-          )
-        : null;
-    const computedContext = productContext ?? fallbackContext;
-    const resolvedContext = computedContext
-      ? this.companyDayAnalyticService.normalizeContext({
-          promo_name: computedContext.promo_name,
-          tier: computedContext.tier,
-          source: data.company_day_context?.source ?? computedContext.source,
-        })
-      : null;
-
-    if (Number(data.amount) > 0 && resolvedContext) {
-      this.companyDayAnalyticService.emitEvent(
-        'addcart',
-        mem_code,
-        resolvedContext,
-      );
-    }
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
     return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
-      companyDayContext: resolvedContext ?? undefined,
     };
   }
 
@@ -665,9 +626,10 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
+      promo_id: number;
       promo_name: string;
       tier: string;
-      source?: string;
+      source: string;
     },
   ) {
     const mem_code = req.user.mem_code;
