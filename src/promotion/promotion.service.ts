@@ -8,7 +8,6 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
-  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -196,6 +195,8 @@ export class PromotionService {
           'tier.description',
           'tier.tier_postter',
           'tier.detail',
+          'promotion.promo_id',
+          'promotion.promo_name',
 
           'condition.cond_id',
 
@@ -265,6 +266,21 @@ export class PromotionService {
             status: true,
             start_date: LessThanOrEqual(startOfDay),
             end_date: MoreThanOrEqual(endOfDay),
+          },
+        },
+        relations: {
+          promotion: true,
+        },
+        select: {
+          tier_id: true,
+          tier_name: true,
+          tier_postter: true,
+          min_amount: true,
+          description: true,
+          all_products: true,
+          promotion: {
+            promo_id: true,
+            promo_name: true,
           },
         },
       });
@@ -515,6 +531,23 @@ export class PromotionService {
 
   async createCondition(data: { tier_id: number; product_gcode: string }) {
     try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        relations: ['promotion'],
+      });
+
+      const findTierisProduct = await this.promotionTierRepo
+        .createQueryBuilder('tier')
+        .leftJoin('tier.promotion', 'promotion')
+        .where('tier.all_products = true')
+        .andWhere('tier.promotion.promo_id = :promo_id', {
+          promo_id: tier?.promotion?.promo_id,
+        })
+        .getMany();
+
+      if (findTierisProduct.length > 0)
+        return 'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active';
+
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
         product: { pro_code: data.product_gcode },
@@ -752,6 +785,23 @@ export class PromotionService {
 
   async setAllProducts(tier_id: number, status: boolean) {
     try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+        relations: ['promotion'],
+      });
+
+      const findTierisNotProduct = await this.promotionTierRepo
+        .createQueryBuilder('tier')
+        .leftJoin('tier.promotion', 'promotion')
+        .where('tier.all_products = false')
+        .andWhere('tier.promotion.promo_id = :promo_id', {
+          promo_id: tier?.promotion?.promo_id,
+        })
+        .getMany();
+
+      if (findTierisNotProduct.length > 1)
+        return 'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active';
+
       if (status === true) {
         await this.promotionConditionRepo.delete({ tier: { tier_id } });
         await this.promotionTierRepo.update(tier_id, {
@@ -798,6 +848,8 @@ export class PromotionService {
         .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'condition.cond_id',
+          'promotion.promo_id',
+          'promotion.promo_name',
           'tier.tier_id',
           'tier.tier_name',
           'tier.min_amount',
@@ -864,6 +916,21 @@ export class PromotionService {
             end_date: MoreThanOrEqual(endOfDay),
           },
         },
+        relations: {
+          promotion: true,
+        },
+        select: {
+          tier_id: true,
+          tier_name: true,
+          tier_postter: true,
+          min_amount: true,
+          description: true,
+          all_products: true,
+          promotion: {
+            promo_id: true,
+            promo_name: true,
+          },
+        },
       });
     } catch {
       throw new Error(`Failed to get tier with all products`);
@@ -928,6 +995,52 @@ export class PromotionService {
       );
     } catch {
       throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async updateTierPoster(tier_id: number, file: Express.Multer.File) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+      });
+
+      if (!tier) {
+        throw new Error(`Tier with id ${tier_id} not found`);
+      }
+
+      if (!file) {
+        throw new Error('No file provided for updating tier poster');
+      }
+
+      if (tier.tier_postter) {
+        const deleteParams = {
+          Bucket: 'wang-storage',
+          Key: tier.tier_postter.split('/').slice(-1)[0],
+        };
+        await this.s3.deleteObject(deleteParams).promise();
+      }
+
+      const uploadParams = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read',
+      };
+
+      const imgData = await this.s3.upload(uploadParams).promise();
+
+      await this.promotionTierRepo.update(tier_id, {
+        tier_postter: imgData.Location,
+      });
+
+      return {
+        message: 'Tier poster updated successfully',
+        url: imgData.Location,
+      };
+    } catch (error) {
+      console.error('Error updating tier poster:', error);
+      throw new Error(`Failed to update tier poster`);
     }
   }
 

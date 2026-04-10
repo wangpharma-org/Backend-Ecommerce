@@ -16,6 +16,10 @@ import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
+import {
+  CompanyDayAnalyticService,
+  type CompanyDayContextPayload,
+} from 'src/company-day-analytic/company-day-analytic.service';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -153,6 +157,16 @@ export interface CartMutationResult extends CartVersionState {
   cart: ShoppingProductCart[];
 }
 
+export interface CompanyDayRewardContext {
+  promo_id: number;
+  promo_name: string;
+  tier: string;
+}
+
+export interface CartMutationWithCompanyDayContext extends CartMutationResult {
+  companyDayRewardContext?: CompanyDayRewardContext | null;
+}
+
 @Injectable()
 export class ShoppingCartService {
   constructor(
@@ -171,6 +185,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
 
   private async isL16Member(
@@ -367,6 +382,7 @@ export class ShoppingCartService {
     mem_route?: string;
     flashsale_end?: string;
     clientVersion?: string | number;
+    company_day_source?: string;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -430,13 +446,8 @@ export class ShoppingCartService {
           hotdeal_free: false,
         });
       }
-
-      console.log('Check Promotion');
-      await this.checkPromotionReward(data.mem_code, data.priceCondition);
-
-      console.log('Check Hotdeal');
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
-      await this.checkedProductCart({
+      const checkedResult = await this.checkedProductCart({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
         type: 'check',
@@ -446,6 +457,22 @@ export class ShoppingCartService {
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
+      if (Number(data.amount) > 0) {
+        const source = data.company_day_source?.trim() || 'Cart';
+        const companyDayContext = checkedResult.companyDayRewardContext;
+        if (companyDayContext) {
+          const payload: CompanyDayContextPayload = {
+            ...companyDayContext,
+            source,
+          };
+          console.log('Emitting company day event with context:', payload);
+          this.companyDayAnalyticService.emitEvent(
+            'addcart',
+            data.mem_code,
+            payload,
+          );
+        }
+      }
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
@@ -487,7 +514,6 @@ export class ShoppingCartService {
         hotdeal_promain: data.hotdeal_promain,
         spc_datetime: new Date(),
       });
-      console.log('Check Promotion for Hotdeal');
       const cart = await this.getProductCart(data.mem_code);
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
@@ -505,10 +531,15 @@ export class ShoppingCartService {
     }
   }
 
-  async checkPromotionReward(mem_code: string, priceOption: string) {
-    console.log('Checking promotion rewards for member:', mem_code);
+  async checkPromotionReward(
+    mem_code: string,
+    priceOption: string,
+  ): Promise<CompanyDayRewardContext | null> {
     const today = new Date();
     const isL16 = await this.isL16Member(mem_code);
+    const selectedTierContexts: Array<
+      CompanyDayRewardContext & { min_amount: number }
+    > = [];
 
     // 1) ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
@@ -534,9 +565,7 @@ export class ShoppingCartService {
         where: { tier_id: In(distinctTierIds) },
         relations: { conditions: { product: true }, rewards: true },
       });
-
       const rewardsToRemove: ShoppingCartEntity[] = [];
-
       for (const reward of rewardUseCodeItems) {
         const tier = tiers.find((t) => t.tier_id === reward.tier_id);
         if (!tier) {
@@ -588,24 +617,6 @@ export class ShoppingCartService {
       }
     }
 
-    console.log('Calculating promotion-eligible products in cart');
-
-    // 3) ดึง product ที่อยู่ใน condition ของ promotion ที่ active
-    const productInCondition = await this.conRepo
-      .createQueryBuilder('cond')
-      .innerJoin('cond.tier', 'tier')
-      .innerJoin('tier.promotion', 'promo')
-      .innerJoin('cond.product', 'prod')
-      .select('DISTINCT prod.pro_code', 'pro_code')
-      .where('promo.status = :status', { status: true })
-      .andWhere('promo.start_date <= :today', { today })
-      .andWhere('promo.end_date >= :today', { today })
-      .getRawMany<{ pro_code: string }>();
-
-    console.log('Products in promotion conditions:', productInCondition);
-
-    const productCodes = new Set(productInCondition.map((p) => p.pro_code));
-
     // 4) เตรียมตะกร้าพื้นฐาน (ใช้กับ all_products) และตะกร้าแบบมีเงื่อนไขสินค้า
     const promoMonth = new Date().getMonth() + 1;
     const perProductTotalUnits = new Map<string, number>();
@@ -618,14 +629,6 @@ export class ShoppingCartService {
       if (line.hotdeal_free) return false;
       return true;
     });
-
-    // ใช้ productCodes เฉพาะกรณี promo แบบมี condition
-    const checkedCart = baseEligibleCart.filter((line) =>
-      productCodes.has(line.pro_code),
-    );
-
-    console.log('baseEligibleCart size:', baseEligibleCart.length);
-    console.log('checkedCart size (condition products):', checkedCart.length);
 
     // รวมจำนวนหน่วยต่อรหัสสินค้า (ใช้งานกับ logic โปรรายเดือนของสินค้า ถ้าคุณต้องการ)
     for (const line of baseEligibleCart) {
@@ -642,54 +645,6 @@ export class ShoppingCartService {
       );
     }
 
-    // 5) คำนวณยอดรวมทั้งหมดสำหรับ all_products จาก baseEligibleCart (สำคัญมาก)
-    let totalSumPrice = 0;
-    for (const line of baseEligibleCart) {
-      const p = line.product;
-      const ratio =
-        (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-        (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-        (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-        1;
-
-      const totalUnitsSameCode = perProductTotalUnits.get(line.pro_code) || 0;
-
-      // โปรรายเดือนของสินค้า (ถ้าคุณต้องการคงไว้ก็ใช้ isPromo แบบเดิม)
-      const isPromo =
-        p.pro_promotion_month === promoMonth &&
-        totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
-
-      let unitPrice = 0;
-      switch (priceOption) {
-        case 'A':
-          unitPrice = Number(p.pro_priceA);
-          break;
-        case 'B':
-          unitPrice = Number(p.pro_priceB);
-          break;
-        case 'C':
-          unitPrice = Number(p.pro_priceC);
-          break;
-        default:
-          unitPrice = Number(p.pro_priceC) || 0;
-      }
-
-      const linePrice = isPromo
-        ? Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
-        : Number(line.spc_amount) * unitPrice * Number(ratio);
-
-      totalSumPrice += linePrice;
-    }
-
-    if (totalSumPrice <= 0) {
-      // ถ้ายอดรวมเป็น 0 ก็ลบ reward (ที่ไม่ใช่ use_code) ทิ้งแล้วจบ
-      const rewardLines = cart.filter(
-        (c) => c.is_reward && c.spc_checked && c.use_code === false,
-      );
-      if (rewardLines.length) await this.shoppingCartRepo.remove(rewardLines);
-      return;
-    }
-
     // 6) โหลด promotions + tiers
     const promotions = await this.promotionRepo.find({
       where: { status: true },
@@ -701,7 +656,7 @@ export class ShoppingCartService {
         (c) => c.is_reward && c.spc_checked && c.use_code === false,
       );
       if (rewardLines.length) await this.shoppingCartRepo.remove(rewardLines);
-      return;
+      return null;
     }
 
     const shouldHaveMap = new Map<
@@ -727,90 +682,46 @@ export class ShoppingCartService {
       .innerJoin('cond.tier', 'tier')
       .innerJoin('tier.promotion', 'promo')
       .innerJoin('cond.product', 'prod')
-      .select(['promo.promo_id AS promo_id', 'prod.pro_code AS pro_code'])
-      .getRawMany<{ promo_id: number; pro_code: string }>();
+      .select([
+        'promo.promo_id AS promo_id',
+        'tier.tier_id AS tier_id',
+        'prod.pro_code AS pro_code',
+      ])
+      .getRawMany<{ promo_id: number; tier_id: number; pro_code: string }>();
 
     const promoConditionMap = new Map<number, Set<string>>();
-    for (const { promo_id, pro_code } of promoConditions) {
-      if (!promoConditionMap.has(promo_id)) {
-        promoConditionMap.set(promo_id, new Set());
+    for (const { tier_id, pro_code } of promoConditions) {
+      if (!promoConditionMap.has(tier_id)) {
+        promoConditionMap.set(tier_id, new Set());
       }
-      promoConditionMap.get(promo_id)!.add(pro_code);
+      promoConditionMap.get(tier_id)!.add(pro_code);
     }
 
-    // 8) โปรโมชั่นที่ all_products = true (แจกของทุกสินค้า)
-    const allProductTiers = await this.tierRepo
-      .createQueryBuilder('tier')
-      .innerJoinAndSelect('tier.promotion', 'promo')
-      .leftJoinAndSelect('tier.rewards', 'reward')
-      .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
-      .where('tier.all_products = :all', { all: true })
-      .andWhere('promo.status = :status', { status: true })
-      .andWhere('promo.start_date <= :today', { today })
-      .andWhere('promo.end_date >= :today', { today })
-      .getMany();
+    // --- REORDERED LOGIC ---
+    // 8) โปรโมชั่นแบบมี condition (Greedy approach) - ทำก่อนเพราะเจาะจงกว่า
+    const conditionBasedTiers = promotions
+      .flatMap(
+        (promo) =>
+          promo.tiers?.map((tier) => ({ ...tier, promotion: promo })) ?? [],
+      )
+      .filter(
+        (tier) => !tier.all_products && promoConditionMap.has(tier.tier_id),
+      )
+      .sort((a, b) => Number(b.min_amount) - Number(a.min_amount));
 
-    console.log('All product tiers:', allProductTiers);
+    const usedSpcIds = new Set<number>();
 
-    if (allProductTiers.length > 0) {
-      const sortedTiers = [...allProductTiers].sort(
-        (a, b) => Number(b.min_amount) - Number(a.min_amount),
+    for (const tier of conditionBasedTiers) {
+      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
+      const threshold = Number(tier.min_amount);
+      if (!threshold) continue;
+
+      const eligibleItemsForTier = baseEligibleCart.filter(
+        (line) =>
+          !usedSpcIds.has(line.spc_id) && conditionCodes.has(line.pro_code),
       );
 
-      let remainingBudget = totalSumPrice;
-
-      for (const tier of sortedTiers) {
-        const threshold = Number(tier.min_amount);
-        if (!threshold || remainingBudget < threshold) continue;
-
-        const multiplier = Math.floor(remainingBudget / threshold);
-        if (multiplier <= 0) continue;
-
-        remainingBudget -= multiplier * threshold;
-
-        // Tag สินค้าหลักทุกชิ้นใน baseEligibleCart ว่าเข้าโปรนี้
-        for (const line of baseEligibleCart) {
-          if (!conditionTagMap.has(line.spc_id)) {
-            conditionTagMap.set(line.spc_id, {
-              promo_id: tier.promotion.promo_id,
-              tier_id: tier.tier_id,
-            });
-          }
-        }
-
-        for (const rw of tier.rewards || []) {
-          if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
-          const code = rw.giftProduct?.pro_code;
-          if (!code) continue;
-          const key = `${code}|${rw.unit}`;
-          const addQty = Number(rw.qty ?? 0) * multiplier;
-
-          const prev = shouldHaveMap.get(key);
-          if (prev) {
-            prev.qty += addQty;
-          } else {
-            shouldHaveMap.set(key, {
-              pro_code: code,
-              unit: rw.unit,
-              qty: addQty,
-              promo_id: tier.promotion.promo_id,
-              tier_id: tier.tier_id,
-            });
-          }
-        }
-      }
-    }
-
-    // 9) โปรโมชั่นแบบมี condition ต่อโปรโมชัน (คำนวณจาก baseEligibleCart + conditionCodes)
-    for (const promo of promotions) {
-      if (!promo.tiers?.length) continue;
-
-      const conditionCodes = promoConditionMap.get(promo.promo_id) || new Set();
-
-      // ใช้ baseEligibleCart แล้วกรองเฉพาะสินค้าตาม condition ของ "โปรโมชันนี้"
-      const remaining = baseEligibleCart.reduce((sum, line) => {
-        if (!conditionCodes.has(line.pro_code)) return sum;
-
+      const tierValue = eligibleItemsForTier.reduce((sum, line) => {
         const p = line.product;
         const ratio =
           (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
@@ -823,19 +734,117 @@ export class ShoppingCartService {
             : priceOption === 'B'
               ? Number(p.pro_priceB)
               : Number(p.pro_priceC);
-
         return sum + Number(line.spc_amount) * price * Number(ratio);
       }, 0);
 
-      console.log(`promo_id=${promo.promo_id}, remaining=${remaining}`);
-      if (remaining <= 0) continue;
+      if (tierValue >= threshold) {
+        const multiplier = Math.floor(tierValue / threshold);
+        if (multiplier <= 0) continue;
 
-      const tiersDesc = [...promo.tiers].sort(
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
+
+        // Mark items as used and tag them
+        for (const line of eligibleItemsForTier) {
+          usedSpcIds.add(line.spc_id);
+          if (!conditionTagMap.has(line.spc_id)) {
+            conditionTagMap.set(line.spc_id, {
+              promo_id: tier.promotion.promo_id,
+              tier_id: tier.tier_id,
+            });
+          }
+        }
+
+        // Grant rewards
+        for (const rw of tier.rewards || []) {
+          if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
+          const code = rw.giftProduct?.pro_code;
+          if (!code) continue;
+
+          const key = `${code}|${rw.unit}|${tier.promotion.promo_id}|${tier.tier_id}`;
+          const addQty = Number(rw.qty ?? 0) * multiplier;
+          const prev = shouldHaveMap.get(key);
+
+          if (prev) {
+            prev.qty += addQty;
+          } else {
+            shouldHaveMap.set(key, {
+              pro_code: code,
+              unit: rw.unit,
+              qty: addQty,
+              promo_id: tier.promotion.promo_id,
+              tier_id: tier.tier_id,
+            });
+          }
+        }
+      }
+    }
+
+    // 9) คำนวณยอดรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
+    const remainingEligibleCart = baseEligibleCart.filter(
+      (line) => !usedSpcIds.has(line.spc_id),
+    );
+
+    const totalSumPriceForUnusedItems = remainingEligibleCart.reduce(
+      (sum, line) => {
+        const p = line.product;
+        const ratio =
+          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+          1;
+        const totalUnitsSameCode = perProductTotalUnits.get(line.pro_code) || 0;
+        const isPromo =
+          p.pro_promotion_month === promoMonth &&
+          totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+        let unitPrice = 0;
+        switch (priceOption) {
+          case 'A':
+            unitPrice = Number(p.pro_priceA);
+            break;
+          case 'B':
+            unitPrice = Number(p.pro_priceB);
+            break;
+          case 'C':
+            unitPrice = Number(p.pro_priceC);
+            break;
+          default:
+            unitPrice = Number(p.pro_priceC) || 0;
+        }
+        const linePrice = isPromo
+          ? Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
+          : Number(line.spc_amount) * unitPrice * Number(ratio);
+        return sum + linePrice;
+      },
+      0,
+    );
+
+    // 10) โปรโมชั่นที่ all_products = true (คำนวณจากสินค้าที่เหลือ)
+    const allProductTiers = await this.tierRepo
+      .createQueryBuilder('tier')
+      .innerJoinAndSelect('tier.promotion', 'promo')
+      .leftJoinAndSelect('tier.rewards', 'reward')
+      .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+      .where('tier.all_products = :all', { all: true })
+      .andWhere('promo.status = :status', { status: true })
+      .andWhere('promo.start_date <= :today', { today })
+      .andWhere('promo.end_date >= :today', { today })
+      .getMany();
+
+    if (allProductTiers.length > 0) {
+      const sortedTiers = [...allProductTiers].sort(
         (a, b) => Number(b.min_amount) - Number(a.min_amount),
       );
 
-      let remainingBudget = remaining;
-      for (const tier of tiersDesc) {
+      let remainingBudget = totalSumPriceForUnusedItems;
+
+      for (const tier of sortedTiers) {
         const threshold = Number(tier.min_amount);
         if (!threshold || remainingBudget < threshold) continue;
 
@@ -844,12 +853,20 @@ export class ShoppingCartService {
 
         remainingBudget -= multiplier * threshold;
 
-        // Tag สินค้าหลักที่ตรง condition ของโปรนี้
-        for (const line of baseEligibleCart) {
-          if (!conditionCodes.has(line.pro_code)) continue;
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
+
+        // Tag สินค้าหลักที่เหลือ ว่าเข้าโปรนี้
+        for (const line of remainingEligibleCart) {
           if (!conditionTagMap.has(line.spc_id)) {
             conditionTagMap.set(line.spc_id, {
-              promo_id: promo.promo_id,
+              promo_id: tier.promotion.promo_id,
               tier_id: tier.tier_id,
             });
           }
@@ -859,10 +876,10 @@ export class ShoppingCartService {
           if (isL16 && rw.giftProduct?.pro_l16_only === 1) continue;
           const code = rw.giftProduct?.pro_code;
           if (!code) continue;
-          const key = `${code}|${rw.unit}`;
+          const key = `${code}|${rw.unit}|${tier.promotion.promo_id}|${tier.tier_id}`;
           const addQty = Number(rw.qty ?? 0) * multiplier;
+
           const prev = shouldHaveMap.get(key);
-          const promo_id = promo.promo_id;
           if (prev) {
             prev.qty += addQty;
           } else {
@@ -870,7 +887,7 @@ export class ShoppingCartService {
               pro_code: code,
               unit: rw.unit,
               qty: addQty,
-              promo_id,
+              promo_id: tier.promotion.promo_id,
               tier_id: tier.tier_id,
             });
           }
@@ -878,26 +895,24 @@ export class ShoppingCartService {
       }
     }
 
-    // 10) อัปเดต / ลบของแถมตาม shouldHaveMap
+    // 11) อัปเดต / ลบของแถมตาม shouldHaveMap
     const rewardInCart = cart.filter((c) => c.is_reward);
     const rewardCartMap = new Map<string, ShoppingCartEntity>();
     for (const r of rewardInCart) {
-      rewardCartMap.set(`${r.pro_code}|${r.spc_unit}`, r);
+      rewardCartMap.set(
+        `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`,
+        r,
+      );
     }
 
     const toRemove: ShoppingCartEntity[] = [];
     for (const r of rewardInCart) {
-      const key = `${r.pro_code}|${r.spc_unit}`;
+      const key = `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`;
       if (!shouldHaveMap.has(key) && r.spc_checked && r.use_code === false) {
         toRemove.push(r);
       }
     }
     if (toRemove.length) await this.shoppingCartRepo.remove(toRemove);
-
-    console.log(
-      '✅ shouldHaveMap content:',
-      Array.from(shouldHaveMap.entries()),
-    );
 
     const ops: Promise<any>[] = [];
     for (const {
@@ -907,7 +922,7 @@ export class ShoppingCartService {
       promo_id,
       tier_id,
     } of shouldHaveMap.values()) {
-      const key = `${pro_code}|${unit}`;
+      const key = `${pro_code}|${unit}|${promo_id}|${tier_id}`;
       const existing = rewardCartMap.get(key);
       if (!existing) {
         ops.push(
@@ -939,7 +954,7 @@ export class ShoppingCartService {
 
     if (ops.length) await Promise.all(ops);
 
-    // 11) Sync promo_id/tier_id บนสินค้าหลัก (non-reward) ตาม conditionTagMap
+    // 12) Sync promo_id/tier_id บนสินค้าหลัก (non-reward) ตาม conditionTagMap
     const conditionSyncOps: Promise<any>[] = [];
     for (const line of baseEligibleCart) {
       const tag = conditionTagMap.get(line.spc_id);
@@ -968,6 +983,27 @@ export class ShoppingCartService {
       }
     }
     if (conditionSyncOps.length) await Promise.all(conditionSyncOps);
+
+    if (selectedTierContexts.length === 0) {
+      return null;
+    }
+
+    selectedTierContexts.sort((a, b) => {
+      if (b.min_amount !== a.min_amount) {
+        return b.min_amount - a.min_amount;
+      }
+      if (a.promo_id !== b.promo_id) {
+        return a.promo_id - b.promo_id;
+      }
+      return a.tier.localeCompare(b.tier);
+    });
+
+    const topTier = selectedTierContexts[0];
+    return {
+      promo_id: topTier.promo_id,
+      promo_name: topTier.promo_name,
+      tier: topTier.tier,
+    };
   }
 
   async checkedProductCart(data: {
@@ -977,8 +1013,7 @@ export class ShoppingCartService {
     priceOption: string;
     mem_route?: string;
     clientVersion?: string | number;
-  }): Promise<CartMutationResult> {
-    console.log('checkedProductCart data:', data);
+  }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
@@ -1037,11 +1072,14 @@ export class ShoppingCartService {
         throw new Error('Something wrong in checkedProductCart');
       }
 
-      await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
+      const companyDayRewardContext = await this.checkPromotionReward(
+        data.mem_code,
+        data.priceOption ?? 'C',
+      );
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
-      return { cart, ...version };
+      return { cart, ...version, companyDayRewardContext };
     } catch (e) {
       console.error('Error in checkedProductCart', e);
       if (e instanceof ConflictException) {
@@ -1420,12 +1458,10 @@ export class ShoppingCartService {
             pro_code: group.pro_code,
           }));
 
-          console.log('orderItems:', orderItems);
-
+          // คำนวณหน่วยที่เล็กที่สุดสำหรับ pro_code นี้
           return this.productsService.calculateSmallestUnit(orderItems);
         }),
       );
-      console.log('totalSmallestUnit:', totalSmallestUnit);
 
       const ProductMaptotalSmallestUnit = totalSmallestUnit.map(
         (total, index) => ({

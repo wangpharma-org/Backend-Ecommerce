@@ -205,6 +205,8 @@ export class HotdealService {
       pro2_name: hotdeal.product2?.pro_name || null,
       order: hotdeal.order,
       special_deal: hotdeal.special_deal,
+      pro1_stock: hotdeal.product?.pro_stock || 0,
+      pro2_stock: hotdeal.product2?.pro_stock || 0,
     }));
   }
 

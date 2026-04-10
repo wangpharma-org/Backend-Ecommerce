@@ -42,6 +42,7 @@ import { TrackOrderModule } from './track-order/track-order.module';
 import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
+import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
 import { envValidationSchema } from './env.validation';
 
 @Module({
@@ -105,6 +106,7 @@ import { envValidationSchema } from './env.validation';
     ProductReturnModule,
     BehaviorTrackingModule,
     NotifyRtModule,
+    CompanyDayAnalyticModule,
   ],
   controllers: [AppController],
   providers: [AppService],

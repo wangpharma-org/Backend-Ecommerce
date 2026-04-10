@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, MoreThanOrEqual, In } from 'typeorm';
+import {
+  Repository,
+  Between,
+  MoreThanOrEqual,
+  In,
+  FindOptionsWhere,
+} from 'typeorm';
 import { TrackingEventEntity, EventType } from './tracking-event.entity';
 import { ProductEntity } from '../products/products.entity';
 
@@ -12,8 +18,8 @@ export interface TrackEventDto {
   page_title?: string;
   pro_code?: string;
   search_query?: string;
-  filters?: Record<string, any>;
-  extra_data?: Record<string, any>;
+  filters?: Record<string, unknown>;
+  extra_data?: Record<string, unknown>;
   referrer?: string;
   duration_ms?: number;
   device_type?: string;
@@ -23,6 +29,201 @@ export interface TrackEventDto {
 
 export interface BatchTrackDto {
   events: TrackEventDto[];
+}
+
+export type CustomerSegmentKey =
+  | 'vip'
+  | 'loyal'
+  | 'potential'
+  | 'browsers'
+  | 'at_risk'
+  | 'new_users';
+
+// Type interfaces for database query results
+interface CountResult {
+  count?: string;
+}
+
+export interface EventCountResult {
+  event_type?: EventType;
+  count?: string;
+}
+
+export interface TopProductViewResult {
+  pro_code?: string;
+  view_count?: string;
+}
+
+export interface SearchTermResult {
+  query?: string;
+  count?: string;
+}
+
+export interface RecentSearchResult {
+  query?: string;
+  last_searched?: string | Date;
+}
+
+export interface TopPageResult {
+  page_path?: string;
+  visit_count?: string;
+}
+
+interface DailyEventResult {
+  date?: string;
+  total?: string;
+  product_views?: string;
+  add_to_cart?: string;
+  orders?: string;
+  unique_users?: string;
+}
+
+export interface HourlyEventResult {
+  hour?: number | string;
+  count?: string;
+}
+
+export interface DeviceBreakdownResult {
+  device?: string;
+  count?: string;
+}
+
+interface ProductStatsResult {
+  pro_code?: string;
+  view_count?: string;
+  unique_viewers?: string;
+  add_count?: string;
+  unique_adders?: string;
+  favorite_count?: string;
+}
+
+interface SessionResult {
+  session_id?: string;
+  mem_code?: string;
+  device_type?: string;
+  start_time?: string | Date;
+  end_time?: string | Date;
+  event_count?: string;
+}
+
+interface ZeroResultSearchResult {
+  query?: string;
+  count?: string;
+  last_searched?: string | Date;
+}
+
+interface ProductDemandResult {
+  pro_code: string;
+  view_count?: string;
+  unique_viewers?: string;
+}
+
+interface CheckoutSessionResult {
+  session_id: string;
+}
+
+interface CartProductResult {
+  pro_code: string;
+  add_count?: string;
+  unique_sessions?: string;
+  unique_users?: string;
+}
+
+interface CartSessionResult {
+  pro_code: string;
+  session_id: string;
+}
+
+interface RemoveEventResult {
+  pro_code: string;
+  remove_count?: string;
+}
+
+interface UserMetricsResult {
+  mem_code: string;
+  total_events: string;
+  active_days: string;
+  last_activity: string | Date;
+  first_activity: string | Date;
+  product_views: string;
+  add_to_cart: string;
+  orders: string;
+  searches: string;
+  sessions: string;
+}
+
+interface CohortResult {
+  mem_code: string;
+  first_activity: string | Date;
+}
+
+interface UserActivityResult {
+  mem_code: string;
+  activity_date: string | Date;
+}
+
+interface PurchaseResult {
+  mem_code: string;
+  purchase_date: string | Date;
+  pro_code?: string;
+}
+
+export interface CustomerSegmentMetrics {
+  total_events: number;
+  active_days: number;
+  orders: number;
+  product_views: number;
+  add_to_cart: number;
+  sessions: number;
+}
+
+export interface CustomerSegmentResult {
+  mem_code: string;
+  segment: CustomerSegmentKey;
+  segment_label: string;
+  description: string;
+  metrics: CustomerSegmentMetrics;
+  engagement_score: number;
+  days_since_last_activity: number;
+  last_activity: Date;
+  first_activity: Date;
+}
+
+export type StockAlertLevel = 'critical' | 'warning' | 'watch' | 'ok';
+
+export interface StockAlertResult {
+  pro_code: string;
+  pro_name: string;
+  pro_imgmain: string;
+  pro_unit1: string;
+  current_stock: number;
+  lowest_stock: number;
+  view_count: number;
+  unique_viewers: number;
+  demand_per_day: number;
+  alert_level: StockAlertLevel;
+  message: string;
+}
+
+export type CartConversionStatus =
+  | 'high_conversion'
+  | 'low_conversion'
+  | 'price_sensitive'
+  | 'normal';
+
+export interface CartConversionResult {
+  pro_code: string;
+  pro_name: string;
+  pro_imgmain: string;
+  pro_unit1: string;
+  add_count: number;
+  remove_count: number;
+  unique_sessions: number;
+  converted_sessions: number;
+  conversion_rate: number;
+  remove_ratio: number;
+  status: CartConversionStatus;
+  message: string;
 }
 
 @Injectable()
@@ -53,7 +254,7 @@ export class BehaviorTrackingService {
     from_date?: string,
     to_date?: string,
   ) {
-    const where: any = { mem_code };
+    const where: FindOptionsWhere<TrackingEventEntity> = { mem_code };
 
     if (from_date && to_date) {
       where.created_at = Between(new Date(from_date), new Date(to_date));
@@ -68,7 +269,7 @@ export class BehaviorTrackingService {
       .addSelect('COUNT(*)', 'count')
       .where('t.mem_code = :mem_code', { mem_code })
       .groupBy('t.event_type')
-      .getRawMany();
+      .getRawMany<EventCountResult>();
 
     // Get most viewed products
     const topProducts = await this.trackingRepo
@@ -81,7 +282,7 @@ export class BehaviorTrackingService {
       .groupBy('t.pro_code')
       .orderBy('view_count', 'DESC')
       .limit(10)
-      .getRawMany();
+      .getRawMany<TopProductViewResult>();
 
     // Get recent searches
     const recentSearches = await this.trackingRepo
@@ -94,7 +295,7 @@ export class BehaviorTrackingService {
       .groupBy('t.search_query')
       .orderBy('last_searched', 'DESC')
       .limit(10)
-      .getRawMany();
+      .getRawMany<RecentSearchResult>();
 
     // Get most visited pages
     const topPages = await this.trackingRepo
@@ -106,7 +307,7 @@ export class BehaviorTrackingService {
       .groupBy('t.page_path')
       .orderBy('visit_count', 'DESC')
       .limit(10)
-      .getRawMany();
+      .getRawMany<TopPageResult>();
 
     return {
       mem_code,
@@ -159,14 +360,14 @@ export class BehaviorTrackingService {
       .where('t.pro_code = :pro_code', { pro_code })
       .andWhere('t.event_type = :type', { type: 'product_view' })
       .andWhere('t.mem_code IS NOT NULL')
-      .getRawOne();
+      .getRawOne<CountResult>();
 
     return {
       pro_code,
       views,
       add_to_cart: addToCart,
       favorites,
-      unique_viewers: parseInt(uniqueViewers?.count || '0'),
+      unique_viewers: parseInt(String(uniqueViewers?.count || '0')),
       conversion_rate:
         views > 0 ? ((addToCart / views) * 100).toFixed(2) + '%' : '0%',
     };
@@ -194,7 +395,7 @@ export class BehaviorTrackingService {
       .groupBy('t.search_query')
       .orderBy('count', 'DESC')
       .limit(20)
-      .getRawMany();
+      .getRawMany<SearchTermResult>();
 
     // Total searches
     const totalSearches = await query.clone().getCount();
@@ -205,12 +406,12 @@ export class BehaviorTrackingService {
       .select('COUNT(DISTINCT t.mem_code)', 'count')
       .where('t.event_type = :type', { type: 'search' })
       .andWhere('t.mem_code IS NOT NULL')
-      .getRawOne();
+      .getRawOne<CountResult>();
 
     return {
       top_searches: topSearches,
       total_searches: totalSearches,
-      unique_searchers: parseInt(uniqueSearchers?.count || '0'),
+      unique_searchers: parseInt(String(uniqueSearchers?.count || '0')),
     };
   }
 
@@ -235,20 +436,20 @@ export class BehaviorTrackingService {
       .addSelect('COUNT(*)', 'count')
       .groupBy('t.event_type')
       .orderBy('count', 'DESC')
-      .getRawMany();
+      .getRawMany<EventCountResult>();
 
     // Unique users
     const uniqueUsers = await this.trackingRepo
       .createQueryBuilder('t')
       .select('COUNT(DISTINCT t.mem_code)', 'count')
       .where('t.mem_code IS NOT NULL')
-      .getRawOne();
+      .getRawOne<CountResult>();
 
     // Unique sessions
     const uniqueSessions = await this.trackingRepo
       .createQueryBuilder('t')
       .select('COUNT(DISTINCT t.session_id)', 'count')
-      .getRawOne();
+      .getRawOne<CountResult>();
 
     // Events by hour (last 24h)
     const last24h = new Date();
@@ -261,7 +462,7 @@ export class BehaviorTrackingService {
       .where('t.created_at >= :since', { since: last24h })
       .groupBy('HOUR(t.created_at)')
       .orderBy('hour', 'ASC')
-      .getRawMany();
+      .getRawMany<HourlyEventResult>();
 
     // Device breakdown
     const deviceBreakdown = await baseQuery
@@ -270,13 +471,13 @@ export class BehaviorTrackingService {
       .addSelect('COUNT(*)', 'count')
       .where('t.device_type IS NOT NULL')
       .groupBy('t.device_type')
-      .getRawMany();
+      .getRawMany<DeviceBreakdownResult>();
 
     return {
       total_events: totalEvents,
       events_by_type: eventsByType,
-      unique_users: parseInt(uniqueUsers?.count || '0'),
-      unique_sessions: parseInt(uniqueSessions?.count || '0'),
+      unique_users: parseInt(String(uniqueUsers?.count || '0')),
+      unique_sessions: parseInt(String(uniqueSessions?.count || '0')),
       events_by_hour: eventsByHour,
       device_breakdown: deviceBreakdown,
     };
@@ -311,16 +512,16 @@ export class BehaviorTrackingService {
       .addSelect('COUNT(DISTINCT t.mem_code)', 'unique_users')
       .groupBy('DATE(t.created_at)')
       .orderBy('date', 'ASC')
-      .getRawMany();
+      .getRawMany<DailyEventResult>();
 
     return {
       daily_events: dailyEvents.map((d) => ({
-        date: d.date,
-        total: parseInt(d.total || '0'),
-        product_views: parseInt(d.product_views || '0'),
-        add_to_cart: parseInt(d.add_to_cart || '0'),
-        orders: parseInt(d.orders || '0'),
-        unique_users: parseInt(d.unique_users || '0'),
+        date: String(d.date || ''),
+        total: parseInt(String(d.total || '0')),
+        product_views: parseInt(String(d.product_views || '0')),
+        add_to_cart: parseInt(String(d.add_to_cart || '0')),
+        orders: parseInt(String(d.orders || '0')),
+        unique_users: parseInt(String(d.unique_users || '0')),
       })),
     };
   }
@@ -328,9 +529,7 @@ export class BehaviorTrackingService {
   // Get top products by views and add to cart
   async getTopProducts(from_date?: string, to_date?: string, limit = 10) {
     const dateCondition =
-      from_date && to_date
-        ? 't.created_at BETWEEN :from AND :to'
-        : '1=1';
+      from_date && to_date ? 't.created_at BETWEEN :from AND :to' : '1=1';
     const dateParams =
       from_date && to_date
         ? { from: new Date(from_date), to: new Date(to_date + ' 23:59:59') }
@@ -348,7 +547,7 @@ export class BehaviorTrackingService {
       .groupBy('t.pro_code')
       .orderBy('view_count', 'DESC')
       .limit(limit)
-      .getRawMany();
+      .getRawMany<ProductStatsResult>();
 
     // Top added to cart products
     const topAddedToCart = await this.trackingRepo
@@ -362,7 +561,7 @@ export class BehaviorTrackingService {
       .groupBy('t.pro_code')
       .orderBy('add_count', 'DESC')
       .limit(limit)
-      .getRawMany();
+      .getRawMany<ProductStatsResult>();
 
     // Top favorited products
     const topFavorited = await this.trackingRepo
@@ -375,22 +574,22 @@ export class BehaviorTrackingService {
       .groupBy('t.pro_code')
       .orderBy('favorite_count', 'DESC')
       .limit(limit)
-      .getRawMany();
+      .getRawMany<ProductStatsResult>();
 
     return {
       top_viewed: topViewed.map((p) => ({
-        pro_code: p.pro_code,
-        view_count: parseInt(p.view_count || '0'),
-        unique_viewers: parseInt(p.unique_viewers || '0'),
+        pro_code: String(p.pro_code || ''),
+        view_count: parseInt(String(p.view_count || '0')),
+        unique_viewers: parseInt(String(p.unique_viewers || '0')),
       })),
       top_added_to_cart: topAddedToCart.map((p) => ({
-        pro_code: p.pro_code,
-        add_count: parseInt(p.add_count || '0'),
-        unique_adders: parseInt(p.unique_adders || '0'),
+        pro_code: String(p.pro_code || ''),
+        add_count: parseInt(String(p.add_count || '0')),
+        unique_adders: parseInt(String(p.unique_adders || '0')),
       })),
       top_favorited: topFavorited.map((p) => ({
-        pro_code: p.pro_code,
-        favorite_count: parseInt(p.favorite_count || '0'),
+        pro_code: String(p.pro_code || ''),
+        favorite_count: parseInt(String(p.favorite_count || '0')),
       })),
     };
   }
@@ -445,7 +644,7 @@ export class BehaviorTrackingService {
       .addGroupBy('t.device_type')
       .orderBy('start_time', 'DESC')
       .limit(limit)
-      .getRawMany();
+      .getRawMany<SessionResult>();
 
     // Get journey details for each session
     const journeys = await Promise.all(
@@ -459,7 +658,9 @@ export class BehaviorTrackingService {
             't.search_query',
             't.created_at',
           ])
-          .where('t.session_id = :sessionId', { sessionId: session.session_id })
+          .where('t.session_id = :sessionId', {
+            sessionId: String(session.session_id || ''),
+          })
           .orderBy('t.created_at', 'ASC')
           .getMany();
 
@@ -473,21 +674,27 @@ export class BehaviorTrackingService {
         }));
 
         // Calculate duration in seconds
-        const startTime = new Date(session.start_time).getTime();
-        const endTime = new Date(session.end_time).getTime();
+        const startTime = new Date(
+          session.start_time ? session.start_time : 0,
+        ).getTime();
+        const endTime = new Date(
+          session.end_time ? session.end_time : 0,
+        ).getTime();
         const duration_seconds = Math.round((endTime - startTime) / 1000);
 
         // Check if converted (has checkout_complete)
-        const converted = events.some((e) => e.event_type === 'checkout_complete');
+        const converted = events.some(
+          (e) => e.event_type === 'checkout_complete',
+        );
 
         return {
-          session_id: session.session_id,
-          mem_code: session.mem_code,
-          device_type: session.device_type,
+          session_id: String(session.session_id || ''),
+          mem_code: String(session.mem_code || ''),
+          device_type: String(session.device_type || ''),
           start_time: session.start_time,
           end_time: session.end_time,
           duration_seconds,
-          event_count: parseInt(session.event_count || '0'),
+          event_count: parseInt(String(session.event_count || '0')),
           converted,
           path,
         };
@@ -498,7 +705,11 @@ export class BehaviorTrackingService {
   }
 
   // Get zero result searches
-  async getZeroResultSearches(from_date?: string, to_date?: string, limit = 30) {
+  async getZeroResultSearches(
+    from_date?: string,
+    to_date?: string,
+    limit = 30,
+  ) {
     const query = this.trackingRepo
       .createQueryBuilder('t')
       .where('t.event_type = :type', { type: 'search' })
@@ -519,7 +730,7 @@ export class BehaviorTrackingService {
       .groupBy('t.search_query')
       .orderBy('count', 'DESC')
       .limit(limit)
-      .getRawMany();
+      .getRawMany<ZeroResultSearchResult>();
 
     // Total zero result searches
     const totalCount = await query.clone().getCount();
@@ -527,7 +738,7 @@ export class BehaviorTrackingService {
     return {
       zero_result_searches: zeroResults.map((r) => ({
         query: r.query,
-        count: parseInt(r.count || '0'),
+        count: parseInt(String(r.count || '0')),
         last_searched: r.last_searched,
       })),
       total_count: totalCount,
@@ -551,7 +762,7 @@ export class BehaviorTrackingService {
       .groupBy('t.pro_code')
       .orderBy('view_count', 'DESC')
       .limit(100) // Get top 100 viewed products
-      .getRawMany();
+      .getRawMany<ProductDemandResult>();
 
     if (highDemandProducts.length === 0) {
       return { alerts: [], summary: { critical: 0, warning: 0, watch: 0 } };
@@ -576,7 +787,7 @@ export class BehaviorTrackingService {
 
     // Calculate alerts
     const alerts = highDemandProducts
-      .map((demand) => {
+      .map((demand): StockAlertResult | null => {
         const product = stockMap.get(demand.pro_code);
         if (!product) return null;
 
@@ -589,15 +800,17 @@ export class BehaviorTrackingService {
         const demandPerDay = viewCount / days;
 
         // Calculate stock status
-        let alertLevel: 'critical' | 'warning' | 'watch' | 'ok' = 'ok';
+        let alertLevel: StockAlertLevel = 'ok';
         let message = '';
 
         if (stock === 0) {
           alertLevel = 'critical';
-          message = 'สินค้าหมด! มีคนดู ' + viewCount + ' ครั้งใน ' + days + ' วัน';
+          message =
+            'สินค้าหมด! มีคนดู ' + viewCount + ' ครั้งใน ' + days + ' วัน';
         } else if (stock <= lowestStock) {
           alertLevel = 'critical';
-          message = 'สต็อกต่ำกว่าเกณฑ์! คงเหลือ ' + stock + ' ' + product.pro_unit1;
+          message =
+            'สต็อกต่ำกว่าเกณฑ์! คงเหลือ ' + stock + ' ' + product.pro_unit1;
         } else if (demandPerDay > 10 && stock < demandPerDay * 7) {
           // High demand but less than 1 week of stock
           alertLevel = 'warning';
@@ -627,7 +840,7 @@ export class BehaviorTrackingService {
           message,
         };
       })
-      .filter((a) => a !== null)
+      .filter((a): a is StockAlertResult => a !== null)
       .slice(0, limit);
 
     // Count by alert level
@@ -658,7 +871,7 @@ export class BehaviorTrackingService {
       .groupBy('t.pro_code')
       .orderBy('add_count', 'DESC')
       .limit(100)
-      .getRawMany();
+      .getRawMany<CartProductResult>();
 
     if (cartProducts.length === 0) {
       return {
@@ -683,9 +896,11 @@ export class BehaviorTrackingService {
       .select('t.session_id', 'session_id')
       .where('t.event_type = :type', { type: 'checkout_complete' })
       .andWhere('t.created_at >= :fromDate', { fromDate })
-      .getRawMany();
+      .getRawMany<CheckoutSessionResult>();
 
-    const completedSessionIds = new Set(checkoutSessions.map((s) => s.session_id));
+    const completedSessionIds = new Set(
+      checkoutSessions.map((s) => s.session_id),
+    );
 
     // 3. Get cart sessions per product to check conversion
     const cartSessionsPerProduct = await this.trackingRepo
@@ -695,7 +910,7 @@ export class BehaviorTrackingService {
       .where('t.event_type = :type', { type: 'product_add_cart' })
       .andWhere('t.pro_code IN (:...codes)', { codes: proCodes })
       .andWhere('t.created_at >= :fromDate', { fromDate })
-      .getRawMany();
+      .getRawMany<CartSessionResult>();
 
     // Group sessions by product
     const productSessions: Record<string, Set<string>> = {};
@@ -715,11 +930,11 @@ export class BehaviorTrackingService {
       .andWhere('t.pro_code IN (:...codes)', { codes: proCodes })
       .andWhere('t.created_at >= :fromDate', { fromDate })
       .groupBy('t.pro_code')
-      .getRawMany();
+      .getRawMany<RemoveEventResult>();
 
     const removeMap: Record<string, number> = {};
     removeEvents.forEach((r) => {
-      removeMap[r.pro_code] = parseInt(r.remove_count);
+      removeMap[r.pro_code] = parseInt(String(r.remove_count || '0'));
     });
 
     // 5. Get product info
@@ -728,18 +943,21 @@ export class BehaviorTrackingService {
       select: ['pro_code', 'pro_name', 'pro_imgmain', 'pro_unit1'],
     });
 
-    const productMap: Record<string, any> = {};
+    const productMap: Record<
+      string,
+      Pick<ProductEntity, 'pro_code' | 'pro_name' | 'pro_imgmain' | 'pro_unit1'>
+    > = {};
     products.forEach((p) => {
       productMap[p.pro_code] = p;
     });
 
     // 6. Calculate conversion metrics
     const analytics = cartProducts
-      .map((cart) => {
+      .map((cart): CartConversionResult | null => {
         const product = productMap[cart.pro_code];
         if (!product) return null;
 
-        const sessions = productSessions[cart.pro_code] || new Set();
+        const sessions = productSessions[cart.pro_code] || new Set<string>();
         const convertedSessions = Array.from(sessions).filter((s) =>
           completedSessionIds.has(s),
         ).length;
@@ -747,12 +965,12 @@ export class BehaviorTrackingService {
         const conversionRate =
           totalSessions > 0 ? (convertedSessions / totalSessions) * 100 : 0;
 
-        const addCount = parseInt(cart.add_count);
+        const addCount = parseInt(String(cart.add_count || '0'));
         const removeCount = removeMap[cart.pro_code] || 0;
         const removeRatio = addCount > 0 ? (removeCount / addCount) * 100 : 0;
 
         // Determine status
-        let status: 'high_conversion' | 'low_conversion' | 'price_sensitive' | 'normal';
+        let status: CartConversionStatus;
         let message: string;
 
         if (conversionRate >= 50) {
@@ -776,7 +994,7 @@ export class BehaviorTrackingService {
           pro_unit1: product.pro_unit1,
           add_count: addCount,
           remove_count: removeCount,
-          unique_sessions: parseInt(cart.unique_sessions),
+          unique_sessions: parseInt(String(cart.unique_sessions || '0')),
           converted_sessions: convertedSessions,
           conversion_rate: Math.round(conversionRate * 10) / 10,
           remove_ratio: Math.round(removeRatio * 10) / 10,
@@ -784,7 +1002,7 @@ export class BehaviorTrackingService {
           message,
         };
       })
-      .filter((a) => a !== null)
+      .filter((a): a is CartConversionResult => a !== null)
       .slice(0, limit);
 
     // Summary
@@ -842,7 +1060,7 @@ export class BehaviorTrackingService {
       .where('t.mem_code IS NOT NULL')
       .andWhere('t.created_at >= :fromDate', { fromDate })
       .groupBy('t.mem_code')
-      .getRawMany();
+      .getRawMany<UserMetricsResult>();
 
     if (userMetrics.length === 0) {
       return {
@@ -859,7 +1077,7 @@ export class BehaviorTrackingService {
     }
 
     const now = new Date();
-    const segments: any[] = [];
+    const segments: CustomerSegmentResult[] = [];
 
     // Classify each user
     for (const user of userMetrics) {
@@ -891,7 +1109,7 @@ export class BehaviorTrackingService {
         sessions;
 
       // Determine segment
-      let segment: 'vip' | 'loyal' | 'potential' | 'browsers' | 'at_risk' | 'new_users';
+      let segment: CustomerSegmentKey;
       let segmentLabel: string;
       let description: string;
 
@@ -899,15 +1117,15 @@ export class BehaviorTrackingService {
         segment = 'vip';
         segmentLabel = 'VIP';
         description = 'ลูกค้าระดับพรีเมียม ซื้อบ่อย มูลค่าสูง';
-      } else if (orders >= 2 && daysSinceLastActivity <= 30 && activeDays >= 5) {
+      } else if (
+        orders >= 2 &&
+        daysSinceLastActivity <= 30 &&
+        activeDays >= 5
+      ) {
         segment = 'loyal';
         segmentLabel = 'Loyal';
         description = 'ลูกค้าประจำ กลับมาซื้อซ้ำ';
-      } else if (
-        orders >= 1 &&
-        daysSinceLastActivity <= 30 &&
-        addToCart >= 3
-      ) {
+      } else if (orders >= 1 && daysSinceLastActivity <= 30 && addToCart >= 3) {
         segment = 'potential';
         segmentLabel = 'Potential';
         description = 'มีโอกาสซื้อสูง เคยสั่งและมีของในตะกร้า';
@@ -980,7 +1198,7 @@ export class BehaviorTrackingService {
       .addSelect('MIN(t.created_at)', 'first_activity')
       .where('t.mem_code IS NOT NULL')
       .groupBy('t.mem_code')
-      .getRawMany();
+      .getRawMany<CohortResult>();
 
     if (cohorts.length === 0) {
       return {
@@ -1024,7 +1242,7 @@ export class BehaviorTrackingService {
       .where('t.mem_code IS NOT NULL')
       .groupBy('t.mem_code')
       .addGroupBy('DATE(t.created_at)')
-      .getRawMany();
+      .getRawMany<UserActivityResult>();
 
     // Create activity map: user -> set of activity dates
     const activityMap: Record<string, Set<string>> = {};
@@ -1202,7 +1420,7 @@ export class BehaviorTrackingService {
       .andWhere('t.created_at >= :fromDate', { fromDate })
       .orderBy('t.mem_code')
       .addOrderBy('t.created_at', 'ASC')
-      .getRawMany();
+      .getRawMany<PurchaseResult>();
 
     if (purchases.length === 0) {
       return {
@@ -1352,8 +1570,9 @@ export class BehaviorTrackingService {
     const summary = {
       total_repeat_customers: repeatCustomers.length,
       avg_purchase_cycle: avgCycle,
-      customers_due_for_reorder: customers.filter((c) => c.status === 'due_soon')
-        .length,
+      customers_due_for_reorder: customers.filter(
+        (c) => c.status === 'due_soon',
+      ).length,
       customers_overdue: customers.filter((c) => c.status === 'overdue').length,
     };
 
@@ -1369,8 +1588,7 @@ export class BehaviorTrackingService {
       // Find repeat purchases of the same product by same customer
       const customerProPurchases = purchases.filter(
         (p) =>
-          p.mem_code === purchase.mem_code &&
-          p.pro_code === purchase.pro_code,
+          p.mem_code === purchase.mem_code && p.pro_code === purchase.pro_code,
       );
 
       if (customerProPurchases.length >= 2) {
@@ -1440,5 +1658,459 @@ export class BehaviorTrackingService {
       summary,
       products_by_cycle: productCycleData.slice(0, 20), // Top 20 products
     };
+  }
+
+  // Helper: Calculate box plot statistics from an array of numbers
+  private calculateBoxPlotStats(values: number[]): {
+    min: number;
+    q1: number;
+    median: number;
+    q3: number;
+    max: number;
+    mean: number;
+    count: number;
+    outliers: number[];
+  } {
+    if (values.length === 0) {
+      return {
+        min: 0,
+        q1: 0,
+        median: 0,
+        q3: 0,
+        max: 0,
+        mean: 0,
+        count: 0,
+        outliers: [],
+      };
+    }
+
+    const sorted = [...values].sort((a, b) => a - b);
+    const n = sorted.length;
+
+    const getPercentile = (arr: number[], p: number): number => {
+      const index = (p / 100) * (arr.length - 1);
+      const lower = Math.floor(index);
+      const upper = Math.ceil(index);
+      if (lower === upper) return arr[lower];
+      return arr[lower] + (arr[upper] - arr[lower]) * (index - lower);
+    };
+
+    const min = sorted[0];
+    const max = sorted[n - 1];
+    const q1 = getPercentile(sorted, 25);
+    const median = getPercentile(sorted, 50);
+    const q3 = getPercentile(sorted, 75);
+    const mean = Math.round((sorted.reduce((a, b) => a + b, 0) / n) * 10) / 10;
+
+    // IQR method for outliers
+    const iqr = q3 - q1;
+    const lowerFence = q1 - 1.5 * iqr;
+    const upperFence = q3 + 1.5 * iqr;
+    const outliers = sorted.filter((v) => v < lowerFence || v > upperFence);
+
+    return {
+      min: Math.round(min * 10) / 10,
+      q1: Math.round(q1 * 10) / 10,
+      median: Math.round(median * 10) / 10,
+      q3: Math.round(q3 * 10) / 10,
+      max: Math.round(max * 10) / 10,
+      mean,
+      count: n,
+      outliers,
+    };
+  }
+
+  // Get purchase interval data for box plot visualization
+  async getPurchaseIntervalBoxPlot(
+    days = 180,
+    groupBy: 'overall' | 'product' | 'segment' | 'month' = 'overall',
+  ) {
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days);
+
+    // Get all checkout_complete events
+    const purchases = await this.trackingRepo
+      .createQueryBuilder('t')
+      .select('t.mem_code', 'mem_code')
+      .addSelect('t.created_at', 'purchase_date')
+      .addSelect('t.pro_code', 'pro_code')
+      .where("t.event_type = 'checkout_complete'")
+      .andWhere('t.mem_code IS NOT NULL')
+      .andWhere('t.created_at >= :fromDate', { fromDate })
+      .orderBy('t.mem_code')
+      .addOrderBy('t.created_at', 'ASC')
+      .getRawMany<PurchaseResult>();
+
+    if (purchases.length === 0) {
+      return { group_by: groupBy, groups: [], clusters: [] };
+    }
+
+    // Group purchases by customer and calculate intervals
+    const customerPurchases: Record<
+      string,
+      { dates: Date[]; products: string[] }
+    > = {};
+
+    for (const purchase of purchases) {
+      if (!customerPurchases[purchase.mem_code]) {
+        customerPurchases[purchase.mem_code] = { dates: [], products: [] };
+      }
+      customerPurchases[purchase.mem_code].dates.push(
+        new Date(purchase.purchase_date),
+      );
+      if (purchase.pro_code) {
+        customerPurchases[purchase.mem_code].products.push(purchase.pro_code);
+      }
+    }
+
+    // Calculate all intervals per customer
+    const customerIntervals: Record<string, number[]> = {};
+    const allIntervals: number[] = [];
+
+    for (const [memCode, data] of Object.entries(customerPurchases)) {
+      const dates = data.dates.sort((a, b) => a.getTime() - b.getTime());
+      if (dates.length < 2) continue;
+
+      const intervals: number[] = [];
+      for (let i = 1; i < dates.length; i++) {
+        const daysDiff = Math.floor(
+          (dates[i].getTime() - dates[i - 1].getTime()) / (1000 * 60 * 60 * 24),
+        );
+        intervals.push(daysDiff);
+      }
+      customerIntervals[memCode] = intervals;
+      allIntervals.push(...intervals);
+    }
+
+    if (allIntervals.length === 0) {
+      return { group_by: groupBy, groups: [], clusters: [] };
+    }
+
+    // Build groups based on groupBy parameter
+    const groups: {
+      label: string;
+      key: string;
+      intervals: number[];
+      stats: ReturnType<typeof this.calculateBoxPlotStats>;
+    }[] = [];
+
+    if (groupBy === 'overall') {
+      groups.push({
+        label: 'ภาพรวม',
+        key: 'overall',
+        intervals: allIntervals,
+        stats: this.calculateBoxPlotStats(allIntervals),
+      });
+    } else if (groupBy === 'product') {
+      // Group intervals by product
+      const productIntervals: Record<string, number[]> = {};
+      // Group purchases by unique customer + product combination to prevent duplicates
+      const uniqueCustomerProducts = new Map<string, PurchaseResult[]>();
+      for (const purchase of purchases) {
+        if (!purchase.pro_code) continue;
+        const key = `${purchase.mem_code}_${purchase.pro_code}`;
+        if (!uniqueCustomerProducts.has(key)) {
+          uniqueCustomerProducts.set(key, []);
+        }
+        uniqueCustomerProducts.get(key)!.push(purchase);
+      }
+
+      // Calculate intervals for each unique customer-product combination
+      for (const [key, customerProPurchases] of uniqueCustomerProducts) {
+        const proCode = key.split('_')[1];
+        if (customerProPurchases.length >= 2) {
+          if (!productIntervals[proCode]) {
+            productIntervals[proCode] = [];
+          }
+
+          const sortedDates = customerProPurchases
+            .map((p) => new Date(p.purchase_date))
+            .sort((a, b) => a.getTime() - b.getTime());
+
+          for (let i = 1; i < sortedDates.length; i++) {
+            const interval = Math.floor(
+              (sortedDates[i].getTime() - sortedDates[i - 1].getTime()) /
+                (1000 * 60 * 60 * 24),
+            );
+            productIntervals[proCode].push(interval);
+          }
+        }
+      }
+
+      // Get product names
+      const proCodes = Object.keys(productIntervals);
+      let productMap = new Map<string, string>();
+      if (proCodes.length > 0) {
+        const products = await this.productRepo
+          .createQueryBuilder('p')
+          .select(['p.pro_code', 'p.pro_name'])
+          .where('p.pro_code IN (:...codes)', { codes: proCodes })
+          .getMany();
+        productMap = new Map(products.map((p) => [p.pro_code, p.pro_name]));
+      }
+
+      // Sort by interval count descending, take top 15
+      const sortedProducts = Object.entries(productIntervals)
+        .sort((a, b) => b[1].length - a[1].length)
+        .slice(0, 15);
+
+      for (const [proCode, intervals] of sortedProducts) {
+        if (intervals.length > 0) {
+          groups.push({
+            label: productMap.get(proCode) || proCode,
+            key: proCode,
+            intervals,
+            stats: this.calculateBoxPlotStats(intervals),
+          });
+        }
+      }
+    } else if (groupBy === 'segment') {
+      // Get segment classification for each customer
+      const now = new Date();
+      const userMetrics = await this.trackingRepo
+        .createQueryBuilder('t')
+        .select('t.mem_code', 'mem_code')
+        .addSelect('COUNT(*)', 'total_events')
+        .addSelect('COUNT(DISTINCT DATE(t.created_at))', 'active_days')
+        .addSelect('MAX(t.created_at)', 'last_activity')
+        .addSelect('MIN(t.created_at)', 'first_activity')
+        .addSelect(
+          `SUM(CASE WHEN t.event_type = 'product_view' THEN 1 ELSE 0 END)`,
+          'product_views',
+        )
+        .addSelect(
+          `SUM(CASE WHEN t.event_type = 'product_add_cart' THEN 1 ELSE 0 END)`,
+          'add_to_cart',
+        )
+        .addSelect(
+          `SUM(CASE WHEN t.event_type = 'checkout_complete' THEN 1 ELSE 0 END)`,
+          'orders',
+        )
+        .where('t.mem_code IS NOT NULL')
+        .andWhere('t.created_at >= :fromDate', { fromDate })
+        .groupBy('t.mem_code')
+        .getRawMany<UserMetricsResult>();
+
+      // Classify each customer into segment
+      const customerSegmentMap: Record<string, CustomerSegmentKey> = {};
+      for (const user of userMetrics) {
+        const orders = parseInt(user.orders || '0');
+        const activeDays = parseInt(user.active_days || '0');
+        const productViews = parseInt(user.product_views || '0');
+        const addToCart = parseInt(user.add_to_cart || '0');
+        const lastActivity = new Date(user.last_activity);
+        const firstActivity = new Date(user.first_activity);
+        const daysSinceLastActivity = Math.floor(
+          (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        const customerAge = Math.floor(
+          (now.getTime() - firstActivity.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        let segment: CustomerSegmentKey;
+        if (orders >= 5 && activeDays >= 10 && daysSinceLastActivity <= 14) {
+          segment = 'vip';
+        } else if (
+          orders >= 2 &&
+          daysSinceLastActivity <= 30 &&
+          activeDays >= 5
+        ) {
+          segment = 'loyal';
+        } else if (
+          orders >= 1 &&
+          daysSinceLastActivity <= 30 &&
+          addToCart >= 3
+        ) {
+          segment = 'potential';
+        } else if (
+          orders === 0 &&
+          productViews >= 10 &&
+          daysSinceLastActivity <= 30
+        ) {
+          segment = 'browsers';
+        } else if (orders >= 1 && daysSinceLastActivity > 30) {
+          segment = 'at_risk';
+        } else if (customerAge <= 7) {
+          segment = 'new_users';
+        } else {
+          segment = 'browsers';
+        }
+
+        customerSegmentMap[user.mem_code] = segment;
+      }
+
+      // Group intervals by segment
+      const segmentIntervals: Record<string, number[]> = {};
+      for (const [memCode, intervals] of Object.entries(customerIntervals)) {
+        const segment = customerSegmentMap[memCode] || 'browsers';
+        if (!segmentIntervals[segment]) {
+          segmentIntervals[segment] = [];
+        }
+        segmentIntervals[segment].push(...intervals);
+      }
+
+      const segmentLabels: Record<string, string> = {
+        vip: 'VIP',
+        loyal: 'Loyal',
+        potential: 'Potential',
+        browsers: 'Browsers',
+        at_risk: 'At Risk',
+        new_users: 'New Users',
+      };
+
+      const segmentOrder: CustomerSegmentKey[] = [
+        'vip',
+        'loyal',
+        'potential',
+        'browsers',
+        'at_risk',
+        'new_users',
+      ];
+      for (const seg of segmentOrder) {
+        const intervals = segmentIntervals[seg];
+        if (intervals && intervals.length > 0) {
+          groups.push({
+            label: segmentLabels[seg] || seg,
+            key: seg,
+            intervals,
+            stats: this.calculateBoxPlotStats(intervals),
+          });
+        }
+      }
+    } else if (groupBy === 'month') {
+      // Group intervals by month of the second purchase in each pair
+      const monthIntervals: Record<string, number[]> = {};
+
+      for (const [, data] of Object.entries(customerPurchases)) {
+        const dates = data.dates.sort((a, b) => a.getTime() - b.getTime());
+        for (let i = 1; i < dates.length; i++) {
+          const daysDiff = Math.floor(
+            (dates[i].getTime() - dates[i - 1].getTime()) /
+              (1000 * 60 * 60 * 24),
+          );
+          const monthKey = `${dates[i].getFullYear()}-${String(dates[i].getMonth() + 1).padStart(2, '0')}`;
+          if (!monthIntervals[monthKey]) {
+            monthIntervals[monthKey] = [];
+          }
+          monthIntervals[monthKey].push(daysDiff);
+        }
+      }
+
+      // Sort by month chronologically
+      const sortedMonths = Object.keys(monthIntervals).sort();
+      for (const month of sortedMonths) {
+        const intervals = monthIntervals[month];
+        if (intervals.length > 0) {
+          groups.push({
+            label: month,
+            key: month,
+            intervals,
+            stats: this.calculateBoxPlotStats(intervals),
+          });
+        }
+      }
+    }
+
+    // Cluster detection (for all modes, based on allIntervals)
+    const clusterBins = [
+      { min: 1, max: 7, label: 'รายสัปดาห์', center: 7 },
+      { min: 8, max: 14, label: 'ราย 2 สัปดาห์', center: 14 },
+      { min: 15, max: 21, label: 'ราย 3 สัปดาห์', center: 21 },
+      { min: 22, max: 35, label: 'รายเดือน', center: 30 },
+      { min: 36, max: 60, label: 'ราย 2 เดือน', center: 45 },
+      { min: 61, max: Infinity, label: 'มากกว่า 2 เดือน', center: 90 },
+    ];
+
+    const clusters = clusterBins
+      .map((bin) => {
+        const count = allIntervals.filter(
+          (v) => v >= bin.min && v <= bin.max,
+        ).length;
+        return { center: bin.center, count, label: bin.label };
+      })
+      .filter((c) => c.count > 0);
+
+    return { group_by: groupBy, groups, clusters };
+  }
+
+  async getUserJourneySankey(from_date?: string, to_date?: string) {
+    const where: FindOptionsWhere<TrackingEventEntity> = {};
+
+    if (from_date && to_date) {
+      where.created_at = Between(new Date(from_date), new Date(to_date));
+    } else if (from_date) {
+      where.created_at = MoreThanOrEqual(new Date(from_date));
+    } else {
+      // Set default date range if not provided to prevent unbounded queries
+      const defaultFromDate = new Date();
+      defaultFromDate.setDate(defaultFromDate.getDate() - 30); // Last 30 days
+      where.created_at = MoreThanOrEqual(defaultFromDate);
+    }
+
+    // Add pagination and ordering with LIMIT to prevent OOM
+    const events = await this.trackingRepo.find({
+      where,
+      order: {
+        session_id: 'ASC',
+        created_at: 'ASC',
+      },
+      take: 50000, // Limit to 50k events to prevent OOM
+    });
+
+    return this.buildSankeyData(events);
+  }
+
+  private buildSankeyData(events: TrackingEventEntity[]) {
+    const sessionMap = new Map<string, TrackingEventEntity[]>();
+
+    for (const event of events) {
+      if (!sessionMap.has(event.session_id)) {
+        sessionMap.set(event.session_id, []);
+      }
+      sessionMap.get(event.session_id)!.push(event);
+    }
+
+    const linkCounter = new Map<string, number>();
+    const nodeSet = new Set<string>();
+
+    for (const [, sessionEvents] of sessionMap) {
+      const visited = new Set<string>();
+
+      for (let i = 0; i < sessionEvents.length - 1; i++) {
+        let sourcePage = sessionEvents[i].page_path;
+        let targetPage = sessionEvents[i + 1].page_path;
+
+        if (!sourcePage || !targetPage) continue;
+
+        sourcePage = this.normalizePath(sourcePage);
+        targetPage = this.normalizePath(targetPage);
+
+        if (sourcePage === targetPage) continue;
+
+        if (visited.has(targetPage)) continue;
+
+        visited.add(sourcePage);
+        visited.add(targetPage);
+
+        nodeSet.add(sourcePage);
+        nodeSet.add(targetPage);
+
+        const key = `${sourcePage}__${targetPage}`;
+        linkCounter.set(key, (linkCounter.get(key) || 0) + 1);
+      }
+    }
+
+    const nodes = Array.from(nodeSet).map((name) => ({ name }));
+
+    const links = Array.from(linkCounter.entries()).map(([key, value]) => {
+      const [source, target] = key.split('__');
+      return { source, target, value };
+    });
+
+    return { nodes, links };
+  }
+
+  private normalizePath(path: string): string {
+    return path.split('?')[0]; // ตัด query string ออก
   }
 }
