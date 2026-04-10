@@ -8,6 +8,7 @@ import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
+import { UpdateProductImageDto } from './update-product-image.dto';
 
 interface OrderItem {
   pro_code: string;
@@ -43,7 +44,7 @@ export class ProductsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
-  ) { }
+  ) {}
 
   private async isL16Member(
     mem_code?: string,
@@ -1087,8 +1088,8 @@ export class ProductsService {
           pro_point: MoreThan(0),
           ...(isL16
             ? {
-              pro_l16_only: In([0, null]),
-            }
+                pro_l16_only: In([0, null]),
+              }
             : {}),
         },
         select: {
@@ -1510,9 +1511,12 @@ export class ProductsService {
     }
   }
 
-  async getProductL16Status(): Promise<{ pro_code: string; pro_name: string; pro_l16_only: number }[]> {
-    return this.productRepo.createQueryBuilder('product')
-      .select(['product.pro_code','product.pro_name', 'product.pro_l16_only'])
+  async getProductL16Status(): Promise<
+    { pro_code: string; pro_name: string; pro_l16_only: number }[]
+  > {
+    return this.productRepo
+      .createQueryBuilder('product')
+      .select(['product.pro_code', 'product.pro_name', 'product.pro_l16_only'])
       .where('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
       .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
       .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
@@ -1748,6 +1752,47 @@ export class ProductsService {
     } catch (error) {
       console.error('Error fetching creditors:', error);
       throw new Error('Error fetching creditors');
+    }
+  }
+
+  async getProductImageByCode(pro_code: string): Promise<ProductEntity | null> {
+    try {
+      const product = await this.productRepo.findOne({
+        where: { pro_code },
+        select: [
+          'pro_imgmain',
+          'pro_code',
+          'pro_img2',
+          'pro_img3',
+          'pro_img4',
+          'pro_img5',
+        ],
+      });
+      return product;
+    } catch (error) {
+      console.error('Error fetching product image:', error);
+      throw new Error('Error fetching product image');
+    }
+  }
+
+  async handleProductImageUpdate(data: UpdateProductImageDto): Promise<void> {
+    try {
+      const updateData: Partial<ProductEntity> = {
+        pro_imgmain: data.img_main,
+        pro_img2: data.image_other[0] ?? null,
+        pro_img3: data.image_other[1] ?? null,
+        pro_img4: data.image_other[2] ?? null,
+        pro_img5: data.image_other[3] ?? null,
+      };
+      console.log('Updating product images with data:', updateData);
+
+      await this.productRepo.update({ pro_code: data.pro_code }, updateData);
+    } catch (error) {
+      console.error(
+        `Error updating product images for ${data.pro_code}:`,
+        error,
+      );
+      throw new Error(`Error updating product images for ${data.pro_code}`);
     }
   }
 }
