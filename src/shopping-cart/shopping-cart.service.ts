@@ -721,13 +721,26 @@ export class ShoppingCartService {
           (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
           (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
           1;
-        const price =
-          priceOption === 'A'
-            ? Number(p.pro_priceA)
-            : priceOption === 'B'
-              ? Number(p.pro_priceB)
-              : Number(p.pro_priceC);
-        return sum + Number(line.spc_amount) * price * Number(ratio);
+
+        const totalUnitsSameCode = perProductTotalUnits.get(line.pro_code) || 0;
+
+        const isPromo =
+          p.pro_promotion_month === promoMonth &&
+          totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+
+        if (isPromo) {
+          return (
+            sum + Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
+          );
+        } else {
+          const price =
+            priceOption === 'A'
+              ? Number(p.pro_priceA)
+              : priceOption === 'B'
+                ? Number(p.pro_priceB)
+                : Number(p.pro_priceC);
+          return sum + Number(line.spc_amount) * price * Number(ratio);
+        }
       }, 0);
 
       if (tierValue >= threshold) {
