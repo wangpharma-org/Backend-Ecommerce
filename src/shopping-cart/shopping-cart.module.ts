@@ -9,6 +9,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealModule } from 'src/hotdeal/hotdeal.module';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ProductEntity } from 'src/products/products.entity';
     ]),
     ProductsModule,
     forwardRef(() => HotdealModule),
+    CompanyDayAnalyticModule,
   ],
   providers: [ShoppingCartService],
   exports: [ShoppingCartService],

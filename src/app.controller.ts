@@ -81,13 +81,11 @@ import {
   InitiatorType,
 } from './product-return/return-enums';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import {
-  BehaviorTrackingService,
-  TrackEventDto,
-  BatchTrackDto,
-} from './behavior-tracking/behavior-tracking.service';
+import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
+import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+
 
 interface JwtPayload {
   username: string;
@@ -148,6 +146,7 @@ export class AppController {
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -246,6 +245,12 @@ export class AppController {
   @Get('/ecom/feature-flag/:flag')
   async checkFlag(@Param('flag') flag: string) {
     return this.featureFlagsService.getFlag(flag);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/feature-flags')
+  async getAllFlags() {
+    return this.featureFlagsService.getAllFlags();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -473,15 +478,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -489,10 +494,20 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
-    return await this.shoppingOrderService.submitOrder(
+    try {
+      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Failed to send purchase event to analytics for mem_code ${mem_code}: ${message}`,
+      );
+    }
+
+    const result = await this.shoppingOrderService.submitOrder(
       { ...data, mem_code, mem_route: req.user.mem_route },
       ip,
     );
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -569,12 +584,12 @@ export class AppController {
       amount: number;
       // pro_freebie: number;
       flashsale_end: string;
+      cartVersion?: string | number;
       clientVersion?: string;
+      company_day_source?: string;
     },
   ) {
-    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
-    const mem_code = req.user.mem_code;
     const payload: {
       mem_code: string;
       pro_code: string;
@@ -585,23 +600,47 @@ export class AppController {
       // is_reward: boolean;
       flashsale_end: string;
       // hotdeal_free: boolean;
-      clientVersion?: string;
+      clientVersion?: string | number;
+      company_day_source?: string;
     } = {
-      ...data,
-      mem_code,
+      mem_code: data.mem_code,
+      pro_code: data.pro_code,
+      pro_unit: data.pro_unit,
+      amount: data.amount,
       priceCondition,
       mem_route: req.user.mem_route,
+      flashsale_end: data.flashsale_end,
+      clientVersion: data.clientVersion ?? data.cartVersion,
+      company_day_source: data.company_day_source,
     };
-    console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
     return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/company-day/view')
+  trackCompanyDayView(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      promo_id: number;
+      promo_name: string;
+      tier: string;
+      source: string;
+    },
+  ) {
+    const mem_code = req.user.mem_code;
+    void this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    return { success: true };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2994,7 +3033,13 @@ export class AppController {
       return await this.productReturnService.getEligibleOrders(mem_code);
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3014,7 +3059,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3049,7 +3100,13 @@ export class AppController {
       });
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3072,7 +3129,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3092,7 +3155,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3115,7 +3184,13 @@ export class AppController {
       });
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3131,7 +3206,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3151,257 +3232,73 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // ========== Admin Product Return APIs ==========
-
-  // Admin: Get pending returns for sales review
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/returns/pending-sales')
-  async getPendingSales(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    try {
-      return await this.productReturnService.getPendingSales({
-        limit: limit ? parseInt(limit) : undefined,
-        offset: offset ? parseInt(offset) : undefined,
-      });
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Get pending returns for manager review
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/returns/pending-manager')
-  async getPendingManager(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    try {
-      return await this.productReturnService.getPendingManager({
-        limit: limit ? parseInt(limit) : undefined,
-        offset: offset ? parseInt(offset) : undefined,
-      });
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Get all returns with filters
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/returns')
-  async getAllReturns(
-    @Query('status') status?: ReturnStatus,
-    @Query('reason') reason?: ReturnReason,
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-    @Query('mem_code') mem_code?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    try {
-      return await this.productReturnService.getAllReturns({
-        status,
-        reason,
-        from_date,
-        to_date,
-        mem_code,
-        limit: limit ? parseInt(limit) : undefined,
-        offset: offset ? parseInt(offset) : undefined,
-      });
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Sales approve
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/admin/returns/:return_id/sales-approve')
-  async salesApproveReturn(
-    @Param('return_id') return_id: string,
-    @Req() req: { user: JwtPayload },
-    @Body('comment') comment?: string,
-  ) {
-    try {
-      return await this.productReturnService.salesApprove(
-        parseInt(return_id),
-        req.user.mem_code,
-        req.user.name,
-        comment,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Sales reject
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/admin/returns/:return_id/sales-reject')
-  async salesRejectReturn(
-    @Param('return_id') return_id: string,
-    @Req() req: { user: JwtPayload },
-    @Body('comment') comment: string,
-  ) {
-    try {
-      return await this.productReturnService.salesReject(
-        parseInt(return_id),
-        req.user.mem_code,
-        req.user.name,
-        comment,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Manager approve
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/admin/returns/:return_id/manager-approve')
-  async managerApproveReturn(
-    @Param('return_id') return_id: string,
-    @Req() req: { user: JwtPayload },
-    @Body() data?: { comment?: string; resolution_type?: ResolutionType },
-  ) {
-    try {
-      return await this.productReturnService.managerApprove(
-        parseInt(return_id),
-        req.user.mem_code,
-        req.user.name,
-        data,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Manager reject
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/admin/returns/:return_id/manager-reject')
-  async managerRejectReturn(
-    @Param('return_id') return_id: string,
-    @Req() req: { user: JwtPayload },
-    @Body('comment') comment: string,
-  ) {
-    try {
-      return await this.productReturnService.managerReject(
-        parseInt(return_id),
-        req.user.mem_code,
-        req.user.name,
-        comment,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Complete return
-  @UseGuards(JwtAuthGuard)
-  @Post('/ecom/admin/returns/:return_id/complete')
-  async completeReturn(
-    @Param('return_id') return_id: string,
-    @Body('notes') notes?: string,
-  ) {
-    try {
-      return await this.productReturnService.completeReturn(
-        parseInt(return_id),
-        notes,
-      );
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Admin: Get return statistics
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/admin/returns/stats')
-  async getReturnStats(
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
-    try {
-      return await this.productReturnService.getStats({ from_date, to_date });
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
   }
 
   // ========== Behavior Tracking APIs ==========
-
   // Track single event
-  @Post('/ecom/tracking/event')
-  async trackEvent(
-    @Body() data: TrackEventDto,
-    @Ip() ip: string,
-    @Req() req: any,
-  ) {
-    try {
-      data.ip_address = ip;
-      data.user_agent = req.headers['user-agent'];
-      return await this.behaviorTrackingService.trackEvent(data);
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // @Post('/ecom/tracking/event')
+  // async trackEvent(
+  //   @Body() data: TrackEventDto,
+  //   @Ip() ip: string,
+  //   @Req() req: Request & { user: JwtPayload },
+  // ) {
+  //   try {
+  //     data.ip_address = ip;
+  //     data.user_agent = req.headers['user-agent'];
+  //     return await this.behaviorTrackingService.trackEvent(data);
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
-  // Track batch events
-  @Post('/ecom/tracking/batch')
-  async trackBatch(
-    @Body() data: BatchTrackDto,
-    @Ip() ip: string,
-    @Req() req: any,
-  ) {
-    try {
-      // Add IP and user agent to all events
-      const userAgent = req.headers['user-agent'];
-      data.events = data.events.map((e) => ({
-        ...e,
-        ip_address: ip,
-        user_agent: userAgent,
-      }));
-      return await this.behaviorTrackingService.trackBatch(data);
-    } catch (error: unknown) {
-      throw new HttpException(
-        { success: false, message: (error as Error).message },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
+  // // Track batch events
+  // @Post('/ecom/tracking/batch')
+  // async trackBatch(
+  //   @Body() data: BatchTrackDto,
+  //   @Ip() ip: string,
+  //   @Req() req: Request & { user: JwtPayload },
+  // ) {
+  //   try {
+  //     // Add IP and user agent to all events
+  //     const userAgent = req.headers['user-agent'];
+  //     data.events = data.events.map((e) => ({
+  //       ...e,
+  //       ip_address: ip,
+  //       user_agent: userAgent,
+  //     }));
+  //     return await this.behaviorTrackingService.trackBatch(data);
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
 
   // Get user behavior (for personalization)
   @UseGuards(JwtAuthGuard)
@@ -3419,7 +3316,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3429,10 +3332,15 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/product/:pro_code')
   async getProductAnalytics(
+    @Req() req: Request & { user: JwtPayload },
     @Param('pro_code') pro_code: string,
     @Query('from_date') from_date?: string,
     @Query('to_date') to_date?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getProductAnalytics(
         pro_code,
@@ -3441,7 +3349,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3451,9 +3365,14 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/searches')
   async getSearchAnalytics(
+    @Req() req: Request & { user: JwtPayload },
     @Query('from_date') from_date?: string,
     @Query('to_date') to_date?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getSearchAnalytics(
         from_date,
@@ -3461,7 +3380,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3471,9 +3396,14 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/dashboard')
   async getTrackingDashboard(
+    @Req() req: Request & { user: JwtPayload },
     @Query('from_date') from_date?: string,
     @Query('to_date') to_date?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getDashboardStats(
         from_date,
@@ -3481,7 +3411,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3491,9 +3427,14 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/daily-trend')
   async getDailyTrend(
+    @Req() req: Request & { user: JwtPayload },
     @Query('from_date') from_date?: string,
     @Query('to_date') to_date?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getDailyTrend(
         from_date,
@@ -3501,7 +3442,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3511,10 +3458,15 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/top-products')
   async getTopProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Query('from_date') from_date?: string,
     @Query('to_date') to_date?: string,
     @Query('limit') limit?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getTopProducts(
         from_date,
@@ -3523,7 +3475,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3532,14 +3490,27 @@ export class AppController {
   // Admin: Get recent activity feed
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/recent-activity')
-  async getRecentActivity(@Query('limit') limit?: string) {
+  async getRecentActivity(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getRecentActivity(
         limit ? parseInt(limit) : 50,
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3548,14 +3519,27 @@ export class AppController {
   // Admin: Get user journeys
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/user-journeys')
-  async getUserJourneys(@Query('limit') limit?: string) {
+  async getUserJourneys(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getUserJourneys(
         limit ? parseInt(limit) : 20,
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3565,10 +3549,15 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/zero-result-searches')
   async getZeroResultSearches(
+    @Req() req: Request & { user: JwtPayload },
     @Query('from_date') from_date?: string,
     @Query('to_date') to_date?: string,
     @Query('limit') limit?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getZeroResultSearches(
         from_date,
@@ -3577,7 +3566,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3587,9 +3582,14 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/stock-alerts')
   async getStockAlerts(
+    @Req() req: Request & { user: JwtPayload },
     @Query('days') days?: string,
     @Query('limit') limit?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getStockAlerts(
         days ? parseInt(days) : 7,
@@ -3597,7 +3597,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3607,9 +3613,14 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/cart-analytics')
   async getCartConversionAnalytics(
+    @Req() req: Request & { user: JwtPayload },
     @Query('days') days?: string,
     @Query('limit') limit?: string,
   ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getCartConversionAnalytics(
         days ? parseInt(days) : 30,
@@ -3617,7 +3628,13 @@ export class AppController {
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3626,14 +3643,27 @@ export class AppController {
   // Admin: Get customer segments
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/customer-segments')
-  async getCustomerSegments(@Query('days') days?: string) {
+  async getCustomerSegments(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getCustomerSegments(
         days ? parseInt(days) : 90,
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3642,14 +3672,27 @@ export class AppController {
   // Admin: Get retention analysis
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/retention')
-  async getRetentionAnalysis(@Query('weeks') weeks?: string) {
+  async getRetentionAnalysis(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('weeks') weeks?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getRetentionAnalysis(
         weeks ? parseInt(weeks) : 8,
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -3658,17 +3701,79 @@ export class AppController {
   // Admin: Get repeat purchase patterns
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/repeat-purchases')
-  async getRepeatPurchasePatterns(@Query('days') days?: string) {
+  async getRepeatPurchasePatterns(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
     try {
       return await this.behaviorTrackingService.getRepeatPurchasePatterns(
         days ? parseInt(days) : 180,
       );
     } catch (error: unknown) {
       throw new HttpException(
-        { success: false, message: (error as Error).message },
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  // Admin: Get purchase interval box plot data
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/purchase-intervals-boxplot')
+  async getPurchaseIntervalBoxPlot(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+    @Query('group_by') groupBy?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getPurchaseIntervalBoxPlot(
+        days ? parseInt(days) : 180,
+        (groupBy as 'overall' | 'product' | 'segment' | 'month') || 'overall',
+      );
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get user journey sankey
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/user-journey-sankey')
+  async getUserJourneySankey(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date: string,
+    @Query('to_date') to_date: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.behaviorTrackingService.getUserJourneySankey(
+      from_date,
+      to_date,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -3768,5 +3873,67 @@ export class AppController {
       body.sh_running,
       body.pro_code,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/hotdeal/:pro_code')
+  async getHotdealByProCode(
+    @Param('pro_code') pro_code: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.hotdealService.getHotdealFromproCode(pro_code, mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/hotdeal/add-other-product')
+  async createHotdeal(
+    @Body()
+    body: {
+      freebies: {
+        pro_code: string;
+        unit: string;
+        amount: number;
+        pro_code1: string;
+      }[];
+    },
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    console.log('Creating hotdeal with data:', {
+      mem_code,
+      freebies: body.freebies,
+    });
+    const results = await this.shoppingCartService.addHotdealToCart(
+      mem_code,
+      body.freebies,
+    );
+    return results;
+  }
+  
+  @Get('/ecom/get-product-image/:pro_code')
+  async getProductImage(@Param('pro_code') pro_code: string) {
+    try {
+      const product =
+        await this.productsService.getProductImageByCode(pro_code);
+      if (!product) {
+        throw new HttpException(
+          {
+            success: false,
+            error: { code: 'PRODUCT_NOT_FOUND' },
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      return product;
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_PRODUCT_IMAGE_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 }

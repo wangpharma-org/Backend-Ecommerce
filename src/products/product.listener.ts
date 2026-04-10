@@ -2,6 +2,7 @@ import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
+import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
 
 @Controller()
@@ -50,6 +51,22 @@ export class ProductListner {
       await this.productServerce.updateProduct(message);
     } catch (error) {
       console.log('Kafka Received message in product listener', error);
+    }
+  }
+
+  @MessagePattern('update_product_image')
+  async handleUpdate(@Payload() message: UpdateProductImageDto) {
+    try {
+      console.log(
+        'Received message in update_product_image listener:',
+        message,
+      );
+      await this.productServerce.handleProductImageUpdate(message);
+    } catch (error) {
+      console.log(
+        'Kafka Received message in update_product_image listener',
+        error,
+      );
     }
   }
 }
