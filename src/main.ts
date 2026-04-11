@@ -15,51 +15,29 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors();
 
-  const enableKafka =
-    configService.get<string>('ENABLE_KAFKA', 'true') === 'true';
+  const enableKafka = configService.get<string>('ENABLE_KAFKA', 'true') === 'true';
   if (enableKafka) {
-    const primaryBrokers = configService.get<string>(
-      'KAFKA_BROKERS',
-      'localhost:9092',
-    );
-    const primaryGroupId = configService.get<string>(
-      'KAFKA_GROUP_ID',
-      'consumer-ecommerce',
-    );
-    console.log('Connecting to primary Kafka:', primaryBrokers);
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.KAFKA,
       options: {
         client: {
-          brokers: primaryBrokers.split(','),
+          brokers: (
+            configService.get<string>('KAFKA_BROKERS') ?? 'localhost:9092'
+          ).split(','),
         },
         consumer: {
-          groupId: primaryGroupId,
+          groupId: configService.get<string>(
+            'KAFKA_GROUP_ID',
+            'consumer-ecommerce',
+          ),
         },
       },
     });
-  }
-
-  console.log('Analytics Kafka will be handled by dedicated service');
-
-  if (enableKafka) {
-    try {
-      await app.startAllMicroservices();
-      console.log('Core microservices started successfully');
-    } catch (error) {
-      console.error('Failed to start core microservices:', error);
-      throw error; 
-    }
+    await app.startAllMicroservices();
   } else {
     console.log('Kafka is disabled for local development');
   }
 
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
+  await app.listen(process.env.PORT ?? 3000);
 }
-
-bootstrap().catch((error) => {
-  console.error('Failed to start application:', error);
-  process.exit(1);
-});
+bootstrap();
