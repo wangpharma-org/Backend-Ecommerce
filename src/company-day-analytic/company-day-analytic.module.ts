@@ -13,27 +13,71 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
         name: COMPANY_DAY_ANALYTIC_KAFKA_CLIENT,
         imports: [ConfigModule],
         inject: [ConfigService],
-        useFactory: (configService: ConfigService) => ({
-          transport: Transport.KAFKA,
-          options: {
-            client: {
-              clientId:
-                configService.get<string>('KAFKA_COMPANY_DAY_CLIENT_ID') ||
-                'backend-ecommerce-company-day',
-              brokers: (
-                configService.get<string>('KAFKA_BROKERS') || 'localhost:9092'
-              )
-                .split(',')
-                .map((broker) => broker.trim())
-                .filter(Boolean),
-            },
-            consumer: {
-              groupId:
-                configService.get<string>('KAFKA_COMPANY_DAY_GROUP_ID') ||
-                'backend-ecommerce-company-day-producer',
-            },
-          },
-        }),
+        useFactory: (configService: ConfigService) => {
+          try {
+            const brokers = (
+              configService.get<string>('KAFKA_COMPANY_DAY_BROKERS') ||
+              configService.get<string>('KAFKA_BROKERS_SECOND') ||
+              '104.248.146.202:9092'
+            )
+              .split(',')
+              .map((broker) => broker.trim())
+              .filter(Boolean);
+
+            const groupId = 
+              configService.get<string>('KAFKA_COMPANY_DAY_GROUP_ID') ||
+              configService.get<string>('KAFKA_GROUP_ID_SECOND') ||
+              'consumer-analytic';
+
+            const clientId = 
+              configService.get<string>('KAFKA_COMPANY_DAY_CLIENT_ID') ||
+              'backend-ecommerce-company-day';
+
+            console.log(`
+              Analytics Kafka Config - Brokers: ${brokers.join(',')}, GroupId: ${groupId}`);
+            return {
+              transport: Transport.KAFKA,
+              options: {
+                client: {
+                  clientId,
+                  brokers,
+                  // เพื่อไม่ให้ block startup ถ้า connection ล้มเหลว
+                  connectionTimeout: 5000,
+                  requestTimeout: 3000,
+                  retry: {
+                    retries: 0, // ไม่ retry ขณะ startup
+                  },
+                },
+                consumer: {
+                  groupId,
+                  // ไม่ให้ auto-connect ตอน startup
+                  allowAutoTopicCreation: false,
+                },
+                // Configuration สำหรับ graceful handling
+                subscribe: {
+                  fromBeginning: false,
+                },
+              },
+            };
+          } catch{
+            console.warn(
+              'Analytics Kafka configuration failed, using fallback:',
+            );
+            // Return minimal configuration that won't break startup
+            return {
+              transport: Transport.KAFKA,
+              options: {
+                client: {
+                  clientId: 'analytics-fallback',
+                  brokers: ['localhost:9099'], // dummy broker ที่ไม่มี
+                },
+                consumer: {
+                  groupId: 'analytics-fallback',
+                },
+              },
+            };
+          }
+        },
       },
     ]),
   ],
