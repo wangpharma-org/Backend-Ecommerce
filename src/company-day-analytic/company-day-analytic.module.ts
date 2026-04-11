@@ -24,12 +24,12 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
               .map((broker) => broker.trim())
               .filter(Boolean);
 
-            const groupId = 
+            const groupId =
               configService.get<string>('KAFKA_COMPANY_DAY_GROUP_ID') ||
               configService.get<string>('KAFKA_GROUP_ID_SECOND') ||
               'consumer-analytic';
 
-            const clientId = 
+            const clientId =
               configService.get<string>('KAFKA_COMPANY_DAY_CLIENT_ID') ||
               'backend-ecommerce-company-day';
 
@@ -41,25 +41,22 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
                 client: {
                   clientId,
                   brokers,
-                  // เพื่อไม่ให้ block startup ถ้า connection ล้มเหลว
                   connectionTimeout: 5000,
                   requestTimeout: 3000,
                   retry: {
-                    retries: 0, // ไม่ retry ขณะ startup
+                    retries: 0,
                   },
                 },
                 consumer: {
                   groupId,
-                  // ไม่ให้ auto-connect ตอน startup
                   allowAutoTopicCreation: false,
                 },
-                // Configuration สำหรับ graceful handling
                 subscribe: {
                   fromBeginning: false,
                 },
               },
             };
-          } catch{
+          } catch {
             console.warn(
               'Analytics Kafka configuration failed, using fallback:',
             );
