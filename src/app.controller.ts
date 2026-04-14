@@ -13,9 +13,12 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
+import axios from 'axios';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -2943,6 +2946,84 @@ export class AppController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  // @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/generate-poster')
+  async generatePoster(
+    @Body()
+    body: {
+      prompt: string;
+      aspectRatio: string;
+      imageItems: {
+        url: string;
+        name: string;
+        quantity: number;
+        unit: string;
+      }[];
+      session_cookies: string;
+    },
+  ) {
+    return await this.campaignsService.generatePoster(
+      body.prompt,
+      body.aspectRatio,
+      body.imageItems ?? [],
+      body.session_cookies,
+    );
+  }
+
+  @Post('/campaigns/get-response-id/:requestId')
+  async getResponseId(
+    @Param('requestId') requestId: string,
+    @Body() body: { session_cookies?: string },
+  ) {
+    return await this.campaignsService.getAllResults(
+      requestId,
+      body.session_cookies,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/columns')
+  async getRewardColumns(@Param('campaignId') campaignId: string) {
+    const columns = await this.campaignsService.getRewardColumns(campaignId);
+    return { success: true, data: columns };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/campaigns/:campaignId/columns/:columnId')
+  async updateRewardColumnValuePerUnit(
+    @Param('campaignId') campaignId: string,
+    @Param('columnId') columnId: string,
+    @Body() body: { value_per_unit: number },
+  ) {
+    await this.campaignsService.updateRewardColumnValuePerUnit(
+      campaignId,
+      columnId,
+      body.value_per_unit,
+    );
+    return { success: true };
+  }
+
+  @Get('/campaigns/proxy-image')
+  async proxyImage(@Query('url') url: string, @Res() res: Response) {
+    if (!url || !url.startsWith('https://ideogram.ai/')) {
+      res.status(400).json({ error: 'Invalid URL' });
+      return;
+    }
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+    });
+    const ext = url.includes('.png') ? 'png' : 'jpg';
+    res.setHeader(
+      'Content-Type',
+      (response.headers['content-type'] as string) ?? 'image/jpeg',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="poster.${ext}"`,
+    );
+    res.send(Buffer.from(response.data));
   }
 
   @Post('/app-version/version/get')
