@@ -7,6 +7,140 @@ import { CampaignRewardEntity } from './campaigns-reward.entity';
 import { CampaignsPromoRewardEntity } from './campaigns-promo-reward.entity';
 import { PromoProductEntity } from './campaigns-product.entity';
 import { ProductEntity } from '../products/products.entity';
+import axios, { AxiosResponse } from 'axios';
+import { IdeogramBrowserService } from './ideogram-browser.service';
+
+export interface UploadResponse {
+  success: boolean;
+  id: string;
+  file_name: string;
+}
+
+export interface GeneratePosterResponse {
+  user_id: string;
+  caption: string;
+  request_id: string;
+}
+
+export interface GetAllResultsResponse {
+  results: Result[];
+  next_cursor: any;
+}
+
+export interface Result {
+  user: User;
+  user_prompt?: string;
+  user_negative_prompt?: string;
+  private: boolean;
+  request_id?: string;
+  request_type?: string;
+  responses?: Response[];
+  creation_time_float: number;
+  resolution?: number;
+  height: number;
+  width: number;
+  user_hparams?: UserHparams;
+  aspect_ratio: string;
+  model_version?: string;
+  model_uri?: string;
+  cover_response_id?: string;
+  autoprompt_loading?: boolean;
+  use_autoprompt?: boolean;
+  is_completed?: boolean;
+  is_errored?: boolean;
+  max_upscale_factor: number;
+  can_upscale: boolean;
+  image_resolution: string;
+  reference_parents?: ReferenceParent[];
+  expected_number_of_final_responses?: number;
+  character_reference_collection_ids?: any[];
+  product_reference_collection_ids?: any[];
+  references?: References;
+  style_reference_collection_ids?: any[];
+  use_random_style_codes?: boolean;
+  caption?: string;
+  image_id?: string;
+  upload_type?: string;
+  format?: string;
+  tags?: any[];
+}
+
+export interface User {
+  user_id: string;
+  photo_url: string;
+  display_handle: string;
+  subscription_plan_id: any;
+  badge: any;
+}
+
+export interface Response {
+  response_id: string;
+  prompt: string;
+  self_like: boolean;
+  num_likes: number;
+  highest_fidelity: boolean;
+  pin_on_profile: boolean;
+  cover: boolean;
+  is_autoprompt: boolean;
+  private: boolean;
+  descriptions: any[];
+  tags: any[];
+  response_index: number;
+}
+
+export interface UserHparams {
+  aspect_ratio: string;
+}
+
+export interface ReferenceParent {
+  reference_type: string;
+  variation_parents: any[];
+  upload_parents: UploadParent[];
+}
+
+export interface UploadParent {
+  image_id: string;
+  height?: number;
+  width?: number;
+  aspect_ratio?: string;
+  user: User2;
+  private: boolean;
+  upload_type: string;
+}
+
+export interface User2 {
+  user_id?: string;
+  photo_url?: string;
+  display_handle?: string;
+  subscription_plan_id: any;
+  badge: any;
+}
+
+export interface References {
+  edit: Edit[];
+}
+
+export interface Edit {
+  reference_parents: ReferenceParents;
+}
+
+export interface ReferenceParents {
+  reference_collection_id: string;
+  reference_collection_version_id: string;
+  asset_identifiers: AssetIdentifier[];
+}
+
+export interface AssetIdentifier {
+  asset_type: string;
+  asset_id: string;
+  metadata: Metadata;
+}
+
+export interface Metadata {
+  representation: string;
+  request_id: any;
+  response_index: any;
+}
 
 @Injectable()
 export class CampaignsService {
@@ -23,6 +157,7 @@ export class CampaignsService {
     private readonly promoProductRepository: Repository<PromoProductEntity>,
     @InjectRepository(ProductEntity)
     private readonly productRepository: Repository<ProductEntity>,
+    private readonly ideogramBrowser: IdeogramBrowserService,
   ) {}
 
   async getAllCampaigns() {
@@ -133,6 +268,27 @@ export class CampaignsService {
     });
     if (result.affected === 0) {
       throw new HttpException('Row not found', HttpStatus.NOT_FOUND);
+    }
+  }
+
+  async getRewardColumns(campaignId: string) {
+    return this.campaignRewardRepository.find({
+      where: { campaign: { id: campaignId } },
+      relations: ['linked_product'],
+    });
+  }
+
+  async updateRewardColumnValuePerUnit(
+    campaignId: string,
+    columnId: string,
+    value_per_unit: number,
+  ) {
+    const result = await this.campaignRewardRepository.update(
+      { id: columnId, campaign: { id: campaignId } },
+      { value_per_unit: value_per_unit.toString() },
+    );
+    if (result.affected === 0) {
+      throw new HttpException('Reward column not found', HttpStatus.NOT_FOUND);
     }
   }
 
@@ -288,6 +444,100 @@ export class CampaignsService {
     });
     if (result.affected === 0) {
       throw new HttpException('Promo reward not found', HttpStatus.NOT_FOUND);
+    }
+  }
+
+  async downloadImageAsBuffer(url: string): Promise<{
+    buffer: Buffer;
+    filename: string;
+    mimeType: string;
+  }> {
+    const response: AxiosResponse<ArrayBuffer> = await axios.get<ArrayBuffer>(
+      url,
+      {
+        responseType: 'arraybuffer',
+      },
+    );
+
+    const contentType =
+      (response.headers?.['content-type'] as string | undefined) ??
+      'image/jpeg';
+    const mimeType =
+      typeof contentType === 'string' ? contentType : 'image/jpeg';
+
+    const filename = url.split('/').pop() || `image_${Date.now()}.jpg`;
+
+    const buffer = Buffer.from(response.data);
+
+    return {
+      buffer,
+      filename,
+      mimeType,
+    };
+  }
+
+  async generatePoster(
+    prompt: string,
+    aspectRatio: string,
+    imageItems: {
+      url: string;
+      name: string;
+      quantity: number;
+      unit: string;
+    }[] = [],
+    session_cookies: string,
+  ) {
+    try {
+      const uploaded: { id: string; label: string }[] = [];
+
+      for (const item of imageItems) {
+        const { buffer, filename, mimeType } = await this.downloadImageAsBuffer(
+          item.url,
+        );
+        const id = await this.ideogramBrowser.uploadImage(
+          buffer,
+          filename,
+          mimeType,
+          session_cookies,
+        );
+        if (id) {
+          uploaded.push({
+            id,
+            label: `${item.name} ${item.quantity} ${item.unit}`.trim(),
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      // เพิ่ม mapping ภาพ → ชื่อสินค้า เพื่อให้ Ideogram รู้ว่าแต่ละภาพคืออะไร
+      let finalPrompt = prompt;
+      if (uploaded.length > 0) {
+        finalPrompt += `\n\nภาพอ้างอิงที่อัปโหลด (แสดงแต่ละชิ้นให้ชัดเจนในส่วนของแถม):`;
+        uploaded.forEach(({ label }, i) => {
+          finalPrompt += `\n- ภาพอ้างอิงที่ ${i + 1}: "${label}"`;
+        });
+        finalPrompt += `\nต้องแสดงของแถมทั้ง ${uploaded.length} ชิ้นครบทุกชิ้น แต่ละชิ้นแสดงภาพสินค้าถูกต้อง จำนวนถูกต้อง ชัดเจน ไม่ตกหล่น`;
+      }
+
+      return (await this.ideogramBrowser.generatePosterRequest(
+        finalPrompt,
+        aspectRatio,
+        uploaded.map((u) => u.id),
+        session_cookies,
+      )) as GeneratePosterResponse;
+    } catch (error) {
+      console.error('Error generating poster via Ideogram:', error);
+    }
+  }
+
+  async getAllResults(request_id: string, session_cookies?: string) {
+    try {
+      return (await this.ideogramBrowser.getAllResults(
+        request_id,
+        session_cookies,
+      )) as unknown;
+    } catch (error) {
+      console.error('Error fetching all results from Ideogram:', error);
     }
   }
 }
