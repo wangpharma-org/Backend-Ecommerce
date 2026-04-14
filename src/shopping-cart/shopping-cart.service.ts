@@ -147,6 +147,16 @@ export interface CartMutationResult extends CartVersionState {
   cart: ShoppingProductCart[];
 }
 
+export interface CompanyDayRewardContext {
+  promo_id: number;
+  promo_name: string;
+  tier: string;
+}
+
+export interface CartMutationWithCompanyDayContext extends CartMutationResult {
+  companyDayRewardContext?: CompanyDayRewardContext | null;
+}
+
 @Injectable()
 export class ShoppingCartService {
   constructor(
@@ -165,7 +175,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
-  ) {}
+  ) { }
 
   private async isL16Member(
     mem_code?: string,
@@ -503,6 +513,9 @@ export class ShoppingCartService {
     console.log('Checking promotion rewards for member:', mem_code);
     const today = new Date();
     const isL16 = await this.isL16Member(mem_code);
+    const selectedTierContexts: Array<
+      CompanyDayRewardContext & { min_amount: number }
+    > = [];
 
     // 1) ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
@@ -678,16 +691,22 @@ export class ShoppingCartService {
 
     const usedSpcIds = new Set<number>();
 
+    console.log('Condition-based tiers to evaluate:', conditionBasedTiers);
+
+    // คำนวณโปรโมชั่นแบบ cascade (จากมากไปน้อย)
+    const processedTierIds = new Set<number>();
+    const consumedItems = new Map<number, number>(); // spc_id -> consumed value
+
     for (const tier of conditionBasedTiers) {
-      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
       const threshold = Number(tier.min_amount);
       if (!threshold) continue;
 
-      const eligibleItemsForTier = baseEligibleCart.filter(
-        (line) =>
-          !usedSpcIds.has(line.spc_id) && conditionCodes.has(line.pro_code),
+      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
+      const eligibleItemsForTier = baseEligibleCart.filter((line) =>
+        conditionCodes.has(line.pro_code),
       );
 
+      // คำนวณยอดรวมจากสินค้าที่เข้าเงื่อนไข tier นี้ หักส่วนที่ใช้ไปแล้ว
       const tierValue = eligibleItemsForTier.reduce((sum, line) => {
         const p = line.product;
         const ratio =
@@ -702,10 +721,10 @@ export class ShoppingCartService {
           p.pro_promotion_month === promoMonth &&
           totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
 
+        let lineValue;
         if (isPromo) {
-          return (
-            sum + Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
-          );
+          lineValue =
+            Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio);
         } else {
           const price =
             priceOption === 'A'
@@ -713,13 +732,81 @@ export class ShoppingCartService {
               : priceOption === 'B'
                 ? Number(p.pro_priceB)
                 : Number(p.pro_priceC);
-          return sum + Number(line.spc_amount) * price * Number(ratio);
+          lineValue = Number(line.spc_amount) * price * Number(ratio);
         }
+
+        // หักส่วนที่ใช้ไปแล้วใน tier ก่อนหน้า
+        const consumedValue = consumedItems.get(line.spc_id) || 0;
+        const availableValue = Math.max(0, lineValue - consumedValue);
+
+        return Number((sum + availableValue).toFixed(2));
       }, 0);
 
+      console.log(
+        'Tier:',
+        tier.tier_id,
+        tier.tier_name,
+        'Available tier value:',
+        tierValue,
+        'Threshold:',
+        threshold,
+      );
       if (tierValue >= threshold) {
         const multiplier = Math.floor(tierValue / threshold);
         if (multiplier <= 0) continue;
+
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
+
+        // คำนวณส่วนที่ใช้ไปสำหรับแต่ละ item และบันทึกลง consumedItems
+        const totalConsumedValue = multiplier * threshold;
+        let remainingConsume = totalConsumedValue;
+
+        for (const line of eligibleItemsForTier) {
+          if (remainingConsume <= 0) break;
+
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+
+          const totalUnitsSameCode =
+            perProductTotalUnits.get(line.pro_code) || 0;
+          const isPromo =
+            p.pro_promotion_month === promoMonth &&
+            totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+
+          let lineValue;
+          if (isPromo) {
+            lineValue =
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio);
+          } else {
+            const price =
+              priceOption === 'A'
+                ? Number(p.pro_priceA)
+                : priceOption === 'B'
+                  ? Number(p.pro_priceB)
+                  : Number(p.pro_priceC);
+            lineValue = Number(line.spc_amount) * price * Number(ratio);
+          }
+
+          const alreadyConsumed = consumedItems.get(line.spc_id) || 0;
+          const availableValue = Math.max(0, lineValue - alreadyConsumed);
+          const toConsume = Math.min(availableValue, remainingConsume);
+
+          if (toConsume > 0) {
+            consumedItems.set(line.spc_id, alreadyConsumed + toConsume);
+            remainingConsume -= toConsume;
+          }
+        }
 
         // Mark items as used and tag them
         for (const line of eligibleItemsForTier) {
@@ -755,6 +842,8 @@ export class ShoppingCartService {
           }
         }
       }
+
+      processedTierIds.add(tier.tier_id);
     }
 
     // 9) คำนวณยอดรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
