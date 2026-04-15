@@ -51,6 +51,8 @@ export interface ShoppingProductCart {
   is_reward: boolean;
   hotdeal: HotdealEntity[] | undefined;
   pointHotdeal?: number | null;
+  hotdealPointsInfo?: number;
+  totalSmallestUnit?: number;
 }
 
 export interface RecommendedProduct {
@@ -1347,23 +1349,37 @@ export class ShoppingCartService {
       const allHotdeals =
         await this.hotdealService.getHotdealByProCode(allProCodes);
 
-      const hotdealFromProCodePromises = allProCodes.map((proCode) =>
-        this.hotdealService.getHotdealFromproCode(proCode, mem_code),
+      // คำนวณ used points สำหรับแต่ละสินค้า
+      const usedPointsPromises = allProCodes.map((proCode) =>
+        this.calculateUsedHotdealPoints(mem_code, proCode),
       );
-      const hotdealFromProCodeResults = await Promise.all(
-        hotdealFromProCodePromises,
-      );
-      const hotdealFromProCodeMap = new Map(
+      const usedPointsResults = await Promise.all(usedPointsPromises);
+      const usedPointsMap = new Map(
         allProCodes.map((proCode, index) => [
           proCode,
-          hotdealFromProCodeResults[index],
+          usedPointsResults[index],
+        ]),
+      );
+
+      // คำนวณ hotdeal points info แบบละเอียด
+      const hotdealPointsInfoPromises = allProCodes.map((proCode) =>
+        this.getHotdealPointsInfo(mem_code, proCode),
+      );
+      const hotdealPointsInfoResults = await Promise.all(
+        hotdealPointsInfoPromises,
+      );
+      const hotdealPointsInfoMap = new Map(
+        allProCodes.map((proCode, index) => [
+          proCode,
+          hotdealPointsInfoResults[index],
         ]),
       );
 
       for (const row of raw) {
         const key = `${row.pro_code}_${row.is_reward ? 'reward' : 'normal'}`;
 
-        const getHotdealFromproCode = hotdealFromProCodeMap.get(row.pro_code);
+        const usedHotdealPoints = usedPointsMap.get(row.pro_code) || 0;
+        const hotdealPointsInfo = hotdealPointsInfoMap.get(row.pro_code);
 
         const hotdeal = allHotdeals?.filter(
           (hd) => hd.product.pro_code === row.pro_code,
@@ -1396,7 +1412,8 @@ export class ShoppingCartService {
             recommend: [],
             is_reward: !!row.is_reward,
             hotdeal: hotdeal,
-            pointHotdeal: getHotdealFromproCode?.remainingPoints,
+            pointHotdeal: usedHotdealPoints,
+            hotdealPointsInfo: hotdealPointsInfo,
           };
         }
 
@@ -2034,6 +2051,117 @@ export class ShoppingCartService {
         error instanceof Error ? error.message : error,
       );
       throw new Error('Error in addHotdealToCart'); // โยน error เดิมออกไป
+    }
+  }
+
+  async calculateUsedHotdealPoints(
+    mem_code: string,
+    pro_code: string,
+  ): Promise<number> {
+    try {
+      // ดึงรายการของแถม (hotdeal_free = true) ที่เกิดจากสินค้าหลัก pro_code
+      const freebies = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          hotdeal_promain: pro_code,
+          hotdeal_free: true,
+          spc_checked: true,
+        },
+        relations: { product: true },
+      });
+
+      if (freebies.length === 0) {
+        return 0;
+      }
+
+      // ดึงข้อมูล hotdeal สำหรับสินค้าหลัก
+      const hotdeals = await this.hotdealService.getHotdealByProCode([
+        pro_code,
+      ]);
+      if (!hotdeals || hotdeals.length === 0) {
+        return 0;
+      }
+
+      let totalUsedPoints = 0;
+
+      // คำนวณแต้มที่ใช้สำหรับแต่ละของแถม
+      for (const freebie of freebies) {
+        // หา hotdeal rule ที่ตรงกับของแถมนี้
+        const matchingHotdeal = hotdeals.find(
+          (hd) =>
+            hd.product2?.pro_code === freebie.pro_code &&
+            hd.pro2_unit === freebie.spc_unit,
+        );
+
+        if (
+          matchingHotdeal &&
+          matchingHotdeal.pro1_amount &&
+          matchingHotdeal.pro1_unit
+        ) {
+          // คำนวณแต้มที่ต้องใช้สำหรับของแถม 1 หน่วย
+          const requiredItems = [
+            {
+              pro_code: pro_code,
+              unit: matchingHotdeal.pro1_unit,
+              quantity: Number(matchingHotdeal.pro1_amount),
+            },
+          ];
+
+          const pointsPerFreebie =
+            await this.productsService.calculateSmallestUnit(requiredItems);
+
+          // คำนวณแต้มรวมที่ใช้ = จำนวนของแถม × แต้มต่อหน่วย
+          const freebieAmount = Number(freebie.spc_amount);
+          totalUsedPoints += freebieAmount * pointsPerFreebie;
+        }
+      }
+
+      return totalUsedPoints;
+    } catch (error) {
+      console.error('Error calculating used hotdeal points:', error);
+      return 0;
+    }
+  }
+
+  async getHotdealPointsInfo(
+    mem_code: string,
+    pro_code: string,
+  ): Promise<number> {
+    try {
+      // คำนวณแต้มทั้งหมดที่มีในตะกร้า
+      const mainProductsInCart = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          pro_code,
+          hotdeal_free: false,
+          spc_checked: true,
+        },
+        relations: { product: true },
+      });
+
+      if (mainProductsInCart.length === 0) {
+        return 0;
+      }
+
+      // คำนวณแต้มรวมของสินค้าหลัก (หน่วยเล็กสุด)
+      const cartItems = mainProductsInCart.map((item) => ({
+        pro_code: item.pro_code,
+        unit: item.spc_unit,
+        quantity: Number(item.spc_amount),
+      }));
+
+      const totalPoints =
+        await this.productsService.calculateSmallestUnit(cartItems);
+      const usedPoints = await this.calculateUsedHotdealPoints(
+        mem_code,
+        pro_code,
+      );
+      const remainingPoints = Math.max(0, totalPoints - usedPoints);
+
+      return remainingPoints;
+    } catch (error) {
+      console.error('Error getting hotdeal points info:', error);
+      return 0;
     }
   }
 }

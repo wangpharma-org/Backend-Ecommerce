@@ -600,10 +600,7 @@ export class HotdealService {
         },
       },
     });
-    console.log(
-      'Hotdeal found:',
-      hotdeal.length > 0 ? hotdeal : 'No hotdeal found',
-    );
+
     if (!hotdeal || hotdeal.length === 0) {
       return null;
     }
@@ -613,10 +610,6 @@ export class HotdealService {
         mem_code,
         pro_code,
       );
-    console.log(
-      'Cart items for member:',
-      cartItems.length > 0 ? cartItems : 'No cart items found',
-    );
 
     let totalAmountInSmallestUnit = 0;
     if (cartItems && cartItems.length > 0) {
@@ -671,6 +664,8 @@ export class HotdealService {
               usedPoints: usedPoints,
               remainingPointsForThis: remainingPointsForThis,
             });
+
+            console.log(`Hotdeal for ${hd.product2.pro_code}: sets=${sets}, usedPoints=${usedPoints}, remainingPointsForThis=${remainingPointsForThis}`);
 
             if (sets > 0) {
               remainingPoints = Math.min(remainingPoints, remainingPointsForThis);
