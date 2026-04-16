@@ -415,6 +415,7 @@ export class AppController {
       mem_code: string;
       sort_by?: number;
       limit: number;
+      creditor_codes?: string[];
     },
   ) {
     //console.log('data in controller:', data);
