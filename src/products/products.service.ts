@@ -905,6 +905,7 @@ export class ProductsService {
     mem_route?: string;
     sort_by?: number;
     limit: number;
+    creditor_codes?: string[];
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
@@ -988,6 +989,12 @@ export class ProductsService {
               });
           }),
         );
+
+      if (data.creditor_codes && data.creditor_codes.length > 0) {
+        qb.andWhere('product.creditor_code IN (:...creditorCodes)', {
+          creditorCodes: data.creditor_codes,
+        });
+      }
 
       if (isL16) {
         this.applyL16Filter(qb, 'product');
