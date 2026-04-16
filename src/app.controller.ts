@@ -863,6 +863,7 @@ export class AppController {
       min_amount: number;
       description?: string;
       detail?: string;
+      is_unit_based?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -872,6 +873,7 @@ export class AppController {
       description: data.description,
       detail: data.detail,
       file,
+      is_unit_based: data.is_unit_based === 'true' ? true : false,
     });
   }
 
