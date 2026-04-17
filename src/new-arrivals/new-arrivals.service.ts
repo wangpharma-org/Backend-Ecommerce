@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { NewArrival } from './new-arrival.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
+import { ClientKafka } from '@nestjs/microservices';
 
 @Injectable()
 export class NewArrivalsService {
@@ -11,6 +12,8 @@ export class NewArrivalsService {
     private readonly newArrivalsRepository: Repository<NewArrival>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @Inject('OrderPickingService')
+    private readonly kafkaClient: ClientKafka,
   ) {}
 
   private async isL16Member(
@@ -36,6 +39,8 @@ export class NewArrivalsService {
     MFG: string,
     EXP: string,
     createdAt: Date,
+    amount: number,
+    unit: string,
   ): Promise<{
     product: { pro_code: string };
     LOT: string;
@@ -50,6 +55,13 @@ export class NewArrivalsService {
         MFG,
         EXP,
         createdAt,
+      });
+
+      this.kafkaClient.emit('newArrival_insert', {
+        pro_code,
+        createdAt,
+        amount,
+        unit,
       });
 
       const existingRecords = await this.newArrivalsRepository.find({
