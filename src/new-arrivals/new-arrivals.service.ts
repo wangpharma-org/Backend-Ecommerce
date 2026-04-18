@@ -49,31 +49,12 @@ export class NewArrivalsService {
     createdAt: Date;
   }> {
     try {
-      console.log('Adding new arrival:', {
-        pro_code,
-        LOT,
-        MFG,
-        EXP,
-        createdAt,
-      });
-
-      this.kafkaClient.emit('newArrival_insert', {
-        pro_code,
-        createdAt,
-        amount,
-        unit,
-      });
-
       const existingRecords = await this.newArrivalsRepository.find({
         where: { createdAt },
       });
 
       if (existingRecords.length > 0) {
-        console.log(
-          `Found ${existingRecords.length} existing records with same createdAt, deleting...`,
-        );
         await this.newArrivalsRepository.remove(existingRecords);
-        console.log('Existing records deleted successfully');
       }
 
       const newArrival = this.newArrivalsRepository.create({
@@ -83,7 +64,15 @@ export class NewArrivalsService {
         EXP,
         createdAt,
       });
-      return this.newArrivalsRepository.save(newArrival);
+      const savedArrival = await this.newArrivalsRepository.save(newArrival);
+
+      this.kafkaClient.emit('newArrival_insert', {
+        pro_code,
+        createdAt,
+        amount,
+        unit,
+      });
+      return savedArrival;
     } catch (error) {
       console.error('Error adding new arrival:', error);
       throw new Error('Error adding new arrival');
