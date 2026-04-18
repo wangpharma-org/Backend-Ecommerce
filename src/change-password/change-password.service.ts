@@ -22,7 +22,7 @@ export class ChangePasswordService {
     private ChangePasswordRepo: Repository<ChangePassword>,
     private readonly usersService: UsersService,
     private readonly mailerService: MailerService,
-  ) {}
+  ) { }
 
   async CheckMember(
     mem_code: string,
@@ -70,11 +70,6 @@ export class ChangePasswordService {
     let emailSent = false;
     try {
       emailSent = await this.sendEmailCode(OTP, user.mem_email, RefKey);
-      if (emailSent) {
-        console.log('OTP email sent to', user.mem_email);
-      } else {
-        console.error('Failed to send OTP email to', user.mem_email);
-      }
     } catch (error) {
       console.error('Error sending OTP email:', error);
       emailSent = false;
@@ -117,7 +112,6 @@ export class ChangePasswordService {
     refKey: string,
   ): Promise<boolean> {
     try {
-      console.log('Sending email to:', email);
       if (!code || !email || !refKey) {
         throw new Error('code, email และ refKey ต้องถูกส่งมาด้วย');
       }
@@ -222,20 +216,14 @@ export class ChangePasswordService {
 </div>
 
     `;
-      console.log('Email content prepared');
 
-      const emailResponse: unknown = await this.mailerService.sendMail({
+      await this.mailerService.sendMail({
         from: this.FROM_EMAIL,
         to: email,
         subject,
         text,
         html,
       });
-
-      console.log('from', this.FROM_EMAIL);
-      console.log('to', email);
-      console.log('subject', subject);
-      console.log('Email sent successfully:', emailResponse);
 
       return true;
     } catch (error: unknown) {
@@ -260,7 +248,6 @@ export class ChangePasswordService {
       }
 
       const emailUser = await this.usersService.checkEmail(data.mem_username);
-      console.log('Email for user', data.mem_username, ':', emailUser);
 
       if (emailUser !== member.mem_email) {
         throw new Error('Email mismatch');
@@ -270,13 +257,6 @@ export class ChangePasswordService {
       if (emailUser !== member.mem_email) {
         throw new Error('Email mismatch');
       }
-
-      console.log('OTP created:', {
-        code: otpData.OTP,
-        refKey: otpData.RefKey,
-        username: data.mem_username,
-        expires_in_minutes: this.OTP_TTL_SECONDS / 60,
-      });
 
       // ส่ง email ผ่าน API
       let emailSent = false;
@@ -329,7 +309,6 @@ export class ChangePasswordService {
         order: { exp_code: 'DESC' }, // เพิ่ม order เพื่อหาล่าสุด
         select: ['id', 'countError', 'exp_code', 'countError'], // เพิ่ม exp_code ใน select
       });
-      console.log('Latest record for incrementing countError:', latestRecord);
 
       if (latestRecord && latestRecord.countError >= 3) {
         await this.ChangePasswordRepo.update(latestRecord.id, {
@@ -361,9 +340,6 @@ export class ChangePasswordService {
       const otpTime = new Date(otpRecord.exp_code);
       const diffSeconds = (now.getTime() - otpTime.getTime()) / 1000;
 
-      console.log('OTP already used. Time since used (seconds):', diffSeconds);
-      console.log('OTP expiration time:', this.OTP_TTL_SECONDS);
-
       if (diffSeconds >= 0) {
         return { valid: false, message: 'OTP has expired' };
       }
@@ -387,7 +363,6 @@ export class ChangePasswordService {
   }> {
     try {
       // หาข้อมูลล่าสุดของ member คนนี้
-      console.log('start');
       const lastRequest = await this.ChangePasswordRepo.findOne({
         where: { user: { mem_code }, isUsed: 'pending' },
         order: { exp_code: 'DESC' },
@@ -399,36 +374,29 @@ export class ChangePasswordService {
         //   isUsed: 'requested',
         // });
         lastRequest.isUsed = 'requested';
-        console.log('Updated lastRequest to requested:', lastRequest.id);
       }
 
       if (lastRequest && lastRequest.isUsed === 'requested') {
         // คำนวณเวลาที่สร้าง = exp_time - OTP_TTL_SECONDS
-        console.log('Last request found:', lastRequest);
         const expTime = new Date(lastRequest.exp_code);
         const createTime = new Date(
           expTime.getTime() - this.OTP_TTL_SECONDS * 1000,
         );
-        console.log('Create time (calculated):', createTime);
 
         // เวลาที่อนุญาตให้ขอใหม่ = เวลาสร้าง + OTP_TTL_SECONDS
         const allowedRequestTime = new Date(
           createTime.getTime() + this.REQUEST_COOLDOWN_SECONDS * 1000,
         );
-        console.log('Allowed request time:', allowedRequestTime);
         const now = new Date();
         const timeSinceAllowed =
           (now.getTime() - allowedRequestTime.getTime()) / 1000; // วินาที
-        console.log('Time since allowed (seconds):', timeSinceAllowed);
 
         // ถ้ายังไม่ถึง 30 วินาที ให้รอ
         if (timeSinceAllowed <= 0) {
-          console.log('Request cooldown active');
           await this.ChangePasswordRepo.update(lastRequest.id, {
             isUsed: 'pending',
           });
           lastRequest.isUsed = 'pending'; // อัปเดตค่าใน memory
-          console.log('Reset lastRequest back to pending due to cooldown');
 
           const waitTimeSeconds =
             this.REQUEST_COOLDOWN_SECONDS - Math.floor(timeSinceAllowed);
@@ -438,18 +406,13 @@ export class ChangePasswordService {
             remainingTime: waitTimeSeconds,
           };
         }
-        console.log('Cooldown period has passed');
         await this.ChangePasswordRepo.update(lastRequest.id, {
           isUsed: 'failed',
         });
         lastRequest.isUsed = 'failed';
-        console.log('Marked old OTP as failed before creating new one');
       }
-      console.log('No recent pending/requested OTP found or cooldown passed');
       if (lastRequest && lastRequest.isUsed === 'failed') {
-        console.log('Last request was failed, allowing new OTP request');
         const checkMember = await this.CheckMember(mem_code);
-        console.log('CheckMember result:', checkMember);
         return {
           valid: true,
           message: 'You can request a new OTP',
@@ -513,7 +476,6 @@ export class ChangePasswordService {
       if (!user) {
         throw new Error('User not found');
       }
-      console.log('User found for password reset:', user.mem_username);
       try {
         if (!data.otp) {
           throw new Error('OTP is required');
@@ -578,9 +540,6 @@ export class ChangePasswordService {
       const now = new Date();
       const otpTime = new Date(otpRecord.exp_code);
       const diffSeconds = (now.getTime() - otpTime.getTime()) / 1000;
-
-      console.log('OTP already used. Time since used (seconds):', diffSeconds);
-      console.log('OTP expiration time:', otpRecord.exp_code);
 
       if (diffSeconds >= 0) {
         return { valid: false, message: 'OTP has expired' };
