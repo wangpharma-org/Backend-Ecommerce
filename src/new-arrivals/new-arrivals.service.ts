@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { NewArrival } from './new-arrival.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
+import { ClientKafka } from '@nestjs/microservices';
 
 @Injectable()
 export class NewArrivalsService {
@@ -11,6 +12,8 @@ export class NewArrivalsService {
     private readonly newArrivalsRepository: Repository<NewArrival>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @Inject('OrderPickingService')
+    private readonly kafkaClient: ClientKafka,
   ) {}
 
   private async isL16Member(
@@ -36,6 +39,8 @@ export class NewArrivalsService {
     MFG: string,
     EXP: string,
     createdAt: Date,
+    amount: number,
+    unit: string,
   ): Promise<{
     product: { pro_code: string };
     LOT: string;
@@ -44,24 +49,12 @@ export class NewArrivalsService {
     createdAt: Date;
   }> {
     try {
-      console.log('Adding new arrival:', {
-        pro_code,
-        LOT,
-        MFG,
-        EXP,
-        createdAt,
-      });
-
       const existingRecords = await this.newArrivalsRepository.find({
         where: { createdAt },
       });
 
       if (existingRecords.length > 0) {
-        console.log(
-          `Found ${existingRecords.length} existing records with same createdAt, deleting...`,
-        );
         await this.newArrivalsRepository.remove(existingRecords);
-        console.log('Existing records deleted successfully');
       }
 
       const newArrival = this.newArrivalsRepository.create({
@@ -71,7 +64,15 @@ export class NewArrivalsService {
         EXP,
         createdAt,
       });
-      return this.newArrivalsRepository.save(newArrival);
+      const savedArrival = await this.newArrivalsRepository.save(newArrival);
+
+      this.kafkaClient.emit('newArrival_insert', {
+        pro_code,
+        createdAt,
+        amount,
+        unit,
+      });
+      return savedArrival;
     } catch (error) {
       console.error('Error adding new arrival:', error);
       throw new Error('Error adding new arrival');

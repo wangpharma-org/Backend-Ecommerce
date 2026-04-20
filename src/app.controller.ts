@@ -1810,6 +1810,8 @@ export class AppController {
       MFG: string;
       EXP: string;
       createdAt: Date;
+      amount: number;
+      unit: string;
     }[],
   ) {
     type N = {
@@ -1829,6 +1831,8 @@ export class AppController {
           item.MFG,
           item.EXP,
           item.createdAt,
+          item.amount,
+          item.unit,
         );
         results.push(result);
       }
