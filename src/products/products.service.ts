@@ -907,6 +907,7 @@ export class ProductsService {
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const keyword = data.keyword.trim();
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
@@ -922,43 +923,43 @@ export class ProductsService {
         .andWhere(
           new Brackets((qb) => {
             qb.where('product.pro_name LIKE :keyword', {
-              keyword: `%${data.keyword}%`,
+              keyword: `%${keyword}%`,
             })
               .orWhere('product.pro_keysearch LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_nameEN LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_barcode1 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_barcode2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_barcode3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_code LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_nameMain LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_drugmain LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_drugmain2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_drugmain3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_drugmain4 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               })
               .orWhere('product.pro_nameTH LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
+                keyword: `%${keyword}%`,
               });
           }),
         )
