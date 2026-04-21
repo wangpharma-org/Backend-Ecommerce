@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { ClientKafka } from '@nestjs/microservices';
+import * as dayjs from 'dayjs';
 
 @Injectable()
 export class NewArrivalsService {
@@ -34,48 +35,73 @@ export class NewArrivalsService {
   }
 
   async addNewArrival(
-    pro_code: string,
-    LOT: string,
-    MFG: string,
-    EXP: string,
-    createdAt: Date,
-    amount: number,
-    unit: string,
-  ): Promise<{
-    product: { pro_code: string };
-    LOT: string;
-    MFG: string;
-    EXP: string;
-    createdAt: Date;
-  }> {
-    try {
-      const existingRecords = await this.newArrivalsRepository.find({
-        where: { createdAt },
-      });
+    data: {
+      pro_code: string;
+      LOT: string;
+      MFG: string;
+      EXP: string;
+      createdAt: Date;
+      amount: number;
+      unit: string;
+    }[],
+  ): Promise<{ message: string }> {
+    const queryRunner =
+      this.newArrivalsRepository.manager.connection.createQueryRunner();
 
-      if (existingRecords.length > 0) {
-        await this.newArrivalsRepository.remove(existingRecords);
+    try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      for (const item of data) {
+        const { pro_code, LOT, MFG, EXP, createdAt, amount, unit } = item;
+
+        // ใช้ dayjs เพื่อ normalize date (เอาเฉพาะวันที่ ไม่รวม time)
+        const normalizedDate = dayjs(createdAt).startOf('day').toDate();
+
+        // ใช้ pessimistic write lock เพื่อป้องกัน race condition
+        const existingRecord = await queryRunner.manager
+          .createQueryBuilder(NewArrival, 'newArrival')
+          .where('newArrival.pro_code = :pro_code', { pro_code })
+          .andWhere('newArrival.LOT = :LOT', { LOT })
+          .andWhere('newArrival.MFG = :MFG', { MFG })
+          .andWhere('newArrival.EXP = :EXP', { EXP })
+          .andWhere('DATE(newArrival.createdAt) = DATE(:createdAt)', {
+            createdAt: normalizedDate,
+          })
+          .setLock('pessimistic_write')
+          .getOne();
+
+        if (existingRecord) {
+          continue;
+        }
+
+        // สร้างและบันทึกข้อมูลใหม่
+        const newArrivalEntity = queryRunner.manager.create(NewArrival, {
+          product: { pro_code },
+          LOT,
+          MFG,
+          EXP,
+          createdAt: normalizedDate,
+        });
+
+        await queryRunner.manager.save(newArrivalEntity);
+
+        // ส่ง Kafka event เฉพาะเมื่อบันทึกข้อมูลใหม่สำเร็จ
+        this.kafkaClient.emit('newArrival_insert', {
+          pro_code,
+          createdAt: dayjs(normalizedDate).format('YYYY-MM-DD'),
+          amount,
+          unit,
+        });
       }
 
-      const newArrival = this.newArrivalsRepository.create({
-        product: { pro_code: pro_code },
-        LOT,
-        MFG,
-        EXP,
-        createdAt,
-      });
-      const savedArrival = await this.newArrivalsRepository.save(newArrival);
-
-      this.kafkaClient.emit('newArrival_insert', {
-        pro_code,
-        createdAt,
-        amount,
-        unit,
-      });
-      return savedArrival;
-    } catch (error) {
-      console.error('Error adding new arrival:', error);
+      await queryRunner.commitTransaction();
+      return { message: 'New arrival added successfully' };
+    } catch {
+      await queryRunner.rollbackTransaction();
       throw new Error('Error adding new arrival');
+    } finally {
+      await queryRunner.release();
     }
   }
 

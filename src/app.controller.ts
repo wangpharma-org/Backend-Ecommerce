@@ -1814,29 +1814,9 @@ export class AppController {
       unit: string;
     }[],
   ) {
-    type N = {
-      product: { pro_code: string };
-      LOT: string;
-      MFG: string;
-      EXP: string;
-      createdAt: Date;
-    };
     try {
-      const results: N[] = [];
-      console.log('Received body for new arrivals:', data);
-      for (const item of data) {
-        const result = await this.newArrivalsService.addNewArrival(
-          item.pro_code,
-          item.LOT,
-          item.MFG,
-          item.EXP,
-          item.createdAt,
-          item.amount,
-          item.unit,
-        );
-        results.push(result);
-      }
-      return results;
+      await this.newArrivalsService.addNewArrival(data);
+      return { message: 'New arrivals added successfully' };
     } catch (error) {
       console.error('Error adding new arrivals:', error);
       throw new Error('Error adding new arrivals');
