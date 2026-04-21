@@ -57,14 +57,22 @@ export class ProductListner {
   @MessagePattern('update_product_image')
   async handleUpdate(@Payload() message: UpdateProductImageDto) {
     try {
-      console.log(
-        'Received message in update_product_image listener:',
-        message,
-      );
       await this.productServerce.handleProductImageUpdate(message);
     } catch (error) {
       console.log(
         'Kafka Received message in update_product_image listener',
+        error,
+      );
+    }
+  }
+
+  @MessagePattern('delete_product_image')
+  async handleDeleteImage(@Payload() message: string[]) {
+    try {
+      await this.productServerce.deleteProductImage(message);
+    } catch (error) {
+      console.log(
+        'Kafka Received message in delete_product_image listener',
         error,
       );
     }
