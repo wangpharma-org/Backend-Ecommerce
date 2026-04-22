@@ -49,6 +49,13 @@ export class NewArrivalsService {
       this.newArrivalsRepository.manager.connection.createQueryRunner();
 
     try {
+      const arrData: NewArrival[] = [];
+      const kafkaEvents: {
+        pro_code: string;
+        createdAt: string;
+        amount: number;
+        unit: string;
+      }[] = [];
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
@@ -75,6 +82,13 @@ export class NewArrivalsService {
           continue;
         }
 
+        kafkaEvents.push({
+          pro_code,
+          createdAt: dayjs(normalizedDate).format('YYYY-MM-DD'),
+          amount,
+          unit,
+        });
+
         // สร้างและบันทึกข้อมูลใหม่
         const newArrivalEntity = queryRunner.manager.create(NewArrival, {
           product: { pro_code },
@@ -84,16 +98,12 @@ export class NewArrivalsService {
           createdAt: normalizedDate,
         });
 
-        await queryRunner.manager.save(newArrivalEntity);
-
-        // ส่ง Kafka event เฉพาะเมื่อบันทึกข้อมูลใหม่สำเร็จ
-        this.kafkaClient.emit('newArrival_insert', {
-          pro_code,
-          createdAt: dayjs(normalizedDate).format('YYYY-MM-DD'),
-          amount,
-          unit,
-        });
+        arrData.push(newArrivalEntity);
       }
+      await queryRunner.manager.save(arrData);
+
+      // ส่ง Kafka event เฉพาะเมื่อบันทึกข้อมูลใหม่สำเร็จ
+      this.kafkaClient.emit('newArrival_insert', { kafkaEvents });
 
       await queryRunner.commitTransaction();
       return { message: 'New arrival added successfully' };
