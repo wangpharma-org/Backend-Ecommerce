@@ -727,41 +727,53 @@ export class ShoppingCartService {
         conditionCodes.has(line.pro_code),
       );
 
-      // คำนวณยอดรวมจากสินค้าที่เข้าเงื่อนไข tier นี้ หักส่วนที่ใช้ไปแล้ว
-      const tierValue = eligibleItemsForTier.reduce((sum, line) => {
-        const p = line.product;
-        const ratio =
-          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-          1;
+      // เช็คว่าเป็นการเช็คจำนวนหน่วย (is_unit = true) หรือเช็คยอดเงิน (is_unit = false)
+      let tierValue: number;
 
-        const totalUnitsSameCode = perProductTotalUnits.get(line.pro_code) || 0;
+      if (tier.is_unit) {
+        // เช็คจำนวนหน่วย
+        tierValue = eligibleItemsForTier.reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+          return sum + Number(line.spc_amount) * Number(ratio);
+        }, 0);
+      } else {
+        // เช็คยอดเงิน (ระบบเดิม)
+        tierValue = eligibleItemsForTier.reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
 
-        const isPromo =
-          p.pro_promotion_month === promoMonth &&
-          totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+          const totalUnitsSameCode =
+            perProductTotalUnits.get(line.pro_code) || 0;
 
-        let lineValue;
-        if (isPromo) {
-          lineValue =
-            Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio);
-        } else {
-          const price =
-            priceOption === 'A'
-              ? Number(p.pro_priceA)
-              : priceOption === 'B'
-                ? Number(p.pro_priceB)
-                : Number(p.pro_priceC);
-          lineValue = Number(line.spc_amount) * price * Number(ratio);
-        }
+          const isPromo =
+            p.pro_promotion_month === promoMonth &&
+            totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
 
-        // หักส่วนที่ใช้ไปแล้วใน tier ก่อนหน้า
-        const consumedValue = consumedItems.get(line.spc_id) || 0;
-        const availableValue = Math.max(0, lineValue - consumedValue);
-
-        return Number((sum + availableValue).toFixed(2));
-      }, 0);
+          if (isPromo) {
+            return (
+              sum +
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
+            );
+          } else {
+            const price =
+              priceOption === 'A'
+                ? Number(p.pro_priceA)
+                : priceOption === 'B'
+                  ? Number(p.pro_priceB)
+                  : Number(p.pro_priceC);
+            return sum + Number(line.spc_amount) * price * Number(ratio);
+          }
+        }, 0);
+      }
 
       console.log(
         'Tier:',
@@ -867,7 +879,7 @@ export class ShoppingCartService {
       processedTierIds.add(tier.tier_id);
     }
 
-    // 9) คำนวณยอดรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
+    // 9) คำนวณยอดรวม/จำนวนหน่วยรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
     const remainingEligibleCart = baseEligibleCart.filter(
       (line) => !usedSpcIds.has(line.spc_id),
     );
@@ -906,6 +918,20 @@ export class ShoppingCartService {
       0,
     );
 
+    // คำนวณจำนวนหน่วยรวมสำหรับสินค้าที่เหลือ (สำหรับโปรแบบ is_unit = true)
+    const totalUnitsForUnusedItems = remainingEligibleCart.reduce(
+      (sum, line) => {
+        const p = line.product;
+        const ratio =
+          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+          1;
+        return sum + Number(line.spc_amount) * Number(ratio);
+      },
+      0,
+    );
+
     // 10) โปรโมชั่นที่ all_products = true (คำนวณจากสินค้าที่เหลือ)
     const allProductTiers = await this.tierRepo
       .createQueryBuilder('tier')
@@ -924,15 +950,25 @@ export class ShoppingCartService {
       );
 
       let remainingBudget = totalSumPriceForUnusedItems;
+      let remainingUnits = totalUnitsForUnusedItems;
 
       for (const tier of sortedTiers) {
         const threshold = Number(tier.min_amount);
-        if (!threshold || remainingBudget < threshold) continue;
-
-        const multiplier = Math.floor(remainingBudget / threshold);
-        if (multiplier <= 0) continue;
-
-        remainingBudget -= multiplier * threshold;
+        let multiplier = 0;
+        
+        if (tier.is_unit) {
+          // เช็คจำนวนหน่วย
+          if (!threshold || remainingUnits < threshold) continue;
+          multiplier = Math.floor(remainingUnits / threshold);
+          if (multiplier <= 0) continue;
+          remainingUnits -= multiplier * threshold;
+        } else {
+          // เช็คยอดเงิน (ระบบเดิม)
+          if (!threshold || remainingBudget < threshold) continue;
+          multiplier = Math.floor(remainingBudget / threshold);
+          if (multiplier <= 0) continue;
+          remainingBudget -= multiplier * threshold;
+        }
 
         selectedTierContexts.push({
           promo_id: tier.promotion.promo_id,
