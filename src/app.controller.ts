@@ -13,9 +13,12 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
+import axios from 'axios';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -84,10 +87,8 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
-import {
-  CompanyDayAnalyticService,
-  CompanyDayContextPayload,
-} from './company-day-analytic/company-day-analytic.service';
+import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+
 
 interface JwtPayload {
   username: string;
@@ -250,6 +251,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/feature-flags')
+  async getAllFlags() {
+    return this.featureFlagsService.getAllFlags();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/feature-flag/update-flag')
   async updateFlag(@Body() data: { flag: string; status: boolean }) {
     return this.featureFlagsService.updateFlag(data);
@@ -408,6 +415,7 @@ export class AppController {
       mem_code: string;
       sort_by?: number;
       limit: number;
+      creditor_codes?: string[];
     },
   ) {
     //console.log('data in controller:', data);
@@ -474,32 +482,29 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-        | [
-            {
-              pro_code: string;
-              amount: number;
-              pro_unit1: string;
-              pro_point: number;
-            },
-          ]
-        | null;
+      | [
+        {
+          pro_code: string;
+          amount: number;
+          pro_unit1: string;
+          pro_point: number;
+        },
+      ]
+      | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
       addressed: string;
-      company_day_context?: CompanyDayContextPayload;
     },
   ) {
     const mem_code = req.user.mem_code;
     try {
-      await this.shoppingOrderService.sendEventToAnalytics(
-        mem_code,
-        req.user.mem_route,
-        data.total_price,
-        data.company_day_context,
-      );
+      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
     } catch (error) {
-      console.log('Error sending analytics event:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Failed to send purchase event to analytics for mem_code ${mem_code}: ${message}`,
+      );
     }
 
     const result = await this.shoppingOrderService.submitOrder(
@@ -585,12 +590,10 @@ export class AppController {
       flashsale_end: string;
       cartVersion?: string | number;
       clientVersion?: string;
-      company_day_context?: CompanyDayContextPayload;
+      company_day_source?: string;
     },
   ) {
-    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
-    const mem_code = req.user.mem_code;
     const payload: {
       mem_code: string;
       pro_code: string;
@@ -602,8 +605,9 @@ export class AppController {
       flashsale_end: string;
       // hotdeal_free: boolean;
       clientVersion?: string | number;
+      company_day_source?: string;
     } = {
-      mem_code,
+      mem_code: data.mem_code,
       pro_code: data.pro_code,
       pro_unit: data.pro_unit,
       amount: data.amount,
@@ -611,51 +615,18 @@ export class AppController {
       mem_route: req.user.mem_route,
       flashsale_end: data.flashsale_end,
       clientVersion: data.clientVersion ?? data.cartVersion,
+      company_day_source: data.company_day_source,
     };
-    console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    const productContext =
-      Number(data.amount) > 0
-        ? this.companyDayAnalyticService.normalizeContext(
-            await this.companyDayAnalyticService.resolveContextFromProductCartTotal(
-              data.pro_code,
-              mem_code,
-              Number(summaryCart?.total || 0),
-            ),
-          )
-        : null;
-    const fallbackContext =
-      Number(data.amount) > 0
-        ? this.companyDayAnalyticService.normalizeContext(
-            await this.companyDayAnalyticService.resolveContextFromCartTotal(
-              Number(summaryCart?.total || 0),
-            ),
-          )
-        : null;
-    const computedContext = productContext ?? fallbackContext;
-    const resolvedContext = computedContext
-      ? this.companyDayAnalyticService.normalizeContext({
-          promo_name: computedContext.promo_name,
-          tier: computedContext.tier,
-          source: data.company_day_context?.source ?? computedContext.source,
-        })
-      : null;
-
-    if (Number(data.amount) > 0 && resolvedContext) {
-      this.companyDayAnalyticService.emitEvent(
-        'addcart',
-        mem_code,
-        resolvedContext,
-      );
-    }
+    const summaryCart = await this.shoppingCartService.summaryCart(
+      data.mem_code,
+    );
     return {
       cart,
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
-      companyDayContext: resolvedContext ?? undefined,
     };
   }
 
@@ -665,13 +636,14 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
+      promo_id: number;
       promo_name: string;
       tier: string;
-      source?: string;
+      source: string;
     },
   ) {
     const mem_code = req.user.mem_code;
-    this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    void this.companyDayAnalyticService.emitEvent('view', mem_code, data);
     return { success: true };
   }
 
@@ -892,6 +864,7 @@ export class AppController {
       min_amount: number;
       description?: string;
       detail?: string;
+      is_unit_based?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -901,6 +874,7 @@ export class AppController {
       description: data.description,
       detail: data.detail,
       file,
+      is_unit_based: data.is_unit_based === 'true' ? true : false,
     });
   }
 
@@ -1838,6 +1812,8 @@ export class AppController {
       MFG: string;
       EXP: string;
       createdAt: Date;
+      amount: number;
+      unit: string;
     }[],
   ) {
     type N = {
@@ -1857,6 +1833,8 @@ export class AppController {
           item.MFG,
           item.EXP,
           item.createdAt,
+          item.amount,
+          item.unit,
         );
         results.push(result);
       }
@@ -2977,6 +2955,84 @@ export class AppController {
     }
   }
 
+  // @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/generate-poster')
+  async generatePoster(
+    @Body()
+    body: {
+      prompt: string;
+      aspectRatio: string;
+      imageItems: {
+        url: string;
+        name: string;
+        quantity: number;
+        unit: string;
+      }[];
+      session_cookies: string;
+    },
+  ) {
+    return await this.campaignsService.generatePoster(
+      body.prompt,
+      body.aspectRatio,
+      body.imageItems ?? [],
+      body.session_cookies,
+    );
+  }
+
+  @Post('/campaigns/get-response-id/:requestId')
+  async getResponseId(
+    @Param('requestId') requestId: string,
+    @Body() body: { session_cookies?: string },
+  ) {
+    return await this.campaignsService.getAllResults(
+      requestId,
+      body.session_cookies,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/columns')
+  async getRewardColumns(@Param('campaignId') campaignId: string) {
+    const columns = await this.campaignsService.getRewardColumns(campaignId);
+    return { success: true, data: columns };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/campaigns/:campaignId/columns/:columnId')
+  async updateRewardColumnValuePerUnit(
+    @Param('campaignId') campaignId: string,
+    @Param('columnId') columnId: string,
+    @Body() body: { value_per_unit: number },
+  ) {
+    await this.campaignsService.updateRewardColumnValuePerUnit(
+      campaignId,
+      columnId,
+      body.value_per_unit,
+    );
+    return { success: true };
+  }
+
+  @Get('/campaigns/proxy-image')
+  async proxyImage(@Query('url') url: string, @Res() res: Response) {
+    if (!url || !url.startsWith('https://ideogram.ai/')) {
+      res.status(400).json({ error: 'Invalid URL' });
+      return;
+    }
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+    });
+    const ext = url.includes('.png') ? 'png' : 'jpg';
+    res.setHeader(
+      'Content-Type',
+      (response.headers['content-type'] as string) ?? 'image/jpeg',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="poster.${ext}"`,
+    );
+    res.send(Buffer.from(response.data));
+  }
+
   @Post('/app-version/version/get')
   async getVersion(@Body() data: { version: string; os: string }) {
     console.log('Get version request data:', data);
@@ -3907,6 +3963,42 @@ export class AppController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/hotdeal/:pro_code')
+  async getHotdealByProCode(
+    @Param('pro_code') pro_code: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.hotdealService.getHotdealFromproCode(pro_code, mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/hotdeal/add-other-product')
+  async createHotdeal(
+    @Body()
+    body: {
+      freebies: {
+        pro_code: string;
+        unit: string;
+        amount: number;
+        pro_code1: string;
+      }[];
+    },
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    console.log('Creating hotdeal with data:', {
+      mem_code,
+      freebies: body.freebies,
+    });
+    const results = await this.shoppingCartService.addHotdealToCart(
+      mem_code,
+      body.freebies,
+    );
+    return results;
+  }
+  
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
     try {

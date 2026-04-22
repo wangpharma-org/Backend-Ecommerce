@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
+import { IdeogramBrowserService } from './ideogram-browser.service';
 import { CampaignEntity } from './campaigns.entity';
 import { CampaignRowEntity } from './campaigns-row.entity';
 import { CampaignRewardEntity } from './campaigns-reward.entity';
@@ -19,7 +20,7 @@ import { ProductEntity } from 'src/products/products.entity';
       ProductEntity,
     ]),
   ],
-  providers: [CampaignsService],
+  providers: [CampaignsService, IdeogramBrowserService],
   exports: [CampaignsService],
 })
 export class CampaignsModule {}
