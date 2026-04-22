@@ -15,11 +15,9 @@ import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
 import { UserEntity } from 'src/users/users.entity';
-import {
-  CompanyDayAnalyticService,
-  CompanyDayContextPayload,
-} from 'src/company-day-analytic/company-day-analytic.service';
+import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
+import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 
 interface CountSale {
   pro_code: string;
@@ -48,6 +46,8 @@ export class ShoppingOrderService {
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(PromotionTierEntity)
+    private readonly promotionTierRepo: Repository<PromotionTierEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
   ) {}
@@ -815,27 +815,63 @@ export class ShoppingOrderService {
     }
   }
 
-  async sendEventToAnalytics(
-    mem_code: string,
-    mem_route?: string,
-    totalPrice?: number,
-    companyDayContext?: CompanyDayContextPayload,
-  ) {
-    const { cart } = await this.shoppingCartService.getCartSnapshot(
-      mem_code,
-      mem_route,
-    );
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
-    const cartSnapshot = cart?.map((item) => ({ pro_code: item.pro_code })) || [];
-    const cartTotal = Number(summaryCart?.total || 0);
+  async sendPurchaseEventToAnalytics(mem_code: string): Promise<void> {
+    try {
+      const cart = await this.shoppingCartService.handleGetCartToOrder(mem_code);
+      if (!cart?.length) return;
 
-    this.companyDayAnalyticService.trackPurchaseEventSafely(
-      mem_code,
-      cartSnapshot,
-      cartTotal,
-      Number(totalPrice || 0),
-      companyDayContext,
-    );
+      const taggedTierIds = Array.from(
+        new Set(
+          cart
+            .filter(
+              (item) =>
+                !item.is_reward &&
+                item.promo_id != null &&
+                item.tier_id != null,
+            )
+            .map((item) => item.tier_id as number),
+        ),
+      );
+      if (taggedTierIds.length === 0) return;
+
+      const tiers = await this.promotionTierRepo.find({
+        where: { tier_id: In(taggedTierIds) },
+        relations: { promotion: true },
+      });
+      if (!tiers.length) return;
+
+      tiers.sort((a, b) => {
+        const minAmountDiff = Number(b.min_amount || 0) - Number(a.min_amount || 0);
+        if (minAmountDiff !== 0) return minAmountDiff;
+        const promoIdA = a.promotion?.promo_id ?? 0;
+        const promoIdB = b.promotion?.promo_id ?? 0;
+        if (promoIdA !== promoIdB) return promoIdA - promoIdB;
+        return a.tier_id - b.tier_id;
+      });
+
+      const selectedTier = tiers[0];
+      const promoId = selectedTier.promotion?.promo_id;
+      if (!promoId) return;
+
+      const promoName =
+        selectedTier.promotion?.promo_name?.trim() ||
+        `Company Day - ${selectedTier.tier_name}`;
+      const tier = selectedTier.tier_name?.trim();
+      if (!promoName || !tier) return;
+
+      void this.companyDayAnalyticService.emitEvent('purchase', mem_code, {
+        promo_id: promoId,
+        promo_name: promoName,
+        tier,
+        source: 'Checkout',
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to emit company day purchase event: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   async checkOrderTurnBackReward(sh_running: string, pro_code: string) {
@@ -869,6 +905,13 @@ export class ShoppingOrderService {
           `Order ${dataOrder.spo_id} does not have promotion_id or tier_id, skipping reward check.`,
         );
         return { status: true };
+      }
+
+      const findPromotion =
+        await this.promotionService.findPromotionTypeUnitBased(pro_code);
+
+      if (findPromotion) {
+        return { status: false, pro_code_in_promotion: findPromotion };
       }
 
       const minAmount = await this.promotionService.getTierPrice(

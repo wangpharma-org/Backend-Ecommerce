@@ -15,6 +15,12 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
+import {
+  CompanyDayAnalyticService,
+  type CompanyDayContextPayload,
+} from 'src/company-day-analytic/company-day-analytic.service';
+
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
@@ -43,6 +49,10 @@ export interface ShoppingProductCart {
   recommended_id?: number;
   recommend_rank?: number;
   is_reward: boolean;
+  hotdeal: HotdealEntity[] | undefined;
+  pointHotdeal?: number | null;
+  hotdealPointsInfo?: number;
+  totalSmallestUnit?: number;
 }
 
 export interface RecommendedProduct {
@@ -71,6 +81,7 @@ export interface ShoppingCart {
   flashsale_end?: string;
   hotdeal_free: boolean;
   pro_code: string;
+  hotdeal_promain?: string;
 }
 
 export interface FlashSale {
@@ -109,6 +120,7 @@ interface RawProductCart {
   flashsale_time_start?: string;
   flashsale_date?: string;
   hotdeal_free: boolean;
+  hotdeal_promain?: string;
   recommended_id: number;
   recommended_pro_imgmain?: string;
   recommended_pro_name?: string;
@@ -147,6 +159,16 @@ export interface CartMutationResult extends CartVersionState {
   cart: ShoppingProductCart[];
 }
 
+export interface CompanyDayRewardContext {
+  promo_id: number;
+  promo_name: string;
+  tier: string;
+}
+
+export interface CartMutationWithCompanyDayContext extends CartMutationResult {
+  companyDayRewardContext?: CompanyDayRewardContext | null;
+}
+
 @Injectable()
 export class ShoppingCartService {
   constructor(
@@ -165,6 +187,7 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
   ) {}
 
   private async isL16Member(
@@ -361,6 +384,7 @@ export class ShoppingCartService {
     mem_route?: string;
     flashsale_end?: string;
     clientVersion?: string | number;
+    company_day_source?: string;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -424,13 +448,8 @@ export class ShoppingCartService {
           hotdeal_free: false,
         });
       }
-
-      console.log('Check Promotion');
-      await this.checkPromotionReward(data.mem_code, data.priceCondition);
-
-      console.log('Check Hotdeal');
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
-      await this.checkedProductCart({
+      const checkedResult = await this.checkedProductCart({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
         type: 'check',
@@ -440,6 +459,21 @@ export class ShoppingCartService {
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
+      if (Number(data.amount) > 0) {
+        const source = data.company_day_source?.trim() || 'Cart';
+        const companyDayContext = checkedResult.companyDayRewardContext;
+        if (companyDayContext) {
+          const payload: CompanyDayContextPayload = {
+            ...companyDayContext,
+            source,
+          };
+          void this.companyDayAnalyticService.emitEvent(
+            'addcart',
+            data.mem_code,
+            payload,
+          );
+        }
+      }
       return { cart, ...version };
     } catch (error) {
       console.error('Error saving product cart:', error);
@@ -481,7 +515,6 @@ export class ShoppingCartService {
         hotdeal_promain: data.hotdeal_promain,
         spc_datetime: new Date(),
       });
-      console.log('Check Promotion for Hotdeal');
       const cart = await this.getProductCart(data.mem_code);
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
@@ -499,10 +532,15 @@ export class ShoppingCartService {
     }
   }
 
-  async checkPromotionReward(mem_code: string, priceOption: string) {
-    console.log('Checking promotion rewards for member:', mem_code);
+  async checkPromotionReward(
+    mem_code: string,
+    priceOption: string,
+  ): Promise<CompanyDayRewardContext | null> {
     const today = new Date();
     const isL16 = await this.isL16Member(mem_code);
+    const selectedTierContexts: Array<
+      CompanyDayRewardContext & { min_amount: number }
+    > = [];
 
     // 1) ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
@@ -528,9 +566,7 @@ export class ShoppingCartService {
         where: { tier_id: In(distinctTierIds) },
         relations: { conditions: { product: true }, rewards: true },
       });
-
       const rewardsToRemove: ShoppingCartEntity[] = [];
-
       for (const reward of rewardUseCodeItems) {
         const tier = tiers.find((t) => t.tier_id === reward.tier_id);
         if (!tier) {
@@ -582,8 +618,6 @@ export class ShoppingCartService {
       }
     }
 
-    console.log('Calculating promotion-eligible products in cart');
-
     // 4) เตรียมตะกร้าพื้นฐาน (ใช้กับ all_products) และตะกร้าแบบมีเงื่อนไขสินค้า
     const promoMonth = new Date().getMonth() + 1;
     const perProductTotalUnits = new Map<string, number>();
@@ -623,7 +657,7 @@ export class ShoppingCartService {
         (c) => c.is_reward && c.spc_checked && c.use_code === false,
       );
       if (rewardLines.length) await this.shoppingCartRepo.remove(rewardLines);
-      return;
+      return null;
     }
 
     const shouldHaveMap = new Map<
@@ -678,35 +712,134 @@ export class ShoppingCartService {
 
     const usedSpcIds = new Set<number>();
 
+    console.log('Condition-based tiers to evaluate:', conditionBasedTiers);
+
+    // คำนวณโปรโมชั่นแบบ cascade (จากมากไปน้อย)
+    const processedTierIds = new Set<number>();
+    const consumedItems = new Map<number, number>(); // spc_id -> consumed value
+
     for (const tier of conditionBasedTiers) {
-      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
       const threshold = Number(tier.min_amount);
       if (!threshold) continue;
 
-      const eligibleItemsForTier = baseEligibleCart.filter(
-        (line) =>
-          !usedSpcIds.has(line.spc_id) && conditionCodes.has(line.pro_code),
+      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
+      const eligibleItemsForTier = baseEligibleCart.filter((line) =>
+        conditionCodes.has(line.pro_code),
       );
 
-      const tierValue = eligibleItemsForTier.reduce((sum, line) => {
-        const p = line.product;
-        const ratio =
-          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-          1;
-        const price =
-          priceOption === 'A'
-            ? Number(p.pro_priceA)
-            : priceOption === 'B'
-              ? Number(p.pro_priceB)
-              : Number(p.pro_priceC);
-        return sum + Number(line.spc_amount) * price * Number(ratio);
-      }, 0);
+      // เช็คว่าเป็นการเช็คจำนวนหน่วย (is_unit = true) หรือเช็คยอดเงิน (is_unit = false)
+      let tierValue: number;
 
+      if (tier.is_unit) {
+        // เช็คจำนวนหน่วย
+        tierValue = eligibleItemsForTier.reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+          return sum + Number(line.spc_amount) * Number(ratio);
+        }, 0);
+      } else {
+        // เช็คยอดเงิน (ระบบเดิม)
+        tierValue = eligibleItemsForTier.reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+
+          const totalUnitsSameCode =
+            perProductTotalUnits.get(line.pro_code) || 0;
+
+          const isPromo =
+            p.pro_promotion_month === promoMonth &&
+            totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+
+          if (isPromo) {
+            return (
+              sum +
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
+            );
+          } else {
+            const price =
+              priceOption === 'A'
+                ? Number(p.pro_priceA)
+                : priceOption === 'B'
+                  ? Number(p.pro_priceB)
+                  : Number(p.pro_priceC);
+            return sum + Number(line.spc_amount) * price * Number(ratio);
+          }
+        }, 0);
+      }
+
+      console.log(
+        'Tier:',
+        tier.tier_id,
+        tier.tier_name,
+        'Available tier value:',
+        tierValue,
+        'Threshold:',
+        threshold,
+      );
       if (tierValue >= threshold) {
         const multiplier = Math.floor(tierValue / threshold);
         if (multiplier <= 0) continue;
+
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
+
+        // คำนวณส่วนที่ใช้ไปสำหรับแต่ละ item และบันทึกลง consumedItems
+        const totalConsumedValue = multiplier * threshold;
+        let remainingConsume = totalConsumedValue;
+
+        for (const line of eligibleItemsForTier) {
+          if (remainingConsume <= 0) break;
+
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+
+          const totalUnitsSameCode =
+            perProductTotalUnits.get(line.pro_code) || 0;
+          const isPromo =
+            p.pro_promotion_month === promoMonth &&
+            totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+
+          let lineValue;
+          if (isPromo) {
+            lineValue =
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio);
+          } else {
+            const price =
+              priceOption === 'A'
+                ? Number(p.pro_priceA)
+                : priceOption === 'B'
+                  ? Number(p.pro_priceB)
+                  : Number(p.pro_priceC);
+            lineValue = Number(line.spc_amount) * price * Number(ratio);
+          }
+
+          const alreadyConsumed = consumedItems.get(line.spc_id) || 0;
+          const availableValue = Math.max(0, lineValue - alreadyConsumed);
+          const toConsume = Math.min(availableValue, remainingConsume);
+
+          if (toConsume > 0) {
+            consumedItems.set(line.spc_id, alreadyConsumed + toConsume);
+            remainingConsume -= toConsume;
+          }
+        }
 
         // Mark items as used and tag them
         for (const line of eligibleItemsForTier) {
@@ -742,9 +875,11 @@ export class ShoppingCartService {
           }
         }
       }
+
+      processedTierIds.add(tier.tier_id);
     }
 
-    // 9) คำนวณยอดรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
+    // 9) คำนวณยอดรวม/จำนวนหน่วยรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
     const remainingEligibleCart = baseEligibleCart.filter(
       (line) => !usedSpcIds.has(line.spc_id),
     );
@@ -783,6 +918,20 @@ export class ShoppingCartService {
       0,
     );
 
+    // คำนวณจำนวนหน่วยรวมสำหรับสินค้าที่เหลือ (สำหรับโปรแบบ is_unit = true)
+    const totalUnitsForUnusedItems = remainingEligibleCart.reduce(
+      (sum, line) => {
+        const p = line.product;
+        const ratio =
+          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+          1;
+        return sum + Number(line.spc_amount) * Number(ratio);
+      },
+      0,
+    );
+
     // 10) โปรโมชั่นที่ all_products = true (คำนวณจากสินค้าที่เหลือ)
     const allProductTiers = await this.tierRepo
       .createQueryBuilder('tier')
@@ -801,15 +950,34 @@ export class ShoppingCartService {
       );
 
       let remainingBudget = totalSumPriceForUnusedItems;
+      let remainingUnits = totalUnitsForUnusedItems;
 
       for (const tier of sortedTiers) {
         const threshold = Number(tier.min_amount);
-        if (!threshold || remainingBudget < threshold) continue;
+        let multiplier = 0;
+        
+        if (tier.is_unit) {
+          // เช็คจำนวนหน่วย
+          if (!threshold || remainingUnits < threshold) continue;
+          multiplier = Math.floor(remainingUnits / threshold);
+          if (multiplier <= 0) continue;
+          remainingUnits -= multiplier * threshold;
+        } else {
+          // เช็คยอดเงิน (ระบบเดิม)
+          if (!threshold || remainingBudget < threshold) continue;
+          multiplier = Math.floor(remainingBudget / threshold);
+          if (multiplier <= 0) continue;
+          remainingBudget -= multiplier * threshold;
+        }
 
-        const multiplier = Math.floor(remainingBudget / threshold);
-        if (multiplier <= 0) continue;
-
-        remainingBudget -= multiplier * threshold;
+        selectedTierContexts.push({
+          promo_id: tier.promotion.promo_id,
+          promo_name:
+            tier.promotion.promo_name?.trim() ||
+            `Company Day - ${tier.tier_name}`,
+          tier: tier.tier_name,
+          min_amount: threshold,
+        });
 
         // Tag สินค้าหลักที่เหลือ ว่าเข้าโปรนี้
         for (const line of remainingEligibleCart) {
@@ -932,6 +1100,27 @@ export class ShoppingCartService {
       }
     }
     if (conditionSyncOps.length) await Promise.all(conditionSyncOps);
+
+    if (selectedTierContexts.length === 0) {
+      return null;
+    }
+
+    selectedTierContexts.sort((a, b) => {
+      if (b.min_amount !== a.min_amount) {
+        return b.min_amount - a.min_amount;
+      }
+      if (a.promo_id !== b.promo_id) {
+        return a.promo_id - b.promo_id;
+      }
+      return a.tier.localeCompare(b.tier);
+    });
+
+    const topTier = selectedTierContexts[0];
+    return {
+      promo_id: topTier.promo_id,
+      promo_name: topTier.promo_name,
+      tier: topTier.tier,
+    };
   }
 
   async checkedProductCart(data: {
@@ -941,8 +1130,7 @@ export class ShoppingCartService {
     priceOption: string;
     mem_route?: string;
     clientVersion?: string | number;
-  }): Promise<CartMutationResult> {
-    console.log('checkedProductCart data:', data);
+  }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
@@ -1001,11 +1189,14 @@ export class ShoppingCartService {
         throw new Error('Something wrong in checkedProductCart');
       }
 
-      await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
+      const companyDayRewardContext = await this.checkPromotionReward(
+        data.mem_code,
+        data.priceOption ?? 'C',
+      );
 
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
-      return { cart, ...version };
+      return { cart, ...version, companyDayRewardContext };
     } catch (e) {
       console.error('Error in checkedProductCart', e);
       if (e instanceof ConflictException) {
@@ -1040,14 +1231,12 @@ export class ShoppingCartService {
   }): Promise<CartMutationResult> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
-      // เช็คว่าสินค้านี้มี hotdeal หรือไม่
       const hotdeal = await this.hotdealService.find(data.pro_code);
 
       if (hotdeal && hotdeal.product2?.pro_code) {
-        // ถ้ามี hotdeal ให้ลบสินค้าแถม (hotdeal_free = true) ออกด้วย
         await this.shoppingCartRepo.delete({
           mem_code: data.mem_code,
-          pro_code: hotdeal.product2.pro_code,
+          hotdeal_promain: data.pro_code,
           hotdeal_free: true,
         });
         console.log(
@@ -1056,7 +1245,6 @@ export class ShoppingCartService {
         );
       }
 
-      // ลบสินค้าต้นฉบับ
       await this.shoppingCartRepo.delete({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
@@ -1240,6 +1428,7 @@ export class ShoppingCartService {
           'cart.spc_checked AS spc_checked',
           'cart.is_reward AS is_reward',
           'cart.flashsale_end AS flashsale_end',
+          'cart.hotdeal_promain AS hotdeal_promain',
           'fs.promotion_id AS promotion_id',
           'fs.limit AS flashsale_limit',
           'flashsale.date AS flashsale_date',
@@ -1259,9 +1448,45 @@ export class ShoppingCartService {
 
       const grouped: Record<string, ShoppingProductCart> = {};
 
+      const allProCodes = [...new Set(raw.map((r) => r.pro_code))];
+      const allHotdeals =
+        await this.hotdealService.getHotdealByProCode(allProCodes);
+
+      // คำนวณ used points สำหรับแต่ละสินค้า
+      const usedPointsPromises = allProCodes.map((proCode) =>
+        this.calculateUsedHotdealPoints(mem_code, proCode),
+      );
+      const usedPointsResults = await Promise.all(usedPointsPromises);
+      const usedPointsMap = new Map(
+        allProCodes.map((proCode, index) => [
+          proCode,
+          usedPointsResults[index],
+        ]),
+      );
+
+      // คำนวณ hotdeal points info แบบละเอียด
+      const hotdealPointsInfoPromises = allProCodes.map((proCode) =>
+        this.getHotdealPointsInfo(mem_code, proCode),
+      );
+      const hotdealPointsInfoResults = await Promise.all(
+        hotdealPointsInfoPromises,
+      );
+      const hotdealPointsInfoMap = new Map(
+        allProCodes.map((proCode, index) => [
+          proCode,
+          hotdealPointsInfoResults[index],
+        ]),
+      );
+
       for (const row of raw) {
         const key = `${row.pro_code}_${row.is_reward ? 'reward' : 'normal'}`;
 
+        const usedHotdealPoints = usedPointsMap.get(row.pro_code) || 0;
+        const hotdealPointsInfo = hotdealPointsInfoMap.get(row.pro_code);
+
+        const hotdeal = allHotdeals?.filter(
+          (hd) => hd.product.pro_code === row.pro_code,
+        );
         if (!grouped[key]) {
           grouped[key] = {
             pro_code: row.pro_code,
@@ -1289,6 +1514,9 @@ export class ShoppingCartService {
             lots: [],
             recommend: [],
             is_reward: !!row.is_reward,
+            hotdeal: hotdeal,
+            pointHotdeal: usedHotdealPoints,
+            hotdealPointsInfo: hotdealPointsInfo,
           };
         }
 
@@ -1349,17 +1577,17 @@ export class ShoppingCartService {
             pro_promotion_amount: row.pro_promotion_amount,
             hotdeal_free: row.hotdeal_free || false,
             pro_code: row.pro_code,
+            hotdeal_promain: row.hotdeal_promain,
           });
         }
       }
 
       const totalSmallestUnit = await Promise.all(
         Object.values(grouped).map(async (group) => {
-          // กรอง orderItems ตาม pro_code
           const orderItems = group.shopping_cart.map((item) => ({
             unit: item.spc_unit,
-            quantity: parseFloat(item.spc_amount), // แปลงจำนวนเป็นตัวเลข
-            pro_code: group.pro_code, // เพิ่ม pro_code ใน orderItems
+            quantity: parseFloat(item.spc_amount),
+            pro_code: group.pro_code,
           }));
 
           // คำนวณหน่วยที่เล็กที่สุดสำหรับ pro_code นี้
@@ -1439,74 +1667,150 @@ export class ShoppingCartService {
     pro_code: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
-      const existingCart = await this.shoppingCartRepo.find({
+      const hotdeals = await this.hotdealService.getHotdealByProCode([
+        pro_code,
+      ]);
+      if (!hotdeals) {
+        return await this.getProductCart(mem_code);
+      }
+
+      if (hotdeals.length === 0) {
+        return await this.getProductCart(mem_code);
+      }
+
+      const mainProductsInCart = await this.shoppingCartRepo.find({
         where: {
-          mem_code: mem_code,
+          mem_code,
           pro_code: pro_code,
           hotdeal_free: false,
+          spc_checked: true,
         },
       });
 
-      const hotdeal = await this.hotdealService.find(pro_code);
-      const hotdealMatch = await this.hotdealService.checkHotdealMatch(
-        pro_code,
-        existingCart.map((item) => ({
-          pro1_unit: item.spc_unit,
-          pro1_amount: String(Number(item.spc_amount)),
-        })),
-      );
-      console.log('Hotdeal match result:', hotdealMatch, pro_code);
-      if (!hotdealMatch?.match) {
-        if (hotdeal && hotdeal.product2?.pro_code) {
-          await this.shoppingCartRepo.delete({
-            mem_code: mem_code,
-            pro_code: hotdeal.product2.pro_code,
-            hotdeal_free: true,
-          });
-          console.log(
-            'Removed hotdeal freebie for pro_code:',
-            hotdeal.product2.pro_code,
-            'due to unmatched condition',
-          );
+      const allFreebiesInCart = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          hotdeal_promain: pro_code,
+          hotdeal_free: true,
+        },
+      });
+
+      if (mainProductsInCart.length === 0) {
+        console.log(
+          `mainProductsInCart:`,
+          mainProductsInCart,
+          `allFreebiesInCart:`,
+          allFreebiesInCart,
+        );
+        if (allFreebiesInCart.length > 0) {
+          await this.shoppingCartRepo.remove(allFreebiesInCart);
         }
         return await this.getProductCart(mem_code);
       }
-      if (hotdeal && hotdeal.product2?.pro_code) {
-        const existingFreebie = await this.shoppingCartRepo.findOne({
-          where: {
-            mem_code: mem_code,
-            pro_code: hotdeal.product2.pro_code,
-            hotdeal_promain: hotdeal.product.pro_code,
-            hotdeal_free: true,
-          },
-        });
 
-        if (existingFreebie) {
-          await this.shoppingCartRepo.update(
-            {
-              mem_code: existingFreebie.mem_code,
-              pro_code: hotdeal.product2.pro_code,
-              hotdeal_promain: hotdeal.product.pro_code,
-              hotdeal_free: true,
-            },
-            { spc_amount: Number(hotdealMatch?.countFreeBies) },
-          );
-          return await this.getProductCart(mem_code);
+      const freebiesData: {
+        pro_code: string;
+        unit: string;
+        quantity: number;
+      }[] = [];
+
+      const getHotdealFromproCode =
+        await this.hotdealService.getHotdealFromproCode(pro_code, mem_code);
+      let totalCartInSmallest =
+        getHotdealFromproCode?.totalAmountInSmallestUnit || 0;
+
+      for (const hd of hotdeals) {
+        if (!hd.pro1_amount || !hd.pro1_unit || !hd.product2?.pro_code) {
+          continue;
         }
 
-        const result = await this.addProductCartHotDeal(
-          {
-            mem_code: mem_code ?? '',
-            pro_code: hotdeal.product2.pro_code,
-            pro_unit: hotdeal.pro2_unit ?? '',
-            amount: Number(hotdealMatch?.countFreeBies),
-            hotdeal_promain: hotdeal.product.pro_code,
-            hotdeal_free: true,
-          },
-          { touchVersion: false },
-        );
-        return result.cart;
+        try {
+          const cartByUnit = new Map<string, number>();
+          for (const item of mainProductsInCart) {
+            const currentQty = cartByUnit.get(item.spc_unit) || 0;
+            cartByUnit.set(item.spc_unit, currentQty + Number(item.spc_amount));
+          }
+
+          const hotdealRequirement = [
+            {
+              pro_code: pro_code,
+              unit: hd.pro1_unit,
+              quantity: Number(hd.pro1_amount),
+            },
+          ];
+
+          const hotdealRequiredInSmallest =
+            await this.productsService.calculateSmallestUnit(
+              hotdealRequirement,
+            );
+          if (hotdealRequiredInSmallest <= 0) {
+            continue;
+          }
+
+          const totalFreebies = Math.floor(
+            totalCartInSmallest / hotdealRequiredInSmallest,
+          );
+
+          if (totalFreebies > 0) {
+            freebiesData.push({
+              pro_code: hd.product2.pro_code,
+              unit: hd.pro2_unit,
+              quantity: totalFreebies,
+            });
+          }
+
+          totalCartInSmallest -= totalFreebies * hotdealRequiredInSmallest;
+        } catch (error) {
+          console.error(`Error processing hotdeal ${hd.id}:`, error);
+          continue;
+        }
       }
+
+      if (freebiesData.length === 0) {
+        if (allFreebiesInCart.length > 0) {
+          await this.shoppingCartRepo.remove(allFreebiesInCart);
+        }
+        return await this.getProductCart(mem_code);
+      }
+
+      const validFreebieProCodes = new Set(freebiesData.map((f) => f.pro_code));
+
+      const freebiesToRemove = allFreebiesInCart.filter(
+        (fb) => !validFreebieProCodes.has(fb.pro_code),
+      );
+      if (freebiesToRemove.length > 0) {
+        await this.shoppingCartRepo.remove(freebiesToRemove);
+      }
+
+      for (const freebieData of freebiesData) {
+        const existingFreebie = allFreebiesInCart.find(
+          (fb) => fb.pro_code === freebieData.pro_code,
+        );
+
+        if (existingFreebie) {
+          if (Number(existingFreebie.spc_amount) !== freebieData.quantity) {
+            await this.shoppingCartRepo.update(
+              { spc_id: existingFreebie.spc_id },
+              { spc_amount: freebieData.quantity },
+            );
+          }
+        } else {
+          // เพิ่มของแถมใหม่
+          await this.addProductCartHotDeal(
+            {
+              mem_code: mem_code,
+              pro_code: freebieData.pro_code,
+              pro_unit: freebieData.unit,
+              amount: freebieData.quantity,
+              hotdeal_promain: pro_code,
+              hotdeal_free: true,
+            },
+            { touchVersion: false },
+          );
+        }
+      }
+
+      return await this.getProductCart(mem_code);
     } catch (error) {
       console.error('Error in checkHotdealByProCode:', error);
       return null;
@@ -1680,6 +1984,287 @@ export class ShoppingCartService {
       return { total: total, items: itemsArray };
     } catch {
       return { total: 0, items: [] };
+    }
+  }
+
+  async getOrderFromCartMember(
+    mem_code: string,
+    pro_code: string,
+  ): Promise<{ pro_code: string; spc_amount: number; spc_unit: string }[]> {
+    try {
+      const cartItems = await this.shoppingCartRepo.find({
+        where: {
+          mem_code: mem_code,
+          pro_code: pro_code,
+          spc_checked: true,
+        },
+        select: {
+          pro_code: true,
+          spc_amount: true,
+          spc_unit: true,
+        },
+      });
+      return cartItems;
+    } catch {
+      return [];
+    }
+  }
+
+  async addHotdealToCart(
+    mem_code: string,
+    freebies: {
+      pro_code: string;
+      unit: string;
+      amount: number;
+      pro_code1: string;
+    }[],
+  ) {
+    try {
+      console.log(
+        'Adding hotdeal to cart for mem_code:',
+        mem_code,
+        'with freebies data:',
+        freebies,
+      );
+
+      for (const data of freebies) {
+        // ตรวจสอบข้อมูลพื้นฐานก่อนดำเนินการ
+        if (!data.pro_code || !data.pro_code1 || !data.unit) {
+          console.log(
+            `Invalid freebie data: pro_code=${data.pro_code}, pro_code1=${data.pro_code1}, unit=${data.unit}`,
+          );
+          continue;
+        }
+
+        // เช็คจำนวนสินค้าหลักในตะกร้าเพื่อคำนวณแต้ม (หน่วยที่เล็กที่สุด)
+        const mainProductInCart = await this.shoppingCartRepo.find({
+          where: {
+            mem_code,
+            pro_code: data.pro_code1, // สินค้าหลักที่ต้องซื้อ
+            hotdeal_free: false,
+            spc_checked: true,
+          },
+        });
+
+        if (mainProductInCart.length === 0) {
+          console.log(
+            `No main product ${data.pro_code1} found in cart for hotdeal, skipping freebie ${data.pro_code}`,
+          );
+          continue;
+        }
+
+        // คำนวณแต้ม (หน่วยที่เล็กที่สุด) จากสินค้าหลักที่มีในตะกร้า
+        let totalPoints = 0;
+        try {
+          const orderItems = mainProductInCart.map((item) => ({
+            unit: item.spc_unit,
+            quantity: parseFloat(item.spc_amount.toString()),
+            pro_code: data.pro_code1,
+          }));
+
+          totalPoints =
+            await this.productsService.calculateSmallestUnit(orderItems);
+          console.log(`Total points for ${data.pro_code1}:`, totalPoints);
+        } catch (error) {
+          console.error(
+            `Error calculating smallest unit for ${data.pro_code1}:`,
+            error,
+          );
+          continue; // ข้ามการประมวลผลถ้าคำนวณแต้มไม่ได้
+        }
+
+        // เช็คว่าครบเงื่อนไข hotdeal หรือไม่
+        const hotdealMatch = await this.hotdealService.checkHotdealMatch(
+          data.pro_code1,
+          mainProductInCart.map((item) => ({
+            pro1_unit: item.spc_unit,
+            pro1_amount: item.spc_amount.toString(),
+          })),
+        );
+
+        if (!hotdealMatch?.match) {
+          console.log(
+            `Hotdeal condition not met for ${data.pro_code1}, points: ${totalPoints}, skipping freebie ${data.pro_code}`,
+          );
+          // ลบของแถมที่มีอยู่ถ้าเงื่อนไขไม่ครบ
+          await this.shoppingCartRepo.delete({
+            mem_code,
+            pro_code: data.pro_code,
+            hotdeal_promain: data.pro_code1,
+            hotdeal_free: true,
+          });
+          continue;
+        }
+
+        // ถ้าครบเงื่อนไขแล้ว จึงเพิ่มหรืออัปเดตของแถม
+        const existingFreebie = await this.shoppingCartRepo.findOne({
+          where: {
+            mem_code,
+            pro_code: data.pro_code,
+            hotdeal_promain: data.pro_code1,
+            hotdeal_free: true,
+          },
+        });
+
+        const actualFreebieAmount = Math.min(
+          data.amount,
+          Number(hotdealMatch.countFreeBies) || 0,
+        );
+
+        if (existingFreebie) {
+          console.log(
+            `Updating existing hotdeal freebie for ${data.pro_code} with amount ${actualFreebieAmount} and points ${totalPoints}`,
+          );
+          await this.shoppingCartRepo.update(
+            {
+              mem_code,
+              pro_code: data.pro_code,
+              hotdeal_promain: data.pro_code1,
+              hotdeal_free: true,
+            },
+            { spc_amount: actualFreebieAmount },
+          );
+          console.log(
+            `Hotdeal freebie for ${data.pro_code} updated in cart successfully (amount: ${actualFreebieAmount}, points: ${totalPoints})`,
+          );
+        } else {
+          const hotdeal = this.shoppingCartRepo.create({
+            pro_code: data.pro_code,
+            mem_code,
+            spc_unit: data.unit,
+            spc_amount: actualFreebieAmount,
+            hotdeal_promain: data.pro_code1,
+            spc_checked: true,
+            hotdeal_free: true,
+            spc_datetime: new Date(),
+          });
+
+          await this.shoppingCartRepo.save(hotdeal);
+          console.log(
+            `Hotdeal freebie for ${data.pro_code} added to cart successfully (amount: ${actualFreebieAmount}, points: ${totalPoints})`,
+          );
+        }
+      }
+      console.log('Hotdeal added to cart successfully');
+      return 'Add Hotdeal To Cart Success';
+    } catch (error) {
+      // เพิ่มการ log error เดิมเพื่อช่วยในการ debug
+      console.error(
+        'An error occurred in addHotdealToCart:',
+        error instanceof Error ? error.message : error,
+      );
+      throw new Error('Error in addHotdealToCart'); // โยน error เดิมออกไป
+    }
+  }
+
+  async calculateUsedHotdealPoints(
+    mem_code: string,
+    pro_code: string,
+  ): Promise<number> {
+    try {
+      // ดึงรายการของแถม (hotdeal_free = true) ที่เกิดจากสินค้าหลัก pro_code
+      const freebies = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          hotdeal_promain: pro_code,
+          hotdeal_free: true,
+          spc_checked: true,
+        },
+        relations: { product: true },
+      });
+
+      if (freebies.length === 0) {
+        return 0;
+      }
+
+      // ดึงข้อมูล hotdeal สำหรับสินค้าหลัก
+      const hotdeals = await this.hotdealService.getHotdealByProCode([
+        pro_code,
+      ]);
+      if (!hotdeals || hotdeals.length === 0) {
+        return 0;
+      }
+
+      let totalUsedPoints = 0;
+
+      // คำนวณแต้มที่ใช้สำหรับแต่ละของแถม
+      for (const freebie of freebies) {
+        // หา hotdeal rule ที่ตรงกับของแถมนี้
+        const matchingHotdeal = hotdeals.find(
+          (hd) =>
+            hd.product2?.pro_code === freebie.pro_code &&
+            hd.pro2_unit === freebie.spc_unit,
+        );
+
+        if (
+          matchingHotdeal &&
+          matchingHotdeal.pro1_amount &&
+          matchingHotdeal.pro1_unit
+        ) {
+          // คำนวณแต้มที่ต้องใช้สำหรับของแถม 1 หน่วย
+          const requiredItems = [
+            {
+              pro_code: pro_code,
+              unit: matchingHotdeal.pro1_unit,
+              quantity: Number(matchingHotdeal.pro1_amount),
+            },
+          ];
+
+          const pointsPerFreebie =
+            await this.productsService.calculateSmallestUnit(requiredItems);
+
+          // คำนวณแต้มรวมที่ใช้ = จำนวนของแถม × แต้มต่อหน่วย
+          const freebieAmount = Number(freebie.spc_amount);
+          totalUsedPoints += freebieAmount * pointsPerFreebie;
+        }
+      }
+
+      return totalUsedPoints;
+    } catch (error) {
+      console.error('Error calculating used hotdeal points:', error);
+      return 0;
+    }
+  }
+
+  async getHotdealPointsInfo(
+    mem_code: string,
+    pro_code: string,
+  ): Promise<number> {
+    try {
+      // คำนวณแต้มทั้งหมดที่มีในตะกร้า
+      const mainProductsInCart = await this.shoppingCartRepo.find({
+        where: {
+          mem_code,
+          pro_code,
+          hotdeal_free: false,
+          spc_checked: true,
+        },
+        relations: { product: true },
+      });
+
+      if (mainProductsInCart.length === 0) {
+        return 0;
+      }
+
+      // คำนวณแต้มรวมของสินค้าหลัก (หน่วยเล็กสุด)
+      const cartItems = mainProductsInCart.map((item) => ({
+        pro_code: item.pro_code,
+        unit: item.spc_unit,
+        quantity: Number(item.spc_amount),
+      }));
+
+      const totalPoints =
+        await this.productsService.calculateSmallestUnit(cartItems);
+      const usedPoints = await this.calculateUsedHotdealPoints(
+        mem_code,
+        pro_code,
+      );
+      const remainingPoints = Math.max(0, totalPoints - usedPoints);
+
+      return remainingPoints;
+    } catch (error) {
+      console.error('Error getting hotdeal points info:', error);
+      return 0;
     }
   }
 }

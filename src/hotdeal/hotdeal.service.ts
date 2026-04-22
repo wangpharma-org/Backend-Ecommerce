@@ -3,7 +3,7 @@ import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { UserEntity } from 'src/users/users.entity';
 import * as AWS from 'aws-sdk';
@@ -160,7 +160,6 @@ export class HotdealService {
           }
         }
       } else {
-        console.log('Creating new Hotdeal');
         const hotdeal = this.hotdealRepo.create({
           pro1_amount: datainput.pro1_amount,
           pro1_unit: datainput.pro1_unit,
@@ -497,12 +496,8 @@ export class HotdealService {
         const uploadResult = await this.s3.upload(params).promise();
         imageUrl = uploadResult.Location;
       } else {
-        console.log(
-          '⚠️ S3 credentials not configured, using placeholder image',
-        );
         const randomSeed = Date.now();
         imageUrl = `https://picsum.photos/seed/${randomSeed}/1200/400`;
-        console.log('Placeholder URL:', imageUrl);
       }
 
       const bannerHotdeal = this.bannerHotdealRepo.create({
@@ -527,7 +522,7 @@ export class HotdealService {
       throw new Error('Something Error in getAllHotdealsWithBanners');
     }
   }
-  
+
   async deleteBannerHotdeal(id: number) {
     try {
       const banner = await this.bannerHotdealRepo.findOne({
@@ -564,5 +559,146 @@ export class HotdealService {
       console.error('Error deleting banner hotdeal:', error);
       throw new Error('Something Error in deleteBannerHotdeal');
     }
+  }
+
+  async getHotdealFromproCode(
+    pro_code: string,
+    mem_code: string,
+  ): Promise<{
+    hotdeal: HotdealEntity[];
+    totalAmountInSmallestUnit: number;
+    eligibleForFreebie: boolean;
+    remainingPoints: number;
+    freebies: {
+      pro_code: string;
+      unit: string;
+      quantity: number;
+      usedPoints: number;
+      remainingPointsForThis: number;
+    }[];
+  } | null> {
+    const hotdeal = await this.hotdealRepo.find({
+      where: { product: { pro_code } },
+      relations: ['product', 'product2'],
+      select: {
+        pro1_amount: true,
+        pro1_unit: true,
+        pro2_amount: true,
+        pro2_unit: true,
+        product: {
+          pro_code: true,
+          pro_name: true,
+        },
+        product2: {
+          pro_code: true,
+          pro_name: true,
+        },
+      },
+    });
+
+    if (!hotdeal || hotdeal.length === 0) {
+      return null;
+    }
+
+    const cartItems =
+      await this.shoppingCartService.getOrderFromCartMember(
+        mem_code,
+        pro_code,
+      );
+
+    let totalAmountInSmallestUnit = 0;
+    if (cartItems && cartItems.length > 0) {
+      const product = await this.productService.getProductOne(pro_code);
+      if (product) {
+        const units = [
+          { unit: product.pro_unit1, ratio: product.pro_ratio1 },
+          { unit: product.pro_unit2, ratio: product.pro_ratio2 },
+          { unit: product.pro_unit3, ratio: product.pro_ratio3 },
+        ];
+
+        totalAmountInSmallestUnit = cartItems.reduce((total, item) => {
+          const foundUnit = units.find((u) => u.unit === item.spc_unit);
+          if (foundUnit && foundUnit.ratio) {
+            return total + Number(item.spc_amount) * Number(foundUnit.ratio);
+          }
+          return total;
+        }, 0);
+      }
+    }
+
+    const freebies: {
+      pro_code: string;
+      unit: string;
+      quantity: number;
+      usedPoints: number;
+      remainingPointsForThis: number;
+    }[] = [];
+
+    let remainingPoints = totalAmountInSmallestUnit;
+
+    if (totalAmountInSmallestUnit > 0) {
+      const calculationPromises = hotdeal.map(async (hd) => {
+        if (hd.pro1_amount && hd.pro1_unit && hd.product2) {
+          const conditionInSmallestUnit = await this.convertToSmallestUnit(
+            pro_code,
+            hd.pro1_amount,
+            hd.pro1_unit,
+          );
+
+          if (conditionInSmallestUnit && conditionInSmallestUnit > 0) {
+            const sets = Math.floor(
+              totalAmountInSmallestUnit / conditionInSmallestUnit,
+            );
+            const usedPoints = sets * conditionInSmallestUnit;
+            const remainingPointsForThis = totalAmountInSmallestUnit - usedPoints;
+            
+            freebies.push({
+              pro_code: hd.product2.pro_code,
+              unit: hd.pro2_unit,
+              quantity: sets * Number(hd.pro2_amount),
+              usedPoints: usedPoints,
+              remainingPointsForThis: remainingPointsForThis,
+            });
+
+            if (sets > 0) {
+              remainingPoints = Math.min(remainingPoints, remainingPointsForThis);
+            }
+          }
+        }
+      });
+      await Promise.all(calculationPromises);
+    }
+
+    const eligibleForFreebie = freebies.some((f) => f.quantity > 0);
+
+    return { 
+      hotdeal, 
+      totalAmountInSmallestUnit, 
+      eligibleForFreebie, 
+      remainingPoints,
+      freebies 
+    };
+  }
+
+  async getHotdealByProCode(pro_code: string[]): Promise<HotdealEntity[] | null> {
+    return await this.hotdealRepo.find({
+      where: { product: { pro_code: In(pro_code) } },
+      relations: ['product', 'product2'],
+      select: {
+        pro1_amount: true,
+        pro1_unit: true,
+        pro2_amount: true,
+        pro2_unit: true,
+        product: {
+          pro_code: true,
+          pro_name: true,
+        },
+        product2: {
+          pro_code: true,
+          pro_name: true,
+        },
+      },
+      order: { pro1_amount: 'ASC' },
+    });
   }
 }

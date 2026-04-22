@@ -905,6 +905,7 @@ export class ProductsService {
     mem_route?: string;
     sort_by?: number;
     limit: number;
+    creditor_codes?: string[];
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
@@ -988,6 +989,12 @@ export class ProductsService {
               });
           }),
         );
+
+      if (data.creditor_codes && data.creditor_codes.length > 0) {
+        qb.andWhere('product.creditor_code IN (:...creditorCodes)', {
+          creditorCodes: data.creditor_codes,
+        });
+      }
 
       if (isL16) {
         this.applyL16Filter(qb, 'product');
@@ -1147,7 +1154,12 @@ export class ProductsService {
 
         const productsWithUnits = await this.getProductsWithUnits(pro_code);
 
-        const product = productsWithUnits.find((p) => p.pro_code === pro_code);
+        const product:
+          | {
+              pro_code: string;
+              units: { unit: string; ratio: number }[];
+            }
+          | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }

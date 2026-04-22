@@ -55,4 +55,7 @@ export class PromotionTierEntity {
   })
   @JoinColumn({ name: 'promo_id' })
   promotion: PromotionEntity;
+
+  @Column({ default: 0 })
+  is_unit!: boolean;
 }
