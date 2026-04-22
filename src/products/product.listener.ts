@@ -4,42 +4,52 @@ import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
+import { LoggerService } from '../logger/logger.service';
 
 @Controller()
 export class ProductListner {
-  constructor(private readonly productServerce: ProductsService) {}
+  constructor(
+    private readonly productServerce: ProductsService,
+    private logger: LoggerService,
+  ) {}
   @MessagePattern('product_created_ecom')
   async addProduct(@Payload() message: ProductEntity) {
     try {
-      console.log('Received message in product listener:', message);
+      this.logger.log('Received message in product listener:', message);
       await this.productServerce.createProduct(message);
     } catch (error) {
-      console.log('Kafka Received message in product listener', error);
+      this.logger.error(
+        'Kafka Received message in product listener',
+        String(error),
+      );
     }
   }
 
   @MessagePattern('product_created_detail_ecom')
   async addProductDetail(@Payload() message: ProductPharmaEntity) {
     try {
-      console.log('Received message in product detail listener:', message);
+      this.logger.log('Received message in product detail listener:', message);
       await this.productServerce.createProductPharmaRepo(message);
     } catch (error) {
-      console.log('Kafka Received message in product detail listener', error);
+      this.logger.error(
+        'Kafka Received message in product detail listener',
+        String(error),
+      );
     }
   }
 
   @MessagePattern('product_update_detail_ecom')
   async updateProductDetail(@Payload() message: ProductPharmaEntity) {
     try {
-      console.log(
+      this.logger.log(
         'Received message in product detail update listener:',
         message,
       );
       await this.productServerce.createProductPharmaRepo(message);
     } catch (error) {
-      console.log(
+      this.logger.error(
         'Kafka Received message in product detail update listener',
-        error,
+        String(error),
       );
     }
   }
@@ -47,10 +57,13 @@ export class ProductListner {
   @MessagePattern('product_update_ecom')
   async updateProduct(@Payload() message: ProductEntity) {
     try {
-      console.log('Received message in product listener:', message);
+      this.logger.log('Received message in product listener:', message);
       await this.productServerce.updateProduct(message);
     } catch (error) {
-      console.log('Kafka Received message in product listener', error);
+      this.logger.error(
+        'Kafka Received message in product listener',
+        String(error),
+      );
     }
   }
 
@@ -59,9 +72,9 @@ export class ProductListner {
     try {
       await this.productServerce.handleProductImageUpdate(message);
     } catch (error) {
-      console.log(
+      this.logger.error(
         'Kafka Received message in update_product_image listener',
-        error,
+        String(error),
       );
     }
   }
@@ -71,9 +84,9 @@ export class ProductListner {
     try {
       await this.productServerce.deleteProductImage(message);
     } catch (error) {
-      console.log(
+      this.logger.error(
         'Kafka Received message in delete_product_image listener',
-        error,
+        String(error),
       );
     }
   }
