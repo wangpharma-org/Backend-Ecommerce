@@ -1,5 +1,5 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
 import {
@@ -544,7 +544,9 @@ export class PromotionService {
         .getMany();
 
       if (tireIsUnit.length > 0)
-        return 'Some promotion tire is unit based, cannot add product condition to this tire';
+        throw new NotFoundException(
+          'Some promotion tire is unit based, cannot add product condition to this tire',
+        );
 
       const tier = await this.promotionTierRepo.findOne({
         where: { tier_id: data.tier_id },
@@ -561,15 +563,21 @@ export class PromotionService {
         .getMany();
 
       if (findTierisProduct.length > 0)
-        return 'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active';
+        throw new NotFoundException(
+          'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
+        );
 
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
         product: { pro_code: data.product_gcode },
       } as DeepPartial<PromotionConditionEntity>);
       await this.promotionConditionRepo.save(newCondition);
-    } catch {
-      throw new Error(`Failed to create condition`);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : `Failed to create condition`,
+      );
     }
   }
 
