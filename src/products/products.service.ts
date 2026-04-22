@@ -282,7 +282,7 @@ export class ProductsService {
       });
       return data;
     } catch (error) {
-      throw new Error('Error in listProcodeFlashSale: ', error);
+      throw new Error('Error in listProcodeFlashSale: ' + String(error));
     }
   }
 
@@ -1135,7 +1135,7 @@ export class ProductsService {
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array
-    return products.map((product) => ({
+    return products.map((product: ProductEntity) => ({
       ...product,
       units: [
         { unit: product.pro_unit1, ratio: product.pro_ratio1 },
@@ -1166,11 +1166,9 @@ export class ProductsService {
 
         const unitData = product.units.find((u) => u.unit === unit);
         if (unitData) {
-          const totalForItem = quantity * unitData.ratio; // คำนวณหน่วยที่เล็กที่สุดสำหรับแต่ละ orderItem
+          const totalForItem = quantity * unitData.ratio;
 
-          total += totalForItem; // บวกผลลัพธ์เข้ากับ total รวม
-
-          // console.log(`pro_code: ${pro_code}, Unit: ${unit}, Quantity: ${quantity}, Total for ${pro_code}: ${totalForItem}`);
+          total += totalForItem;
         }
       }
 
@@ -1180,56 +1178,6 @@ export class ProductsService {
       throw new Error('Error calculating smallest unit');
     }
   }
-
-  // async ShowUnitProduct(pro_code: string): Promise<ProductEntityUnit> {
-  //   try {
-  //     const product = await this.productRepo
-  //       .createQueryBuilder('product')
-  //       .where('product.pro_code = :pro_code', { pro_code })
-  //       .select([
-  //         'product.pro_code',
-  //         'product.pro_name',
-  //         'product.pro_unit1',
-  //         'product.pro_ratio1',
-  //         'product.pro_unit2',
-  //         'product.pro_ratio2',
-  //         'product.pro_unit3',
-  //         'product.pro_ratio3'
-  //       ])
-  //       .getOne();
-
-  //     console.log('Product:', product);
-
-  //     if (!product) {
-  //       throw new Error('Product not found');
-  //     }
-
-  //     const formattedResult = {
-  //       pro_code: product.pro_code,
-  //       pro_name: product.pro_name,
-  //       Unit1: {
-  //         unit: product.pro_unit1,
-  //         ratio: product.pro_ratio1
-  //       },
-  //       Unit2: {
-  //         unit: product.pro_unit2,
-  //         ratio: product.pro_ratio2
-  //       },
-  //       Unit3: {
-  //         unit: product.pro_unit3,
-  //         ratio: product.pro_ratio3
-  //       }
-  //     };
-  //     console.log("formattedResult", formattedResult);
-
-  //     return formattedResult;
-  //   } catch (error) {
-  //     console.error('Error calculating unit:', error);
-  //     throw new Error('Error calculating unit');
-  //   }
-  // }
-
-  // ตรวจสอบแล้ว
 
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
@@ -1805,6 +1753,47 @@ export class ProductsService {
         error,
       );
       throw new Error(`Error updating product images for ${data.pro_code}`);
+    }
+  }
+
+  async deleteProductImage(image: string[]): Promise<void> {
+    try {
+      for (const img of image) {
+        const product = await this.productRepo.findOne({
+          where: [
+            { pro_imgmain: img },
+            { pro_img2: img },
+            { pro_img3: img },
+            { pro_img4: img },
+            { pro_img5: img },
+          ],
+          select: [
+            'pro_code',
+            'pro_imgmain',
+            'pro_img2',
+            'pro_img3',
+            'pro_img4',
+            'pro_img5',
+          ],
+        });
+        if (!product) continue;
+
+        const updateData: Partial<ProductEntity> = {};
+        if (product.pro_imgmain === img) updateData.pro_imgmain = '';
+        if (product.pro_img2 === img) updateData.pro_img2 = '';
+        if (product.pro_img3 === img) updateData.pro_img3 = '';
+        if (product.pro_img4 === img) updateData.pro_img4 = '';
+        if (product.pro_img5 === img) updateData.pro_img5 = '';
+
+        if (Object.keys(updateData).length > 0) {
+          await this.productRepo.update(
+            { pro_code: product.pro_code },
+            updateData,
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting product images:', error);
     }
   }
 }
