@@ -415,6 +415,7 @@ export class AppController {
       mem_code: string;
       sort_by?: number;
       limit: number;
+      creditor_codes?: string[];
     },
   ) {
     //console.log('data in controller:', data);
@@ -1811,6 +1812,8 @@ export class AppController {
       MFG: string;
       EXP: string;
       createdAt: Date;
+      amount: number;
+      unit: string;
     }[],
   ) {
     type N = {
@@ -1830,6 +1833,8 @@ export class AppController {
           item.MFG,
           item.EXP,
           item.createdAt,
+          item.amount,
+          item.unit,
         );
         results.push(result);
       }
