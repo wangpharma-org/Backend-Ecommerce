@@ -3,7 +3,6 @@ import { WinstonModule, utilities as nestWinstonUtilities } from 'nest-winston';
 import { mkdirSync } from 'node:fs';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
-import { LoggerService } from './logger.service';
 
 try {
   mkdirSync('logs/app', { recursive: true });
@@ -22,7 +21,5 @@ try {
       transports: [new winston.transports.Console()],
     }),
   ],
-  providers: [LoggerService],
-  exports: [LoggerService],
 })
 export class LoggerModule {}

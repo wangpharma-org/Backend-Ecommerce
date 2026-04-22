@@ -1,17 +1,14 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
-import { LoggerService } from '../logger/logger.service';
 
 @Controller()
 export class ProductListner {
-  constructor(
-    private readonly productServerce: ProductsService,
-    private logger: LoggerService,
-  ) {}
+  private readonly logger = new Logger(ProductListner.name);
+  constructor(private readonly productServerce: ProductsService) {}
   @MessagePattern('product_created_ecom')
   async addProduct(@Payload() message: ProductEntity) {
     try {

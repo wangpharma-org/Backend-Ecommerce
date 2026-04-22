@@ -9,7 +9,6 @@ import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendModule } from 'src/backend/backend.module';
 import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
 import { UserEntity } from 'src/users/users.entity';
-import { LoggerModule } from 'src/logger/logger.module';
 
 @Module({
   imports: [
@@ -22,7 +21,6 @@ import { LoggerModule } from 'src/logger/logger.module';
     ]),
     BackendModule,
     ImagedebugModule,
-    LoggerModule,
   ],
   providers: [ProductsService],
   controllers: [ProductListner],
