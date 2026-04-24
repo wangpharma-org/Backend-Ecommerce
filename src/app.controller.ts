@@ -30,7 +30,7 @@ import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 import { AllOrderByMemberRes } from './shopping-head/types/AllOrderByMemberRes.type';
 import { FavoriteService } from './favorite/favorite.service';
 import { FlashsaleService } from './flashsale/flashsale.service';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
@@ -109,6 +109,7 @@ interface JwtPayload {
 
 @Controller()
 export class AppController {
+  private readonly logger = new Logger(AppController.name);
   // Add simple lock to prevent race condition
   private isHashingInProgress = false;
 
@@ -189,7 +190,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/user-data/update')
   async updateUserData(@Body() data: UserEntity) {
-    //console.log(data);
+    //this.logger.log(data);
     return this.authService.updateUserData(data);
   }
 
@@ -222,9 +223,9 @@ export class AppController {
       product_list?: string;
     },
   ) {
-    console.log('=== Controller uploadBanner ===');
-    console.log('File:', file ? file.originalname : 'No file');
-    console.log('Data:', JSON.stringify(data, null, 2));
+    this.logger.log('=== Controller uploadBanner ===');
+    this.logger.log('File:', file ? file.originalname : 'No file');
+    this.logger.log('Data:', JSON.stringify(data, null, 2));
     const result = await this.bannerService.UploadImage(file, data);
     return result;
   }
@@ -236,7 +237,7 @@ export class AppController {
     @UploadedFile() file: Express.Multer.File,
     @Body() data: { mem_code: string; type: string; old_url: string },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.authService.UploadImage(
       file,
       data.type,
@@ -269,7 +270,7 @@ export class AppController {
     @Body() data: { pro_code: string; month: number }[],
   ) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
+    //this.logger.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadPO(data);
     } else {
@@ -284,7 +285,7 @@ export class AppController {
     @Body() data: { productCode: string; quantity: number }[],
   ) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
+    //this.logger.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadProductFlashSale(data);
     } else {
@@ -325,8 +326,8 @@ export class AppController {
   @Get('/ecom/products/flashsale-procode')
   async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
-    //console.log(req.user);
+    //this.logger.log('permission', permission);
+    //this.logger.log(req.user);
     if (permission === true) {
       return await this.productsService.listProcodeFlashSale();
     } else {
@@ -341,7 +342,7 @@ export class AppController {
     @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
-    //console.log('get data favorite');
+    //this.logger.log('get data favorite');
     const memberCode = req.user.mem_code;
     return await this.favoriteService.getListFavorite(
       memberCode,
@@ -374,7 +375,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/add')
   async addToFavorite(@Body() data: { mem_code: string; pro_code: string }) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.favoriteService.addToFavorite(data);
   }
 
@@ -384,7 +385,7 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.favoriteService.deleteFavorite({
       ...data,
       mem_code: req.user.mem_code,
@@ -418,7 +419,6 @@ export class AppController {
       creditor_codes?: string[];
     },
   ) {
-    //console.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     const result = await this.productsService.searchProducts({
       ...data,
@@ -462,7 +462,7 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body() data: { keyword: string; pro_code: string },
   ) {
-    //console.log('data in controller:', data);
+    //this.logger.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     return await this.productsService.productForYou({
       ...data,
@@ -502,7 +502,7 @@ export class AppController {
       await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(
+      this.logger.error(
         `Failed to send purchase event to analytics for mem_code ${mem_code}: ${message}`,
       );
     }
@@ -526,7 +526,7 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body() data: { pro_code: string; mem_code: string },
   ) {
-    console.log('data in controller:', data);
+    this.logger.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     const result = await this.productsService.getProductDetail({
       ...data,
@@ -568,7 +568,7 @@ export class AppController {
   //   @Body() data: { productCode: string; quantity: number }[],
   // ) {
   //   const permission = req.user.permission;
-  //   //console.log('permission', permission);
+  //   //this.logger.log('permission', permission);
   //   if (permission === true) {
   //     return await this.productsService.uploadProductFlashSale(data);
   //   } else {
@@ -665,7 +665,7 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    console.log('Check all cart data:', data);
+    this.logger.log('Check all cart data:', data);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCartAll(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -697,7 +697,7 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    //console.log('Delete', data);
+    //this.logger.log('Delete', data);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.handleDeleteCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -723,8 +723,8 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
-    //console.log(data);
-    console.log('Check cart data:', data);
+    //this.logger.log(data);
+    this.logger.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -1081,7 +1081,7 @@ export class AppController {
     try {
       // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
       const rows = (body.data || []).map((item) => {
-        // console.log('Mapping item:', item);
+        // this.logger.log('Mapping item:', item);
         const row = item as {
           วันที่?: number | string;
           เลขที่ใบกำกับ?: string;
@@ -1116,7 +1116,7 @@ export class AppController {
       );
       return 'Successful' + imported.length;
     } catch (error) {
-      console.error('Error importing wangday data:', error);
+      this.logger.error('Error importing wangday data:', error);
       throw error;
     }
   }
@@ -1154,7 +1154,7 @@ export class AppController {
       special_deal?: boolean;
     },
   ) {
-    console.log('Saving Hotdeal:', body);
+    this.logger.log('Saving Hotdeal:', body);
     return this.hotdealService.saveHotdeal(
       body.data,
       body.id,
@@ -1214,7 +1214,7 @@ export class AppController {
       // flatten array
       return allResults.flat().filter(Boolean);
     } catch (error) {
-      console.error('Error in checkHotdealMatch:', error);
+      this.logger.error('Error in checkHotdealMatch:', error);
       throw new Error('Error checking hotdeal match');
     }
   }
@@ -1241,7 +1241,7 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
+    //this.logger.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -1277,16 +1277,16 @@ export class AppController {
     },
   ) {
     try {
-      // //console.log('Received body:', {
+      // //this.logger.log('Received body:', {
       //   group: body.group,
       // });
-      //console.log(body.filename);
+      //this.logger.log(body.filename);
       return this.productsService.updateProductFromBackOffice({
         group: body.group,
         filename: body.filename,
       });
     } catch (error) {
-      console.error('Error updating product from back office:', error);
+      this.logger.error('Error updating product from back office:', error);
       throw new Error('Error updating product from back office');
     }
   }
@@ -1305,7 +1305,7 @@ export class AppController {
       emp_id_ref?: string;
     }[],
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return this.authService.upsertUser(data);
   }
 
@@ -1323,10 +1323,10 @@ export class AppController {
     },
   ) {
     try {
-      //console.log('Received body for stock update:', body);
+      //this.logger.log('Received body for stock update:', body);
       return await this.productsService.updateStock(body);
     } catch (error) {
-      console.error('Error updating stock from back office:', error);
+      this.logger.error('Error updating stock from back office:', error);
       throw new Error('Error updating stock from back office');
     }
   }
@@ -1371,7 +1371,7 @@ export class AppController {
       pro_code: string;
     }[],
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return this.lotService.addLots(data);
   }
 
@@ -1387,7 +1387,7 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.flashsaleService.addFlashSale(data);
   }
 
@@ -1401,7 +1401,7 @@ export class AppController {
       limit: number;
     },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.flashsaleService.addProductToFlashSale(data);
   }
 
@@ -1452,7 +1452,7 @@ export class AppController {
   async changeStatusDailyFlashsale(
     @Body() data: { id: number; is_active: boolean },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.flashsaleService.changeStatus({
       promotion_id: data.id,
       is_active: data.is_active,
@@ -1492,7 +1492,7 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.flashsaleService.EditFlashSale(data);
   }
 
@@ -1506,7 +1506,7 @@ export class AppController {
       creditor_code: string;
     },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.invisibleService.addInvisibleTopic(data);
   }
 
@@ -1539,7 +1539,7 @@ export class AppController {
       pro_code: string;
     },
   ) {
-    //console.log(data);
+    //this.logger.log(data);
     return await this.invisibleService.updateProductInvisible(data);
   }
 
@@ -1560,7 +1560,7 @@ export class AppController {
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/edit-address/:addressId')
   async editAddress(@Param('addressId') addressId: number) {
-    //console.log(addressId);
+    //this.logger.log(addressId);
     return this.editAddressService.getAddressById(addressId);
   }
 
@@ -1585,14 +1585,14 @@ export class AppController {
       mem_code: string;
     },
   ) {
-    //console.log(addressData);
+    //this.logger.log(addressData);
     return this.editAddressService.createAddress(addressData);
   }
 
   // @UseGuards(JwtAuthGuard)
   @Put('/ecom/address/update-address/:id')
   async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
-    //console.log(address);
+    //this.logger.log(address);
     return this.editAddressService.updateAddress(id, address);
   }
 
@@ -1611,7 +1611,7 @@ export class AppController {
       show: boolean;
     },
   ) {
-    //console.log(body);
+    //this.logger.log(body);
     return this.modalContentService.SaveModalContent(body);
   }
 
@@ -1799,7 +1799,7 @@ export class AppController {
       otp: string;
     },
   ): Promise<{ success: boolean; message: string }> {
-    //console.log(body);
+    //this.logger.log(body);
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
@@ -1820,7 +1820,7 @@ export class AppController {
       await this.newArrivalsService.addNewArrival(data);
       return { message: 'New arrivals added successfully' };
     } catch (error) {
-      console.error('Error adding new arrivals:', error);
+      this.logger.error('Error adding new arrivals:', error);
       throw new Error('Error adding new arrivals');
     }
   }
@@ -1929,15 +1929,15 @@ export class AppController {
     @Body()
     data: ImportDataRequestInvoice[],
   ): Promise<{ message: string }> {
-    //console.log('Received data for reduction invoice import:', data);
+    //this.logger.log('Received data for reduction invoice import:', data);
     try {
       const importedInvoices = await this.debtorService.importDataInvoice(data);
-      // //console.log('Imported invoice:', importedInvoices);
+      // //this.logger.log('Imported invoice:', importedInvoices);
       return {
         message: `Successfully imported ${importedInvoices?.length} invoices`,
       };
     } catch (error) {
-      console.error('Error importing reduction invoice data22:', error);
+      this.logger.error('Error importing reduction invoice data22:', error);
       return { message: 'Error importing reduction invoice data' };
     }
   }
@@ -1948,15 +1948,15 @@ export class AppController {
     @Body()
     data: ImportDataRequestRT[],
   ): Promise<{ message: string }> {
-    //console.log('Received data for reduction RT import:', data);
+    //this.logger.log('Received data for reduction RT import:', data);
     try {
       const importedRTs = await this.debtorService.importDataRT(data);
-      // //console.log('Imported RT:', importedRTs);
+      // //this.logger.log('Imported RT:', importedRTs);
       return {
         message: `Successfully imported ${importedRTs?.length} RT entries`,
       };
     } catch (error) {
-      console.error('Error importing reduction RT data:', error);
+      this.logger.error('Error importing reduction RT data:', error);
       return { message: 'Error importing reduction RT data' };
     }
   }
@@ -1972,7 +1972,7 @@ export class AppController {
       const result = await this.debtorService.findDebtor(mem_code, invoice);
       return result;
     } catch (error) {
-      console.error('Error finding reduction invoices:', error);
+      this.logger.error('Error finding reduction invoices:', error);
       return 'Error finding reduction invoices';
     }
   }
@@ -1984,13 +1984,13 @@ export class AppController {
     @Param('rt') rt: string,
   ): Promise<ReductionRT | string> {
     try {
-      //console.log('Searching for RT:', rt);
+      //this.logger.log('Searching for RT:', rt);
       const mem_code = req.user.mem_code;
-      //console.log('Member code from token:', mem_code);
+      //this.logger.log('Member code from token:', mem_code);
       const result = await this.debtorService.findReductionRT(mem_code, rt);
       return result;
     } catch (error) {
-      console.error('Error finding reduction RTs:', error);
+      this.logger.error('Error finding reduction RTs:', error);
       return 'Error finding reduction RTs';
     }
   }
@@ -2044,14 +2044,14 @@ export class AppController {
     },
   ): Promise<{ message: string; data: EmployeeEntity } | { message: string }> {
     try {
-      console.log('Update employee request:', requestData);
+      this.logger.log('Update employee request:', requestData);
       const upsertEmployee = await this.employeesService.UpsertEmployee(
         requestData.emp_code,
         requestData.data,
       );
       return upsertEmployee;
     } catch (error) {
-      console.error('Error updating employee:', error);
+      this.logger.error('Error updating employee:', error);
       return {
         message: 'Error updating employee',
       };
@@ -2147,7 +2147,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/updateRank')
   async updateRecommendRank(@Body() data: { pro_code: string; rank: number }) {
-    console.log(data);
+    this.logger.log(data);
     return await this.recommendService.UpdateRank(data.pro_code, data.rank);
   }
 
@@ -2258,7 +2258,7 @@ export class AppController {
     bannerName?: string;
     urlBanner?: string;
   }> {
-    console.log('data:', data.urlPath);
+    this.logger.log('data:', data.urlPath);
     const result = await this.contractLogService.uploadFile({
       urlPath: file,
       bannerName: data.bannerName,
@@ -2282,7 +2282,7 @@ export class AppController {
   async selectDataDropdown(
     @Body() data: { group: string; type: string },
   ): Promise<{ type: string; data: ContractLogPerson[] }> {
-    console.log(data);
+    this.logger.log(data);
     const result = await this.contractLogService.selectDataDropdown(
       data.group,
       data.type,
@@ -2309,7 +2309,7 @@ export class AppController {
       address?: string;
     },
   ): Promise<ContractLogBanner> {
-    console.log(data);
+    this.logger.log(data);
 
     const result = await this.contractLogService.createContractLog(data);
     return result;
@@ -2336,9 +2336,9 @@ export class AppController {
     },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ bannerName?: string; img_banner?: number }> {
-    console.log('contractId:', data.contractId);
-    console.log('urlPath:', file);
-    console.log('name:', data.name);
+    this.logger.log('contractId:', data.contractId);
+    this.logger.log('urlPath:', file);
+    this.logger.log('name:', data.name);
     return await this.contractLogService.updateContractLogBanner({
       bannerId: data.contractId,
       urlPath: file,
@@ -2355,8 +2355,8 @@ export class AppController {
     @Body() data: { contractId: number; name?: string },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ urlContract: string }> {
-    console.log('contractId:', data.contractId);
-    console.log('urlPath:', file);
+    this.logger.log('contractId:', data.contractId);
+    this.logger.log('urlPath:', file);
     return await this.contractLogService.uploadSignedContract({
       bannerId: data.contractId,
       urlPath: file,
@@ -2368,7 +2368,7 @@ export class AppController {
   async getContractCompanyDays(
     @Body() body: { companyDayId?: number | 'all' },
   ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
-    console.log(body);
+    this.logger.log(body);
     return await this.contractLogService.getContractCompanyDays(
       body.companyDayId,
     );
@@ -2402,7 +2402,7 @@ export class AppController {
       date_end?: Date;
     },
   ) {
-    console.log('data:', data);
+    this.logger.log('data:', data);
     return await this.recommendService.AddReplaceProduct(
       data.pro_code,
       data.replace_pro_code,
@@ -2439,7 +2439,7 @@ export class AppController {
       productsToOrder?: string;
     },
   ): Promise<ContractLogCompanyDay> {
-    console.log(data);
+    this.logger.log(data);
     return await this.contractLogService.createContractLogCompanyDay(data);
   }
 
@@ -2460,7 +2460,7 @@ export class AppController {
     name?: string;
     image?: string;
   }> {
-    console.log(data);
+    this.logger.log(data);
     return await this.contractLogService.updateContractLogCompanyDay({
       companyId: data.contractId,
       urlPath: file,
@@ -2476,8 +2476,8 @@ export class AppController {
     @Body() data: { contractId: number },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ urlContract: string }> {
-    console.log('contractId:', data.contractId);
-    console.log('urlPath:', file);
+    this.logger.log('contractId:', data.contractId);
+    this.logger.log('urlPath:', file);
     return await this.contractLogService.uploadSignedContractCompanyDays({
       companyId: data.contractId,
       urlPath: file,
@@ -2499,7 +2499,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/policy/option-catagory')
   async findOptionCatagoryPolicy(@Body('name') name?: string) {
-    console.log('Policy category name:', name);
+    this.logger.log('Policy category name:', name);
     return await this.policyDocService.findOptionCatagoryPolicy(name);
   }
 
@@ -2508,7 +2508,7 @@ export class AppController {
   async savePolicyDoc(
     @Body() data: { content: string; category: number; type: number },
   ) {
-    console.log('Received policy document data:', data);
+    this.logger.log('Received policy document data:', data);
 
     if (!data) {
       throw new Error('Missing form data. Please send category and type.');
@@ -2532,8 +2532,8 @@ export class AppController {
     @Body() body: { policyID: number },
   ): Promise<PolicyDocMember | void | { message: string }> {
     const mem_code = req.user.mem_code;
-    console.log('Member code agreeing to policy:', mem_code);
-    console.log('Policy document ID:', body);
+    this.logger.log('Member code agreeing to policy:', mem_code);
+    this.logger.log('Policy document ID:', body);
     return await this.policyDocService.agreePolicyDoc(mem_code, body.policyID);
   }
 
@@ -2767,7 +2767,7 @@ export class AppController {
     @Body() body: { pro_code: string },
   ) {
     try {
-      console.log('Adding product to row:', {
+      this.logger.log('Adding product to row:', {
         campaignId,
         rowId,
         pro_code: body.pro_code,
@@ -2797,7 +2797,7 @@ export class AppController {
     @Body() body: { pro_code: string },
   ) {
     try {
-      console.log('Removing product from row:', {
+      this.logger.log('Removing product from row:', {
         campaignId,
         rowId,
         pro_code: body.pro_code,
@@ -2866,7 +2866,7 @@ export class AppController {
     },
   ) {
     try {
-      console.log('Updating promo reward:', {
+      this.logger.log('Updating promo reward:', {
         campaignId,
         rowId,
         rewardId,
@@ -3015,7 +3015,7 @@ export class AppController {
 
   @Post('/app-version/version/get')
   async getVersion(@Body() data: { version: string; os: string }) {
-    console.log('Get version request data:', data);
+    this.logger.log('Get version request data:', data);
     try {
       return this.appVersion.getLatestVersion(data.version, data.os);
     } catch {
@@ -3850,7 +3850,7 @@ export class AppController {
     @Param('mem_code') mem_code: string,
     @Body('newRole') newRole: 'User' | 'Admin' | 'Sales',
   ) {
-    console.log('Changing user role for mem_code:', mem_code);
+    this.logger.log('Changing user role for mem_code:', mem_code);
     return await this.usersService.changeUserRole(mem_code, newRole);
   }
 
@@ -3864,7 +3864,7 @@ export class AppController {
   async updateRTNotification(
     @Body() data: { soh_running: string; pro_code: string },
   ) {
-    console.log('Updating RT notification with data:', data);
+    this.logger.log('Updating RT notification with data:', data);
     return await this.notifyRtService.updateRTStatus(data);
   }
 
@@ -3968,7 +3968,7 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
   ) {
     const mem_code = req.user.mem_code;
-    console.log('Creating hotdeal with data:', {
+    this.logger.log('Creating hotdeal with data:', {
       mem_code,
       freebies: body.freebies,
     });
@@ -3978,7 +3978,7 @@ export class AppController {
     );
     return results;
   }
-  
+
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
     try {
@@ -4005,6 +4005,7 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-search-autocomplete')
   async productSearchAutoComplete(@Query('search') search: string) {
     try {
