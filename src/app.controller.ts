@@ -4004,4 +4004,16 @@ export class AppController {
       );
     }
   }
+
+  @Get('/ecom/product-search-autocomplete')
+  async productSearchAutoComplete(@Query('search') search: string) {
+    try {
+      return await this.productsService.searchExternalProducts(search);
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'PRODUCT_SEARCH_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
 }

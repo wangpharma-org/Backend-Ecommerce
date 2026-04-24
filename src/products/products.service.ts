@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { BadRequestException, Injectable, Logger  } from '@nestjs/common';
+import { InjectRepository} from '@nestjs/typeorm';
 import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
@@ -8,6 +8,7 @@ import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
+import axios from 'axios';
 import { UpdateProductImageDto } from './update-product-image.dto';
 
 interface OrderItem {
@@ -32,8 +33,27 @@ interface OrderItem {
 //   supplier: string;
 // }
 
+interface ApiResponse {
+  status: string;
+  row_data?: number;
+  data: {
+    pro_code: string;
+    pro_name: string;
+    pro_priceA: number;
+    pro_priceB: number;
+    pro_priceC: number;
+    pro_imgmain: string;
+    pro_genericname: string;
+    pro_unit1: string;
+    pro_nameSale: string;
+    pro_nameEN: string;
+    pro_keysearch: string;
+  }[];
+}
+
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
@@ -44,7 +64,7 @@ export class ProductsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
-  ) {}
+  ) { }
 
   private async isL16Member(
     mem_code?: string,
@@ -75,7 +95,7 @@ export class ProductsService {
       const newCreditor = this.creditorRepo.create(data);
       await this.creditorRepo.save(newCreditor);
     } catch (error) {
-      console.error('Error creating creditor:', error);
+      this.logger.error('Error creating creditor:', error);
       throw new Error('Error creating creditor');
     }
   }
@@ -105,7 +125,7 @@ export class ProductsService {
 
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -131,7 +151,7 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -160,7 +180,7 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -191,7 +211,7 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -221,14 +241,13 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
 
   async getProductOne(pro_code: string) {
     try {
-      // console.log('getProductOne', pro_code);
       const dataProduct = await this.productRepo.findOne({
         relations: {
           flashsale: {
@@ -239,7 +258,6 @@ export class ProductsService {
           pro_code: pro_code,
         },
       });
-      // console.log(dataProduct);
       return dataProduct;
     } catch {
       throw new Error('Something Error in getProductOne');
@@ -263,9 +281,8 @@ export class ProductsService {
           is_detect_amount: false,
         },
       );
-      console.log('Reset FlashSale Success');
     } catch (error) {
-      console.log(error);
+      this.logger.error('Error Reset FlashSale', error);
       throw new Error('Error Reset FlashSale');
     }
   }
@@ -288,7 +305,6 @@ export class ProductsService {
 
   async getFlashSale(limit: number, mem_code: string, mem_route?: string) {
     try {
-      console.log(limit, mem_code);
       const isL16 = await this.isL16Member(mem_code, mem_route);
       const numberOfMonth = new Date().getMonth() + 1;
       const qb = this.productRepo
@@ -331,7 +347,7 @@ export class ProductsService {
 
       return data;
     } catch (error) {
-      console.error('Error in getFlashSale:', error);
+      this.logger.error('Error in getFlashSale:', error);
       throw new Error('Error in getFlashSale');
     }
   }
@@ -371,13 +387,12 @@ export class ProductsService {
       });
       return responseData;
     } catch (error) {
-      console.error('Error uploading product flash sale:', error);
+      this.logger.error('Error uploading product flash sale:', error);
       throw new Error('Error uploading product flash sale');
     }
   }
 
   async uploadPO(data: { pro_code: string; month: number }[]) {
-    // console.log(data);
     try {
       await this.productRepo.update(
         { pro_promotion_month: Not(IsNull()) },
@@ -400,10 +415,9 @@ export class ProductsService {
           );
         }),
       );
-      console.log('Product Promotion Month Update Success');
       return 'Product Promotion Month Update Success (PO File)';
     } catch (error) {
-      console.log(error);
+      this.logger.error('Error updating product promotion month', error);
       throw new Error('Error updating product promotion month');
     }
   }
@@ -413,7 +427,7 @@ export class ProductsService {
       const newProduct = this.productRepo.create(product);
       await this.productRepo.save(newProduct);
     } catch (error) {
-      console.error('Error creating product:', error);
+      this.logger.error('Error creating product:', error);
       throw new Error('Error creating product');
     }
   }
@@ -423,7 +437,7 @@ export class ProductsService {
       const newDetail = this.productPharmaEntity.create(detail);
       await this.productPharmaEntity.save(newDetail);
     } catch (error) {
-      console.error('Error creating product detail:', error);
+      this.logger.error('Error creating product detail:', error);
       throw new Error('Error creating product detail');
     }
   }
@@ -434,18 +448,16 @@ export class ProductsService {
         { product: { pro_code: product.product.pro_code } },
         product,
       );
-      console.log('Product Detail Update Sucesss');
     } catch (error) {
-      console.error('Error updating product detail:', error);
+      this.logger.error('Error updating product detail:', error);
     }
   }
 
   async updateProduct(product: ProductEntity) {
     try {
       await this.productRepo.update({ pro_code: product.pro_code }, product);
-      console.log('Product Update Sucesss');
     } catch (error) {
-      console.error('Error updating product:', error);
+      this.logger.error('Error updating product:', error);
     }
   }
 
@@ -603,7 +615,7 @@ export class ProductsService {
         throw new Error('Not found Product');
       }
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Something Error in Product Detail');
     }
   }
@@ -684,7 +696,7 @@ export class ProductsService {
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
@@ -893,7 +905,7 @@ export class ProductsService {
 
       return { products, totalCount };
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
@@ -909,6 +921,15 @@ export class ProductsService {
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+
+      // เรียกใช้ searchEnterProducts เพื่อดึงข้อมูลจาก API ภายนอก
+
+      let externalProCodes: string[] = [];
+      const externalProducts = await this.searchExternalProducts(data.keyword);
+
+      externalProCodes = externalProducts.map((product) => product.pro_code);
+      externalProCodes.push(...(await this.searchEnterProducts(data.keyword)));
+
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -961,6 +982,13 @@ export class ProductsService {
               .orWhere('product.pro_nameTH LIKE :keyword', {
                 keyword: `%${data.keyword}%`,
               });
+
+            // เพิ่มเงื่อนไขสำหรับ pro_codes จาก API ภายนอก
+            if (externalProCodes.length > 0) {
+              qb.orWhere('product.pro_code IN (:...externalProCodes)', {
+                externalProCodes,
+              });
+            }
           }),
         )
         .andWhere(
@@ -1057,13 +1085,12 @@ export class ProductsService {
         .getMany();
       return { products, totalCount };
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
 
   async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
-    // console.log('sort_by', sort_by);
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
 
@@ -1095,8 +1122,8 @@ export class ProductsService {
           pro_point: MoreThan(0),
           ...(isL16
             ? {
-                pro_l16_only: In([0, null]),
-              }
+              pro_l16_only: In([0, null]),
+            }
             : {}),
         },
         select: {
@@ -1113,7 +1140,7 @@ export class ProductsService {
 
       return data;
     } catch (error) {
-      console.error('Error free products:', error);
+      this.logger.error('Error free products:', error);
       throw new Error('Error free products');
     }
   }
@@ -1156,9 +1183,9 @@ export class ProductsService {
 
         const product:
           | {
-              pro_code: string;
-              units: { unit: string; ratio: number }[];
-            }
+            pro_code: string;
+            units: { unit: string; ratio: number }[];
+          }
           | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
@@ -1174,7 +1201,7 @@ export class ProductsService {
 
       return total; // ส่งผลลัพธ์ที่เป็นตัวเลข
     } catch (error) {
-      console.error('Error calculating smallest unit:', error);
+      this.logger.error('Error calculating smallest unit:', error);
       throw new Error('Error calculating smallest unit');
     }
   }
@@ -1218,7 +1245,7 @@ export class ProductsService {
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching by code or supplier:', error);
+      this.logger.error('Error searching by code or supplier:', error);
       throw new Error('Error searching by code or supplier');
     }
   }
@@ -1230,7 +1257,7 @@ export class ProductsService {
       });
       return products;
     } catch (error) {
-      console.error('Error fetching all products:', error);
+      this.logger.error('Error fetching all products:', error);
       throw new Error('Error fetching all products');
     }
   }
@@ -1339,11 +1366,10 @@ export class ProductsService {
         },
       );
       await queryRunner.commitTransaction();
-      console.log(`Products updated/inserted successfully.`);
       return `Products updated/inserted successfully.`;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      console.error(`Error updating/inserting products:`, error);
+      this.logger.error(`Error updating/inserting products:`, error);
       throw new Error(`Error updating/inserting products`);
     } finally {
       await queryRunner.release();
@@ -1367,7 +1393,7 @@ export class ProductsService {
       );
       return 'Stock updated successfully';
     } catch (error) {
-      console.error('Error updating stock:', error);
+      this.logger.error('Error updating stock:', error);
       throw new Error('Error updating stock');
     }
   }
@@ -1461,7 +1487,7 @@ export class ProductsService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      console.error('Error updating L16 visibility:', error);
+      this.logger.error('Error updating L16 visibility:', error);
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -1546,7 +1572,7 @@ export class ProductsService {
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
@@ -1564,7 +1590,7 @@ export class ProductsService {
         pro_point: product.pro_point,
       }));
     } catch (error) {
-      console.error('Error finding free products:', error);
+      this.logger.error('Error finding free products:', error);
       throw new Error('Error finding free products');
     }
   }
@@ -1587,7 +1613,7 @@ export class ProductsService {
         pro_promotion_amount: product.pro_promotion_amount || 0,
       }));
     } catch (error) {
-      console.error('Error finding promotion products:', error);
+      this.logger.error('Error finding promotion products:', error);
       throw new Error('Error finding promotion products');
     }
   }
@@ -1605,14 +1631,13 @@ export class ProductsService {
         );
       }
     } catch (error) {
-      console.error('Error updating sale amount day:', error);
+      this.logger.error('Error updating sale amount day:', error);
       throw new Error('Error updating sale amount day');
     }
   }
 
   async getDataCreditor(keyword?: string): Promise<CreditorEntity[] | []> {
     try {
-      console.log('Keyword for creditor search:', keyword);
       const creditors = await this.creditorRepo
         .createQueryBuilder('creditor')
         .where(
@@ -1621,10 +1646,9 @@ export class ProductsService {
         )
         .take(10)
         .getMany();
-      console.log('Found creditors:', creditors);
       return creditors;
     } catch (error) {
-      console.error('Error fetching creditor data:', error);
+      this.logger.error('Error fetching creditor data:', error);
       throw new Error('Error fetching creditor data');
     }
   }
@@ -1641,7 +1665,7 @@ export class ProductsService {
         );
       }
     } catch (error) {
-      console.error('Error saving address:', error);
+      this.logger.error('Error saving address:', error);
       throw new Error('Error saving address');
     }
   }
@@ -1698,7 +1722,7 @@ export class ProductsService {
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
@@ -1710,7 +1734,7 @@ export class ProductsService {
       });
       return creditors;
     } catch (error) {
-      console.error('Error fetching creditors:', error);
+      this.logger.error('Error fetching creditors:', error);
       throw new Error('Error fetching creditors');
     }
   }
@@ -1730,7 +1754,7 @@ export class ProductsService {
       });
       return product;
     } catch (error) {
-      console.error('Error fetching product image:', error);
+      this.logger.error('Error fetching product image:', error);
       throw new Error('Error fetching product image');
     }
   }
@@ -1744,11 +1768,10 @@ export class ProductsService {
         pro_img4: data.image_other[2] ?? null,
         pro_img5: data.image_other[3] ?? null,
       };
-      console.log('Updating product images with data:', updateData);
 
       await this.productRepo.update({ pro_code: data.pro_code }, updateData);
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Error updating product images for ${data.pro_code}:`,
         error,
       );
@@ -1793,7 +1816,112 @@ export class ProductsService {
         }
       }
     } catch (error) {
-      console.error('Error deleting product images:', error);
+      this.logger.error('Error deleting product images:', error);
+    }
+  }
+
+  async searchExternalProducts(search: string): Promise<ProductEntity[]> {
+    try {
+      const response = await axios.get<ApiResponse>(
+        `${process.env.OLD_WEBSITE_URL}/API/appV3/search_auto.php`,
+        {
+          params: { search },
+        },
+      );
+
+      if (!response.data) {
+        return [];
+      }
+
+      const datafromAPI = response.data;
+
+      if (
+        datafromAPI?.status !== 'success' ||
+        !Array.isArray(datafromAPI?.data)
+      ) {
+        return [];
+      }
+
+      const proCodes = datafromAPI?.data
+        .map((item) => item.pro_code)
+        .filter(Boolean);
+
+      if (!proCodes.length) {
+        return [];
+      }
+
+      // ดึงเฉพาะ products ที่มี pro_code ตรงกับข้อมูลจาก API และมีอยู่ในฐานข้อมูล
+      // const products = await this.productRepo.find({
+      //   where: { pro_code: In(proCodes) },
+      //   select: [
+      //     'product.pro_code',
+      //     'product.pro_name',
+      //     'product.pro_priceA',
+      //     'product.pro_priceB',
+      //     'product.pro_priceC',
+      //     'product.pro_imgmain',
+      //     'product.pro_genericname',
+      //     'product.pro_unit1',
+      //     'product.pro_nameSale',
+      //     'product.pro_nameEN',
+      //     'product.pro_keysearch',
+      //     'creditor.creditor_code',
+      //   ]
+      // });
+
+      const product = await this.productRepo
+        .createQueryBuilder('product')
+        .where('product.pro_code IN (:...proCodes)', { proCodes })
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_nameSale',
+          'product.pro_nameEN',
+          'product.pro_keysearch',
+          'creditor.creditor_code',
+        ])
+        .leftJoin('product.creditor', 'creditor')
+        .getMany();
+
+      return product;
+    } catch (error) {
+      this.logger.error('Error searching external products:', error);
+      return [];
+    }
+  }
+
+  async searchEnterProducts(search: string): Promise<string[]> {
+    try {
+      if (!search) {
+        return [];
+      }
+
+      const url = 'http://www.wangpharma.com/API/appV3/search_enter.php';
+      const response = await axios.get<ApiResponse>(url, {
+        params: { search },
+      });
+
+      if (
+        response.data?.status !== 'success' ||
+        !Array.isArray(response.data.data)
+      ) {
+        return [];
+      }
+
+      const proCodes = response.data.data
+        .map((item) => item.pro_code)
+        .filter(Boolean);
+
+      return proCodes;
+    } catch (error) {
+      this.logger.error('Error searching enter products:', error);
+      return [];
     }
   }
 }
