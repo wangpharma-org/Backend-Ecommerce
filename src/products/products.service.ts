@@ -9,6 +9,10 @@ import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
 import { UpdateProductImageDto } from './update-product-image.dto';
+import {
+  ElasticsearchService,
+  EsHit,
+} from 'src/elasticsearch/elasticsearch.service';
 
 interface OrderItem {
   pro_code: string;
@@ -44,6 +48,7 @@ export class ProductsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
+    private readonly elasticsearchService: ElasticsearchService,
   ) {}
 
   private async isL16Member(
@@ -1053,6 +1058,283 @@ export class ProductsService {
     } catch (error) {
       console.error('Error searching products:', error);
       throw new Error('Error searching products');
+    }
+  }
+
+  async searchProductsElastic(data: {
+    keyword: string;
+    offset: number;
+    mem_code: string;
+    mem_route?: string;
+    sort_by?: number;
+    limit: number;
+    creditor_codes?: string[];
+  }): Promise<{ products: ProductEntity[]; totalCount: number }> {
+    interface EsProductSource {
+      pro_code: string;
+      pro_name: string;
+      pro_nameSale: string;
+      pro_keysearch: string;
+    }
+
+    try {
+      const keyword = data.keyword?.trim();
+
+      if (!keyword) {
+        return { products: [], totalCount: 0 };
+      }
+
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+
+      const esResult = await this.elasticsearchService.search<EsProductSource>({
+        from: data.offset,
+        size: data.limit,
+        track_total_hits: true,
+        sort: [{ _score: { order: 'desc' } }],
+        _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
+        query: {
+          bool: {
+            filter: [
+              { range: { pro_priceA: { gt: 0 } } },
+              { range: { pro_priceB: { gt: 0 } } },
+              { range: { pro_priceC: { gt: 0 } } },
+              ...(data.creditor_codes?.length
+                ? [
+                    {
+                      terms: {
+                        'creditor_code.keyword': data.creditor_codes,
+                      },
+                    },
+                  ]
+                : []),
+            ],
+            must_not: [
+              { prefix: { 'pro_code.keyword': '@MESSAGE' } },
+              { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
+              { prefix: { 'pro_code.keyword': '@M' } },
+              { prefix: { 'pro_name.keyword': 'ฟรี' } },
+              { prefix: { 'pro_name.keyword': '@' } },
+              { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
+              { prefix: { 'pro_name.keyword': 'รีเบท' } },
+              { prefix: { 'pro_name.keyword': '-' } },
+              { prefix: { 'pro_name.keyword': '/' } },
+              { prefix: { 'pro_name.keyword': 'ค่า' } },
+              { exists: { field: 'invisible_id' } },
+              ...(isL16
+                ? []
+                : [
+                    {
+                      term: {
+                        pro_l16_only: 1,
+                      },
+                    },
+                  ]),
+            ],
+            should: [
+              {
+                term: {
+                  'pro_code.keyword': {
+                    value: keyword,
+                    boost: 200,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_barcode1.keyword': {
+                    value: keyword,
+                    boost: 180,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_barcode2.keyword': {
+                    value: keyword,
+                    boost: 160,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_barcode3.keyword': {
+                    value: keyword,
+                    boost: 160,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_keysearch.keyword': {
+                    value: keyword,
+                    boost: 100,
+                  },
+                },
+              },
+              {
+                match_phrase: {
+                  pro_keysearch: {
+                    query: keyword,
+                    boost: 80,
+                  },
+                },
+              },
+              {
+                match_phrase: {
+                  pro_name: {
+                    query: keyword,
+                    boost: 70,
+                  },
+                },
+              },
+              {
+                match_phrase: {
+                  pro_nameSale: {
+                    query: keyword,
+                    boost: 70,
+                  },
+                },
+              },
+              {
+                match: {
+                  pro_keysearch: {
+                    query: keyword,
+                    operator: 'or',
+                    fuzziness: 'AUTO',
+                    boost: 50,
+                  },
+                },
+              },
+              {
+                multi_match: {
+                  query: keyword,
+                  fields: [
+                    'pro_keysearch^20',
+                    'pro_name^10',
+                    'pro_nameSale^10',
+                    'pro_nameEN^5',
+                    'pro_nameMain^5',
+                    'pro_nameTH^5',
+                    'pro_genericname^5',
+                    'pro_drugmain^3',
+                    'pro_drugmain2^3',
+                    'pro_drugmain3^3',
+                    'pro_drugmain4^3',
+                  ],
+                  type: 'best_fields',
+                  operator: 'or',
+                  fuzziness: 'AUTO',
+                  boost: 30,
+                },
+              },
+              {
+                wildcard: {
+                  'pro_keysearch.keyword': {
+                    value: `*${keyword}*`,
+                    case_insensitive: true,
+                    boost: 70,
+                  },
+                },
+              },
+              {
+                wildcard: {
+                  'pro_name.keyword': {
+                    value: `*${keyword}*`,
+                    case_insensitive: true,
+                    boost: 40,
+                  },
+                },
+              },
+              {
+                wildcard: {
+                  'pro_nameSale.keyword': {
+                    value: `*${keyword}*`,
+                    case_insensitive: true,
+                    boost: 40,
+                  },
+                },
+              },
+              {
+                regexp: {
+                  'pro_keysearch.keyword': {
+                    value: `.*${keyword.split('').join('.*')}.*`,
+                    case_insensitive: true,
+                    boost: 20,
+                  },
+                },
+              },
+            ],
+            minimum_should_match: 1,
+          },
+        },
+      });
+
+      const hits = esResult.hits.hits;
+
+      const totalCount =
+        typeof esResult.hits.total === 'number'
+          ? esResult.hits.total
+          : (esResult.hits.total?.value ?? 0);
+
+      const proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
+
+      if (proCodes.length === 0) {
+        return { products: [], totalCount };
+      }
+
+      const qb = this.productRepo
+        .createQueryBuilder('product')
+        .leftJoinAndSelect(
+          'product.inCarts',
+          'cart',
+          'cart.mem_code = :memCode AND cart.is_reward = false',
+        )
+        .setParameter('memCode', data.mem_code)
+        .leftJoinAndSelect('product.flashsale', 'fsp')
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
+        .where('product.pro_code IN (:...proCodes)', { proCodes })
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_unit1',
+          'product.pro_unit2',
+          'product.pro_unit3',
+          'product.pro_sale_amount',
+          'product.pro_stock',
+          'product.pro_lowest_stock',
+          'product.order_quantity',
+          'product.viwers',
+          'cart.spc_id',
+          'cart.spc_amount',
+          'cart.spc_unit',
+          'cart.mem_code',
+          'fsp.limit',
+          'fsp.id',
+          'fs.promotion_id',
+          'fs.time_start',
+          'fs.time_end',
+          'fs.date',
+        ]);
+
+      const products = await qb.getMany();
+
+      const productMap = new Map(products.map((p) => [p.pro_code, p]));
+
+      const sortedProducts = proCodes
+        .map((code) => productMap.get(code))
+        .filter(Boolean) as ProductEntity[];
+
+      return {
+        products: sortedProducts,
+        totalCount,
+      };
+    } catch (error) {
+      console.error('Error searching products with Elasticsearch:', error);
+      throw new Error('Error searching products with Elasticsearch');
     }
   }
 

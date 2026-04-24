@@ -44,6 +44,7 @@ import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.mo
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
 import { envValidationSchema } from './env.validation';
+import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 
 @Module({
   imports: [
@@ -107,6 +108,7 @@ import { envValidationSchema } from './env.validation';
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,
+    ElasticsearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -52,17 +52,24 @@ export class IdeogramBrowserService implements OnModuleInit, OnModuleDestroy {
   private readonly handle = process.env.HANDLE_IDEOGRAM ?? '';
 
   async onModuleInit(): Promise<void> {
+    const isLinux = process.platform === 'linux';
+    const windowsChromePath =
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    const executablePath =
+      process.env.CHROME_EXECUTABLE_PATH ??
+      (!isLinux ? windowsChromePath : undefined);
+
     this.browser = await (puppeteer as unknown as PuppeteerNode).launch({
       headless: true,
-      args:
-        process.platform === 'linux'
-          ? [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-            ]
-          : [],
+      executablePath,
+      args: isLinux
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+          ]
+        : [],
     });
     this.logger.log('IdeogramBrowserService: browser initialized');
   }

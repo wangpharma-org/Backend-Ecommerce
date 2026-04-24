@@ -419,7 +419,7 @@ export class AppController {
   ) {
     //console.log('data in controller:', data);
     const mem_code = req.user.mem_code;
-    const result = await this.productsService.searchProducts({
+    const result = await this.productsService.searchProductsElastic({
       ...data,
       mem_code,
       mem_route: req.user.mem_route,
