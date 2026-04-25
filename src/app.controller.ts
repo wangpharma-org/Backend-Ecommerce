@@ -415,6 +415,7 @@ export class AppController {
       mem_code: string;
       sort_by?: number;
       limit: number;
+      creditor_codes?: string[];
     },
   ) {
     //console.log('data in controller:', data);
@@ -863,6 +864,7 @@ export class AppController {
       min_amount: number;
       description?: string;
       detail?: string;
+      is_unit_based?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -872,6 +874,7 @@ export class AppController {
       description: data.description,
       detail: data.detail,
       file,
+      is_unit_based: data.is_unit_based === 'true' ? true : false,
     });
   }
 
@@ -1809,29 +1812,13 @@ export class AppController {
       MFG: string;
       EXP: string;
       createdAt: Date;
+      amount: number;
+      unit: string;
     }[],
   ) {
-    type N = {
-      product: { pro_code: string };
-      LOT: string;
-      MFG: string;
-      EXP: string;
-      createdAt: Date;
-    };
     try {
-      const results: N[] = [];
-      console.log('Received body for new arrivals:', data);
-      for (const item of data) {
-        const result = await this.newArrivalsService.addNewArrival(
-          item.pro_code,
-          item.LOT,
-          item.MFG,
-          item.EXP,
-          item.createdAt,
-        );
-        results.push(result);
-      }
-      return results;
+      await this.newArrivalsService.addNewArrival(data);
+      return { message: 'New arrivals added successfully' };
     } catch (error) {
       console.error('Error adding new arrivals:', error);
       throw new Error('Error adding new arrivals');

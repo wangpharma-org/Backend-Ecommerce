@@ -26,6 +26,9 @@ export class PartnerEntity {
   @Column({ length: 100, nullable: true })
   category: string;
 
+  @Column({ type: 'simple-json', nullable: true })
+  creditor_codes: string[] | null;
+
   @Column({ default: 0 })
   display_order: number;
 
