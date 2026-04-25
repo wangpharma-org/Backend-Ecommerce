@@ -89,7 +89,6 @@ import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 
-
 interface JwtPayload {
   username: string;
   name: string;
@@ -481,15 +480,15 @@ export class AppController {
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
@@ -2948,6 +2947,141 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/upload-reward-image')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadRewardImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { reward_id: string },
+  ) {
+    try {
+      const url = await this.campaignsService.uploadRewardImage(
+        file,
+        body.reward_id,
+      );
+      return { success: true, data: { url } };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPLOAD_REWARD_IMAGE_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/upload-image')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadCampaignImage(@UploadedFile() file: Express.Multer.File) {
+    try {
+      const url = await this.campaignsService.uploadImage(file);
+      return { success: true, data: { url } };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPLOAD_IMAGE_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/purchase-products')
+  async getPurchaseProducts(@Param('campaignId') campaignId: string) {
+    try {
+      const items = await this.campaignsService.getPurchaseProducts(campaignId);
+      return { success: true, data: items };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'GET_PURCHASE_PRODUCTS_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/purchase-products')
+  async createPurchaseProduct(
+    @Param('campaignId') campaignId: string,
+    @Body() body: { name: string },
+  ) {
+    try {
+      const item = await this.campaignsService.createPurchaseProduct(
+        campaignId,
+        body.name,
+      );
+      return { success: true, data: item };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'CREATE_PURCHASE_PRODUCT_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/campaigns/:campaignId/purchase-products/:productId')
+  async updatePurchaseProduct(
+    @Param('campaignId') campaignId: string,
+    @Param('productId') productId: string,
+    @Body() body: { name?: string; img_url?: string },
+  ) {
+    try {
+      await this.campaignsService.updatePurchaseProduct(
+        campaignId,
+        productId,
+        body,
+      );
+      return { success: true };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPDATE_PURCHASE_PRODUCT_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/purchase-products/:productId')
+  async deletePurchaseProduct(
+    @Param('campaignId') campaignId: string,
+    @Param('productId') productId: string,
+  ) {
+    try {
+      await this.campaignsService.deletePurchaseProduct(campaignId, productId);
+      return { success: true };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_PURCHASE_PRODUCT_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/purchase-products/:productId/upload-image')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadPurchaseProductImage(
+    @Param('campaignId') campaignId: string,
+    @Param('productId') productId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    try {
+      const url = await this.campaignsService.uploadPurchaseProductImage(
+        campaignId,
+        productId,
+        file,
+      );
+      return { success: true, data: { url } };
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'UPLOAD_PURCHASE_PRODUCT_IMAGE_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   // @UseGuards(JwtAuthGuard)
   @Post('/campaigns/generate-poster')
   async generatePoster(
@@ -3991,7 +4125,7 @@ export class AppController {
     );
     return results;
   }
-  
+
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
     try {
