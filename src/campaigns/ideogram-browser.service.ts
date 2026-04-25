@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import puppeteer from 'puppeteer-extra';
+import puppeteerBase from 'puppeteer';
 import type { PuppeteerNode } from 'puppeteer';
 import { Browser, Page } from 'puppeteer';
 
@@ -54,6 +55,7 @@ export class IdeogramBrowserService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     this.browser = await (puppeteer as unknown as PuppeteerNode).launch({
       headless: true,
+      executablePath: puppeteerBase.executablePath(),
       args:
         process.platform === 'linux'
           ? [
