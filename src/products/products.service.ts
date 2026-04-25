@@ -9,9 +9,7 @@ import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
 import { UpdateProductImageDto } from './update-product-image.dto';
-import {
-  ElasticsearchService,
-} from 'src/elasticsearch/elasticsearch.service';
+import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 
 interface OrderItem {
   pro_code: string;
@@ -1078,7 +1076,7 @@ export class ProductsService {
     try {
       const keyword = data.keyword?.trim();
 
-      if (!keyword) {
+      if (!keyword && !data.creditor_codes?.length) {
         return { products: [], totalCount: 0 };
       }
 
@@ -1088,7 +1086,9 @@ export class ProductsService {
         from: data.offset,
         size: data.limit,
         track_total_hits: true,
-        sort: [{ _score: { order: 'desc' } }],
+        sort: keyword
+          ? [{ _score: { order: 'desc' } }]
+          : [{ 'pro_code.keyword': { order: 'asc' } }],
         _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
         query: {
           bool: {
@@ -1128,141 +1128,145 @@ export class ProductsService {
                     },
                   ]),
             ],
-            should: [
-              {
-                term: {
-                  'pro_code.keyword': {
-                    value: keyword,
-                    boost: 200,
-                  },
-                },
-              },
-              {
-                term: {
-                  'pro_barcode1.keyword': {
-                    value: keyword,
-                    boost: 180,
-                  },
-                },
-              },
-              {
-                term: {
-                  'pro_barcode2.keyword': {
-                    value: keyword,
-                    boost: 160,
-                  },
-                },
-              },
-              {
-                term: {
-                  'pro_barcode3.keyword': {
-                    value: keyword,
-                    boost: 160,
-                  },
-                },
-              },
-              {
-                term: {
-                  'pro_keysearch.keyword': {
-                    value: keyword,
-                    boost: 100,
-                  },
-                },
-              },
-              {
-                match_phrase: {
-                  pro_keysearch: {
-                    query: keyword,
-                    boost: 80,
-                  },
-                },
-              },
-              {
-                match_phrase: {
-                  pro_name: {
-                    query: keyword,
-                    boost: 70,
-                  },
-                },
-              },
-              {
-                match_phrase: {
-                  pro_nameSale: {
-                    query: keyword,
-                    boost: 70,
-                  },
-                },
-              },
-              {
-                match: {
-                  pro_keysearch: {
-                    query: keyword,
-                    operator: 'or',
-                    fuzziness: 'AUTO',
-                    boost: 50,
-                  },
-                },
-              },
-              {
-                multi_match: {
-                  query: keyword,
-                  fields: [
-                    'pro_keysearch^20',
-                    'pro_name^10',
-                    'pro_nameSale^10',
-                    'pro_nameEN^5',
-                    'pro_nameMain^5',
-                    'pro_nameTH^5',
-                    'pro_genericname^5',
-                    'pro_drugmain^3',
-                    'pro_drugmain2^3',
-                    'pro_drugmain3^3',
-                    'pro_drugmain4^3',
+            ...(keyword
+              ? {
+                  should: [
+                    {
+                      term: {
+                        'pro_code.keyword': {
+                          value: keyword,
+                          boost: 200,
+                        },
+                      },
+                    },
+                    {
+                      term: {
+                        'pro_barcode1.keyword': {
+                          value: keyword,
+                          boost: 180,
+                        },
+                      },
+                    },
+                    {
+                      term: {
+                        'pro_barcode2.keyword': {
+                          value: keyword,
+                          boost: 160,
+                        },
+                      },
+                    },
+                    {
+                      term: {
+                        'pro_barcode3.keyword': {
+                          value: keyword,
+                          boost: 160,
+                        },
+                      },
+                    },
+                    {
+                      term: {
+                        'pro_keysearch.keyword': {
+                          value: keyword,
+                          boost: 100,
+                        },
+                      },
+                    },
+                    {
+                      match_phrase: {
+                        pro_keysearch: {
+                          query: keyword,
+                          boost: 80,
+                        },
+                      },
+                    },
+                    {
+                      match_phrase: {
+                        pro_name: {
+                          query: keyword,
+                          boost: 70,
+                        },
+                      },
+                    },
+                    {
+                      match_phrase: {
+                        pro_nameSale: {
+                          query: keyword,
+                          boost: 70,
+                        },
+                      },
+                    },
+                    {
+                      match: {
+                        pro_keysearch: {
+                          query: keyword,
+                          operator: 'or',
+                          fuzziness: 'AUTO',
+                          boost: 50,
+                        },
+                      },
+                    },
+                    {
+                      multi_match: {
+                        query: keyword,
+                        fields: [
+                          'pro_keysearch^20',
+                          'pro_name^10',
+                          'pro_nameSale^10',
+                          'pro_nameEN^5',
+                          'pro_nameMain^5',
+                          'pro_nameTH^5',
+                          'pro_genericname^5',
+                          'pro_drugmain^3',
+                          'pro_drugmain2^3',
+                          'pro_drugmain3^3',
+                          'pro_drugmain4^3',
+                        ],
+                        type: 'best_fields',
+                        operator: 'or',
+                        fuzziness: 'AUTO',
+                        boost: 30,
+                      },
+                    },
+                    {
+                      wildcard: {
+                        'pro_keysearch.keyword': {
+                          value: `*${keyword}*`,
+                          case_insensitive: true,
+                          boost: 70,
+                        },
+                      },
+                    },
+                    {
+                      wildcard: {
+                        'pro_name.keyword': {
+                          value: `*${keyword}*`,
+                          case_insensitive: true,
+                          boost: 40,
+                        },
+                      },
+                    },
+                    {
+                      wildcard: {
+                        'pro_nameSale.keyword': {
+                          value: `*${keyword}*`,
+                          case_insensitive: true,
+                          boost: 40,
+                        },
+                      },
+                    },
+                    {
+                      regexp: {
+                        'pro_keysearch.keyword': {
+                          value: `.*${keyword.split('').join('.*')}.*`,
+                          case_insensitive: true,
+                          boost: 20,
+                        },
+                      },
+                    },
                   ],
-                  type: 'best_fields',
-                  operator: 'or',
-                  fuzziness: 'AUTO',
-                  boost: 30,
-                },
-              },
-              {
-                wildcard: {
-                  'pro_keysearch.keyword': {
-                    value: `*${keyword}*`,
-                    case_insensitive: true,
-                    boost: 70,
-                  },
-                },
-              },
-              {
-                wildcard: {
-                  'pro_name.keyword': {
-                    value: `*${keyword}*`,
-                    case_insensitive: true,
-                    boost: 40,
-                  },
-                },
-              },
-              {
-                wildcard: {
-                  'pro_nameSale.keyword': {
-                    value: `*${keyword}*`,
-                    case_insensitive: true,
-                    boost: 40,
-                  },
-                },
-              },
-              {
-                regexp: {
-                  'pro_keysearch.keyword': {
-                    value: `.*${keyword.split('').join('.*')}.*`,
-                    case_insensitive: true,
-                    boost: 20,
-                  },
-                },
-              },
-            ],
-            minimum_should_match: 1,
+                  minimum_should_match: 1,
+                }
+              : {}),
           },
         },
       });
