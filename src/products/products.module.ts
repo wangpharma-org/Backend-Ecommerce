@@ -9,6 +9,7 @@ import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendModule } from 'src/backend/backend.module';
 import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
 import { UserEntity } from 'src/users/users.entity';
+import { ElasticsearchModule } from 'src/elasticsearch/elasticsearch.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { UserEntity } from 'src/users/users.entity';
     ]),
     BackendModule,
     ImagedebugModule,
+    ElasticsearchModule,
   ],
   providers: [ProductsService],
   controllers: [ProductListner],
