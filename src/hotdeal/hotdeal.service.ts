@@ -160,7 +160,6 @@ export class HotdealService {
           }
         }
       } else {
-        console.log('Creating new Hotdeal');
         const hotdeal = this.hotdealRepo.create({
           pro1_amount: datainput.pro1_amount,
           pro1_unit: datainput.pro1_unit,
@@ -497,12 +496,8 @@ export class HotdealService {
         const uploadResult = await this.s3.upload(params).promise();
         imageUrl = uploadResult.Location;
       } else {
-        console.log(
-          '⚠️ S3 credentials not configured, using placeholder image',
-        );
         const randomSeed = Date.now();
         imageUrl = `https://picsum.photos/seed/${randomSeed}/1200/400`;
-        console.log('Placeholder URL:', imageUrl);
       }
 
       const bannerHotdeal = this.bannerHotdealRepo.create({
@@ -600,10 +595,7 @@ export class HotdealService {
         },
       },
     });
-    console.log(
-      'Hotdeal found:',
-      hotdeal.length > 0 ? hotdeal : 'No hotdeal found',
-    );
+
     if (!hotdeal || hotdeal.length === 0) {
       return null;
     }
@@ -613,10 +605,6 @@ export class HotdealService {
         mem_code,
         pro_code,
       );
-    console.log(
-      'Cart items for member:',
-      cartItems.length > 0 ? cartItems : 'No cart items found',
-    );
 
     let totalAmountInSmallestUnit = 0;
     if (cartItems && cartItems.length > 0) {

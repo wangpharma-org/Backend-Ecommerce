@@ -44,6 +44,9 @@ import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.mo
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
 import { envValidationSchema } from './env.validation';
+import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
+
+import { MailerModule } from '@nestjs-modules/mailer';
 
 @Module({
   imports: [
@@ -107,8 +110,33 @@ import { envValidationSchema } from './env.validation';
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,
+    ElasticsearchModule,
+    MailerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        transport: {
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          auth: {
+            user: configService.get<string>('EMAIL_USER'),
+            pass: configService.get<string>('EMAIL_PASS'),
+          },
+        },
+        defaults: {
+          from: '"Wang System" <' + configService.get<string>('EMAIL_USER') + '>',
+        },
+        template: {
+          dir: __dirname + '/templates',
+          options: {
+            strict: true,
+          },
+        },
+      }),
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
