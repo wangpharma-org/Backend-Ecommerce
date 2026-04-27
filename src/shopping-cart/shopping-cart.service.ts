@@ -20,6 +20,7 @@ import {
   CompanyDayAnalyticService,
   type CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
+import { Logger } from '@nestjs/common';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -171,6 +172,7 @@ export interface CartMutationWithCompanyDayContext extends CartMutationResult {
 
 @Injectable()
 export class ShoppingCartService {
+  private readonly logger = new Logger(ShoppingCartService.name);
   constructor(
     @InjectRepository(ShoppingCartEntity)
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
@@ -364,7 +366,6 @@ export class ShoppingCartService {
       where: { pro_code },
       relations: { flashsale: { flashsale: true } },
     });
-    console.log('Flashsale data:', data);
     if (
       !data ||
       !data.flashsale ||
@@ -404,12 +405,9 @@ export class ShoppingCartService {
         },
       });
 
-      console.log('Existing cart item:', data.flashsale_end);
-
       if (existing) {
         const newAmount = Number(existing.spc_amount) + data.amount;
         if (newAmount > 0) {
-          console.log('if', data.flashsale_end);
           await this.shoppingCartRepo.update(
             { spc_id: existing.spc_id },
             {
@@ -428,10 +426,6 @@ export class ShoppingCartService {
               pro_code: hotdeal.product2.pro_code,
               hotdeal_free: true,
             });
-            console.log(
-              'Removed hotdeal freebie for pro_code:',
-              hotdeal.product2.pro_code,
-            );
           }
         }
       } else {
@@ -476,7 +470,7 @@ export class ShoppingCartService {
       }
       return { cart, ...version };
     } catch (error) {
-      console.error('Error saving product cart:', error);
+      this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
         error instanceof BadRequestException
@@ -504,24 +498,105 @@ export class ShoppingCartService {
     try {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
-      console.log('Add Hotdeal Free Item:', data);
-      await this.shoppingCartRepo.save({
-        pro_code: data.pro_code,
-        mem_code: data.mem_code,
-        spc_unit: data.pro_unit,
-        spc_amount: data.amount,
-        spc_price: 0,
-        hotdeal_free: true,
-        hotdeal_promain: data.hotdeal_promain,
-        spc_datetime: new Date(),
+
+      if (data.hotdeal_free && data.hotdeal_promain) {
+        const remainingPoints = await this.getHotdealPointsInfo(
+          data.mem_code,
+          data.hotdeal_promain,
+        );
+
+        if (remainingPoints <= 0) {
+          const cart = await this.getProductCart(data.mem_code);
+          const version = touchVersion
+            ? await this.incrementCartVersion(data.mem_code)
+            : await this.getCartVersionState(data.mem_code);
+          return { cart, ...version };
+        }
+
+        const hotdeals = await this.hotdealService.getHotdealByProCode([
+          data.hotdeal_promain,
+        ]);
+
+        const matchingHotdeal = hotdeals?.find(
+          (hd) =>
+            hd.product2?.pro_code === data.pro_code &&
+            hd.pro2_unit === data.pro_unit,
+        );
+
+        if (
+          matchingHotdeal &&
+          matchingHotdeal.pro1_amount &&
+          matchingHotdeal.pro1_unit
+        ) {
+          const pointsPerFreebieSet =
+            await this.productsService.calculateSmallestUnit([
+              {
+                pro_code: data.hotdeal_promain,
+                unit: matchingHotdeal.pro1_unit,
+                quantity: Number(matchingHotdeal.pro1_amount),
+              },
+            ]);
+
+          if (pointsPerFreebieSet > 0) {
+            const possibleSets = Math.floor(
+              remainingPoints / pointsPerFreebieSet,
+            );
+            const missingAmount =
+              possibleSets * Number(matchingHotdeal.pro2_amount);
+
+            if (missingAmount <= 0) {
+              const cart = await this.getProductCart(data.mem_code);
+              const version = touchVersion
+                ? await this.incrementCartVersion(data.mem_code)
+                : await this.getCartVersionState(data.mem_code);
+              return { cart, ...version };
+            }
+
+            if (data.amount > missingAmount) {
+              data.amount = missingAmount;
+            }
+          }
+        }
+      }
+
+      const existingFreebie = await this.shoppingCartRepo.findOne({
+        where: {
+          mem_code: data.mem_code,
+          pro_code: data.pro_code,
+          spc_unit: data.pro_unit,
+          hotdeal_promain: data.hotdeal_promain,
+          hotdeal_free: true,
+        },
       });
+
+      if (existingFreebie) {
+        await this.shoppingCartRepo.update(
+          { spc_id: existingFreebie.spc_id },
+          {
+            spc_amount: Number(existingFreebie.spc_amount) + data.amount,
+            spc_datetime: new Date(),
+          },
+        );
+      } else {
+        await this.shoppingCartRepo.save({
+          pro_code: data.pro_code,
+          mem_code: data.mem_code,
+          spc_unit: data.pro_unit,
+          spc_amount: data.amount,
+          spc_price: 0,
+          hotdeal_free: true,
+          hotdeal_promain: data.hotdeal_promain,
+          spc_datetime: new Date(),
+        });
+      }
+
       const cart = await this.getProductCart(data.mem_code);
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
         : await this.getCartVersionState(data.mem_code);
       return { cart, ...version };
     } catch (error) {
-      console.error('Error saving product cart:', error);
+      this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
         error instanceof BadRequestException
@@ -1152,10 +1227,6 @@ export class ShoppingCartService {
             },
             { spc_checked: true },
           );
-          console.log(
-            'Checked hotdeal freebie for pro_code:',
-            hotdeal.product2.pro_code,
-          );
         }
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
@@ -1180,10 +1251,6 @@ export class ShoppingCartService {
             },
             { spc_checked: false },
           );
-          console.log(
-            'Unchecked hotdeal freebie for pro_code:',
-            hotdeal.product2.pro_code,
-          );
         }
       } else {
         throw new Error('Something wrong in checkedProductCart');
@@ -1198,7 +1265,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version, companyDayRewardContext };
     } catch (e) {
-      console.error('Error in checkedProductCart', e);
+      this.logger.error('Error in checkedProductCart', e);
       if (e instanceof ConflictException) {
         throw e;
       }
@@ -1239,10 +1306,6 @@ export class ShoppingCartService {
           hotdeal_promain: data.pro_code,
           hotdeal_free: true,
         });
-        console.log(
-          'Removed hotdeal freebie for pro_code:',
-          hotdeal.product2.pro_code,
-        );
       }
 
       await this.shoppingCartRepo.delete({
@@ -1250,7 +1313,6 @@ export class ShoppingCartService {
         mem_code: data.mem_code,
         hotdeal_free: false,
       });
-      console.log('priceOption', data.priceOption);
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
@@ -1286,7 +1348,6 @@ export class ShoppingCartService {
   }): Promise<CartMutationResult> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
-      console.log('checkedProductCartAll data : ', data);
       if (data.type === 'check') {
         const productCanNotCheck = await this.shoppingCartRepo
           .createQueryBuilder('cart')
@@ -1299,7 +1360,6 @@ export class ShoppingCartService {
           .andWhere('cart.mem_code = :mem_code', { mem_code: data.mem_code })
           .select('cart.pro_code')
           .getMany();
-        console.log('productCanNotCheck : ', productCanNotCheck);
         await this.shoppingCartRepo.update(
           {
             mem_code: data.mem_code,
@@ -1323,7 +1383,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      console.error('Error in checkedProductCartAll', e);
+      this.logger.error('Error in checkedProductCartAll', e);
       if (e instanceof ConflictException) {
         throw e;
       }
@@ -1346,7 +1406,7 @@ export class ShoppingCartService {
         return 0;
       }
     } catch (error) {
-      console.error('Error getting cart item count:', error);
+      this.logger.error('Error getting cart item count:', error);
       throw new Error('Error in getCartItemCount');
     }
   }
@@ -1619,7 +1679,7 @@ export class ShoppingCartService {
 
       return result;
     } catch (error) {
-      console.error('Error get product cart:', error);
+      this.logger.error('Error get product cart:', error);
       throw new Error(`Error in Get product Cart`);
     }
   }
@@ -1632,7 +1692,7 @@ export class ShoppingCartService {
       });
       return 'Remove All Cart Hotdeal Cart Success';
     } catch (error) {
-      console.error('Error removing all hotdeal cart items:', error);
+      this.logger.error('Error removing all hotdeal cart items:', error);
       throw new Error('Error in removeAllCarthotdeal');
     }
   }
@@ -1647,17 +1707,15 @@ export class ShoppingCartService {
     }[]
   > {
     try {
-      console.log('Fetching freebie products for mem_code:', memCode);
       const freebies = await this.shoppingCartRepo.find({
         where: {
           mem_code: memCode,
           hotdeal_free: true,
         },
       });
-      console.log('Found freebies:', freebies);
       return freebies;
     } catch (error) {
-      console.error('Error fetching freebie products:', error);
+      this.logger.error('Error fetching freebie products:', error);
       throw new Error('Error in getProFreebie');
     }
   }
@@ -1670,11 +1728,7 @@ export class ShoppingCartService {
       const hotdeals = await this.hotdealService.getHotdealByProCode([
         pro_code,
       ]);
-      if (!hotdeals) {
-        return await this.getProductCart(mem_code);
-      }
-
-      if (hotdeals.length === 0) {
+      if (!hotdeals || hotdeals.length === 0) {
         return await this.getProductCart(mem_code);
       }
 
@@ -1696,12 +1750,6 @@ export class ShoppingCartService {
       });
 
       if (mainProductsInCart.length === 0) {
-        console.log(
-          `mainProductsInCart:`,
-          mainProductsInCart,
-          `allFreebiesInCart:`,
-          allFreebiesInCart,
-        );
         if (allFreebiesInCart.length > 0) {
           await this.shoppingCartRepo.remove(allFreebiesInCart);
         }
@@ -1719,7 +1767,13 @@ export class ShoppingCartService {
       let totalCartInSmallest =
         getHotdealFromproCode?.totalAmountInSmallestUnit || 0;
 
-      for (const hd of hotdeals) {
+      const minPoint = Math.min(
+        ...hotdeals.map((hd) => Number(hd.pro1_amount)),
+      );
+      const bestHotdeal = hotdeals.filter(
+        (hd) => Number(hd.pro1_amount) === minPoint,
+      );
+      for (const hd of bestHotdeal) {
         if (!hd.pro1_amount || !hd.pro1_unit || !hd.product2?.pro_code) {
           continue;
         }
@@ -1761,7 +1815,7 @@ export class ShoppingCartService {
 
           totalCartInSmallest -= totalFreebies * hotdealRequiredInSmallest;
         } catch (error) {
-          console.error(`Error processing hotdeal ${hd.id}:`, error);
+          this.logger.error(`Error processing hotdeal ${hd.id}:`, error);
           continue;
         }
       }
@@ -1812,7 +1866,7 @@ export class ShoppingCartService {
 
       return await this.getProductCart(mem_code);
     } catch (error) {
-      console.error('Error in checkHotdealByProCode:', error);
+      this.logger.error('Error in checkHotdealByProCode:', error);
       return null;
     }
   }
@@ -2020,19 +2074,9 @@ export class ShoppingCartService {
     }[],
   ) {
     try {
-      console.log(
-        'Adding hotdeal to cart for mem_code:',
-        mem_code,
-        'with freebies data:',
-        freebies,
-      );
-
       for (const data of freebies) {
         // ตรวจสอบข้อมูลพื้นฐานก่อนดำเนินการ
         if (!data.pro_code || !data.pro_code1 || !data.unit) {
-          console.log(
-            `Invalid freebie data: pro_code=${data.pro_code}, pro_code1=${data.pro_code1}, unit=${data.unit}`,
-          );
           continue;
         }
 
@@ -2047,30 +2091,7 @@ export class ShoppingCartService {
         });
 
         if (mainProductInCart.length === 0) {
-          console.log(
-            `No main product ${data.pro_code1} found in cart for hotdeal, skipping freebie ${data.pro_code}`,
-          );
           continue;
-        }
-
-        // คำนวณแต้ม (หน่วยที่เล็กที่สุด) จากสินค้าหลักที่มีในตะกร้า
-        let totalPoints = 0;
-        try {
-          const orderItems = mainProductInCart.map((item) => ({
-            unit: item.spc_unit,
-            quantity: parseFloat(item.spc_amount.toString()),
-            pro_code: data.pro_code1,
-          }));
-
-          totalPoints =
-            await this.productsService.calculateSmallestUnit(orderItems);
-          console.log(`Total points for ${data.pro_code1}:`, totalPoints);
-        } catch (error) {
-          console.error(
-            `Error calculating smallest unit for ${data.pro_code1}:`,
-            error,
-          );
-          continue; // ข้ามการประมวลผลถ้าคำนวณแต้มไม่ได้
         }
 
         // เช็คว่าครบเงื่อนไข hotdeal หรือไม่
@@ -2083,9 +2104,6 @@ export class ShoppingCartService {
         );
 
         if (!hotdealMatch?.match) {
-          console.log(
-            `Hotdeal condition not met for ${data.pro_code1}, points: ${totalPoints}, skipping freebie ${data.pro_code}`,
-          );
           // ลบของแถมที่มีอยู่ถ้าเงื่อนไขไม่ครบ
           await this.shoppingCartRepo.delete({
             mem_code,
@@ -2112,9 +2130,6 @@ export class ShoppingCartService {
         );
 
         if (existingFreebie) {
-          console.log(
-            `Updating existing hotdeal freebie for ${data.pro_code} with amount ${actualFreebieAmount} and points ${totalPoints}`,
-          );
           await this.shoppingCartRepo.update(
             {
               mem_code,
@@ -2123,9 +2138,6 @@ export class ShoppingCartService {
               hotdeal_free: true,
             },
             { spc_amount: actualFreebieAmount },
-          );
-          console.log(
-            `Hotdeal freebie for ${data.pro_code} updated in cart successfully (amount: ${actualFreebieAmount}, points: ${totalPoints})`,
           );
         } else {
           const hotdeal = this.shoppingCartRepo.create({
@@ -2140,16 +2152,12 @@ export class ShoppingCartService {
           });
 
           await this.shoppingCartRepo.save(hotdeal);
-          console.log(
-            `Hotdeal freebie for ${data.pro_code} added to cart successfully (amount: ${actualFreebieAmount}, points: ${totalPoints})`,
-          );
         }
       }
-      console.log('Hotdeal added to cart successfully');
       return 'Add Hotdeal To Cart Success';
     } catch (error) {
       // เพิ่มการ log error เดิมเพื่อช่วยในการ debug
-      console.error(
+      this.logger.error(
         'An error occurred in addHotdealToCart:',
         error instanceof Error ? error.message : error,
       );
@@ -2221,7 +2229,7 @@ export class ShoppingCartService {
 
       return totalUsedPoints;
     } catch (error) {
-      console.error('Error calculating used hotdeal points:', error);
+      this.logger.error('Error calculating used hotdeal points:', error);
       return 0;
     }
   }
@@ -2263,7 +2271,7 @@ export class ShoppingCartService {
 
       return remainingPoints;
     } catch (error) {
-      console.error('Error getting hotdeal points info:', error);
+      this.logger.error('Error getting hotdeal points info:', error);
       return 0;
     }
   }
