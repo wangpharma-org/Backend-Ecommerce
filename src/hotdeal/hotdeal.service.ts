@@ -99,8 +99,34 @@ export class HotdealService {
       if (productHotdeal.pro_unit3)
         unitRatioMap[productHotdeal.pro_unit3] = productHotdeal.pro_ratio3;
 
-      const amountSmallestHotdeal =
-        number_amount * (unitRatioMap[unit_hotdeal] ?? 1);
+      // ดึง hotdeals ทั้งหมดของสินค้าหลักนี้เพื่อหาเงื่อนไขที่ใช้แต้มน้อยที่สุดในหน่วยเล็กสุด
+      const hotdeals = await this.hotdealRepo.find({
+        where: { product: { pro_code } },
+        relations: ['product', 'product2'],
+      });
+
+      let minSmallestAmount = Infinity;
+      let bestHotdeal: HotdealEntity | null = null;
+
+      for (const hd of hotdeals) {
+        const ratio = unitRatioMap[hd.pro1_unit] ?? 1;
+        const amountInSmallest = Number(hd.pro1_amount) * ratio;
+        
+        if (amountInSmallest > 0 && amountInSmallest < minSmallestAmount && hd.product2) {
+          minSmallestAmount = amountInSmallest;
+          bestHotdeal = hd;
+        }
+      }
+
+      // หากไม่พบข้อมูลในฐานข้อมูล (fallback)
+      if (!bestHotdeal) {
+        minSmallestAmount = number_amount * (unitRatioMap[unit_hotdeal] ?? 1);
+      }
+
+      const amountSmallestHotdeal = minSmallestAmount;
+      const targetProCode2 = bestHotdeal?.product2?.pro_code || pro_code2;
+      const targetProUnit2 = bestHotdeal?.pro2_unit || pro_unit2;
+      const targetProAmount2 = bestHotdeal ? Number(bestHotdeal.pro2_amount) : 1;
 
       const hotdealProductInCart =
         await this.shoppingCartService.find(pro_code);
@@ -109,22 +135,25 @@ export class HotdealService {
       const totalsByMember: Record<string, number> = {};
 
       for (const item of hotdealProductInCart) {
-        const ratio = unitRatioMap[item.spc_unit] ?? 1;
-        totalsByMember[item.mem_code] =
-          (totalsByMember[item.mem_code] ?? 0) + item.spc_amount * ratio;
+        if (!item.hotdeal_free) { // ไม่นำของแถมมาคิดรวม
+          const ratio = unitRatioMap[item.spc_unit] ?? 1;
+          totalsByMember[item.mem_code] =
+            (totalsByMember[item.mem_code] ?? 0) + item.spc_amount * ratio;
+        }
       }
 
       for (const [mem_code, totalAmountInCartSmallest] of Object.entries(
         totalsByMember,
       )) {
-        const amountFreebies = Math.floor(
+        const sets = Math.floor(
           totalAmountInCartSmallest / amountSmallestHotdeal,
         );
+        const amountFreebies = sets * targetProAmount2;
         if (amountFreebies > 0) {
           await this.shoppingCartService.addProductCartHotDeal({
             mem_code,
-            pro_code: pro_code2,
-            pro_unit: pro_unit2,
+            pro_code: targetProCode2,
+            pro_unit: targetProUnit2,
             amount: amountFreebies,
             hotdeal_free: true,
             hotdeal_promain: pro_code,
@@ -683,6 +712,28 @@ export class HotdealService {
   async getHotdealByProCode(pro_code: string[]): Promise<HotdealEntity[] | null> {
     return await this.hotdealRepo.find({
       where: { product: { pro_code: In(pro_code) } },
+      relations: ['product', 'product2'],
+      select: {
+        pro1_amount: true,
+        pro1_unit: true,
+        pro2_amount: true,
+        pro2_unit: true,
+        product: {
+          pro_code: true,
+          pro_name: true,
+        },
+        product2: {
+          pro_code: true,
+          pro_name: true,
+        },
+      },
+      order: { pro1_amount: 'ASC' },
+    });
+  }
+
+  async getHotdealByProCodeSingle(pro_code: string): Promise<HotdealEntity | null> {
+    return await this.hotdealRepo.findOne({
+      where: { product: { pro_code } },
       relations: ['product', 'product2'],
       select: {
         pro1_amount: true,
