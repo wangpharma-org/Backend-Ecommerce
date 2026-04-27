@@ -1199,7 +1199,7 @@ export class ProductsService {
                       match: {
                         pro_keysearch: {
                           query: keyword,
-                          operator: 'or',
+                          operator: 'and',
                           fuzziness: 'AUTO',
                           boost: 50,
                         },
@@ -1222,8 +1222,8 @@ export class ProductsService {
                           'pro_drugmain4^3',
                         ],
                         type: 'best_fields',
-                        operator: 'or',
-                        fuzziness: 'AUTO',
+                        operator: 'and',
+                        // fuzziness: 'AUTO',
                         boost: 30,
                       },
                     },
