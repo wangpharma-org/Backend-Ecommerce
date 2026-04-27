@@ -10,6 +10,9 @@ import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
+import { ProductEasyAcc } from './product.listener';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
 
 interface OrderItem {
   pro_code: string;
@@ -46,6 +49,10 @@ export class ProductsService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
     private readonly elasticsearchService: ElasticsearchService,
+    @InjectRepository(ShoppingCartEntity)
+    private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
+    @InjectRepository(DeleteCartEntity)
+    private readonly deleteCartRepo: Repository<DeleteCartEntity>,
   ) {}
 
   private async isL16Member(
@@ -2072,6 +2079,118 @@ export class ProductsService {
       }
     } catch (error) {
       console.error('Error deleting product images:', error);
+    }
+  }
+
+  async updateProductFromEasyAcc(data: ProductEasyAcc) {
+    try {
+      if (data.product_name) {
+        const cartItem = await this.checkCartByProcode(data.product_code);
+        if (cartItem && cartItem.length > 0) {
+          for (const item of cartItem) {
+            console.log('Item', item);
+            await this.createDeleteCartByProcode(
+              item.product.pro_code,
+              item.product.pro_imgmain,
+              item.product.pro_name,
+              item.spc_unit,
+              item.mem_code,
+            );
+          }
+        }
+      }
+
+      const updateData: Partial<ProductEntity> = {};
+
+      if (data.product_name !== undefined)
+        updateData.pro_name = data.product_name;
+      if (data.product_barcode !== undefined)
+        updateData.pro_barcode1 = data.product_barcode as string;
+      if (data.product_unit1 !== undefined)
+        updateData.pro_unit1 = data.product_unit1 as string;
+      if (data.product_unit2 !== undefined)
+        updateData.pro_unit2 = data.product_unit2 as string;
+      if (data.product_unit3 !== undefined)
+        updateData.pro_unit3 = data.product_unit3 as string;
+      if (data.product_price_a !== undefined)
+        updateData.pro_priceA = data.product_price_a as number;
+      if (data.product_price_b !== undefined)
+        updateData.pro_priceB = data.product_price_b as number;
+      if (data.product_price_c !== undefined)
+        updateData.pro_priceC = data.product_price_c as number;
+      if (data.product_ratio_1 !== undefined)
+        updateData.pro_ratio1 = data.product_ratio_1 as number;
+      if (data.product_ratio_2 !== undefined)
+        updateData.pro_ratio2 = data.product_ratio_2 as number;
+      if (data.product_ratio_3 !== undefined)
+        updateData.pro_ratio3 = data.product_ratio_3 as number;
+
+      if (data.product_image_url != null) {
+        const [img1, img2, img3, img4, img5] = data.product_image_url;
+        if (img1 !== undefined) updateData.pro_imgmain = img1;
+        if (img2 !== undefined) updateData.pro_img2 = img2;
+        if (img3 !== undefined) updateData.pro_img3 = img3;
+        if (img4 !== undefined) updateData.pro_img4 = img4;
+        if (img5 !== undefined) updateData.pro_img5 = img5;
+      }
+
+      if (Object.keys(updateData).length === 0) return;
+
+      await this.productRepo.update(
+        { pro_code: data.product_code },
+        updateData,
+      );
+    } catch (error) {
+      console.error('Error updating product from EasyAcc:', error);
+    }
+  }
+
+  async createDeleteCartByProcode(
+    pro_code: string,
+    pro_imgmain: string,
+    pro_name: string,
+    pro_unit: string,
+    mem_code: string,
+  ) {
+    try {
+      const cartItem = this.deleteCartRepo.create({
+        mem_code: mem_code,
+        product: { pro_code },
+        data: {
+          pro_imgmain,
+          pro_name,
+          pro_unit,
+        },
+      });
+      await this.deleteCartRepo.save(cartItem);
+      await this.shoppingCartRepo.delete({ pro_code });
+    } catch (error) {
+      console.log(error);
+      throw new Error('Error in createDeleteCartByProcode');
+    }
+  }
+
+  async checkCartByProcode(pro_code: string) {
+    try {
+      const cartItems = await this.shoppingCartRepo.find({
+        where: { pro_code },
+        relations: {
+          product: true,
+        },
+        select: {
+          spc_unit: true,
+          spc_amount: true,
+          mem_code: true,
+          product: {
+            pro_code: true,
+            pro_imgmain: true,
+            pro_name: true,
+          },
+        },
+      });
+      return cartItems;
+    } catch {
+      throw new Error('Error in checkCartByProcode');
     }
   }
 }
