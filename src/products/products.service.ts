@@ -10,6 +10,9 @@ import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
 import axios from 'axios';
 import { UpdateProductImageDto } from './update-product-image.dto';
+import {
+  ElasticsearchService,
+} from 'src/elasticsearch/elasticsearch.service';
 
 interface OrderItem {
   pro_code: string;
@@ -64,7 +67,8 @@ export class ProductsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
-  ) { }
+    private readonly elasticsearchService: ElasticsearchService,
+  ) {}
 
   private async isL16Member(
     mem_code?: string,
@@ -910,7 +914,165 @@ export class ProductsService {
     }
   }
 
-  async searchProducts(data: {
+  // async searchProducts(data: {
+  //   keyword: string;
+  //   offset: number;
+  //   mem_code: string;
+  //   mem_route?: string;
+  //   sort_by?: number;
+  //   limit: number;
+  // }): Promise<{ products: ProductEntity[]; totalCount: number }> {
+  //   try {
+  //     const keyword = data.keyword.trim();
+  //     const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+  //     const qb = this.productRepo
+  //       .createQueryBuilder('product')
+  //       .leftJoinAndSelect(
+  //         'product.inCarts',
+  //         'cart',
+  //         'cart.mem_code = :memCode AND cart.is_reward = false',
+  //       )
+  //       .setParameter('memCode', data.mem_code)
+  //       .leftJoinAndSelect('product.flashsale', 'fsp')
+  //       .leftJoinAndSelect('fsp.flashsale', 'fs')
+  //       .where('product.pro_priceA != 0')
+  //       .andWhere(
+  //         new Brackets((qb) => {
+  //           qb.where('product.pro_name LIKE :keyword', {
+  //             keyword: `%${keyword}%`,
+  //           })
+  //             .orWhere('product.pro_keysearch LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_nameEN LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_barcode1 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_barcode2 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_barcode3 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_code LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_nameMain LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain2 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain3 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain4 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_nameTH LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             });
+  //         }),
+  //       )
+  //       .andWhere(
+  //         new Brackets((qb) => {
+  //           qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+  //             .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+  //             .andWhere('product.invisible_id IS NULL')
+  //             .andWhere('product.pro_name NOT LIKE :prefix3', {
+  //               prefix3: 'ส่งเสริม%',
+  //             })
+  //             .andWhere('product.pro_name NOT LIKE :prefix4', {
+  //               prefix4: 'รีเบท%',
+  //             })
+  //             .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+  //             .andWhere('product.pro_name NOT LIKE :prefix6', {
+  //               prefix6: '/%',
+  //             })
+  //             .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+  //             .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+  //             .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+  //             .andWhere('product.pro_name NOT LIKE :prefix7', {
+  //               prefix7: 'ค่า%',
+  //             })
+  //             .andWhere('product.pro_code NOT LIKE :prefix8', {
+  //               prefix8: '@M%',
+  //             });
+  //         }),
+  //       );
+
+  //     if (isL16) {
+  //       this.applyL16Filter(qb, 'product');
+  //     }
+
+  //     if (data.sort_by) {
+  //       switch (data.sort_by) {
+  //         case 1:
+  //           qb.orderBy('product.pro_stock', 'DESC');
+  //           break;
+  //         case 2:
+  //           qb.orderBy('product.pro_stock', 'ASC');
+  //           break;
+  //         case 3:
+  //           qb.orderBy('product.pro_priceA', 'DESC');
+  //           break;
+  //         case 4:
+  //           qb.orderBy('product.pro_priceA', 'ASC');
+  //           break;
+  //         case 5:
+  //           qb.orderBy('product.pro_sale_amount', 'DESC');
+  //           break;
+  //         default:
+  //           qb.orderBy('product.pro_name', 'ASC');
+  //       }
+  //     } else {
+  //       qb.orderBy('product.pro_name', 'ASC');
+  //     }
+
+  //     const totalCount = await qb.getCount();
+  //     const products = await qb
+  //       .take(data.limit)
+  //       .skip(data.offset)
+  //       .select([
+  //         'product.pro_code',
+  //         'product.pro_name',
+  //         'product.pro_priceA',
+  //         'product.pro_priceB',
+  //         'product.pro_priceC',
+  //         'product.pro_imgmain',
+  //         'product.pro_unit1',
+  //         'product.pro_unit2',
+  //         'product.pro_unit3',
+  //         'product.pro_sale_amount',
+  //         'product.pro_stock',
+  //         'product.pro_lowest_stock',
+  //         'product.order_quantity',
+  //         'product.viwers',
+  //         'cart.spc_id',
+  //         'cart.spc_amount',
+  //         'cart.spc_unit',
+  //         'cart.mem_code',
+  //         'fsp.limit',
+  //         'fsp.id',
+  //         'fs.promotion_id',
+  //         'fs.time_start',
+  //         'fs.time_end',
+  //         'fs.date',
+  //       ])
+  //       .getMany();
+  //     return { products, totalCount };
+  //   } catch (error) {
+  //     console.error('Error searching products:', error);
+  //     throw new Error('Error searching products');
+  //   }
+  // }
+
+  async searchProductsElastic(data: {
     keyword: string;
     offset: number;
     mem_code: string;
@@ -919,16 +1081,217 @@ export class ProductsService {
     limit: number;
     creditor_codes?: string[];
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
+    interface EsProductSource {
+      pro_code: string;
+      pro_name: string;
+      pro_nameSale: string;
+      pro_keysearch: string;
+    }
+
     try {
+      const keyword = data.keyword?.trim();
+
+      if (!keyword) {
+        return { products: [], totalCount: 0 };
+      }
+
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
 
-      // เรียกใช้ searchEnterProducts เพื่อดึงข้อมูลจาก API ภายนอก
+      const esResult = await this.elasticsearchService.search<EsProductSource>({
+        from: data.offset,
+        size: data.limit,
+        track_total_hits: true,
+        sort: [{ _score: { order: 'desc' } }],
+        _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
+        query: {
+          bool: {
+            filter: [
+              { range: { pro_priceA: { gt: 0 } } },
+              { range: { pro_priceB: { gt: 0 } } },
+              { range: { pro_priceC: { gt: 0 } } },
+              ...(data.creditor_codes?.length
+                ? [
+                    {
+                      terms: {
+                        'creditor_code.keyword': data.creditor_codes,
+                      },
+                    },
+                  ]
+                : []),
+            ],
+            must_not: [
+              { prefix: { 'pro_code.keyword': '@MESSAGE' } },
+              { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
+              { prefix: { 'pro_code.keyword': '@M' } },
+              { prefix: { 'pro_name.keyword': 'ฟรี' } },
+              { prefix: { 'pro_name.keyword': '@' } },
+              { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
+              { prefix: { 'pro_name.keyword': 'รีเบท' } },
+              { prefix: { 'pro_name.keyword': '-' } },
+              { prefix: { 'pro_name.keyword': '/' } },
+              { prefix: { 'pro_name.keyword': 'ค่า' } },
+              { exists: { field: 'invisible_id' } },
+              ...(isL16
+                ? []
+                : [
+                    {
+                      term: {
+                        pro_l16_only: 1,
+                      },
+                    },
+                  ]),
+            ],
+            should: [
+              {
+                term: {
+                  'pro_code.keyword': {
+                    value: keyword,
+                    boost: 200,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_barcode1.keyword': {
+                    value: keyword,
+                    boost: 180,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_barcode2.keyword': {
+                    value: keyword,
+                    boost: 160,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_barcode3.keyword': {
+                    value: keyword,
+                    boost: 160,
+                  },
+                },
+              },
+              {
+                term: {
+                  'pro_keysearch.keyword': {
+                    value: keyword,
+                    boost: 100,
+                  },
+                },
+              },
+              {
+                match_phrase: {
+                  pro_keysearch: {
+                    query: keyword,
+                    boost: 80,
+                  },
+                },
+              },
+              {
+                match_phrase: {
+                  pro_name: {
+                    query: keyword,
+                    boost: 70,
+                  },
+                },
+              },
+              {
+                match_phrase: {
+                  pro_nameSale: {
+                    query: keyword,
+                    boost: 70,
+                  },
+                },
+              },
+              {
+                match: {
+                  pro_keysearch: {
+                    query: keyword,
+                    operator: 'or',
+                    fuzziness: 'AUTO',
+                    boost: 50,
+                  },
+                },
+              },
+              {
+                multi_match: {
+                  query: keyword,
+                  fields: [
+                    'pro_keysearch^20',
+                    'pro_name^10',
+                    'pro_nameSale^10',
+                    'pro_nameEN^5',
+                    'pro_nameMain^5',
+                    'pro_nameTH^5',
+                    'pro_genericname^5',
+                    'pro_drugmain^3',
+                    'pro_drugmain2^3',
+                    'pro_drugmain3^3',
+                    'pro_drugmain4^3',
+                  ],
+                  type: 'best_fields',
+                  operator: 'or',
+                  fuzziness: 'AUTO',
+                  boost: 30,
+                },
+              },
+              {
+                wildcard: {
+                  'pro_keysearch.keyword': {
+                    value: `*${keyword}*`,
+                    case_insensitive: true,
+                    boost: 70,
+                  },
+                },
+              },
+              {
+                wildcard: {
+                  'pro_name.keyword': {
+                    value: `*${keyword}*`,
+                    case_insensitive: true,
+                    boost: 40,
+                  },
+                },
+              },
+              {
+                wildcard: {
+                  'pro_nameSale.keyword': {
+                    value: `*${keyword}*`,
+                    case_insensitive: true,
+                    boost: 40,
+                  },
+                },
+              },
+              {
+                regexp: {
+                  'pro_keysearch.keyword': {
+                    value: `.*${keyword.split('').join('.*')}.*`,
+                    case_insensitive: true,
+                    boost: 20,
+                  },
+                },
+              },
+            ],
+            minimum_should_match: 1,
+          },
+        },
+      });
 
-      let externalProCodes: string[] = [];
-      const externalProducts = await this.searchExternalProducts(data.keyword);
+      const hits = esResult.hits.hits;
 
-      externalProCodes = externalProducts.map((product) => product.pro_code);
-      externalProCodes.push(...(await this.searchEnterProducts(data.keyword)));
+      const totalCount =
+        typeof esResult.hits.total === 'number'
+          ? esResult.hits.total
+          : (esResult.hits.total?.value ?? 0);
+
+      const proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
+
+      if (proCodes.length === 0) {
+        return { products: [], totalCount };
+      }
 
       const qb = this.productRepo
         .createQueryBuilder('product')
@@ -940,122 +1303,7 @@ export class ProductsService {
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .where('product.pro_priceA != 0')
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name LIKE :keyword', {
-              keyword: `%${data.keyword}%`,
-            })
-              .orWhere('product.pro_keysearch LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_nameEN LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode1 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_code LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_nameMain LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain4 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_nameTH LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              });
-
-            // เพิ่มเงื่อนไขสำหรับ pro_codes จาก API ภายนอก
-            if (externalProCodes.length > 0) {
-              qb.orWhere('product.pro_code IN (:...externalProCodes)', {
-                externalProCodes,
-              });
-            }
-          }),
-        )
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
-              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
-              .andWhere('product.invisible_id IS NULL')
-              .andWhere('product.pro_name NOT LIKE :prefix3', {
-                prefix3: 'ส่งเสริม%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix4', {
-                prefix4: 'รีเบท%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
-              .andWhere('product.pro_name NOT LIKE :prefix6', {
-                prefix6: '/%',
-              })
-              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
-              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
-              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
-              .andWhere('product.pro_name NOT LIKE :prefix7', {
-                prefix7: 'ค่า%',
-              })
-              .andWhere('product.pro_code NOT LIKE :prefix8', {
-                prefix8: '@M%',
-              });
-          }),
-        );
-
-      if (data.creditor_codes && data.creditor_codes.length > 0) {
-        qb.andWhere('product.creditor_code IN (:...creditorCodes)', {
-          creditorCodes: data.creditor_codes,
-        });
-      }
-
-      if (isL16) {
-        this.applyL16Filter(qb, 'product');
-      }
-
-      if (data.sort_by) {
-        switch (data.sort_by) {
-          case 1:
-            qb.orderBy('product.pro_stock', 'DESC');
-            break;
-          case 2:
-            qb.orderBy('product.pro_stock', 'ASC');
-            break;
-          case 3:
-            qb.orderBy('product.pro_priceA', 'DESC');
-            break;
-          case 4:
-            qb.orderBy('product.pro_priceA', 'ASC');
-            break;
-          case 5:
-            qb.orderBy('product.pro_sale_amount', 'DESC');
-            break;
-          default:
-            qb.orderBy('product.pro_name', 'ASC');
-        }
-      } else {
-        qb.orderBy('product.pro_name', 'ASC');
-      }
-
-      const totalCount = await qb.getCount();
-      const products = await qb
-        .take(data.limit)
-        .skip(data.offset)
+        .where('product.pro_code IN (:...proCodes)', { proCodes })
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -1081,12 +1329,23 @@ export class ProductsService {
           'fs.time_start',
           'fs.time_end',
           'fs.date',
-        ])
-        .getMany();
-      return { products, totalCount };
+        ]);
+
+      const products = await qb.getMany();
+
+      const productMap = new Map(products.map((p) => [p.pro_code, p]));
+
+      const sortedProducts = proCodes
+        .map((code) => productMap.get(code))
+        .filter(Boolean) as ProductEntity[];
+
+      return {
+        products: sortedProducts,
+        totalCount,
+      };
     } catch (error) {
-      this.logger.error('Error searching products:', error);
-      throw new Error('Error searching products');
+      console.error('Error searching products with Elasticsearch:', error);
+      throw new Error('Error searching products with Elasticsearch');
     }
   }
 
@@ -1849,25 +2108,6 @@ export class ProductsService {
       if (!proCodes.length) {
         return [];
       }
-
-      // ดึงเฉพาะ products ที่มี pro_code ตรงกับข้อมูลจาก API และมีอยู่ในฐานข้อมูล
-      // const products = await this.productRepo.find({
-      //   where: { pro_code: In(proCodes) },
-      //   select: [
-      //     'product.pro_code',
-      //     'product.pro_name',
-      //     'product.pro_priceA',
-      //     'product.pro_priceB',
-      //     'product.pro_priceC',
-      //     'product.pro_imgmain',
-      //     'product.pro_genericname',
-      //     'product.pro_unit1',
-      //     'product.pro_nameSale',
-      //     'product.pro_nameEN',
-      //     'product.pro_keysearch',
-      //     'creditor.creditor_code',
-      //   ]
-      // });
 
       const product = await this.productRepo
         .createQueryBuilder('product')

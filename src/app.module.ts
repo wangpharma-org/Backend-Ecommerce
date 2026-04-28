@@ -44,6 +44,7 @@ import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.mo
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
 import { envValidationSchema } from './env.validation';
+import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 
@@ -109,6 +110,7 @@ import { MailerModule } from '@nestjs-modules/mailer';
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,
+    ElasticsearchModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
