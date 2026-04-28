@@ -2104,8 +2104,28 @@ export class ProductsService {
 
       if (data.product_name !== undefined)
         updateData.pro_name = data.product_name;
+      if (data.product_nameEN !== undefined)
+        updateData.pro_nameEN = data.product_nameEN as string;
+      if (data.product_nameSale !== undefined)
+        updateData.pro_nameSale = data.product_nameSale as string;
+      if (data.product_genericname !== undefined)
+        updateData.pro_genericname = data.product_genericname as string;
       if (data.product_barcode !== undefined)
         updateData.pro_barcode1 = data.product_barcode as string;
+      if (data.product_barcode2 !== undefined)
+        updateData.pro_barcode2 = data.product_barcode2 as string;
+      if (data.product_barcode3 !== undefined)
+        updateData.pro_barcode3 = data.product_barcode3 as string;
+      if (data.product_keysearch !== undefined)
+        updateData.pro_keysearch = data.product_keysearch as string;
+      if (data.product_stock !== undefined)
+        updateData.pro_stock = data.product_stock as number;
+      if (data.product_lowest_stock !== undefined)
+        updateData.pro_lowest_stock = data.product_lowest_stock as number;
+      if (data.creditor_code !== undefined)
+        updateData.creditor = data.creditor_code
+          ? ({ creditor_code: data.creditor_code } as CreditorEntity)
+          : null;
       if (data.product_unit1 !== undefined)
         updateData.pro_unit1 = data.product_unit1 as string;
       if (data.product_unit2 !== undefined)

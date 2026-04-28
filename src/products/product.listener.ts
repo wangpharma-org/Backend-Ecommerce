@@ -8,10 +8,16 @@ import { ProductPharmaEntity } from './product-pharma.entity';
 export interface ProductEasyAcc {
   product_code: string;
   product_name?: string;
+  product_nameEN?: string | null;
+  product_nameSale?: string | null;
+  product_genericname?: string | null;
 
   product_image_url?: string[] | null;
   product_barcode?: string | null;
+  product_barcode2?: string | null;
+  product_barcode3?: string | null;
   product_floor?: string | null;
+  product_keysearch?: string | null;
 
   product_unit1?: string | null;
   product_unit2?: string | null;
@@ -24,6 +30,10 @@ export interface ProductEasyAcc {
   product_ratio_1?: number | null;
   product_ratio_2?: number | null;
   product_ratio_3?: number | null;
+
+  product_stock?: number | null;
+  product_lowest_stock?: number | null;
+  creditor_code?: string | null;
 }
 
 @Controller()
@@ -112,10 +122,6 @@ export class ProductListner {
   @MessagePattern('product_update_from_easyacc')
   async handleUpdateFromEasyAcc(@Payload() message: ProductEasyAcc) {
     try {
-      console.log(
-        'Received message in product_update_from_easyacc listener:',
-        message,
-      );
       await this.productServerce.updateProductFromEasyAcc(message);
     } catch (error) {
       this.logger.error(
