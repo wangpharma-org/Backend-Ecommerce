@@ -10,6 +10,8 @@ import { BackendModule } from 'src/backend/backend.module';
 import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
 import { UserEntity } from 'src/users/users.entity';
 import { ElasticsearchModule } from 'src/elasticsearch/elasticsearch.module';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { ElasticsearchModule } from 'src/elasticsearch/elasticsearch.module';
       CreditorEntity,
       LogFileEntity,
       UserEntity,
+      ShoppingCartEntity,
+      DeleteCartEntity,
     ]),
     BackendModule,
     ImagedebugModule,

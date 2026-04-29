@@ -20,6 +20,7 @@ import {
   CompanyDayAnalyticService,
   type CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
+import { DeleteCartEntity } from './delete-cart.enity';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -188,6 +189,8 @@ export class ShoppingCartService {
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    @InjectRepository(DeleteCartEntity)
+    private readonly deleteCartRepo: Repository<DeleteCartEntity>,
   ) {}
 
   private async isL16Member(
@@ -955,7 +958,7 @@ export class ShoppingCartService {
       for (const tier of sortedTiers) {
         const threshold = Number(tier.min_amount);
         let multiplier = 0;
-        
+
         if (tier.is_unit) {
           // เช็คจำนวนหน่วย
           if (!threshold || remainingUnits < threshold) continue;
@@ -2265,6 +2268,42 @@ export class ShoppingCartService {
     } catch (error) {
       console.error('Error getting hotdeal points info:', error);
       return 0;
+    }
+  }
+
+  async softDeleteCartItem(mem_code: string, pro_code: string) {
+    try {
+      const item = await this.deleteCartRepo.findOne({
+        where: { mem_code, product: { pro_code } },
+        relations: { product: true },
+      });
+      if (!item) return;
+      await this.deleteCartRepo.softDelete(item.id);
+    } catch (error) {
+      console.error('Error soft deleting cart item:', error);
+    }
+  }
+
+  async getDeleteCartItem(mem_code: string) {
+    try {
+      return await this.deleteCartRepo.find({
+        where: {
+          mem_code,
+        },
+        relations: {
+          product: true,
+        },
+        select: {
+          product: {
+            pro_code: true,
+            pro_name: true,
+            pro_imgmain: true,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Error getting delete cart items:', error);
+      return [];
     }
   }
 }

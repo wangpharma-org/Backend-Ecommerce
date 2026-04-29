@@ -756,6 +756,7 @@ export class AppController {
         req.user.mem_route,
       );
     const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
+    const dataDeleteCart = await this.shoppingCartService.getDeleteCartItem(memberCode);
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -767,7 +768,20 @@ export class AppController {
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
+      deleteCartItems: dataDeleteCart,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/delete-cart-item/:pro_code')
+  async softDeleteCartItem(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('pro_code') pro_code: string,
+  ) {
+    await this.shoppingCartService.softDeleteCartItem(
+      req.user.mem_code,
+      pro_code,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
