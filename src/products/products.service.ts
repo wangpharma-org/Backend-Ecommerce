@@ -66,7 +66,7 @@ export class ProductsService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
     private readonly elasticsearchService: ElasticsearchService,
-  ) {}
+  ) { }
 
   private async isL16Member(
     mem_code?: string,
@@ -1095,197 +1095,206 @@ export class ProductsService {
 
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
 
-      const esResult = await this.elasticsearchService.search<EsProductSource>({
-        from: data.offset,
-        size: data.limit,
-        track_total_hits: true,
-        sort: [{ _score: { order: 'desc' } }],
-        _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
-        query: {
-          bool: {
-            filter: [
-              { range: { pro_priceA: { gt: 0 } } },
-              { range: { pro_priceB: { gt: 0 } } },
-              { range: { pro_priceC: { gt: 0 } } },
-              ...(data.creditor_codes?.length
-                ? [
-                    {
-                      terms: {
-                        'creditor_code.keyword': data.creditor_codes,
+      let proCodes: string[] = [];
+      let totalCount = 0;
+
+      try {
+        const esResult =
+          await this.elasticsearchService.search<EsProductSource>({
+            from: data.offset,
+            size: data.limit,
+            track_total_hits: true,
+            sort: [{ _score: { order: 'desc' } }],
+            _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
+            query: {
+              bool: {
+                filter: [
+                  { range: { pro_priceA: { gt: 0 } } },
+                  { range: { pro_priceB: { gt: 0 } } },
+                  { range: { pro_priceC: { gt: 0 } } },
+                  ...(data.creditor_codes?.length
+                    ? [
+                      {
+                        terms: {
+                          'creditor_code.keyword': data.creditor_codes,
+                        },
+                      },
+                    ]
+                    : []),
+                ],
+                must_not: [
+                  { prefix: { 'pro_code.keyword': '@MESSAGE' } },
+                  { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
+                  { prefix: { 'pro_code.keyword': '@M' } },
+                  { prefix: { 'pro_name.keyword': 'ฟรี' } },
+                  { prefix: { 'pro_name.keyword': '@' } },
+                  { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
+                  { prefix: { 'pro_name.keyword': 'รีเบท' } },
+                  { prefix: { 'pro_name.keyword': '-' } },
+                  { prefix: { 'pro_name.keyword': '/' } },
+                  { prefix: { 'pro_name.keyword': 'ค่า' } },
+                  { exists: { field: 'invisible_id' } },
+                  ...(isL16
+                    ? []
+                    : [
+                      {
+                        term: {
+                          pro_l16_only: 1,
+                        },
+                      },
+                    ]),
+                ],
+                should: [
+                  {
+                    term: {
+                      'pro_code.keyword': {
+                        value: keyword,
+                        boost: 200,
                       },
                     },
-                  ]
-                : []),
-            ],
-            must_not: [
-              { prefix: { 'pro_code.keyword': '@MESSAGE' } },
-              { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
-              { prefix: { 'pro_code.keyword': '@M' } },
-              { prefix: { 'pro_name.keyword': 'ฟรี' } },
-              { prefix: { 'pro_name.keyword': '@' } },
-              { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
-              { prefix: { 'pro_name.keyword': 'รีเบท' } },
-              { prefix: { 'pro_name.keyword': '-' } },
-              { prefix: { 'pro_name.keyword': '/' } },
-              { prefix: { 'pro_name.keyword': 'ค่า' } },
-              { exists: { field: 'invisible_id' } },
-              ...(isL16
-                ? []
-                : [
-                    {
-                      term: {
-                        pro_l16_only: 1,
+                  },
+                  {
+                    term: {
+                      'pro_barcode1.keyword': {
+                        value: keyword,
+                        boost: 180,
                       },
                     },
-                  ]),
-            ],
-            should: [
-              {
-                term: {
-                  'pro_code.keyword': {
-                    value: keyword,
-                    boost: 200,
                   },
-                },
-              },
-              {
-                term: {
-                  'pro_barcode1.keyword': {
-                    value: keyword,
-                    boost: 180,
+                  {
+                    term: {
+                      'pro_barcode2.keyword': {
+                        value: keyword,
+                        boost: 160,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                term: {
-                  'pro_barcode2.keyword': {
-                    value: keyword,
-                    boost: 160,
+                  {
+                    term: {
+                      'pro_barcode3.keyword': {
+                        value: keyword,
+                        boost: 160,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                term: {
-                  'pro_barcode3.keyword': {
-                    value: keyword,
-                    boost: 160,
+                  {
+                    term: {
+                      'pro_keysearch.keyword': {
+                        value: keyword,
+                        boost: 100,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                term: {
-                  'pro_keysearch.keyword': {
-                    value: keyword,
-                    boost: 100,
+                  {
+                    match_phrase: {
+                      pro_keysearch: {
+                        query: keyword,
+                        boost: 80,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                match_phrase: {
-                  pro_keysearch: {
-                    query: keyword,
-                    boost: 80,
+                  {
+                    match_phrase: {
+                      pro_name: {
+                        query: keyword,
+                        boost: 70,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                match_phrase: {
-                  pro_name: {
-                    query: keyword,
-                    boost: 70,
+                  {
+                    match_phrase: {
+                      pro_nameSale: {
+                        query: keyword,
+                        boost: 70,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                match_phrase: {
-                  pro_nameSale: {
-                    query: keyword,
-                    boost: 70,
+                  {
+                    match: {
+                      pro_keysearch: {
+                        query: keyword,
+                        operator: 'or',
+                        fuzziness: 'AUTO',
+                        boost: 50,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                match: {
-                  pro_keysearch: {
-                    query: keyword,
-                    operator: 'or',
-                    fuzziness: 'AUTO',
-                    boost: 50,
+                  {
+                    multi_match: {
+                      query: keyword,
+                      fields: [
+                        'pro_keysearch^20',
+                        'pro_name^10',
+                        'pro_nameSale^10',
+                        'pro_nameEN^5',
+                        'pro_nameMain^5',
+                        'pro_nameTH^5',
+                        'pro_genericname^5',
+                        'pro_drugmain^3',
+                        'pro_drugmain2^3',
+                        'pro_drugmain3^3',
+                        'pro_drugmain4^3',
+                      ],
+                      type: 'best_fields',
+                      operator: 'or',
+                      fuzziness: 'AUTO',
+                      boost: 30,
+                    },
                   },
-                },
-              },
-              {
-                multi_match: {
-                  query: keyword,
-                  fields: [
-                    'pro_keysearch^20',
-                    'pro_name^10',
-                    'pro_nameSale^10',
-                    'pro_nameEN^5',
-                    'pro_nameMain^5',
-                    'pro_nameTH^5',
-                    'pro_genericname^5',
-                    'pro_drugmain^3',
-                    'pro_drugmain2^3',
-                    'pro_drugmain3^3',
-                    'pro_drugmain4^3',
-                  ],
-                  type: 'best_fields',
-                  operator: 'or',
-                  fuzziness: 'AUTO',
-                  boost: 30,
-                },
-              },
-              {
-                wildcard: {
-                  'pro_keysearch.keyword': {
-                    value: `*${keyword}*`,
-                    case_insensitive: true,
-                    boost: 70,
+                  {
+                    wildcard: {
+                      'pro_keysearch.keyword': {
+                        value: `*${keyword}*`,
+                        case_insensitive: true,
+                        boost: 70,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                wildcard: {
-                  'pro_name.keyword': {
-                    value: `*${keyword}*`,
-                    case_insensitive: true,
-                    boost: 40,
+                  {
+                    wildcard: {
+                      'pro_name.keyword': {
+                        value: `*${keyword}*`,
+                        case_insensitive: true,
+                        boost: 40,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                wildcard: {
-                  'pro_nameSale.keyword': {
-                    value: `*${keyword}*`,
-                    case_insensitive: true,
-                    boost: 40,
+                  {
+                    wildcard: {
+                      'pro_nameSale.keyword': {
+                        value: `*${keyword}*`,
+                        case_insensitive: true,
+                        boost: 40,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                regexp: {
-                  'pro_keysearch.keyword': {
-                    value: `.*${keyword.split('').join('.*')}.*`,
-                    case_insensitive: true,
-                    boost: 20,
+                  {
+                    regexp: {
+                      'pro_keysearch.keyword': {
+                        value: `.*${keyword.split('').join('.*')}.*`,
+                        case_insensitive: true,
+                        boost: 20,
+                      },
+                    },
                   },
-                },
+                ],
+                minimum_should_match: 1,
               },
-            ],
-            minimum_should_match: 1,
-          },
-        },
-      });
+            },
+          });
 
-      const hits = esResult.hits.hits;
+        const hits = esResult?.hits?.hits || [];
+        totalCount =
+          typeof esResult.hits.total === 'number'
+            ? esResult.hits.total
+            : (esResult.hits.total?.value ?? 0);
 
-      const totalCount =
-        typeof esResult.hits.total === 'number'
-          ? esResult.hits.total
-          : (esResult.hits.total?.value ?? 0);
-
-      const proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
+        proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
+      } catch {
+        this.logger.warn(
+          'Elasticsearch search failed, falling back to DB search',
+        );
+      }
 
       const fetchExternalAndEnter = async () => {
         const [external, enter] = await Promise.all([
@@ -1423,8 +1432,8 @@ export class ProductsService {
           pro_point: MoreThan(0),
           ...(isL16
             ? {
-                pro_l16_only: In([0, null]),
-              }
+              pro_l16_only: In([0, null]),
+            }
             : {}),
         },
         select: {
@@ -1484,9 +1493,9 @@ export class ProductsService {
 
         const product:
           | {
-              pro_code: string;
-              units: { unit: string; ratio: number }[];
-            }
+            pro_code: string;
+            units: { unit: string; ratio: number }[];
+          }
           | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
