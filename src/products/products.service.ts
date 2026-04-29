@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, Logger  } from '@nestjs/common';
-import { InjectRepository} from '@nestjs/typeorm';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
@@ -10,9 +10,7 @@ import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
 import axios from 'axios';
 import { UpdateProductImageDto } from './update-product-image.dto';
-import {
-  ElasticsearchService,
-} from 'src/elasticsearch/elasticsearch.service';
+import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 
 interface OrderItem {
   pro_code: string;
@@ -1289,6 +1287,50 @@ export class ProductsService {
 
       const proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
 
+      const fetchExternalAndEnter = async () => {
+        const [external, enter] = await Promise.all([
+          this.searchExternalProducts(data.keyword),
+          this.searchEnterProducts(data.keyword),
+        ]);
+        return { external, enter };
+      };
+
+      let additionalProCodes: string[] = [];
+
+      if (proCodes.length > 0) {
+        try {
+          const timeoutPromise = new Promise<{
+            external: ProductEntity[];
+            enter: string[];
+          }>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), 5000),
+          );
+
+          const result = await Promise.race([
+            fetchExternalAndEnter(),
+            timeoutPromise,
+          ]);
+
+          const externalCodes = result.external.map((p) => p.pro_code);
+          additionalProCodes = [...externalCodes, ...result.enter];
+        } catch {
+          this.logger.warn(
+            'Search external/enter products timed out or failed',
+          );
+        }
+      } else {
+        const result = await fetchExternalAndEnter();
+        const externalCodes = result.external.map((p) => p.pro_code);
+        additionalProCodes = [...externalCodes, ...result.enter];
+      }
+
+      if (additionalProCodes.length > 0) {
+        const uniqueNewCodes = Array.from(new Set(additionalProCodes)).filter(
+          (code) => !proCodes.includes(code),
+        );
+        proCodes.push(...uniqueNewCodes);
+      }
+
       if (proCodes.length === 0) {
         return { products: [], totalCount };
       }
@@ -1381,8 +1423,8 @@ export class ProductsService {
           pro_point: MoreThan(0),
           ...(isL16
             ? {
-              pro_l16_only: In([0, null]),
-            }
+                pro_l16_only: In([0, null]),
+              }
             : {}),
         },
         select: {
@@ -1442,9 +1484,9 @@ export class ProductsService {
 
         const product:
           | {
-            pro_code: string;
-            units: { unit: string; ratio: number }[];
-          }
+              pro_code: string;
+              units: { unit: string; ratio: number }[];
+            }
           | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
@@ -2142,10 +2184,12 @@ export class ProductsService {
         return [];
       }
 
-      const url = 'http://www.wangpharma.com/API/appV3/search_enter.php';
-      const response = await axios.get<ApiResponse>(url, {
-        params: { search },
-      });
+      const response = await axios.get<ApiResponse>(
+        `${process.env.OLD_WEBSITE_URL}/API/appV3/search_enter.php`,
+        {
+          params: { search },
+        },
+      );
 
       if (
         response.data?.status !== 'success' ||
