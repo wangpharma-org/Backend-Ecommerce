@@ -1324,8 +1324,13 @@ export class ProductsService {
           const timeoutPromise = new Promise<{
             external: ProductEntity[];
             enter: string[];
-          }>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), 5000),
+          }>((resolve) =>
+            setTimeout(() => {
+              resolve({
+                external: [],
+                enter: [],
+              });
+            }, 5000),
           );
 
           const result = await Promise.race([
