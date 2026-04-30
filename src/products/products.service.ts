@@ -2299,14 +2299,6 @@ export class ProductsService {
       if (data.product_ratio_3 !== undefined)
         updateData.pro_ratio3 = data.product_ratio_3 as number;
 
-      if (data.product_image_url != null) {
-        const [img1, img2, img3, img4, img5] = data.product_image_url;
-        if (img1 !== undefined) updateData.pro_imgmain = img1;
-        if (img2 !== undefined) updateData.pro_img2 = img2;
-        if (img3 !== undefined) updateData.pro_img3 = img3;
-        if (img4 !== undefined) updateData.pro_img4 = img4;
-        if (img5 !== undefined) updateData.pro_img5 = img5;
-      }
 
       if (Object.keys(updateData).length === 0) return;
 

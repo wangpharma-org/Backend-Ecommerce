@@ -12,7 +12,6 @@ export interface ProductEasyAcc {
   product_nameSale?: string | null;
   product_genericname?: string | null;
 
-  product_image_url?: string[] | null;
   product_barcode?: string | null;
   product_barcode2?: string | null;
   product_barcode3?: string | null;
