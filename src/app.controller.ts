@@ -189,7 +189,6 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/user-data/update')
   async updateUserData(@Body() data: UserEntity) {
-    //this.logger.log(data);
     return this.authService.updateUserData(data);
   }
 
@@ -236,7 +235,6 @@ export class AppController {
     @UploadedFile() file: Express.Multer.File,
     @Body() data: { mem_code: string; type: string; old_url: string },
   ) {
-    //this.logger.log(data);
     return await this.authService.UploadImage(
       file,
       data.type,
@@ -269,7 +267,6 @@ export class AppController {
     @Body() data: { pro_code: string; month: number }[],
   ) {
     const permission = req.user.permission;
-    //this.logger.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadPO(data);
     } else {
@@ -284,7 +281,6 @@ export class AppController {
     @Body() data: { productCode: string; quantity: number }[],
   ) {
     const permission = req.user.permission;
-    //this.logger.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadProductFlashSale(data);
     } else {
@@ -325,8 +321,6 @@ export class AppController {
   @Get('/ecom/products/flashsale-procode')
   async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
-    //this.logger.log('permission', permission);
-    //this.logger.log(req.user);
     if (permission === true) {
       return await this.productsService.listProcodeFlashSale();
     } else {
@@ -341,7 +335,6 @@ export class AppController {
     @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
-    //this.logger.log('get data favorite');
     const memberCode = req.user.mem_code;
     return await this.favoriteService.getListFavorite(
       memberCode,
@@ -374,7 +367,6 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/add')
   async addToFavorite(@Body() data: { mem_code: string; pro_code: string }) {
-    //this.logger.log(data);
     return await this.favoriteService.addToFavorite(data);
   }
 
@@ -384,7 +376,6 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
   ) {
-    //this.logger.log(data);
     return await this.favoriteService.deleteFavorite({
       ...data,
       mem_code: req.user.mem_code,
@@ -461,7 +452,6 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body() data: { keyword: string; pro_code: string },
   ) {
-    //this.logger.log('data in controller:', data);
     const mem_code = req.user.mem_code;
     return await this.productsService.productForYou({
       ...data,
@@ -567,7 +557,6 @@ export class AppController {
   //   @Body() data: { productCode: string; quantity: number }[],
   // ) {
   //   const permission = req.user.permission;
-  //   //this.logger.log('permission', permission);
   //   if (permission === true) {
   //     return await this.productsService.uploadProductFlashSale(data);
   //   } else {
@@ -696,7 +685,6 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    //this.logger.log('Delete', data);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.handleDeleteCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -722,7 +710,6 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
-    //this.logger.log(data);
     this.logger.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
@@ -756,7 +743,8 @@ export class AppController {
         req.user.mem_route,
       );
     const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
-    const dataDeleteCart = await this.shoppingCartService.getDeleteCartItem(memberCode);
+    const dataDeleteCart =
+      await this.shoppingCartService.getDeleteCartItem(memberCode);
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -1254,7 +1242,6 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
-    //this.logger.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -1290,10 +1277,6 @@ export class AppController {
     },
   ) {
     try {
-      // //this.logger.log('Received body:', {
-      //   group: body.group,
-      // });
-      //this.logger.log(body.filename);
       return this.productsService.updateProductFromBackOffice({
         group: body.group,
         filename: body.filename,
@@ -1318,7 +1301,6 @@ export class AppController {
       emp_id_ref?: string;
     }[],
   ) {
-    //this.logger.log(data);
     return this.authService.upsertUser(data);
   }
 
@@ -1336,7 +1318,6 @@ export class AppController {
     },
   ) {
     try {
-      //this.logger.log('Received body for stock update:', body);
       return await this.productsService.updateStock(body);
     } catch (error) {
       this.logger.error('Error updating stock from back office:', error);
@@ -1384,7 +1365,6 @@ export class AppController {
       pro_code: string;
     }[],
   ) {
-    //this.logger.log(data);
     return this.lotService.addLots(data);
   }
 
@@ -1400,7 +1380,6 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    //this.logger.log(data);
     return await this.flashsaleService.addFlashSale(data);
   }
 
@@ -1414,7 +1393,6 @@ export class AppController {
       limit: number;
     },
   ) {
-    //this.logger.log(data);
     return await this.flashsaleService.addProductToFlashSale(data);
   }
 
@@ -1465,7 +1443,6 @@ export class AppController {
   async changeStatusDailyFlashsale(
     @Body() data: { id: number; is_active: boolean },
   ) {
-    //this.logger.log(data);
     return await this.flashsaleService.changeStatus({
       promotion_id: data.id,
       is_active: data.is_active,
@@ -1505,7 +1482,6 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    //this.logger.log(data);
     return await this.flashsaleService.EditFlashSale(data);
   }
 
@@ -1519,7 +1495,6 @@ export class AppController {
       creditor_code: string;
     },
   ) {
-    //this.logger.log(data);
     return await this.invisibleService.addInvisibleTopic(data);
   }
 
@@ -1552,7 +1527,6 @@ export class AppController {
       pro_code: string;
     },
   ) {
-    //this.logger.log(data);
     return await this.invisibleService.updateProductInvisible(data);
   }
 
@@ -1573,7 +1547,6 @@ export class AppController {
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/edit-address/:addressId')
   async editAddress(@Param('addressId') addressId: number) {
-    //this.logger.log(addressId);
     return this.editAddressService.getAddressById(addressId);
   }
 
@@ -1598,14 +1571,12 @@ export class AppController {
       mem_code: string;
     },
   ) {
-    //this.logger.log(addressData);
     return this.editAddressService.createAddress(addressData);
   }
 
   // @UseGuards(JwtAuthGuard)
   @Put('/ecom/address/update-address/:id')
   async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
-    //this.logger.log(address);
     return this.editAddressService.updateAddress(id, address);
   }
 
@@ -1624,7 +1595,6 @@ export class AppController {
       show: boolean;
     },
   ) {
-    //this.logger.log(body);
     return this.modalContentService.SaveModalContent(body);
   }
 
@@ -1812,7 +1782,6 @@ export class AppController {
       otp: string;
     },
   ): Promise<{ success: boolean; message: string }> {
-    //this.logger.log(body);
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
@@ -1942,10 +1911,8 @@ export class AppController {
     @Body()
     data: ImportDataRequestInvoice[],
   ): Promise<{ message: string }> {
-    //this.logger.log('Received data for reduction invoice import:', data);
     try {
       const importedInvoices = await this.debtorService.importDataInvoice(data);
-      // //this.logger.log('Imported invoice:', importedInvoices);
       return {
         message: `Successfully imported ${importedInvoices?.length} invoices`,
       };
@@ -1961,10 +1928,8 @@ export class AppController {
     @Body()
     data: ImportDataRequestRT[],
   ): Promise<{ message: string }> {
-    //this.logger.log('Received data for reduction RT import:', data);
     try {
       const importedRTs = await this.debtorService.importDataRT(data);
-      // //this.logger.log('Imported RT:', importedRTs);
       return {
         message: `Successfully imported ${importedRTs?.length} RT entries`,
       };
@@ -1997,9 +1962,7 @@ export class AppController {
     @Param('rt') rt: string,
   ): Promise<ReductionRT | string> {
     try {
-      //this.logger.log('Searching for RT:', rt);
       const mem_code = req.user.mem_code;
-      //this.logger.log('Member code from token:', mem_code);
       const result = await this.debtorService.findReductionRT(mem_code, rt);
       return result;
     } catch (error) {
