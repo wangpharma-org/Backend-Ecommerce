@@ -10,7 +10,7 @@ import { BannerHotdealEntity } from './hotdeal-banner.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([HotdealEntity, UserEntity, BannerHotdealEntity]),
-    ProductsModule,
+    forwardRef(() => ProductsModule),
     forwardRef(() => ShoppingCartModule),
   ],
   exports: [HotdealService],

@@ -183,6 +183,7 @@ export class ShoppingCartService {
     private readonly promotionRepo: Repository<PromotionEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,

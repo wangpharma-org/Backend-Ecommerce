@@ -26,6 +26,7 @@ export class HotdealService {
     private readonly hotdealRepo: Repository<HotdealEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @Inject(forwardRef(() => ProductsService))
     private readonly productService: ProductsService,
     @Inject(forwardRef(() => ShoppingCartService))
     private readonly shoppingCartService: ShoppingCartService,

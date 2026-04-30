@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
@@ -12,6 +18,7 @@ import axios from 'axios';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ProductEasyAcc } from './product.listener';
+import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
 
@@ -73,6 +80,8 @@ export class ProductsService {
     private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
     @InjectRepository(DeleteCartEntity)
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
+    @Inject(forwardRef(() => ShoppingCartService))
+    private readonly shoppingCartService: ShoppingCartService,
   ) {}
 
   private async isL16Member(
@@ -2330,6 +2339,12 @@ export class ProductsService {
       });
       await this.deleteCartRepo.save(cartItem);
       await this.shoppingCartRepo.delete({ pro_code });
+      const member = await this.userRepo.findOne({ where: { mem_code } });
+      await this.shoppingCartService.checkPromotionReward(
+        mem_code,
+        member?.mem_price ?? 'C',
+      );
+      await this.shoppingCartService.checkHotdealByProCode(mem_code, pro_code);
     } catch (error) {
       console.log(error);
       throw new Error('Error in createDeleteCartByProcode');

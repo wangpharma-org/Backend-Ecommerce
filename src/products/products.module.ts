@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ProductsService } from './products.service';
+import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
@@ -27,6 +28,7 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
     BackendModule,
     ImagedebugModule,
     ElasticsearchModule,
+    forwardRef(() => ShoppingCartModule),
   ],
   providers: [ProductsService],
   controllers: [ProductListner],
