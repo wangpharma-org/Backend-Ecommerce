@@ -1319,43 +1319,38 @@ export class ProductsService {
 
       let additionalProCodes: string[] = [];
 
-      if (proCodes.length > 0) {
+      if (totalCount === 0) {
         try {
-          const timeoutPromise = new Promise<{
-            external: ProductEntity[];
-            enter: string[];
-          }>((resolve) =>
-            setTimeout(() => {
-              resolve({
-                external: [],
-                enter: [],
-              });
-            }, 5000),
-          );
-
-          const result = await Promise.race([
-            fetchExternalAndEnter(),
-            timeoutPromise,
-          ]);
-
+          const result = await fetchExternalAndEnter();
           const externalCodes = result.external.map((p) => p.pro_code);
           additionalProCodes = [...externalCodes, ...result.enter];
         } catch {
-          this.logger.warn(
-            'Search external/enter products timed out or failed',
-          );
+          this.logger.warn('Search external/enter products failed');
         }
-      } else {
-        const result = await fetchExternalAndEnter();
-        const externalCodes = result.external.map((p) => p.pro_code);
-        additionalProCodes = [...externalCodes, ...result.enter];
       }
 
       if (additionalProCodes.length > 0) {
         const uniqueNewCodes = Array.from(new Set(additionalProCodes)).filter(
           (code) => !proCodes.includes(code),
         );
-        proCodes.push(...uniqueNewCodes);
+
+        const esTotalCount = totalCount;
+        totalCount += uniqueNewCodes.length;
+
+        const localOffset = Math.max(0, data.offset - esTotalCount);
+        const esConsumed = Math.max(
+          0,
+          Math.min(data.limit, esTotalCount - data.offset),
+        );
+        const neededFromNewCodes = data.limit - esConsumed;
+
+        if (neededFromNewCodes > 0) {
+          const paginatedNewCodes = uniqueNewCodes.slice(
+            localOffset,
+            localOffset + neededFromNewCodes,
+          );
+          proCodes.push(...paginatedNewCodes);
+        }
       }
 
       if (proCodes.length === 0) {
