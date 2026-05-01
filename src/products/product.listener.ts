@@ -33,6 +33,7 @@ export interface ProductEasyAcc {
   product_stock?: number | null;
   product_lowest_stock?: number | null;
   creditor_code?: string | null;
+  pro_category?: number | null;
 }
 
 @Controller()

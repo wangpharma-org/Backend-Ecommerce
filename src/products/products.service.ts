@@ -2307,7 +2307,8 @@ export class ProductsService {
         updateData.pro_ratio2 = data.product_ratio_2 as number;
       if (data.product_ratio_3 !== undefined)
         updateData.pro_ratio3 = data.product_ratio_3 as number;
-
+      if (data.pro_category !== undefined)
+        updateData.pro_category = data.pro_category as number;
 
       if (Object.keys(updateData).length === 0) return;
 
