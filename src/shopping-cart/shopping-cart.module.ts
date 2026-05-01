@@ -23,7 +23,7 @@ import { DeleteCartEntity } from './delete-cart.enity';
       ProductEntity,
       DeleteCartEntity,
     ]),
-    ProductsModule,
+    forwardRef(() => ProductsModule),
     forwardRef(() => HotdealModule),
     CompanyDayAnalyticModule,
   ],
