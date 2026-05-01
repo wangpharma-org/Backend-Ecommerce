@@ -730,26 +730,4 @@ export class HotdealService {
       order: { pro1_amount: 'ASC' },
     });
   }
-
-  async getHotdealByProCodeSingle(pro_code: string): Promise<HotdealEntity | null> {
-    return await this.hotdealRepo.findOne({
-      where: { product: { pro_code } },
-      relations: ['product', 'product2'],
-      select: {
-        pro1_amount: true,
-        pro1_unit: true,
-        pro2_amount: true,
-        pro2_unit: true,
-        product: {
-          pro_code: true,
-          pro_name: true,
-        },
-        product2: {
-          pro_code: true,
-          pro_name: true,
-        },
-      },
-      order: { pro1_amount: 'ASC' },
-    });
-  }
 }
