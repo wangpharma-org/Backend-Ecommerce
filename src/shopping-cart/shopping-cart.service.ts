@@ -21,6 +21,7 @@ import {
   type CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
+import { DeleteCartEntity } from './delete-cart.enity';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -184,12 +185,15 @@ export class ShoppingCartService {
     private readonly promotionRepo: Repository<PromotionEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => HotdealService))
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    @InjectRepository(DeleteCartEntity)
+    private readonly deleteCartRepo: Repository<DeleteCartEntity>,
   ) {}
 
   private async isL16Member(
@@ -787,45 +791,78 @@ export class ShoppingCartService {
 
     const usedSpcIds = new Set<number>();
 
+    console.log('Condition-based tiers to evaluate:', conditionBasedTiers);
+
+    // คำนวณโปรโมชั่นแบบ cascade (จากมากไปน้อย)
+    const processedTierIds = new Set<number>();
+    const consumedItems = new Map<number, number>(); // spc_id -> consumed value
+
     for (const tier of conditionBasedTiers) {
-      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
       const threshold = Number(tier.min_amount);
       if (!threshold) continue;
 
-      const eligibleItemsForTier = baseEligibleCart.filter(
-        (line) =>
-          !usedSpcIds.has(line.spc_id) && conditionCodes.has(line.pro_code),
+      const conditionCodes = promoConditionMap.get(tier.tier_id)!;
+      const eligibleItemsForTier = baseEligibleCart.filter((line) =>
+        conditionCodes.has(line.pro_code),
       );
 
-      const tierValue = eligibleItemsForTier.reduce((sum, line) => {
-        const p = line.product;
-        const ratio =
-          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-          1;
+      // เช็คว่าเป็นการเช็คจำนวนหน่วย (is_unit = true) หรือเช็คยอดเงิน (is_unit = false)
+      let tierValue: number;
 
-        const totalUnitsSameCode = perProductTotalUnits.get(line.pro_code) || 0;
+      if (tier.is_unit) {
+        // เช็คจำนวนหน่วย
+        tierValue = eligibleItemsForTier.reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+          return sum + Number(line.spc_amount) * Number(ratio);
+        }, 0);
+      } else {
+        // เช็คยอดเงิน (ระบบเดิม)
+        tierValue = eligibleItemsForTier.reduce((sum, line) => {
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
 
-        const isPromo =
-          p.pro_promotion_month === promoMonth &&
-          totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+          const totalUnitsSameCode =
+            perProductTotalUnits.get(line.pro_code) || 0;
 
-        if (isPromo) {
-          return (
-            sum + Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
-          );
-        } else {
-          const price =
-            priceOption === 'A'
-              ? Number(p.pro_priceA)
-              : priceOption === 'B'
-                ? Number(p.pro_priceB)
-                : Number(p.pro_priceC);
-          return sum + Number(line.spc_amount) * price * Number(ratio);
-        }
-      }, 0);
+          const isPromo =
+            p.pro_promotion_month === promoMonth &&
+            totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
 
+          if (isPromo) {
+            return (
+              sum +
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
+            );
+          } else {
+            const price =
+              priceOption === 'A'
+                ? Number(p.pro_priceA)
+                : priceOption === 'B'
+                  ? Number(p.pro_priceB)
+                  : Number(p.pro_priceC);
+            return sum + Number(line.spc_amount) * price * Number(ratio);
+          }
+        }, 0);
+      }
+
+      console.log(
+        'Tier:',
+        tier.tier_id,
+        tier.tier_name,
+        'Available tier value:',
+        tierValue,
+        'Threshold:',
+        threshold,
+      );
       if (tierValue >= threshold) {
         const multiplier = Math.floor(tierValue / threshold);
         if (multiplier <= 0) continue;
@@ -838,6 +875,50 @@ export class ShoppingCartService {
           tier: tier.tier_name,
           min_amount: threshold,
         });
+
+        // คำนวณส่วนที่ใช้ไปสำหรับแต่ละ item และบันทึกลง consumedItems
+        const totalConsumedValue = multiplier * threshold;
+        let remainingConsume = totalConsumedValue;
+
+        for (const line of eligibleItemsForTier) {
+          if (remainingConsume <= 0) break;
+
+          const p = line.product;
+          const ratio =
+            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+            1;
+
+          const totalUnitsSameCode =
+            perProductTotalUnits.get(line.pro_code) || 0;
+          const isPromo =
+            p.pro_promotion_month === promoMonth &&
+            totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+
+          let lineValue;
+          if (isPromo) {
+            lineValue =
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio);
+          } else {
+            const price =
+              priceOption === 'A'
+                ? Number(p.pro_priceA)
+                : priceOption === 'B'
+                  ? Number(p.pro_priceB)
+                  : Number(p.pro_priceC);
+            lineValue = Number(line.spc_amount) * price * Number(ratio);
+          }
+
+          const alreadyConsumed = consumedItems.get(line.spc_id) || 0;
+          const availableValue = Math.max(0, lineValue - alreadyConsumed);
+          const toConsume = Math.min(availableValue, remainingConsume);
+
+          if (toConsume > 0) {
+            consumedItems.set(line.spc_id, alreadyConsumed + toConsume);
+            remainingConsume -= toConsume;
+          }
+        }
 
         // Mark items as used and tag them
         for (const line of eligibleItemsForTier) {
@@ -873,9 +954,11 @@ export class ShoppingCartService {
           }
         }
       }
+
+      processedTierIds.add(tier.tier_id);
     }
 
-    // 9) คำนวณยอดรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
+    // 9) คำนวณยอดรวม/จำนวนหน่วยรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
     const remainingEligibleCart = baseEligibleCart.filter(
       (line) => !usedSpcIds.has(line.spc_id),
     );
@@ -914,6 +997,20 @@ export class ShoppingCartService {
       0,
     );
 
+    // คำนวณจำนวนหน่วยรวมสำหรับสินค้าที่เหลือ (สำหรับโปรแบบ is_unit = true)
+    const totalUnitsForUnusedItems = remainingEligibleCart.reduce(
+      (sum, line) => {
+        const p = line.product;
+        const ratio =
+          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+          1;
+        return sum + Number(line.spc_amount) * Number(ratio);
+      },
+      0,
+    );
+
     // 10) โปรโมชั่นที่ all_products = true (คำนวณจากสินค้าที่เหลือ)
     const allProductTiers = await this.tierRepo
       .createQueryBuilder('tier')
@@ -932,15 +1029,25 @@ export class ShoppingCartService {
       );
 
       let remainingBudget = totalSumPriceForUnusedItems;
+      let remainingUnits = totalUnitsForUnusedItems;
 
       for (const tier of sortedTiers) {
         const threshold = Number(tier.min_amount);
-        if (!threshold || remainingBudget < threshold) continue;
+        let multiplier = 0;
 
-        const multiplier = Math.floor(remainingBudget / threshold);
-        if (multiplier <= 0) continue;
-
-        remainingBudget -= multiplier * threshold;
+        if (tier.is_unit) {
+          // เช็คจำนวนหน่วย
+          if (!threshold || remainingUnits < threshold) continue;
+          multiplier = Math.floor(remainingUnits / threshold);
+          if (multiplier <= 0) continue;
+          remainingUnits -= multiplier * threshold;
+        } else {
+          // เช็คยอดเงิน (ระบบเดิม)
+          if (!threshold || remainingBudget < threshold) continue;
+          multiplier = Math.floor(remainingBudget / threshold);
+          if (multiplier <= 0) continue;
+          remainingBudget -= multiplier * threshold;
+        }
 
         selectedTierContexts.push({
           promo_id: tier.promotion.promo_id,
@@ -2170,6 +2277,42 @@ export class ShoppingCartService {
     } catch (error) {
       this.logger.error('Error getting hotdeal points info:', error);
       return 0;
+    }
+  }
+
+  async softDeleteCartItem(mem_code: string, pro_code: string) {
+    try {
+      const item = await this.deleteCartRepo.findOne({
+        where: { mem_code, product: { pro_code } },
+        relations: { product: true },
+      });
+      if (!item) return;
+      await this.deleteCartRepo.softDelete(item.id);
+    } catch (error) {
+      console.error('Error soft deleting cart item:', error);
+    }
+  }
+
+  async getDeleteCartItem(mem_code: string) {
+    try {
+      return await this.deleteCartRepo.find({
+        where: {
+          mem_code,
+        },
+        relations: {
+          product: true,
+        },
+        select: {
+          product: {
+            pro_code: true,
+            pro_name: true,
+            pro_imgmain: true,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Error getting delete cart items:', error);
+      return [];
     }
   }
 }

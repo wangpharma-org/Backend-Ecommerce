@@ -907,6 +907,13 @@ export class ShoppingOrderService {
         return { status: true };
       }
 
+      const findPromotion =
+        await this.promotionService.findPromotionTypeUnitBased(pro_code);
+
+      if (findPromotion) {
+        return { status: false, pro_code_in_promotion: findPromotion };
+      }
+
       const minAmount = await this.promotionService.getTierPrice(
         dataOrder?.promotion_id,
         dataOrder?.tier_id,

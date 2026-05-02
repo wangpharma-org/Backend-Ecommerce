@@ -3,28 +3,9 @@ import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ChangePassword } from './change-password.entity';
 import { UsersService } from 'src/users/users.service';
-import { HttpService } from '@nestjs/axios'; // เพิ่ม HttpService
+import { MailerService } from '@nestjs-modules/mailer';
 import * as bcrypt from 'bcrypt';
-import { SALT_ROUNDS } from '../constants/app.constants'; // เปิดใช้แล้ว
-
-interface MailgunMessageData {
-  from: string;
-  to: string[];
-  subject: string;
-  text: string;
-  html: string;
-}
-
-interface MailgunMessages {
-  create(domain: string, data: MailgunMessageData): Promise<any>;
-}
-
-interface MailgunClient {
-  messages: MailgunMessages;
-}
-
-import Mailgun from 'mailgun.js';
-import * as formData from 'form-data';
+import { SALT_ROUNDS } from '../constants/app.constants';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -34,36 +15,14 @@ export class ChangePasswordService {
   private OTP_TTL_SECONDS = 15 * 60; // 15 นาที
   private REQUEST_COOLDOWN_SECONDS = 5 * 60; // ขอซ้ำได้ห่างกันอย่างน้อย 30 วินาที
 
-  private MG_DOMAIN: string;
   private FROM_EMAIL = 'Wang System <no-reply@yourdomain.com>';
-  private mailgun: MailgunClient;
+
   constructor(
     @InjectRepository(ChangePassword)
     private ChangePasswordRepo: Repository<ChangePassword>,
     private readonly usersService: UsersService,
-    private readonly httpService: HttpService, // เพิ่ม HttpService
-  ) {
-    const mg = new Mailgun(formData);
-    const apiKey = process.env.MAILGUN_API_KEY;
-    // Bypass Mailgun in dev mode if no valid API key
-    if (apiKey && apiKey !== 'dummy_key_for_dev') {
-      this.mailgun = mg.client({
-        username: 'api',
-        key: apiKey,
-      }) as MailgunClient;
-    } else {
-      // Mock mailgun client for dev
-      this.mailgun = {
-        messages: {
-          create: async () => {
-            console.log('[DEV] Mailgun bypassed - email not sent');
-            return { id: 'dev-mock', message: 'Queued (dev mode)' };
-          },
-        },
-      } as MailgunClient;
-    }
-    this.MG_DOMAIN = process.env.MAILGUN_DOMAIN || '';
-  }
+    private readonly mailerService: MailerService,
+  ) { }
 
   async CheckMember(
     mem_code: string,
@@ -111,11 +70,6 @@ export class ChangePasswordService {
     let emailSent = false;
     try {
       emailSent = await this.sendEmailCode(OTP, user.mem_email, RefKey);
-      if (emailSent) {
-        console.log('OTP email sent to', user.mem_email);
-      } else {
-        console.error('Failed to send OTP email to', user.mem_email);
-      }
     } catch (error) {
       console.error('Error sending OTP email:', error);
       emailSent = false;
@@ -158,105 +112,124 @@ export class ChangePasswordService {
     refKey: string,
   ): Promise<boolean> {
     try {
-      console.log('Sending email to:', email);
       if (!code || !email || !refKey) {
         throw new Error('code, email และ refKey ต้องถูกส่งมาด้วย');
-      }
-      console.log('Using Mailgun domain:', this.MG_DOMAIN);
-      if (!this.MG_DOMAIN) {
-        throw new Error('Mailgun domain is not configured');
       }
       const subject = 'Your verification code';
       const text = `Your code is: ${code}`;
       const html = `
-     <div style="margin:0; padding:0; background:#f4f6f8; font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; line-height:1.6;">
+     <div style="margin:0; padding:20px; background:linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); font-family:'Segoe UI', Arial, 'Helvetica Neue', Helvetica, sans-serif; line-height:1.6; min-height:100vh;">
   <!-- Header -->
-  <div style="background:#cc4d4df3; padding:20px 24px; text-align:center; border-top-left-radius:8px; border-top-right-radius:8px;">
-    <img src="https://th.m.wikipedia.org/wiki/%E0%B9%84%E0%B8%9F%E0%B8%A5%E0%B9%8C:LEGO_logo.svg" 
+  <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding:30px 24px; text-align:center; border-radius:12px 12px 0 0; box-shadow:0 4px 20px rgba(102, 126, 234, 0.15);">
+    <img src="https://wang-storage.sgp1.digitaloceanspaces.com/1776330231507-7dhyxv-LOGO.svg" 
        alt="Wang Pharmaceutical" 
-       height="28" 
-       style="display:inline-block; vertical-align:middle;">
+       height="32" 
+       style="display:inline-block; vertical-align:middle; filter:brightness(0) invert(1);">
   </div>
 
   <!-- Card -->
-  <div style="background:#ffffff; padding:32px 28px; border-bottom-left-radius:8px; border-bottom-right-radius:8px; 
-              box-shadow:0 1px 3px #cc4d4df3; max-width:600px; margin:0 auto;">
+  <div style="background:#ffffff; padding:40px 32px; border-radius:0 0 12px 12px; 
+              box-shadow:0 8px 32px rgba(0, 0, 0, 0.1); max-width:600px; margin:0 auto; position:relative;">
     
-    <div style="margin:0 0 16px; font-size:20px; line-height:28px; color:#111827; text-align:center; font-weight:bold;">
-      รหัสยืนยัน (Verification code)
+    <div style="margin:0 0 24px; font-size:24px; line-height:32px; color:#2d3748; text-align:center; font-weight:600;">
+      รหัสยืนยันตัวตน
+    </div>
+    
+    <div style="text-align:center; margin:0 0 8px; font-size:14px; color:#718096;">
+      กรุณาใช้รหัสด้านล่างเพื่อยืนยันตัวตนของคุณ
     </div>
 
-    <div style="text-align:center; margin:16px 0 6px;">
-      <div style="display:inline-block; font-weight:700; font-size:42px; line-height:52px; letter-spacing:3px; color:#111827;">
+    <div style="text-align:center; margin:32px 0 24px;">
+      <div style="display:inline-block; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                  color:#ffffff; font-weight:700; font-size:48px; line-height:64px; 
+                  letter-spacing:8px; padding:20px 32px; border-radius:16px; 
+                  box-shadow:0 8px 24px rgba(102, 126, 234, 0.25); 
+                  font-family:'Courier New', monospace; position:relative;">
         ${code}
+        <div style="position:absolute; top:-8px; right:-8px; width:16px; height:16px; 
+                    background:#10b981; border-radius:50%; box-shadow:0 2px 4px rgba(16, 185, 129, 0.3);"></div>
       </div>
     </div>
 
-    <div style="text-align:center; margin:12px 0 6px;">
-      <div style="font-size:12px; line-height:18px; color:#6b7280; margin-bottom:4px;">
-        หมายเลขอ้างอิง (Reference Key)
+    <div style="text-align:center; margin:16px 0 24px;">
+      <div style="font-size:13px; line-height:20px; color:#6b7280; margin-bottom:8px; font-weight:500;">
+        หมายเลขอ้างอิง
       </div>
-      <div style="display:inline-block; font-weight:600; font-size:16px; line-height:24px; letter-spacing:1px; color:#374151; 
-        background:#f9fafb; padding:8px 16px;">
+      <div style="display:inline-block; font-weight:600; font-size:18px; line-height:28px; 
+                  letter-spacing:2px; color:#2d3748; background:linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); 
+                  padding:12px 24px; border-radius:12px; border:2px solid #e2e8f0; 
+                  font-family:'Courier New', monospace; box-shadow:0 2px 8px rgba(0, 0, 0, 0.05);">
         ${refKey}
       </div>
     </div>
 
-    <div style="margin:6px 0 20px; font-size:12px; line-height:18px; color:#6b7280; text-align:center;">
-      รหัสนี้จะหมดอายุภายใน 15 นาทีหลังจากส่ง
+    <div style="text-align:center; margin:16px 0 32px;">
+      <div style="display:inline-block; background:#fef5e7; color:#d69e2e; font-size:14px; line-height:20px; 
+                  font-weight:500; padding:12px 20px; border-radius:25px; 
+                  border-left:4px solid #f6ad55; box-shadow:0 2px 8px rgba(246, 173, 85, 0.15);">
+        รหัสนี้จะหมดอายุใน <strong>15 นาที</strong>
+      </div>
     </div>
 
-    <div style="border-top:1px solid #e5e7eb; margin:20px 0;"></div>
+    <div style="border-top:2px solid #e2e8f0; margin:32px 0; opacity:0.6;"></div>
 
-    <div style="margin:0 0 10px; font-size:14px; line-height:22px; color:#374151;">
-      บริษัท วังเภสัชฟาร์มาซูติคอล จำกัด จะไม่ส่งอีเมลเพื่อขอให้คุณเปิดเผยรหัสผ่าน หมายเลขบัตรเครดิต 
-      หรือข้อมูลบัญชีธนาคารของคุณ หากคุณได้รับอีเมลที่น่าสงสัยพร้อมลิงก์ให้กดเพื่ออัปเดตข้อมูลบัญชี 
-      กรุณาอย่าคลิกลิงก์นั้น
+    <div style="background:#f8fafc; border-radius:12px; padding:20px; margin:0 0 16px; border-left:4px solid #4299e1;">
+      <div style="display:flex; align-items:flex-start; gap:12px;">
+        <div style="font-size:15px; line-height:24px; color:#2d3748; font-weight:500;">
+          <strong>ข้อควรระวัง:</strong> เราจะไม่ขอรหัสผ่าน หมายเลขบัตรเครดิต หรือข้อมูลส่วนตัวผ่านอีเมล 
+          หากพบอีเมลน่าสงสัย โปรดอย่าคลิกลิงก์ใดๆ
+        </div>
+      </div>
     </div>
 
-    <div style="margin:0 0 10px; font-size:14px; line-height:22px; color:#374151;">
-      หากคุณไม่ได้ร้องขอรหัสยืนยันนี้ โปรดเพิกเฉยอีเมลฉบับนี้ หรือแจ้งให้เราทราบที่ 
-      <a href="mailto:{{SUPPORT_EMAIL}}" style="color:#2563eb; text-decoration:none;">{{SUPPORT_EMAIL}}</a>
-      เพื่อให้เราตรวจสอบ
+    <div style="background:#f0fff4; border-radius:12px; padding:20px; margin:0 0 16px; border-left:4px solid #10b981;">
+      <div style="display:flex; align-items:flex-start; gap:12px;">
+        <div style="font-size:15px; line-height:24px; color:#2d3748;">
+          หากคุณไม่ได้ร้องขอรหัสนี้ สามารถเพิกเฉยอีเมลนี้ได้ หรือติดต่อเราที่ 
+          <a href="mailto:{{SUPPORT_EMAIL}}" style="color:#10b981; text-decoration:none; font-weight:600; 
+             border-bottom:1px solid #10b981;">{{SUPPORT_EMAIL}}</a>
+        </div>
+      </div>
     </div>
 
-    <div style="margin:18px 0 0; font-size:12px; line-height:18px; color:#6b7280;">
-      หากปุ่ม/รหัสไม่แสดงอย่างถูกต้อง กรุณาคัดลอกและวางรหัสด้านบนในหน้ายืนยันตัวตนของ บริษัท วังเภสัชฟาร์มาซูติคอล จำกัด
+    <div style="text-align:center; margin:24px 0 0; font-size:13px; line-height:20px; color:#718096; 
+                background:#fafafa; padding:16px; border-radius:8px; font-style:italic;">
+      <strong>เคล็ดลับ:</strong> หากรหัสไม่แสดงชัดเจน สามารถคัดลอกรหัส <strong>${code}</strong> 
+      ไปวางในหน้ายืนยันตัวตนได้เลย 
     </div>
   </div>
 
   <!-- Footer -->
-  <div style="padding:16px 12px 40px; text-align:center; color:#9ca3af; font-size:11px; line-height:18px;">
-    บริษัท วังเภสัชฟาร์มาซูติคอล จำกัด เป็นเครื่องหมายการค้าจดทะเบียนของบริษัทเจ้าของแบรนด์ (ถ้ามี).<br>
-    ที่อยู่: เลขที่ 23 ซ.พัฒโน ถ.อนุสรณ์อาจารย์ทอง ต.หาดใหญ่ อ.หาดใหญ่ จ.สงขลา 90110
+  <div style="margin-top:32px; padding:24px 20px; text-align:center; background:rgba(255, 255, 255, 0.7); 
+              border-radius:12px; box-shadow:0 2px 8px rgba(0, 0, 0, 0.05);">
+    <div style="color:#4a5568; font-size:13px; line-height:20px; font-weight:500; margin-bottom:8px;">
+      บริษัท วังเภสัชฟาร์มาซูติคอล จำกัด
+    </div>
+    <div style="color:#718096; font-size:12px; line-height:18px;">
+      เลขที่ 23 ซ.พัฒโน ถ.อนุสรณ์อาจารย์ทอง<br>
+      ต.หาดใหญ่ อ.หาดใหญ่ จ.สงขลา 90110
+    </div>
+    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e2e8f0; color:#a0aec0; font-size:11px;">
+      © 2024 Wang Pharmaceutical. All rights reserved.
+    </div>
   </div>
 </div>
 
     `;
-      console.log('Email content prepared');
 
-      const emailResponse: unknown = await this.mailgun.messages.create(
-        this.MG_DOMAIN,
-        {
-          from: this.FROM_EMAIL,
-          to: [email],
-          subject,
-          text,
-          html,
-        },
-      );
-      console.log('from', this.FROM_EMAIL);
-      console.log('to', [email]);
-      console.log('subject', subject);
-      console.log('text', text);
-      console.log('html', html);
-      console.log('Email sent successfully:', emailResponse);
+      await this.mailerService.sendMail({
+        from: this.FROM_EMAIL,
+        to: email,
+        subject,
+        text,
+        html,
+      });
 
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         'Error sending email:',
-        error?.response?.data || error?.message || 'Unknown error',
+        error instanceof Error ? error.message : 'Unknown error',
       );
       return false;
     }
@@ -275,7 +248,6 @@ export class ChangePasswordService {
       }
 
       const emailUser = await this.usersService.checkEmail(data.mem_username);
-      console.log('Email for user', data.mem_username, ':', emailUser);
 
       if (emailUser !== member.mem_email) {
         throw new Error('Email mismatch');
@@ -285,13 +257,6 @@ export class ChangePasswordService {
       if (emailUser !== member.mem_email) {
         throw new Error('Email mismatch');
       }
-
-      console.log('OTP created:', {
-        code: otpData.OTP,
-        refKey: otpData.RefKey,
-        username: data.mem_username,
-        expires_in_minutes: this.OTP_TTL_SECONDS / 60,
-      });
 
       // ส่ง email ผ่าน API
       let emailSent = false;
@@ -344,7 +309,6 @@ export class ChangePasswordService {
         order: { exp_code: 'DESC' }, // เพิ่ม order เพื่อหาล่าสุด
         select: ['id', 'countError', 'exp_code', 'countError'], // เพิ่ม exp_code ใน select
       });
-      console.log('Latest record for incrementing countError:', latestRecord);
 
       if (latestRecord && latestRecord.countError >= 3) {
         await this.ChangePasswordRepo.update(latestRecord.id, {
@@ -376,9 +340,6 @@ export class ChangePasswordService {
       const otpTime = new Date(otpRecord.exp_code);
       const diffSeconds = (now.getTime() - otpTime.getTime()) / 1000;
 
-      console.log('OTP already used. Time since used (seconds):', diffSeconds);
-      console.log('OTP expiration time:', this.OTP_TTL_SECONDS);
-
       if (diffSeconds >= 0) {
         return { valid: false, message: 'OTP has expired' };
       }
@@ -402,7 +363,6 @@ export class ChangePasswordService {
   }> {
     try {
       // หาข้อมูลล่าสุดของ member คนนี้
-      console.log('start');
       const lastRequest = await this.ChangePasswordRepo.findOne({
         where: { user: { mem_code }, isUsed: 'pending' },
         order: { exp_code: 'DESC' },
@@ -414,36 +374,29 @@ export class ChangePasswordService {
         //   isUsed: 'requested',
         // });
         lastRequest.isUsed = 'requested';
-        console.log('Updated lastRequest to requested:', lastRequest.id);
       }
 
       if (lastRequest && lastRequest.isUsed === 'requested') {
         // คำนวณเวลาที่สร้าง = exp_time - OTP_TTL_SECONDS
-        console.log('Last request found:', lastRequest);
         const expTime = new Date(lastRequest.exp_code);
         const createTime = new Date(
           expTime.getTime() - this.OTP_TTL_SECONDS * 1000,
         );
-        console.log('Create time (calculated):', createTime);
 
         // เวลาที่อนุญาตให้ขอใหม่ = เวลาสร้าง + OTP_TTL_SECONDS
         const allowedRequestTime = new Date(
           createTime.getTime() + this.REQUEST_COOLDOWN_SECONDS * 1000,
         );
-        console.log('Allowed request time:', allowedRequestTime);
         const now = new Date();
         const timeSinceAllowed =
           (now.getTime() - allowedRequestTime.getTime()) / 1000; // วินาที
-        console.log('Time since allowed (seconds):', timeSinceAllowed);
 
         // ถ้ายังไม่ถึง 30 วินาที ให้รอ
         if (timeSinceAllowed <= 0) {
-          console.log('Request cooldown active');
           await this.ChangePasswordRepo.update(lastRequest.id, {
             isUsed: 'pending',
           });
           lastRequest.isUsed = 'pending'; // อัปเดตค่าใน memory
-          console.log('Reset lastRequest back to pending due to cooldown');
 
           const waitTimeSeconds =
             this.REQUEST_COOLDOWN_SECONDS - Math.floor(timeSinceAllowed);
@@ -453,18 +406,13 @@ export class ChangePasswordService {
             remainingTime: waitTimeSeconds,
           };
         }
-        console.log('Cooldown period has passed');
         await this.ChangePasswordRepo.update(lastRequest.id, {
           isUsed: 'failed',
         });
         lastRequest.isUsed = 'failed';
-        console.log('Marked old OTP as failed before creating new one');
       }
-      console.log('No recent pending/requested OTP found or cooldown passed');
       if (lastRequest && lastRequest.isUsed === 'failed') {
-        console.log('Last request was failed, allowing new OTP request');
         const checkMember = await this.CheckMember(mem_code);
-        console.log('CheckMember result:', checkMember);
         return {
           valid: true,
           message: 'You can request a new OTP',
@@ -528,7 +476,6 @@ export class ChangePasswordService {
       if (!user) {
         throw new Error('User not found');
       }
-      console.log('User found for password reset:', user.mem_username);
       try {
         if (!data.otp) {
           throw new Error('OTP is required');
@@ -593,9 +540,6 @@ export class ChangePasswordService {
       const now = new Date();
       const otpTime = new Date(otpRecord.exp_code);
       const diffSeconds = (now.getTime() - otpTime.getTime()) / 1000;
-
-      console.log('OTP already used. Time since used (seconds):', diffSeconds);
-      console.log('OTP expiration time:', otpRecord.exp_code);
 
       if (diffSeconds >= 0) {
         return { valid: false, message: 'OTP has expired' };

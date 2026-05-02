@@ -1,5 +1,5 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
 import {
@@ -453,6 +453,7 @@ export class PromotionService {
     description?: string;
     detail?: string;
     file: Express.Multer.File;
+    is_unit_based?: boolean;
   }) {
     // console.log(data);
     try {
@@ -484,6 +485,7 @@ export class PromotionService {
         promotion: promotion,
         tier_postter: imgData.Location,
         detail: data.detail,
+        is_unit: data.is_unit_based,
       });
       await this.promotionTierRepo.save(newTier);
     } catch {
@@ -531,6 +533,21 @@ export class PromotionService {
 
   async createCondition(data: { tier_id: number; product_gcode: string }) {
     try {
+      const tireIsUnit = await this.promotionConditionRepo
+        .createQueryBuilder('condition')
+        .leftJoin('condition.tier', 'tier')
+        .leftJoin('condition.product', 'product')
+        .where('product.pro_code = :pro_code', {
+          pro_code: data.product_gcode,
+        })
+        .andWhere('tier.is_unit = :is_unit', { is_unit: true })
+        .getMany();
+
+      if (tireIsUnit.length > 0)
+        throw new NotFoundException(
+          'Some promotion tire is unit based, cannot add product condition to this tire',
+        );
+
       const tier = await this.promotionTierRepo.findOne({
         where: { tier_id: data.tier_id },
         relations: ['promotion'],
@@ -546,15 +563,21 @@ export class PromotionService {
         .getMany();
 
       if (findTierisProduct.length > 0)
-        return 'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active';
+        throw new NotFoundException(
+          'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
+        );
 
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
         product: { pro_code: data.product_gcode },
       } as DeepPartial<PromotionConditionEntity>);
       await this.promotionConditionRepo.save(newCondition);
-    } catch {
-      throw new Error(`Failed to create condition`);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : `Failed to create condition`,
+      );
     }
   }
 
@@ -855,6 +878,7 @@ export class PromotionService {
           'tier.min_amount',
           'tier.description',
           'tier.tier_postter',
+          'tier.is_unit',
 
           // เงื่อนไขใน tier
           'tier_conditions.cond_id',
@@ -1080,6 +1104,23 @@ export class PromotionService {
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get tier price`);
+    }
+  }
+
+  async findPromotionTypeUnitBased(pro_code: string) {
+    const findCondition = await this.promotionConditionRepo
+      .createQueryBuilder('condition')
+      .leftJoin('condition.product', 'product')
+      .leftJoin('condition.tier', 'tier')
+      .where('product.pro_code = :pro_code', { pro_code })
+      .andWhere('tier.is_unit = :is_unit', { is_unit: true })
+      .select('product.pro_code')
+      .getMany();
+
+    if (findCondition) {
+      return findCondition;
+    } else {
+      return;
     }
   }
 }

@@ -3,3 +3,7 @@ export class UpdateProductImageDto {
   img_main!: string;
   image_other!: string[];
 }
+
+export class ProductListImageUpdateDto {
+  images!: string[];
+}

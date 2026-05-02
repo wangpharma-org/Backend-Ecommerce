@@ -6,9 +6,11 @@ import { CampaignRowEntity } from './campaigns-row.entity';
 import { CampaignRewardEntity } from './campaigns-reward.entity';
 import { CampaignsPromoRewardEntity } from './campaigns-promo-reward.entity';
 import { PromoProductEntity } from './campaigns-product.entity';
+import { CampaignPurchaseProductEntity } from './campaigns-purchase-product.entity';
 import { ProductEntity } from '../products/products.entity';
 import axios, { AxiosResponse } from 'axios';
 import { IdeogramBrowserService } from './ideogram-browser.service';
+import * as AWS from 'aws-sdk';
 
 export interface UploadResponse {
   success: boolean;
@@ -144,6 +146,8 @@ export interface Metadata {
 
 @Injectable()
 export class CampaignsService {
+  private s3: AWS.S3;
+
   constructor(
     @InjectRepository(CampaignEntity)
     private readonly campaignRepository: Repository<CampaignEntity>,
@@ -155,10 +159,18 @@ export class CampaignsService {
     private readonly promoRewardRepository: Repository<CampaignsPromoRewardEntity>,
     @InjectRepository(PromoProductEntity)
     private readonly promoProductRepository: Repository<PromoProductEntity>,
+    @InjectRepository(CampaignPurchaseProductEntity)
+    private readonly purchaseProductRepository: Repository<CampaignPurchaseProductEntity>,
     @InjectRepository(ProductEntity)
     private readonly productRepository: Repository<ProductEntity>,
     private readonly ideogramBrowser: IdeogramBrowserService,
-  ) {}
+  ) {
+    this.s3 = new AWS.S3({
+      endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
+      accessKeyId: process.env.DO_SPACES_KEY,
+      secretAccessKey: process.env.DO_SPACES_SECRET,
+    });
+  }
 
   async getAllCampaigns() {
     return this.campaignRepository.find({
@@ -484,11 +496,12 @@ export class CampaignsService {
       name: string;
       quantity: number;
       unit: string;
+      type?: 'gift' | 'purchase' | 'reference';
     }[] = [],
     session_cookies: string,
   ) {
     try {
-      const uploaded: { id: string; label: string }[] = [];
+      const uploaded: { id: string; label: string; type?: string }[] = [];
 
       for (const item of imageItems) {
         const { buffer, filename, mimeType } = await this.downloadImageAsBuffer(
@@ -504,19 +517,38 @@ export class CampaignsService {
           uploaded.push({
             id,
             label: `${item.name} ${item.quantity} ${item.unit}`.trim(),
+            type: item.type,
           });
         }
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      // เพิ่ม mapping ภาพ → ชื่อสินค้า เพื่อให้ Ideogram รู้ว่าแต่ละภาพคืออะไร
+      const giftItems = uploaded.filter((u) => !u.type || u.type === 'gift');
+      const purchaseItems = uploaded.filter((u) => u.type === 'purchase');
+      const referenceItems = uploaded.filter((u) => u.type === 'reference');
+
       let finalPrompt = prompt;
-      if (uploaded.length > 0) {
-        finalPrompt += `\n\nภาพอ้างอิงที่อัปโหลด (แสดงแต่ละชิ้นให้ชัดเจนในส่วนของแถม):`;
-        uploaded.forEach(({ label }, i) => {
-          finalPrompt += `\n- ภาพอ้างอิงที่ ${i + 1}: "${label}"`;
+
+      if (purchaseItems.length > 0) {
+        finalPrompt += `\n\nภาพสินค้าที่ลูกค้าซื้อ (แสดงในส่วนหลักของโปสเตอร์ให้โดดเด่น):`;
+        purchaseItems.forEach(({ label }, i) => {
+          finalPrompt += `\n- สินค้าที่ซื้อ ${i + 1}: "${label}"`;
         });
-        finalPrompt += `\nต้องแสดงของแถมทั้ง ${uploaded.length} ชิ้นครบทุกชิ้น แต่ละชิ้นแสดงภาพสินค้าถูกต้อง จำนวนถูกต้อง ชัดเจน ไม่ตกหล่น`;
+      }
+
+      if (giftItems.length > 0) {
+        finalPrompt += `\n\nภาพของแถม (แสดงในส่วน "ของแถม / FREE GIFT" ให้ชัดเจน):`;
+        giftItems.forEach(({ label }, i) => {
+          finalPrompt += `\n- ของแถม ${i + 1}: "${label}"`;
+        });
+        finalPrompt += `\nต้องแสดงของแถมทั้ง ${giftItems.length} ชิ้นครบทุกชิ้น แต่ละชิ้นแสดงภาพสินค้าถูกต้อง จำนวนถูกต้อง ชัดเจน ไม่ตกหล่น`;
+      }
+
+      if (referenceItems.length > 0) {
+        finalPrompt += `\n\nภาพอ้างอิงสไตล์โปสเตอร์ (ใช้เป็น style reference เท่านั้น อ้างอิงโทนสี layout และสไตล์ อย่า copy ข้อความหรือสินค้าจากภาพนี้):`;
+        referenceItems.forEach((_, i) => {
+          finalPrompt += `\n- Style Reference ${i + 1}`;
+        });
       }
 
       return (await this.ideogramBrowser.generatePosterRequest(
@@ -539,5 +571,99 @@ export class CampaignsService {
     } catch (error) {
       console.error('Error fetching all results from Ideogram:', error);
     }
+  }
+
+  async uploadRewardImage(
+    file: Express.Multer.File,
+    rewardId: string,
+  ): Promise<string> {
+    const params = {
+      Bucket: process.env.DO_SPACES_BUCKET || 'wang-storage',
+      Key: `campaign-rewards/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file.originalname}`,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: 'public-read',
+    };
+
+    const result = await this.s3.upload(params).promise();
+    await this.campaignRewardRepository.update(rewardId, {
+      img_url: result.Location,
+    });
+    return result.Location;
+  }
+
+  async uploadImage(file: Express.Multer.File): Promise<string> {
+    const params = {
+      Bucket: process.env.DO_SPACES_BUCKET || 'wang-storage',
+      Key: `campaign-images/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file.originalname}`,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: 'public-read',
+    };
+
+    const result = await this.s3.upload(params).promise();
+    return result.Location;
+  }
+
+  async getPurchaseProducts(campaignId: string) {
+    return this.purchaseProductRepository.find({
+      where: { campaign: { id: campaignId } },
+      select: ['id', 'name', 'img_url', 'created_at'],
+      order: { created_at: 'ASC' },
+    });
+  }
+
+  async createPurchaseProduct(campaignId: string, name: string) {
+    const campaign = await this.campaignRepository.findOne({
+      where: { id: campaignId },
+    });
+    if (!campaign) {
+      throw new HttpException('Campaign not found', HttpStatus.NOT_FOUND);
+    }
+    const item = this.purchaseProductRepository.create({ campaign, name });
+    return this.purchaseProductRepository.save(item);
+  }
+
+  async updatePurchaseProduct(
+    campaignId: string,
+    productId: string,
+    data: { name?: string; img_url?: string },
+  ) {
+    const item = await this.purchaseProductRepository.findOne({
+      where: { id: productId, campaign: { id: campaignId } },
+    });
+    if (!item) {
+      throw new HttpException('Purchase product not found', HttpStatus.NOT_FOUND);
+    }
+    await this.purchaseProductRepository.update(productId, data);
+  }
+
+  async deletePurchaseProduct(campaignId: string, productId: string) {
+    const result = await this.purchaseProductRepository.delete({
+      id: productId,
+      campaign: { id: campaignId },
+    });
+    if (result.affected === 0) {
+      throw new HttpException('Purchase product not found', HttpStatus.NOT_FOUND);
+    }
+  }
+
+  async uploadPurchaseProductImage(
+    campaignId: string,
+    productId: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    const params = {
+      Bucket: process.env.DO_SPACES_BUCKET || 'wang-storage',
+      Key: `campaign-purchase/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file.originalname}`,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: 'public-read',
+    };
+    const result = await this.s3.upload(params).promise();
+    await this.purchaseProductRepository.update(productId, {
+      img_url: result.Location,
+    });
+    return result.Location;
   }
 }
