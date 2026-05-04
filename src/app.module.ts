@@ -47,6 +47,7 @@ import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 
 import { MailerModule } from '@nestjs-modules/mailer';
+import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
 
 @Module({
   imports: [
@@ -135,6 +136,7 @@ import { MailerModule } from '@nestjs-modules/mailer';
         },
       }),
     }),
+    LineRegisterMeetingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
