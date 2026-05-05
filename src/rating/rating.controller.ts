@@ -33,16 +33,19 @@ export class RatingController {
 
   // ==================== USER ====================
 
+  @UseGuards(JwtAuthGuard)
   @Get('rating/config/select')
   getActiveSelectOptions(@Query('type') type?: ReviewSelectType) {
     return this.ratingService.getActiveSelectOptions(type);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('rating/config/questionnaire')
   getActiveQuestions() {
     return this.ratingService.getActiveQuestions();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('rating/check/:sh_running')
   getRatingBySh(@Param('sh_running') sh_running: string) {
     return this.ratingService.getRatingBySh(sh_running);
