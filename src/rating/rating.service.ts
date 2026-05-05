@@ -17,6 +17,7 @@ import { QuestionnaireEntity } from './questionnaire.entity';
 
 export interface CreateRatingDto {
   sh_running: string;
+  mem_code?: string;
   rating_point: number;
   comment?: string;
   positive_select?: string[];
@@ -97,7 +98,6 @@ export class RatingService {
       const rating = this.ratingRepo.create(data);
       return await this.ratingRepo.save(rating);
     } catch (error) {
-      console.log(error);
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('ไม่สามารถบันทึกรีวิวได้');
     }
@@ -266,15 +266,15 @@ export class RatingService {
         .select('COUNT(r.id)', 'total')
         .addSelect('AVG(r.rating_point)', 'avg_point')
         .addSelect(
-          'SUM(CASE WHEN r.rating_point >= 4 THEN 1 ELSE 0 END)',
+          'SUM(CASE WHEN r.rating_point >= 3 THEN 1 ELSE 0 END)',
           'positive_count',
         )
         .addSelect(
-          'SUM(CASE WHEN r.rating_point = 3 THEN 1 ELSE 0 END)',
+          'SUM(CASE WHEN r.rating_point = 0 THEN 1 ELSE 0 END)',
           'neutral_count',
         )
         .addSelect(
-          'SUM(CASE WHEN r.rating_point <= 2 THEN 1 ELSE 0 END)',
+          'SUM(CASE WHEN r.rating_point < 3 THEN 1 ELSE 0 END)',
           'negative_count',
         )
         .getRawOne<RatingStatsSummary>();

@@ -7,6 +7,7 @@ import { ImageReviewEntity } from './image-review.entity';
 import { ReviewConfigSelectEntity } from './review-config-select.entity';
 import { QuestionnaireConfigEntity } from './questionnaire-config.entity';
 import { QuestionnaireEntity } from './questionnaire.entity';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { QuestionnaireEntity } from './questionnaire.entity';
       QuestionnaireConfigEntity,
       QuestionnaireEntity,
     ]),
+    FeatureFlagsModule,
   ],
   providers: [RatingService],
   controllers: [RatingController],

@@ -18,6 +18,9 @@ export class RatingEntity {
   @Column({ length: 50 })
   sh_running!: string;
 
+  @Column({ length: 50, nullable: true })
+  mem_code?: string;
+
   @Column({ type: 'decimal', precision: 2, scale: 1 })
   rating_point!: number;
 
