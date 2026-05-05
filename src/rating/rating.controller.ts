@@ -12,6 +12,7 @@ import {
   UploadedFiles,
   UseInterceptors,
   DefaultValuePipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -59,7 +60,21 @@ export class RatingController {
 
   @UseGuards(JwtAuthGuard)
   @Post('rating/:id/images')
-  @UseInterceptors(FilesInterceptor('files', 10, { storage: memoryStorage() }))
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(
+            new BadRequestException('อนุญาตเฉพาะไฟล์ภาพเท่านั้น'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
   uploadReviewImages(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFiles() files: Express.Multer.File[],
