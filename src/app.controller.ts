@@ -75,7 +75,6 @@ import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
 import { ProductEntity } from './products/products.entity';
 import { CampaignEntity } from './campaigns/campaigns.entity';
-import { AppVersionService } from './app-version/app-version.service';
 import { ProductReturnService } from './product-return/product-return.service';
 import {
   ReturnStatus,
@@ -144,7 +143,6 @@ export class AppController {
     private readonly contractLogService: ContractLogService,
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
-    private readonly appVersion: AppVersionService,
     private readonly productReturnService: ProductReturnService,
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
@@ -3122,49 +3120,6 @@ export class AppController {
       `attachment; filename="poster.${ext}"`,
     );
     res.send(Buffer.from(response.data));
-  }
-
-  @Post('/app-version/version/get')
-  async getVersion(@Body() data: { version: string; os: string }) {
-    this.logger.log('Get version request data:', data);
-    try {
-      return this.appVersion.getLatestVersion(data.version, data.os);
-    } catch {
-      throw new HttpException(
-        {
-          success: false,
-          error: { code: 'GET_VERSION_FAILED' },
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // @UseGuards(JwtAuthGuard)
-  @Post('/app-version/version/update')
-  async postVersion(
-    @Body()
-    data: {
-      latestVersionAndroid: string;
-      latestVersionIOS: string;
-      forceUpdateAndroid: boolean;
-      forceUpdateIOS: boolean;
-      androidStoreUrl?: string;
-      iosStoreUrl?: string;
-      note?: string;
-    },
-  ) {
-    try {
-      return this.appVersion.insertLastestVersion(data);
-    } catch {
-      throw new HttpException(
-        {
-          success: false,
-          error: { code: 'POST_VERSION_FAILED' },
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
   }
 
   @UseGuards(JwtAuthGuard)
