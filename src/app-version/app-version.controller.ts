@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AppVersionService } from './app-version.service';
 import { CheckAppVersionDto } from './dto/check-app-version.dto';
 import { CreateAppVersionDto } from './dto/create-app-version.dto';
+import { LegacyCheckAppVersionDto } from './dto/legacy-check-app-version.dto';
 import { UpdateAppVersionDto } from './dto/update-app-version.dto';
 import { AppPlatform } from './app-version.entity';
 
@@ -32,6 +33,26 @@ export class AppVersionController {
   async checkVersion(@Body() data: CheckAppVersionDto) {
     const payload = this.validateCheckPayload(data);
     return this.appVersionService.checkVersion(payload);
+  }
+
+  @Post('version/get')
+  async checkVersionLegacy(@Body() data: LegacyCheckAppVersionDto) {
+    const payload = this.validateLegacyCheckPayload(data);
+    const result = await this.appVersionService.checkVersion(payload);
+
+    if (result.allowed) {
+      return {
+        isLastest: true,
+      };
+    }
+
+    return {
+      isLastest: false,
+      latestVersion: '',
+      forceUpdate: result.forceUpdate,
+      storeUrl: result.storeUrl,
+      note: result.message,
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -134,6 +155,17 @@ export class AppVersionController {
     }
 
     return payload;
+  }
+
+  private validateLegacyCheckPayload(data: LegacyCheckAppVersionDto) {
+    const os = this.normalizePlatform(data.os, 'os');
+    const version = this.requireNonEmptyString(data.version, 'version');
+
+    return {
+      os,
+      version,
+      buildNumber: 'legacy-client',
+    };
   }
 
   private normalizePlatform(value: string, fieldName: string): AppPlatform {
