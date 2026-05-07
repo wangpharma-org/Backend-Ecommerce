@@ -43,6 +43,7 @@ import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
+import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
 import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 
@@ -111,6 +112,7 @@ import { RatingModule } from './rating/rating.module';
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,
+    LineOaMonitorModule,
     ElasticsearchModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
