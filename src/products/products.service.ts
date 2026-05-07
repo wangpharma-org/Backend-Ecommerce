@@ -2342,7 +2342,7 @@ export class ProductsService {
         updateData,
       );
     } catch (error) {
-      console.error('Error updating product image from central:', error);
+      this.logger.error('Error updating product image from central:', error);
     }
   }
 
