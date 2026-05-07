@@ -4,6 +4,7 @@ import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
+import axios from 'axios';
 
 export interface UpdateProductImageEcommercePayload {
   product_code: string;
@@ -12,6 +13,7 @@ export interface UpdateProductImageEcommercePayload {
   pro_img3?: string | null;
   pro_img4?: string | null;
   pro_img5?: string | null;
+  reply_id?: string;
 }
 
 export interface ProductEasyAcc {
@@ -146,6 +148,10 @@ export class ProductListner {
   ) {
     try {
       await this.productServerce.updateProductImageFromCentral(message);
+      if (message.reply_id) {
+        const url = process.env.PRODUCT_SERVICE_URL ?? '';
+        await axios.post(`${url}/product/synced`, { reply_id: message.reply_id });
+      }
     } catch (error) {
       this.logger.error(
         'Kafka Received message in update_product_image_ecommerce listener',

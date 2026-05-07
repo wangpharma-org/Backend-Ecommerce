@@ -4129,16 +4129,4 @@ export class AppController {
     }
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('/ecom/product-images/:product_code')
-  async getProductImages(@Param('product_code') product_code: string) {
-    try {
-      return await this.productsService.getProductImageByCode(product_code);
-    } catch {
-      throw new HttpException(
-        { success: false, error: { code: 'GET_PRODUCT_IMAGES_FAILED' } },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
 }
