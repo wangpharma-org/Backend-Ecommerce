@@ -4,42 +4,45 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Unique,
 } from 'typeorm';
 
-export enum AppOS {
+export enum AppPlatform {
   ANDROID = 'android',
   IOS = 'ios',
 }
 
-@Entity('app_version')
+@Entity('app_version_blacklist')
+@Unique('UQ_app_version_blacklist_platform_version', ['platform', 'version'])
 export class AppVersionEntity {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
-  @Column({ type: 'varchar', length: 20 })
-  latestVersionAndroid: string;
+  @Column({
+    type: 'enum',
+    enum: AppPlatform,
+  })
+  platform!: AppPlatform;
 
-  @Column({ type: 'varchar', length: 20 })
-  latestVersionIOS: string;
+  @Column({ type: 'varchar', length: 50 })
+  version!: string;
 
-  @Column({ default: false })
-  forceUpdateAndroid: boolean;
+  @Column({
+    type: 'varchar',
+    length: 255,
+    default: 'เวอร์ชันนี้ไม่รองรับ กรุณาอัปเดตแอป',
+  })
+  message!: string;
 
-  @Column({ default: false })
-  forceUpdateIOS: boolean;
+  @Column({ type: 'varchar', length: 500 })
+  storeUrl!: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  androidStoreUrl: string;
-
-  @Column({ type: 'varchar', nullable: true })
-  iosStoreUrl: string;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  note?: string;
+  @Column({ default: true })
+  isActive!: boolean;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 }
