@@ -5,6 +5,15 @@ import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
 
+export interface UpdateProductImageEcommercePayload {
+  product_code: string;
+  pro_imgmain?: string | null;
+  pro_img2?: string | null;
+  pro_img3?: string | null;
+  pro_img4?: string | null;
+  pro_img5?: string | null;
+}
+
 export interface ProductEasyAcc {
   product_code: string;
   product_name?: string;
@@ -126,6 +135,20 @@ export class ProductListner {
     } catch (error) {
       this.logger.error(
         'Kafka Received message in product_update_from_easyacc listener',
+        String(error),
+      );
+    }
+  }
+
+  @MessagePattern('update_product_image_ecommerce')
+  async handleUpdateProductImageEcommerce(
+    @Payload() message: UpdateProductImageEcommercePayload,
+  ) {
+    try {
+      await this.productServerce.updateProductImageFromCentral(message);
+    } catch (error) {
+      this.logger.error(
+        'Kafka Received message in update_product_image_ecommerce listener',
         String(error),
       );
     }
