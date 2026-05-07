@@ -20,13 +20,13 @@ import {
 export class CreateAppVersionDto {
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
-  platform: AppPlatform;
+  platform!: AppPlatform;
 
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @Matches(APP_VERSION_PATTERN)
-  version: string;
+  version!: string;
 
   @Transform(normalizeOptionalString)
   @IsOptional()
@@ -41,7 +41,7 @@ export class CreateAppVersionDto {
     protocols: ['http', 'https'],
     require_protocol: true,
   })
-  storeUrl: string;
+  storeUrl!: string;
 
   @IsOptional()
   @IsBoolean()

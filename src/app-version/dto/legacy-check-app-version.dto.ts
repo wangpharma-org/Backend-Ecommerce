@@ -10,11 +10,11 @@ import {
 export class LegacyCheckAppVersionDto {
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
-  os: AppPlatform;
+  os!: AppPlatform;
 
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @Matches(APP_VERSION_PATTERN)
-  version: string;
+  version!: string;
 }
