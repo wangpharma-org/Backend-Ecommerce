@@ -60,8 +60,13 @@ export class ProductListner {
 
   private async notifySynced(reply_id: string): Promise<void> {
     try {
+      const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
       await firstValueFrom(
-        this.httpService.post(`${this.productServiceUrl}/product/synced`, { reply_id }),
+        this.httpService.post(
+          `${this.productServiceUrl}/product/synced`,
+          { reply_id },
+          { headers: { 'x-webhook-secret': webhookSecret } },
+        ),
       );
     } catch (error) {
       this.logger.error('Failed to notify synced', String(error));
