@@ -21,11 +21,21 @@ import { ProductEasyAcc } from './product.listener';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
+import { ProductUnitEntity } from './product-unit.entity';
 
 interface OrderItem {
   pro_code: string;
   unit: string;
   quantity: number;
+}
+
+export interface ProductEntityWithUnitEntity extends ProductEntity {
+  pro_unit1?: string;
+  pro_unit2?: string;
+  pro_unit3?: string;
+  pro_ratio1?: number;
+  pro_ratio2?: number;
+  pro_ratio3?: number;
 }
 
 // interface UpdateProductInput {
@@ -82,7 +92,66 @@ export class ProductsService {
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
     @Inject(forwardRef(() => ShoppingCartService))
     private readonly shoppingCartService: ShoppingCartService,
+    @InjectRepository(ProductUnitEntity)
+    private readonly productUnitRepo: Repository<ProductUnitEntity>,
   ) {}
+
+  private convertEnumToUnitName(
+    unitEnum: 1 | 2 | 3 | string | undefined,
+    productUnits?: { level: number; unit_name: string; ratio: number }[],
+  ): string {
+    if (!unitEnum || !productUnits || productUnits.length === 0) {
+      return unitEnum ? String(unitEnum) : '';
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.unit_name || '';
+  }
+
+  private getRatioFromUnits(
+    unitEnum: 1 | 2 | 3 | string | undefined,
+    productUnits?: { level: number; unit_name: string; ratio: number }[],
+  ): number {
+    if (!unitEnum || !productUnits || productUnits.length === 0) {
+      return 1;
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.ratio || 1;
+  }
+
+  async transformProductWithUnits<T extends { pro_code: string }>(
+    product: T,
+  ): Promise<
+    T & {
+      pro_unit1: string;
+      pro_unit2: string;
+      pro_unit3: string;
+      pro_ratio1: number;
+      pro_ratio2: number;
+      pro_ratio3: number;
+    }
+  > {
+    const units = await this.productUnitRepo.find({
+      where: { product: { pro_code: product.pro_code } },
+      select: ['level', 'unit_name', 'ratio'],
+      order: { level: 'ASC' },
+    });
+
+    return {
+      ...product,
+      pro_unit1: this.convertEnumToUnitName(1, units),
+      pro_unit2: this.convertEnumToUnitName(2, units),
+      pro_unit3: this.convertEnumToUnitName(3, units),
+      pro_ratio1: this.getRatioFromUnits(1, units),
+      pro_ratio2: this.getRatioFromUnits(2, units),
+      pro_ratio3: this.getRatioFromUnits(3, units),
+    };
+  }
 
   private async isL16Member(
     mem_code?: string,
@@ -156,9 +225,6 @@ export class ProductsService {
           'product.pro_code',
           'product.pro_name',
           'product.pro_genericname',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
         ])
         .where('product.pro_name NOT LIKE :p2', { p2: '@%' })
         .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
@@ -182,9 +248,6 @@ export class ProductsService {
           'product.pro_code',
           'product.pro_name',
           'product.pro_genericname',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_imgmain',
           'product.pro_stock',
         ])
@@ -211,9 +274,6 @@ export class ProductsService {
           'product.pro_code',
           'product.pro_name',
           'product.pro_genericname',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_imgmain',
           'product.pro_stock',
         ])
@@ -242,9 +302,6 @@ export class ProductsService {
           'product.pro_code',
           'product.pro_name',
           'product.pro_genericname',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_imgmain',
           'product.pro_stock',
         ])
@@ -266,17 +323,43 @@ export class ProductsService {
 
   async getProductOne(pro_code: string) {
     try {
-      const dataProduct = await this.productRepo.findOne({
-        relations: {
-          flashsale: {
-            flashsale: true,
+      const dataProduct: ProductEntityWithUnitEntity | null =
+        await this.productRepo.findOne({
+          relations: {
+            flashsale: {
+              flashsale: true,
+            },
           },
-        },
-        where: {
-          pro_code: pro_code,
-        },
+          where: {
+            pro_code: pro_code,
+          },
+        });
+
+      if (!dataProduct) {
+        throw new Error('Product not found');
+      }
+
+      // แปลง enum เป็น string unit name เสมอ
+      const transformed = await this.transformProductWithUnits(dataProduct);
+      // ถ้า pro_unit1/2/3 เป็นตัวเลข (enum) ให้แปลงเป็นชื่อหน่วย
+      const units = await this.productUnitRepo.find({
+        where: { product: { pro_code } },
+        select: ['level', 'unit_name', 'ratio'],
       });
-      return dataProduct;
+      const getUnitName = (val: string | number | undefined) => {
+        if (!val) return '';
+        const found = units.find((u) => String(u.level) === String(val));
+        return found ? found.unit_name : String(val);
+      };
+      return {
+        ...transformed,
+        pro_unit1: getUnitName(transformed.pro_unit1),
+        pro_unit2: getUnitName(transformed.pro_unit2),
+        pro_unit3: getUnitName(transformed.pro_unit3),
+        pro_ratio1: transformed.pro_ratio1,
+        pro_ratio2: transformed.pro_ratio2,
+        pro_ratio3: transformed.pro_ratio3,
+      };
     } catch {
       throw new Error('Something Error in getProductOne');
     }
@@ -347,9 +430,6 @@ export class ProductsService {
           'product.pro_name',
           'product.pro_priceA',
           'product.pro_imgmain',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_promotion_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
@@ -357,7 +437,7 @@ export class ProductsService {
           'product.viwers',
           'cart.spc_id',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'cart.mem_code',
         ])
         .take(Number(limit))
@@ -483,7 +563,7 @@ export class ProductsService {
     pro_code: string;
     mem_code: string;
     mem_route?: string;
-  }): Promise<ProductEntity> {
+  }): Promise<ProductEntityWithUnitEntity> {
     try {
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const replaceCondition = isL16
@@ -548,12 +628,6 @@ export class ProductsService {
           'product.pro_img3',
           'product.pro_img4',
           'product.pro_img5',
-          'product.pro_ratio1',
-          'product.pro_ratio2',
-          'product.pro_ratio3',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_promotion_month',
           'product.pro_promotion_amount',
           'product.pro_keysearch',
@@ -581,9 +655,6 @@ export class ProductsService {
           'products.pro_priceA',
           'products.pro_priceB',
           'products.pro_priceC',
-          'products.pro_unit1',
-          'products.pro_unit2',
-          'products.pro_unit3',
           'products.pro_stock',
           'products.pro_lowest_stock',
           'products.order_quantity',
@@ -597,9 +668,6 @@ export class ProductsService {
           'replace.pro_priceA',
           'replace.pro_priceB',
           'replace.pro_priceC',
-          'replace.pro_unit1',
-          'replace.pro_unit2',
-          'replace.pro_unit3',
           'replace.pro_stock',
           'replace.pro_lowest_stock',
           'replace.order_quantity',
@@ -607,12 +675,13 @@ export class ProductsService {
           'replace.pro_promotion_month',
           'inCartsInReplace.mem_code',
           'inCartsInReplace.spc_amount',
-          'inCartsInReplace.spc_unit',
+          'inCartsInReplace.spc_unit_enum',
           'inCartsInReplace.pro_code',
           'inCarts.pro_code',
           'inCarts.mem_code',
           'inCarts.spc_amount',
-          'inCarts.spc_unit',
+          'inCarts.spc_unit_enum',
+          'inCarts.pro_code',
           'fsp_products.limit',
           'fsp_products.id',
           'fs_products.promotion_id',
@@ -626,12 +695,14 @@ export class ProductsService {
         this.applyL16Filter(qb, 'product');
       }
 
-      const product = await qb.getOne();
-      if (product) {
-        return product;
-      } else {
+      // Query หลักเพื่อได้ relationships
+      const product: ProductEntityWithUnitEntity | null = await qb.getOne();
+
+      if (!product) {
         throw new Error('Not found Product');
       }
+
+      return await this.transformProductWithUnits(product);
     } catch (error) {
       this.logger.error(error);
       throw new Error('Something Error in Product Detail');
@@ -706,7 +777,6 @@ export class ProductsService {
           'product.pro_priceB',
           'product.pro_priceC',
           'product.pro_imgmain',
-          'product.pro_unit1',
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
@@ -744,7 +814,8 @@ export class ProductsService {
         )
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
-        .leftJoinAndSelect('fsp.flashsale', 'fs');
+        .leftJoinAndSelect('fsp.flashsale', 'fs')
+        .leftJoinAndSelect('product.units', 'units');
 
       if (data.category === 8) {
         qb.where('product.pro_free = :free', { free: true })
@@ -897,9 +968,6 @@ export class ProductsService {
           'product.pro_priceB',
           'product.pro_priceC',
           'product.pro_imgmain',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_point',
           'product.pro_promotion_amount',
           'product.pro_promotion_month',
@@ -910,7 +978,7 @@ export class ProductsService {
           'product.viwers',
           'cart.spc_id',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'cart.mem_code',
           'fsp.limit',
           'fsp.id',
@@ -1376,6 +1444,7 @@ export class ProductsService {
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
+        .leftJoinAndSelect('product.units', 'units')
         .where('product.pro_code IN (:...proCodes)', { proCodes })
         .select([
           'product.pro_code',
@@ -1384,9 +1453,6 @@ export class ProductsService {
           'product.pro_priceB',
           'product.pro_priceC',
           'product.pro_imgmain',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_sale_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
@@ -1394,7 +1460,7 @@ export class ProductsService {
           'product.viwers',
           'cart.spc_id',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'cart.mem_code',
           'fsp.limit',
           'fsp.id',
@@ -1411,9 +1477,14 @@ export class ProductsService {
       const sortedProducts = proCodes
         .map((code) => productMap.get(code))
         .filter(Boolean) as ProductEntity[];
+      const productEntity: ProductEntity[] = [];
 
+      for (const product of sortedProducts) {
+        const detailedProduct = await this.transformProductWithUnits(product);
+        productEntity.push(detailedProduct);
+      }
       return {
-        products: sortedProducts,
+        products: productEntity,
         totalCount,
       };
     } catch (error) {
@@ -1458,12 +1529,12 @@ export class ProductsService {
               }
             : {}),
         },
+        relations: ['units'],
         select: {
           pro_code: true,
           pro_name: true,
           pro_point: true,
           pro_imgmain: true,
-          pro_unit1: true,
           pro_sale_amount: true,
           pro_stock: true,
         },
@@ -1482,25 +1553,15 @@ export class ProductsService {
     const products = await this.productRepo
       .createQueryBuilder('product')
       .where('product.pro_code = :pro_code', { pro_code })
-      .select([
-        'product.pro_code',
-        'product.pro_unit1',
-        'product.pro_ratio1',
-        'product.pro_unit2',
-        'product.pro_ratio2',
-        'product.pro_unit3',
-        'product.pro_ratio3',
-      ])
+      .select(['product.pro_code'])
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array
     return products.map((product: ProductEntity) => ({
       ...product,
-      units: [
-        { unit: product.pro_unit1, ratio: product.pro_ratio1 },
-        { unit: product.pro_unit2, ratio: product.pro_ratio2 },
-        { unit: product.pro_unit3, ratio: product.pro_ratio3 },
-      ].filter((u) => u.unit), // กรอง unit ที่ไม่มีค่า
+      units: product.units
+        ? product.units.map((u) => ({ unit: u.unit_name, ratio: u.ratio }))
+        : [],
     }));
   }
 
@@ -1523,10 +1584,10 @@ export class ProductsService {
           throw new Error(`Product with code ${pro_code} not found`);
         }
 
+        // หา ratio จาก product.units โดยใช้ unit string ที่ส่งมา
         const unitData = product.units.find((u) => u.unit === unit);
         if (unitData) {
           const totalForItem = quantity * unitData.ratio;
-
           total += totalForItem;
         }
       }
@@ -1542,6 +1603,8 @@ export class ProductsService {
     try {
       const products = await this.productRepo
         .createQueryBuilder('product')
+        .leftJoinAndSelect('product.units', 'units')
+        .leftJoinAndSelect('product.units', 'units')
         .where(
           new Brackets((qb) => {
             qb.where('product.pro_code LIKE :keyword', {
@@ -1565,9 +1628,6 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_barcode1',
           'product.pro_barcode2',
           'product.pro_barcode3',
@@ -1648,12 +1708,6 @@ export class ProductsService {
           pro_priceA: item?.priceA || 0,
           pro_priceB: item?.priceB || 0,
           pro_priceC: item?.priceC || 0,
-          pro_ratio1: ratio1 || 1,
-          pro_ratio2: ratio2 || 1,
-          pro_ratio3: ratio3 || 1,
-          pro_unit1: item?.unit1 || '',
-          pro_unit2: item?.unit2 || '',
-          pro_unit3: item?.unit3 || '',
           creditor: null,
           order_quantity: item.order_quantity || 0,
         };
@@ -1687,6 +1741,48 @@ export class ProductsService {
           );
         } else {
           await queryRunner.manager.save(ProductEntity, updateData);
+        }
+        // จัดการตาราง product_unit โดยตรง (ลบของเก่าและ Insert ของใหม่)
+        await queryRunner.manager.delete(ProductUnitEntity, {
+          pro_code: item.pro_code,
+        });
+
+        const newUnits: ProductUnitEntity[] = [];
+        if (item.unit1 && item.unit1.trim() !== '') {
+          newUnits.push(
+            queryRunner.manager.create(ProductUnitEntity, {
+              pro_code: item.pro_code,
+              unit_name: item.unit1.trim(),
+              ratio: ratio1 || 1,
+              price: item.priceA || 0,
+              level: 1,
+            }),
+          );
+        }
+        if (item.unit2 && item.unit2.trim() !== '') {
+          newUnits.push(
+            queryRunner.manager.create(ProductUnitEntity, {
+              pro_code: item.pro_code,
+              unit_name: item.unit2.trim(),
+              ratio: ratio2 || 1,
+              price: item.priceB || 0,
+              level: 2,
+            }),
+          );
+        }
+        if (item.unit3 && item.unit3.trim() !== '') {
+          newUnits.push(
+            queryRunner.manager.create(ProductUnitEntity, {
+              pro_code: item.pro_code,
+              unit_name: item.unit3.trim(),
+              ratio: ratio3 || 1,
+              price: item.priceC || 0,
+              level: 3,
+            }),
+          );
+        }
+        if (newUnits.length > 0) {
+          await queryRunner.manager.save(ProductUnitEntity, newUnits);
         }
       }
       await queryRunner.manager.update(
@@ -1854,6 +1950,8 @@ export class ProductsService {
       const isL16 = await this.isL16Member(mem_code, mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
+        .leftJoinAndSelect('product.units', 'units')
+        .leftJoinAndSelect('product.units', 'units')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -1896,7 +1994,6 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_genericname',
-          'product.pro_unit1',
           'product.pro_nameSale',
           'product.pro_nameEN',
           'product.pro_keysearch',
@@ -2045,7 +2142,6 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_genericname',
-          'product.pro_unit1',
           'product.pro_nameSale',
           'product.pro_nameEN',
           'product.pro_keysearch',
@@ -2246,12 +2342,11 @@ export class ProductsService {
         const cartItem = await this.checkCartByProcode(data.product_code);
         if (cartItem && cartItem.length > 0) {
           for (const item of cartItem) {
-            console.log('Item', item);
             await this.createDeleteCartByProcode(
               item.product.pro_code,
               item.product.pro_imgmain,
               item.product.pro_name,
-              item.spc_unit,
+              item.spc_unit_enum,
               item.mem_code,
             );
           }
@@ -2284,24 +2379,12 @@ export class ProductsService {
         updateData.creditor = data.creditor_code
           ? ({ creditor_code: data.creditor_code } as CreditorEntity)
           : null;
-      if (data.product_unit1 !== undefined)
-        updateData.pro_unit1 = data.product_unit1 as string;
-      if (data.product_unit2 !== undefined)
-        updateData.pro_unit2 = data.product_unit2 as string;
-      if (data.product_unit3 !== undefined)
-        updateData.pro_unit3 = data.product_unit3 as string;
       if (data.product_price_a !== undefined)
         updateData.pro_priceA = data.product_price_a as number;
       if (data.product_price_b !== undefined)
         updateData.pro_priceB = data.product_price_b as number;
       if (data.product_price_c !== undefined)
         updateData.pro_priceC = data.product_price_c as number;
-      if (data.product_ratio_1 !== undefined)
-        updateData.pro_ratio1 = data.product_ratio_1 as number;
-      if (data.product_ratio_2 !== undefined)
-        updateData.pro_ratio2 = data.product_ratio_2 as number;
-      if (data.product_ratio_3 !== undefined)
-        updateData.pro_ratio3 = data.product_ratio_3 as number;
       if (data.pro_category !== undefined)
         updateData.pro_category = data.pro_category as number;
 
@@ -2311,6 +2394,55 @@ export class ProductsService {
         { pro_code: data.product_code },
         updateData,
       );
+
+      // ซิงค์ข้อมูลไปตาราง product_unit
+      if (
+        data.product_unit1 !== undefined ||
+        data.product_unit2 !== undefined ||
+        data.product_unit3 !== undefined ||
+        data.product_ratio_1 !== undefined ||
+        data.product_ratio_2 !== undefined ||
+        data.product_ratio_3 !== undefined
+      ) {
+        // อัปเดตข้อมูล units ลงตาราง product_unit แบบเจาะจง (Partial Update)
+        const existingUnits = await this.productUnitRepo.find({
+          where: { pro_code: data.product_code },
+        });
+
+        const processUnit = async (
+          level: number,
+          unitNameData?: string | null,
+          ratioData?: number | null,
+        ) => {
+          let unit = existingUnits.find((u) => u.level === level);
+
+          const unitName =
+            unitNameData !== undefined ? unitNameData : unit?.unit_name;
+          const ratio = ratioData !== undefined ? ratioData : unit?.ratio;
+
+          if (unitName && unitName.trim() !== '') {
+            if (!unit) {
+              unit = this.productUnitRepo.create({
+                pro_code: data.product_code,
+                level,
+              });
+            }
+            unit.unit_name = unitName.trim();
+            unit.ratio = ratio ?? 1;
+            await this.productUnitRepo.save(unit);
+          } else if (
+            unit &&
+            unitNameData !== undefined &&
+            (!unitNameData || unitNameData.trim() === '')
+          ) {
+            await this.productUnitRepo.delete(unit.id);
+          }
+        };
+
+        await processUnit(1, data.product_unit1, data.product_ratio_1);
+        await processUnit(2, data.product_unit2, data.product_ratio_2);
+        await processUnit(3, data.product_unit3, data.product_ratio_3);
+      }
     } catch (error) {
       console.error('Error updating product from EasyAcc:', error);
     }
@@ -2355,7 +2487,7 @@ export class ProductsService {
           product: true,
         },
         select: {
-          spc_unit: true,
+          spc_unit_enum: true,
           spc_amount: true,
           mem_code: true,
           product: {

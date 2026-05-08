@@ -142,7 +142,7 @@ export class NewArrivalsService {
       .addGroupBy('newArrival.createdAt')
       .addGroupBy('cart.spc_id')
       .addGroupBy('cart.spc_amount')
-      .addGroupBy('cart.spc_unit')
+      .addGroupBy('cart.spc_unit_enum')
       .addGroupBy('cart.mem_code')
       .orderBy('newArrival.createdAt', 'DESC')
       .addOrderBy('newArrival.id', 'DESC')
@@ -156,15 +156,12 @@ export class NewArrivalsService {
         'product.pro_priceB',
         'product.pro_priceC',
         'product.pro_imgmain',
-        'product.pro_unit1',
-        'product.pro_unit2',
-        'product.pro_unit3',
         'product.pro_stock',
         'product.pro_lowest_stock',
         'product.order_quantity',
         'cart.spc_id',
         'cart.spc_amount',
-        'cart.spc_unit',
+        'cart.spc_unit_enum',
         'cart.mem_code',
       ])
       .getMany();

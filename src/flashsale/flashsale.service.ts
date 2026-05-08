@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { FlashSaleEntity } from './flashsale.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -8,6 +8,8 @@ import { UserEntity } from 'src/users/users.entity';
 
 @Injectable()
 export class FlashsaleService {
+  private readonly logger = new Logger(FlashsaleService.name);
+
   constructor(
     @InjectRepository(FlashSaleEntity)
     private readonly flashSaleRepo: Repository<FlashSaleEntity>,
@@ -66,8 +68,7 @@ export class FlashsaleService {
       this.flashSaleRepo.create(data);
       return await this.flashSaleRepo.save(data);
     } catch (error) {
-      console.log(`${Date()} Error Something in addFlashSale`);
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Error Something in addFlashSale');
     }
   }
@@ -111,8 +112,7 @@ export class FlashsaleService {
         is_active: data.is_active,
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in EditFlashSale`);
-      console.log(error);
+      this.logger.error(`Error Something in EditFlashSale: ${error}`);
       throw new Error('Error Something in EditFlashSale');
     }
   }
@@ -124,7 +124,6 @@ export class FlashsaleService {
   }) {
     try {
       const now = new Date();
-      console.log(data);
       const payload = this.flashSaleProductsRepo.create({
         flashsale: { promotion_id: data.promotion_id },
         product: { pro_code: data.pro_code },
@@ -150,8 +149,7 @@ export class FlashsaleService {
       }
       return await this.flashSaleProductsRepo.save(payload);
     } catch (error) {
-      console.log(`${Date()} Error Something in addProductToFlashSale`);
-      console.log(error);
+      this.logger.error(`Error Something in addProductToFlashSale: ${error}`);
       throw new Error('Error Something in addProductToFlashSale');
     }
   }
@@ -160,8 +158,7 @@ export class FlashsaleService {
     try {
       return await this.flashSaleRepo.find();
     } catch (error) {
-      console.log(`${Date()} Error Something in getAllFlashSales`);
-      console.log(error);
+      this.logger.error(`Error Something in getAllFlashSales: ${error}`);
       throw new Error('Error Something in getAllFlashSales');
     }
   }
@@ -185,8 +182,7 @@ export class FlashsaleService {
         },
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in getProductsInFlashSale`);
-      console.log(error);
+      this.logger.error(`Error Something in getProductsInFlashSale: ${error}`);
       throw new Error('Error Something in getProductsInFlashSale');
     }
   }
@@ -195,8 +191,7 @@ export class FlashsaleService {
     try {
       return await this.flashSaleProductsRepo.delete(id);
     } catch (error) {
-      console.log(`${Date()} Error Something in deleteProduct`);
-      console.log(error);
+      this.logger.error(`Error Something in deleteProduct: ${error}`);
       throw new Error('Error Something in deleteProduct');
     }
   }
@@ -223,8 +218,7 @@ export class FlashsaleService {
         },
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in editProductInFlashSale`);
-      console.log(error);
+      this.logger.error(`Error Something in editProductInFlashSale: ${error}`);
       throw new Error('Error Something in editProductInFlashSale');
     }
   }
@@ -236,19 +230,20 @@ export class FlashsaleService {
       const currentDate = now.toLocaleDateString('sv-SE');
       const currentTime = now.toTimeString().split(' ')[0];
 
-      // console.log('Current Date:', currentDate);
-      // console.log('Current Time:', currentTime);
-
       const data = await this.flashSaleRepo
         .createQueryBuilder('flash')
         .leftJoinAndSelect('flash.flashsaleProducts', 'fsp')
         .leftJoinAndSelect('fsp.product', 'product')
+        .leftJoinAndSelect('product.units', 'units')
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', mem_code)
+        .leftJoin('product.units', 'u1', 'u1.level = 1')
+        .leftJoin('product.units', 'u2', 'u2.level = 2')
+        .leftJoin('product.units', 'u3', 'u3.level = 3')
         .where('flash.date = :date', { date: currentDate })
         .andWhere(':nowTime BETWEEN flash.time_start AND flash.time_end', {
           nowTime: currentTime,
@@ -271,17 +266,17 @@ export class FlashsaleService {
           'product.pro_code',
           'product.pro_name',
           'product.pro_priceA',
+          'u1.unit_name as pro_unit1',
+          'u2.unit_name as pro_unit2',
+          'u3.unit_name as pro_unit3',
           'product.pro_imgmain',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_promotion_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
           'cart.spc_id',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'cart.mem_code',
         ])
         .take(Number(limit))
@@ -289,7 +284,7 @@ export class FlashsaleService {
 
       return data;
     } catch (error) {
-      console.error('Error in getFlashSale:', error);
+      this.logger.error(`Error in getFlashSale: ${error}`);
       throw new Error('Error in getFlashSale');
     }
   }
@@ -297,7 +292,6 @@ export class FlashsaleService {
   async changeStatus(data: { promotion_id: number; is_active: boolean }) {
     try {
       const now = new Date();
-      console.log('data:', data);
       await this.flashSaleRepo.update(data.promotion_id, {
         is_active: data.is_active,
       });
@@ -340,8 +334,7 @@ export class FlashsaleService {
         );
       }
     } catch (error) {
-      console.log(`${Date()} Error Something in changeStatus`);
-      console.log(error);
+      this.logger.error(`Error Something in changeStatus: ${error}`);
       throw new Error('Error Something in changeStatus');
     }
   }
@@ -351,8 +344,7 @@ export class FlashsaleService {
       await this.flashSaleProductsRepo.delete({ flashsale: { promotion_id } });
       return await this.flashSaleRepo.delete(promotion_id);
     } catch (error) {
-      console.log(`${Date()} Error Something in deleteFlashSale`);
-      console.log(error);
+      this.logger.error(`Error Something in deleteFlashSale: ${error}`);
       throw new Error('Error Something in deleteFlashSale');
     }
   }
@@ -383,8 +375,7 @@ export class FlashsaleService {
         },
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in findAllFlashSales`);
-      console.log(error);
+      this.logger.error(`Error Something in findAllFlashSales: ${error}`);
       throw new Error('Error Something in findAllFlashSales');
     }
   }

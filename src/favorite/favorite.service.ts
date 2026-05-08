@@ -1,13 +1,13 @@
 import { InjectRepository } from '@nestjs/typeorm';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { FavoriteEntity } from './favorite.entity';
 import { Repository } from 'typeorm';
-import { stringify } from 'querystring';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
 
 @Injectable()
 export class FavoriteService {
+  private readonly logger = new Logger(FavoriteService.name);
   constructor(
     @InjectRepository(FavoriteEntity)
     private readonly favoriteRepo: Repository<FavoriteEntity>,
@@ -65,8 +65,7 @@ export class FavoriteService {
       });
       return await this.favoriteRepo.save(favorite);
     } catch (error) {
-      console.log(`${Date()} Error Something in addToFavorite`);
-      console.log(error);
+      this.logger.error(`Error Something in addToFavorite: ${error}`);
       throw new Error('Error Something in addToFavorite');
     }
   }
@@ -167,9 +166,9 @@ export class FavoriteService {
         'product.pro_priceC',
         'product.pro_stock',
         'product.pro_point',
-        'product.pro_unit1',
-        'product.pro_unit2',
-        'product.pro_unit3',
+        // 'product.pro_unit1',
+        // 'product.pro_unit2',
+        // 'product.pro_unit3',
         'product.pro_promotion_month',
         'product.pro_promotion_amount',
         'product.pro_sale_amount',
@@ -177,7 +176,7 @@ export class FavoriteService {
         'product.order_quantity',
         'cart.spc_id',
         'cart.spc_amount',
-        'cart.spc_unit',
+        'cart.spc_unit_enum',
         'cart.mem_code',
         'hotdeal.id',
         'hotdeal.pro1_amount',
@@ -187,9 +186,9 @@ export class FavoriteService {
         'hotdealProduct2.pro_code',
         'hotdealProduct2.pro_name',
         'hotdealProduct2.pro_imgmain',
-        'hotdealProduct2.pro_unit1',
-        'hotdealProduct2.pro_unit2',
-        'hotdealProduct2.pro_unit3',
+        // 'hotdealProduct2.pro_unit1',
+        // 'hotdealProduct2.pro_unit2',
+        // 'hotdealProduct2.pro_unit3',
       ]);
 
       const data = await qb.getMany();
@@ -223,7 +222,7 @@ export class FavoriteService {
         return favWithFlag;
       });
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Error Something in getListFavorite');
     }
   }

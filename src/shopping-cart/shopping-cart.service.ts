@@ -22,6 +22,7 @@ import {
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.enity';
+import { console } from 'node:inspector';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -113,7 +114,7 @@ interface RawProductCart {
   lot_pro_code: string;
   spc_id: number;
   spc_amount: string;
-  spc_unit: string;
+  spc_unit_enum: '1' | '2' | '3';
   spc_checked: number;
   is_reward: boolean | number;
   flashsale_end?: string;
@@ -135,6 +136,66 @@ interface RawProductCart {
   replace_pro_name?: string;
   replace_pro_imgmain?: string;
   recommended_replace_pro_code?: string;
+}
+
+export interface TransformedProductCart {
+  pro_code: string;
+  pro_name: string;
+  pro_imgmain: string;
+  pro_priceA: string;
+  pro_priceB: string;
+  pro_priceC: string;
+  pro_stock: number;
+  pro_lowest_stock: string;
+  order_quantity: number;
+  pro_promotion_month: any;
+  pro_promotion_amount: number;
+  replace_pro_code: any;
+  replace_pro_imgmain: any;
+  replace_pro_name: any;
+  lot_id: any;
+  lot: any;
+  mfg: any;
+  exp: any;
+  lot_pro_code: any;
+  spc_id: number;
+  spc_amount: string;
+  spc_unit_enum: string;
+  spc_checked: number;
+  is_reward: number;
+  flashsale_end: any;
+  hotdeal_promain: any;
+  promotion_id: any;
+  flashsale_limit: any;
+  flashsale_date: any;
+  flashsale_time_start: any;
+  flashsale_time_end: any;
+  hotdeal_free: number;
+  cart_pro_code: string;
+  recommended_id: any;
+  recommended_pro_code: any;
+  recommended_pro_imgmain: any;
+  recommended_pro_name: any;
+  recommend_rank: any;
+  recommended_replace_pro_code: any;
+  pro_unit1: string;
+  pro_unit2: string;
+  pro_unit3: string;
+  pro_ratio1: number;
+  pro_ratio2: number;
+  pro_ratio3: number;
+}
+
+interface Hotdeal {
+  pro1_unit: string;
+  pro2_unit: string;
+  id: number;
+  product: ProductEntity;
+  pro1_amount: string;
+  product2: ProductEntity;
+  pro2_amount: string;
+  order: number;
+  special_deal: boolean;
 }
 
 // Define a DTO for the return type
@@ -171,6 +232,27 @@ export interface CartMutationWithCompanyDayContext extends CartMutationResult {
   companyDayRewardContext?: CompanyDayRewardContext | null;
 }
 
+export interface ShoppingCartItemWithProduct extends ShoppingCartEntity {
+  pro_code: string;
+  pro_name: string;
+  pro_imgmain: string;
+  pro_priceA: string;
+  pro_priceB: string;
+  pro_priceC: string;
+  pro_unit1: string;
+  pro_unit2: string;
+  pro_unit3: string;
+  pro_ratio1: number;
+  pro_ratio2: number;
+  pro_ratio3: number;
+  pro_stock: number;
+  order_quantity: number;
+  pro_lowest_stock: number;
+  pro_promotion_month: number;
+  pro_promotion_amount: number;
+  totalSmallestUnit?: number;
+}
+
 @Injectable()
 export class ShoppingCartService {
   private readonly logger = new Logger(ShoppingCartService.name);
@@ -194,7 +276,119 @@ export class ShoppingCartService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     @InjectRepository(DeleteCartEntity)
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
-  ) {}
+  ) { }
+
+  private convertUnitNameToEnum(
+    unitName: string,
+    product: ProductEntity,
+  ): '1' | '2' | '3' {
+    const foundUnit = product?.units?.find((u) => u.unit_name === unitName);
+    if (!foundUnit) {
+      this.logger.warn(
+        `[convertUnitNameToEnum] unit name '${unitName}' not found for pro_code '${product?.pro_code}', defaulting to level 1`,
+      );
+    }
+    const unitLevel = foundUnit?.level || 1;
+    const validatedUnitLevel = [1, 2, 3].includes(Number(unitLevel))
+      ? Number(unitLevel)
+      : 1;
+
+    return String(validatedUnitLevel) as '1' | '2' | '3';
+  }
+
+  private convertEnumToUnitName(
+    unitEnum: 1 | 2 | 3 | string,
+    pro_unit1: string,
+    pro_unit2: string,
+    pro_unit3: string,
+  ): string {
+    switch (unitEnum) {
+      case '1':
+        return pro_unit1 || '';
+      case '2':
+        return pro_unit2 || '';
+      case '3':
+        return pro_unit3 || '';
+      default:
+        return String(unitEnum);
+    }
+  }
+
+  private getRatioFromUnits(
+    unitEnum: 1 | 2 | 3 | string,
+    productUnits?: { level: number; ratio: number; unit_name: string }[],
+  ): number {
+    if (!productUnits || productUnits.length === 0) {
+      return 1;
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.ratio || 1;
+  }
+
+  private async transformProductWithUnits<T extends { pro_code: string }>(
+    product: T,
+  ): Promise<
+    T & {
+      pro_unit1: string;
+      pro_unit2: string;
+      pro_unit3: string;
+      pro_ratio1: number;
+      pro_ratio2: number;
+      pro_ratio3: number;
+    }
+  > {
+    return this.productsService.transformProductWithUnits(product);
+  }
+
+  private async calculateSmallestUnitWithTransformed(
+    orderItems: Array<{ unit: string; quantity: number; pro_code: string }>,
+    pro_code: string,
+  ): Promise<number> {
+    let total = 0;
+    try {
+      const transformedProduct = await this.transformProductWithUnits({
+        pro_code,
+      });
+
+      const units = [
+        {
+          unit: transformedProduct.pro_unit1,
+          ratio: transformedProduct.pro_ratio1,
+        },
+        {
+          unit: transformedProduct.pro_unit2,
+          ratio: transformedProduct.pro_ratio2,
+        },
+        {
+          unit: transformedProduct.pro_unit3,
+          ratio: transformedProduct.pro_ratio3,
+        },
+      ].filter((u) => u.unit); // กรองเฉพาะที่มี unit
+
+      // ลูปผ่านทุก orderItem
+      for (const orderItem of orderItems) {
+        const { unit, quantity } = orderItem;
+
+        // หา ratio จาก units โดยใช้ unit string ที่ส่งมา
+        const unitData = units.find((u) => u.unit === unit);
+        if (unitData) {
+          const totalForItem = quantity * unitData.ratio;
+          total += totalForItem;
+        }
+      }
+
+      return total;
+    } catch (error) {
+      this.logger.error(
+        'Error calculating smallest unit with transformed data:',
+        error,
+      );
+      return 0;
+    }
+  }
 
   private async isL16Member(
     mem_code?: string,
@@ -399,11 +593,25 @@ export class ShoppingCartService {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
 
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
+
+      // [ขาเข้า] แปลงชื่อหน่วยเป็น enum level
+      const product = await this.productRepo.findOne({
+        where: { pro_code: data.pro_code },
+        relations: ['units'],
+      });
+
+      if (!product) {
+        throw new BadRequestException('Product not found');
+      }
+
+      const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
+      // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
+
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
           pro_code: data.pro_code,
-          spc_unit: data.pro_unit,
+          spc_unit_enum: unitEnum,
           hotdeal_free: false,
           is_reward: false,
         },
@@ -436,7 +644,7 @@ export class ShoppingCartService {
         await this.shoppingCartRepo.save({
           pro_code: data.pro_code,
           mem_code: data.mem_code,
-          spc_unit: data.pro_unit,
+          spc_unit_enum: unitEnum,
           spc_amount: data.amount,
           spc_price: 0,
           is_reward: false,
@@ -481,7 +689,7 @@ export class ShoppingCartService {
       ) {
         throw error;
       }
-      throw new Error('Error in Add product Cart');
+      throw new Error('Error in Add product Cart22');
     }
   }
 
@@ -503,97 +711,27 @@ export class ShoppingCartService {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
-      if (data.hotdeal_free && data.hotdeal_promain) {
-        const remainingPoints = await this.getHotdealPointsInfo(
-          data.mem_code,
-          data.hotdeal_promain,
-        );
-
-        if (remainingPoints <= 0) {
-          const cart = await this.getProductCart(data.mem_code);
-          const version = touchVersion
-            ? await this.incrementCartVersion(data.mem_code)
-            : await this.getCartVersionState(data.mem_code);
-          return { cart, ...version };
-        }
-
-        const hotdeals = await this.hotdealService.getHotdealByProCode([
-          data.hotdeal_promain,
-        ]);
-
-        const matchingHotdeal = hotdeals?.find(
-          (hd) =>
-            hd.product2?.pro_code === data.pro_code &&
-            hd.pro2_unit === data.pro_unit,
-        );
-
-        if (
-          matchingHotdeal &&
-          matchingHotdeal.pro1_amount &&
-          matchingHotdeal.pro1_unit
-        ) {
-          const pointsPerFreebieSet =
-            await this.productsService.calculateSmallestUnit([
-              {
-                pro_code: data.hotdeal_promain,
-                unit: matchingHotdeal.pro1_unit,
-                quantity: Number(matchingHotdeal.pro1_amount),
-              },
-            ]);
-
-          if (pointsPerFreebieSet > 0) {
-            const possibleSets = Math.floor(
-              remainingPoints / pointsPerFreebieSet,
-            );
-            const missingAmount =
-              possibleSets * Number(matchingHotdeal.pro2_amount);
-
-            if (missingAmount <= 0) {
-              const cart = await this.getProductCart(data.mem_code);
-              const version = touchVersion
-                ? await this.incrementCartVersion(data.mem_code)
-                : await this.getCartVersionState(data.mem_code);
-              return { cart, ...version };
-            }
-
-            if (data.amount > missingAmount) {
-              data.amount = missingAmount;
-            }
-          }
-        }
-      }
-
-      const existingFreebie = await this.shoppingCartRepo.findOne({
-        where: {
-          mem_code: data.mem_code,
-          pro_code: data.pro_code,
-          spc_unit: data.pro_unit,
-          hotdeal_promain: data.hotdeal_promain,
-          hotdeal_free: true,
-        },
+      const product = await this.productRepo.findOne({
+        where: { pro_code: data.pro_code },
+        relations: ['units'],
       });
 
-      if (existingFreebie) {
-        await this.shoppingCartRepo.update(
-          { spc_id: existingFreebie.spc_id },
-          {
-            spc_amount: Number(existingFreebie.spc_amount) + data.amount,
-            spc_datetime: new Date(),
-          },
-        );
-      } else {
-        await this.shoppingCartRepo.save({
-          pro_code: data.pro_code,
-          mem_code: data.mem_code,
-          spc_unit: data.pro_unit,
-          spc_amount: data.amount,
-          spc_price: 0,
-          hotdeal_free: true,
-          hotdeal_promain: data.hotdeal_promain,
-          spc_datetime: new Date(),
-        });
+      if (!product) {
+        throw new BadRequestException('Product not found');
       }
 
+      const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
+
+      await this.shoppingCartRepo.save({
+        pro_code: data.pro_code,
+        mem_code: data.mem_code,
+        spc_unit_enum: unitEnum,
+        spc_amount: data.amount,
+        spc_price: 0,
+        hotdeal_free: true,
+        hotdeal_promain: data.hotdeal_promain,
+        spc_datetime: new Date(),
+      });
       const cart = await this.getProductCart(data.mem_code);
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
@@ -607,7 +745,7 @@ export class ShoppingCartService {
       ) {
         throw error;
       }
-      throw new Error('Error in Add product Cart');
+      throw new Error('Error in Add product Cart11');
     }
   }
 
@@ -624,7 +762,7 @@ export class ShoppingCartService {
     // 1) ดึงรายการทั้งหมดใน Cart
     const cart = await this.shoppingCartRepo.find({
       where: { mem_code },
-      relations: { product: true },
+      relations: { product: { units: true } },
     });
 
     // 2) ฟิลเตอร์เฉพาะ reward ที่หมดอายุ แล้วใช้ code ต่ออายุ
@@ -669,12 +807,8 @@ export class ShoppingCartService {
         let sumPrice = 0;
         for (const item of cartItems) {
           const p = item.product;
-          const ratio =
-            (p.pro_unit1 === item.spc_unit && p.pro_ratio1) ||
-            (p.pro_unit2 === item.spc_unit && p.pro_ratio2) ||
-            (p.pro_unit3 === item.spc_unit && p.pro_ratio3) ||
-            1;
 
+          const ratio = this.getRatioFromUnits(item.spc_unit_enum, p.units);
           const unitPrice =
             priceOption === 'A'
               ? Number(p.pro_priceA)
@@ -712,11 +846,10 @@ export class ShoppingCartService {
 
     // รวมจำนวนหน่วยต่อรหัสสินค้า (ใช้งานกับ logic โปรรายเดือนของสินค้า ถ้าคุณต้องการ)
     for (const line of baseEligibleCart) {
-      const ratio =
-        (line.product.pro_unit1 === line.spc_unit && line.product.pro_ratio1) ||
-        (line.product.pro_unit2 === line.spc_unit && line.product.pro_ratio2) ||
-        (line.product.pro_unit3 === line.spc_unit && line.product.pro_ratio3) ||
-        1;
+      const ratio = this.getRatioFromUnits(
+        line.spc_unit_enum,
+        line.product.units,
+      );
 
       const baseAmount = Number(line.spc_amount) * Number(ratio || 1);
       perProductTotalUnits.set(
@@ -791,8 +924,6 @@ export class ShoppingCartService {
 
     const usedSpcIds = new Set<number>();
 
-    console.log('Condition-based tiers to evaluate:', conditionBasedTiers);
-
     // คำนวณโปรโมชั่นแบบ cascade (จากมากไปน้อย)
     const processedTierIds = new Set<number>();
     const consumedItems = new Map<number, number>(); // spc_id -> consumed value
@@ -813,26 +944,16 @@ export class ShoppingCartService {
         // เช็คจำนวนหน่วย
         tierValue = eligibleItemsForTier.reduce((sum, line) => {
           const p = line.product;
-          const ratio =
-            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-            1;
+          const ratio = this.getRatioFromUnits(line.spc_unit_enum, p.units);
           return sum + Number(line.spc_amount) * Number(ratio);
         }, 0);
       } else {
         // เช็คยอดเงิน (ระบบเดิม)
         tierValue = eligibleItemsForTier.reduce((sum, line) => {
           const p = line.product;
-          const ratio =
-            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-            1;
-
+          const ratio = this.getRatioFromUnits(line.spc_unit_enum, p.units);
           const totalUnitsSameCode =
             perProductTotalUnits.get(line.pro_code) || 0;
-
           const isPromo =
             p.pro_promotion_month === promoMonth &&
             totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
@@ -854,15 +975,6 @@ export class ShoppingCartService {
         }, 0);
       }
 
-      console.log(
-        'Tier:',
-        tier.tier_id,
-        tier.tier_name,
-        'Available tier value:',
-        tierValue,
-        'Threshold:',
-        threshold,
-      );
       if (tierValue >= threshold) {
         const multiplier = Math.floor(tierValue / threshold);
         if (multiplier <= 0) continue;
@@ -884,11 +996,7 @@ export class ShoppingCartService {
           if (remainingConsume <= 0) break;
 
           const p = line.product;
-          const ratio =
-            (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-            (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-            (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-            1;
+          const ratio = this.getRatioFromUnits(line.spc_unit_enum, p.units);
 
           const totalUnitsSameCode =
             perProductTotalUnits.get(line.pro_code) || 0;
@@ -966,11 +1074,7 @@ export class ShoppingCartService {
     const totalSumPriceForUnusedItems = remainingEligibleCart.reduce(
       (sum, line) => {
         const p = line.product;
-        const ratio =
-          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-          1;
+        const ratio = this.getRatioFromUnits(line.spc_unit_enum, p.units);
         const totalUnitsSameCode = perProductTotalUnits.get(line.pro_code) || 0;
         const isPromo =
           p.pro_promotion_month === promoMonth &&
@@ -1001,11 +1105,7 @@ export class ShoppingCartService {
     const totalUnitsForUnusedItems = remainingEligibleCart.reduce(
       (sum, line) => {
         const p = line.product;
-        const ratio =
-          (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
-          (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
-          (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
-          1;
+        const ratio = this.getRatioFromUnits(line.spc_unit_enum, p.units);
         return sum + Number(line.spc_amount) * Number(ratio);
       },
       0,
@@ -1096,14 +1196,14 @@ export class ShoppingCartService {
     const rewardCartMap = new Map<string, ShoppingCartEntity>();
     for (const r of rewardInCart) {
       rewardCartMap.set(
-        `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`,
+        `${r.pro_code}|${r.spc_unit_enum}|${r.promo_id}|${r.tier_id}`,
         r,
       );
     }
 
     const toRemove: ShoppingCartEntity[] = [];
     for (const r of rewardInCart) {
-      const key = `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`;
+      const key = `${r.pro_code}|${r.spc_unit_enum}|${r.promo_id}|${r.tier_id}`;
       if (!shouldHaveMap.has(key) && r.spc_checked && r.use_code === false) {
         toRemove.push(r);
       }
@@ -1121,11 +1221,25 @@ export class ShoppingCartService {
       const key = `${pro_code}|${unit}|${promo_id}|${tier_id}`;
       const existing = rewardCartMap.get(key);
       if (!existing) {
+        // แปลง unit name เป็น level สำหรับ reward items
+        const rewardProduct = await this.productRepo.findOne({
+          where: { pro_code },
+          relations: ['units'],
+        });
+
+        const foundUnit = rewardProduct?.units?.find(
+          (u) => u.unit_name === unit || String(u.level) === String(unit),
+        );
+        const unitLevel = foundUnit?.level || 1;
+        const validatedUnitLevel = [1, 2, 3].includes(Number(unitLevel))
+          ? Number(unitLevel)
+          : 1;
+
         ops.push(
           this.shoppingCartRepo.save({
             pro_code,
             mem_code,
-            spc_unit: unit,
+            spc_unit_enum: String(validatedUnitLevel) as '1' | '2' | '3',
             spc_amount: qty,
             spc_price: 0,
             is_reward: true,
@@ -1257,7 +1371,7 @@ export class ShoppingCartService {
           );
         }
       } else {
-        throw new Error('Something wrong in checkedProductCart');
+        throw new Error('Something wrong in checkedProductCart55');
       }
 
       const companyDayRewardContext = await this.checkPromotionReward(
@@ -1273,7 +1387,7 @@ export class ShoppingCartService {
       if (e instanceof ConflictException) {
         throw e;
       }
-      throw new Error('Something wrong in checkedProductCart');
+      throw new Error('Something wrong in checkedProductCart77');
     }
   }
 
@@ -1286,7 +1400,7 @@ export class ShoppingCartService {
           mem_code: mem_code,
           spc_checked: true,
         },
-        relations: ['product'],
+        relations: ['product', 'product.units'],
         order: { pro_code: 'ASC' },
       });
     } catch {
@@ -1467,12 +1581,6 @@ export class ShoppingCartService {
           'product.pro_priceA AS pro_priceA',
           'product.pro_priceB AS pro_priceB',
           'product.pro_priceC AS pro_priceC',
-          'product.pro_unit1 AS pro_unit1',
-          'product.pro_unit2 AS pro_unit2',
-          'product.pro_unit3 AS pro_unit3',
-          'product.pro_ratio1 AS pro_ratio1',
-          'product.pro_ratio2 AS pro_ratio2',
-          'product.pro_ratio3 AS pro_ratio3',
           'product.pro_stock AS pro_stock',
           'product.pro_lowest_stock AS pro_lowest_stock',
           'product.order_quantity AS order_quantity',
@@ -1488,7 +1596,7 @@ export class ShoppingCartService {
           'lot.pro_code AS lot_pro_code',
           'cart.spc_id AS spc_id',
           'cart.spc_amount AS spc_amount',
-          'cart.spc_unit AS spc_unit',
+          'cart.spc_unit_enum AS spc_unit_enum',
           'cart.spc_checked AS spc_checked',
           'cart.is_reward AS is_reward',
           'cart.flashsale_end AS flashsale_end',
@@ -1516,6 +1624,18 @@ export class ShoppingCartService {
       const allHotdeals =
         await this.hotdealService.getHotdealByProCode(allProCodes);
 
+      // Transform ข้อมูล units สำหรับทุก products ที่ unique
+      const uniqueProducts = allProCodes.map((pro_code) => ({
+        pro_code,
+        // เอาข้อมูลอื่นๆ จาก raw row แรกที่เจอ
+        ...raw.find((r) => r.pro_code === pro_code),
+      }));
+
+      const transformedProductsMap = new Map<string, any>();
+      for (const product of uniqueProducts) {
+        const transformed = await this.transformProductWithUnits(product);
+        transformedProductsMap.set(product.pro_code, transformed);
+      }
       // คำนวณ used points สำหรับแต่ละสินค้า
       const usedPointsPromises = allProCodes.map((proCode) =>
         this.calculateUsedHotdealPoints(mem_code, proCode),
@@ -1528,17 +1648,18 @@ export class ShoppingCartService {
         ]),
       );
 
-      // คำนวณ hotdeal points info แบบละเอียด
-      const hotdealPointsInfoPromises = allProCodes.map((proCode) =>
-        this.getHotdealPointsInfo(mem_code, proCode),
-      );
+      // คำนวณ hotdeal points info แบบละเอียด (แต้มที่เหลือหลังหักของแถม)
+      const hotdealPointsInfoPromises = allProCodes.map(async (proCode) => {
+        // getHotdealPointsInfo คืนค่า remainingPoints (แต้มที่เหลือ)
+        return this.getHotdealPointsInfo(mem_code, proCode);
+      });
       const hotdealPointsInfoResults = await Promise.all(
         hotdealPointsInfoPromises,
       );
       const hotdealPointsInfoMap = new Map(
         allProCodes.map((proCode, index) => [
           proCode,
-          hotdealPointsInfoResults[index],
+          hotdealPointsInfoResults[index], // แต้มที่เหลือ
         ]),
       );
 
@@ -1547,6 +1668,9 @@ export class ShoppingCartService {
 
         const usedHotdealPoints = usedPointsMap.get(row.pro_code) || 0;
         const hotdealPointsInfo = hotdealPointsInfoMap.get(row.pro_code);
+        const transformedProduct = transformedProductsMap.get(
+          row.pro_code,
+        ) as TransformedProductCart;
 
         const hotdeal = allHotdeals?.filter(
           (hd) => hd.product.pro_code === row.pro_code,
@@ -1559,12 +1683,12 @@ export class ShoppingCartService {
             pro_priceA: row.pro_priceA,
             pro_priceB: row.pro_priceB,
             pro_priceC: row.pro_priceC,
-            pro_unit1: row.pro_unit1,
-            pro_unit2: row.pro_unit2,
-            pro_unit3: row.pro_unit3,
-            pro_ratio1: row.pro_ratio1,
-            pro_ratio2: row.pro_ratio2,
-            pro_ratio3: row.pro_ratio3,
+            pro_unit1: transformedProduct?.pro_unit1 || '',
+            pro_unit2: transformedProduct?.pro_unit2 || '',
+            pro_unit3: transformedProduct?.pro_unit3 || '',
+            pro_ratio1: transformedProduct?.pro_ratio1 || 1,
+            pro_ratio2: transformedProduct?.pro_ratio2 || 1,
+            pro_ratio3: transformedProduct?.pro_ratio3 || 1,
             pro_stock: row.pro_stock,
             pro_lowest_stock: row.pro_lowest_stock,
             order_quantity: row.order_quantity,
@@ -1630,34 +1754,75 @@ export class ShoppingCartService {
         if (
           !grouped[key].shopping_cart.find((sc) => sc.spc_id === row.spc_id)
         ) {
-          grouped[key].shopping_cart.push({
-            spc_id: row.spc_id,
-            spc_amount: row.spc_amount,
-            spc_checked: row.spc_checked,
-            spc_unit: row.spc_unit,
-            is_reward: !!row.is_reward,
-            flashsale_end: row.flashsale_end,
-            pro_promotion_month: row.pro_promotion_month,
-            pro_promotion_amount: row.pro_promotion_amount,
-            hotdeal_free: row.hotdeal_free || false,
-            pro_code: row.pro_code,
-            hotdeal_promain: row.hotdeal_promain,
-          });
+          const transformedProduct = transformedProductsMap.get(
+            row.pro_code,
+          ) as TransformedProductCart;
+          const displayUnit = this.convertEnumToUnitName(
+            row.spc_unit_enum,
+            transformedProduct?.pro_unit1 || '',
+            transformedProduct?.pro_unit2 || '',
+            transformedProduct?.pro_unit3 || '',
+          );
+
+          if (displayUnit === 'null') {
+            await this.shoppingCartRepo.delete({ spc_id: row.spc_id });
+          } else {
+            grouped[key].shopping_cart.push({
+              spc_id: row.spc_id,
+              spc_amount: row.spc_amount,
+              spc_checked: row.spc_checked,
+              spc_unit: displayUnit,
+              is_reward: !!row.is_reward,
+              flashsale_end: row.flashsale_end,
+              pro_promotion_month: row.pro_promotion_month,
+              pro_promotion_amount: row.pro_promotion_amount,
+              hotdeal_free: row.hotdeal_free || false,
+              pro_code: row.pro_code,
+              hotdeal_promain: row.hotdeal_promain,
+            });
+          }
         }
       }
 
-      const totalSmallestUnit = await Promise.all(
-        Object.values(grouped).map(async (group) => {
-          const orderItems = group.shopping_cart.map((item) => ({
-            unit: item.spc_unit,
-            quantity: parseFloat(item.spc_amount),
-            pro_code: group.pro_code,
-          }));
+      for (const key of Object.keys(grouped)) {
+        if (grouped[key].shopping_cart.length === 0) {
+          delete grouped[key];
+        }
+      }
 
-          // คำนวณหน่วยที่เล็กที่สุดสำหรับ pro_code นี้
-          return this.productsService.calculateSmallestUnit(orderItems);
-        }),
-      );
+      const totalSmallestUnit = Object.values(grouped).map((group) => {
+        let total = 0;
+        const transformedProduct = transformedProductsMap.get(
+          group.pro_code,
+        ) as TransformedProductCart;
+
+        // สร้าง units array จาก transformed data
+        const units = [
+          {
+            unit: transformedProduct?.pro_unit1 || '',
+            ratio: transformedProduct?.pro_ratio1 || 1,
+          },
+          {
+            unit: transformedProduct?.pro_unit2 || '',
+            ratio: transformedProduct?.pro_ratio2 || 1,
+          },
+          {
+            unit: transformedProduct?.pro_unit3 || '',
+            ratio: transformedProduct?.pro_ratio3 || 1,
+          },
+        ].filter((u) => u.unit); // กรองเฉพาะที่มี unit
+
+        // คำนวณ totalSmallestUnit ด้วยตัวเอง
+        for (const item of group.shopping_cart) {
+          const unitData = units.find((u) => u.unit === item.spc_unit);
+          if (unitData) {
+            const totalForItem = parseFloat(item.spc_amount) * unitData.ratio;
+            total += totalForItem;
+          }
+        }
+
+        return total;
+      });
 
       const ProductMaptotalSmallestUnit = totalSmallestUnit.map(
         (total, index) => ({
@@ -1705,7 +1870,7 @@ export class ShoppingCartService {
     {
       spc_id: number;
       spc_amount: number;
-      spc_unit: string;
+      spc_unit_enum: '1' | '2' | '3';
       hotdeal_free: boolean;
       pro_code: string;
     }[]
@@ -1729,9 +1894,8 @@ export class ShoppingCartService {
     pro_code: string,
   ): Promise<ShoppingProductCart[] | null | undefined> {
     try {
-      const hotdeals = await this.hotdealService.getHotdealByProCode([
-        pro_code,
-      ]);
+      const hotdeals: Hotdeal[] | null =
+        await this.hotdealService.getHotdealByProCode([pro_code]);
       if (!hotdeals || hotdeals.length === 0) {
         return await this.getProductCart(mem_code);
       }
@@ -1781,14 +1945,7 @@ export class ShoppingCartService {
         if (!hd.pro1_amount || !hd.pro1_unit || !hd.product2?.pro_code) {
           continue;
         }
-
         try {
-          const cartByUnit = new Map<string, number>();
-          for (const item of mainProductsInCart) {
-            const currentQty = cartByUnit.get(item.spc_unit) || 0;
-            cartByUnit.set(item.spc_unit, currentQty + Number(item.spc_amount));
-          }
-
           const hotdealRequirement = [
             {
               pro_code: pro_code,
@@ -1798,8 +1955,9 @@ export class ShoppingCartService {
           ];
 
           const hotdealRequiredInSmallest =
-            await this.productsService.calculateSmallestUnit(
+            await this.calculateSmallestUnitWithTransformed(
               hotdealRequirement,
+              pro_code,
             );
           if (hotdealRequiredInSmallest <= 0) {
             continue;
@@ -1889,48 +2047,43 @@ export class ShoppingCartService {
     mem_code: string,
   ): Promise<{ total: number; items: { [key: string]: number }[] }> {
     try {
-      const result = await this.shoppingCartRepo.find({
-        where: {
-          mem_code,
-          spc_checked: true,
-          is_reward: false,
-          hotdeal_free: false,
-        },
-        relations: { product: true, member: true },
-        select: {
-          spc_amount: true,
-          spc_unit: true,
-          pro_code: true,
-          mem_code: true,
-          flashsale_end: true,
-          product: {
-            pro_code: true,
-            pro_priceA: true,
-            pro_priceB: true,
-            pro_priceC: true,
-            pro_unit1: true,
-            pro_unit2: true,
-            pro_unit3: true,
-            pro_ratio1: true,
-            pro_ratio2: true,
-            pro_ratio3: true,
-            pro_promotion_month: true,
-            pro_promotion_amount: true,
-            flashsale: {
-              flashsale: {
-                time_end: true,
-                time_start: true,
-                date: true,
-              },
-            },
-          },
-          member: {
-            mem_code: true,
-            mem_price: true,
-          },
-        },
-        order: { pro_code: 'ASC' },
-      });
+      const result = await this.shoppingCartRepo
+        .createQueryBuilder('cart')
+        .leftJoinAndSelect('cart.product', 'product')
+        .leftJoinAndSelect('product.flashsale', 'productFlashsale')
+        .leftJoinAndSelect('productFlashsale.flashsale', 'flashsale')
+        .leftJoinAndSelect('product.units', 'units')
+        .leftJoinAndSelect('cart.member', 'member')
+        .select([
+          'cart.spc_id',
+          'cart.spc_amount',
+          'cart.spc_unit_enum',
+          'cart.pro_code',
+          'cart.mem_code',
+          'cart.flashsale_end',
+          'product.pro_code',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_promotion_month',
+          'product.pro_promotion_amount',
+          'productFlashsale',
+          'flashsale.promotion_id',
+          'flashsale.time_end',
+          'flashsale.time_start',
+          'flashsale.date',
+          'units.unit_name',
+          'units.level',
+          'units.ratio',
+          'member.mem_code',
+          'member.mem_price',
+        ])
+        .where('cart.mem_code = :mem_code', { mem_code })
+        .andWhere('cart.spc_checked = :spc_checked', { spc_checked: true })
+        .andWhere('cart.is_reward = :is_reward', { is_reward: false })
+        .andWhere('cart.hotdeal_free = :hotdeal_free', { hotdeal_free: false })
+        .orderBy('cart.pro_code', 'ASC')
+        .getMany();
 
       const numberOfMonth = new Date().getMonth() + 1;
       const splitData = groupCart(result, 80);
@@ -1944,16 +2097,17 @@ export class ShoppingCartService {
         for (const item of dataGroup) {
           if (!item.product) continue;
 
-          const unitRatioMap = new Map([
-            [item.product.pro_unit1, item.product.pro_ratio1],
-            [item.product.pro_unit2, item.product.pro_ratio2],
-            [item.product.pro_unit3, item.product.pro_ratio3],
-          ]);
-
-          const ratio = unitRatioMap.get(item.spc_unit);
-          if (!ratio) {
+          let ratio = 1;
+          const matchedUnit = item.product.units?.find(
+            (u) =>
+              u.unit_name === item.spc_unit_enum ||
+              String(u.level) === String(item.spc_unit_enum),
+          );
+          if (matchedUnit) {
+            ratio = matchedUnit.ratio;
+          } else {
             throw new Error(
-              `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
+              `Invalid unit enum ${item.spc_unit_enum} for product ${item.pro_code}`,
             );
           }
           const baseAmount = Number(item.spc_amount) * Number(ratio);
@@ -2016,12 +2170,13 @@ export class ShoppingCartService {
 
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            const unitRatioMap = new Map([
-              [item.product.pro_unit1, item.product.pro_ratio1],
-              [item.product.pro_unit2, item.product.pro_ratio2],
-              [item.product.pro_unit3, item.product.pro_ratio3],
-            ]);
-            const ratio = unitRatioMap.get(item.spc_unit) ?? 0;
+            let ratio = 0;
+            const matchedUnit = item.product.units?.find(
+              (u) =>
+                u.unit_name === item.spc_unit_enum ||
+                String(u.level) === String(item.spc_unit_enum),
+            );
+            if (matchedUnit) ratio = matchedUnit.ratio;
             const quantity = Number(item.spc_amount) * Number(ratio);
             const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
 
@@ -2056,13 +2211,43 @@ export class ShoppingCartService {
           pro_code: pro_code,
           spc_checked: true,
         },
+        relations: { product: { units: true } },
         select: {
           pro_code: true,
           spc_amount: true,
-          spc_unit: true,
+          spc_unit_enum: true,
+          product: {
+            pro_code: true,
+          },
         },
       });
-      return cartItems;
+
+      // แปลง enum เป็นชื่อหน่วยจริง
+      const transformedItems = await Promise.all(
+        cartItems.map(async (item) => {
+          let spc_unit = '';
+
+          if (item.product) {
+            const transformedProduct = await this.transformProductWithUnits(
+              item.product,
+            );
+            spc_unit = this.convertEnumToUnitName(
+              item.spc_unit_enum,
+              transformedProduct.pro_unit1,
+              transformedProduct.pro_unit2,
+              transformedProduct.pro_unit3,
+            );
+          }
+
+          return {
+            pro_code: item.pro_code,
+            spc_amount: item.spc_amount,
+            spc_unit,
+          };
+        }),
+      );
+
+      return transformedItems;
     } catch {
       return [];
     }
@@ -2081,9 +2266,12 @@ export class ShoppingCartService {
       for (const data of freebies) {
         // ตรวจสอบข้อมูลพื้นฐานก่อนดำเนินการ
         if (!data.pro_code || !data.pro_code1 || !data.unit) {
+          this.logger.warn(
+            `Skipping invalid hotdeal data: ${JSON.stringify(data)}`,
+          );
           continue;
         }
-
+        this.logger.log(`Processing hotdeal freebie: ${JSON.stringify(data)}`);
         // เช็คจำนวนสินค้าหลักในตะกร้าเพื่อคำนวณแต้ม (หน่วยที่เล็กที่สุด)
         const mainProductInCart = await this.shoppingCartRepo.find({
           where: {
@@ -2093,18 +2281,51 @@ export class ShoppingCartService {
             spc_checked: true,
           },
         });
+        this.logger.log(
+          `Found main products in cart: ${JSON.stringify(mainProductInCart)}`,
+        );
 
         if (mainProductInCart.length === 0) {
+          this.logger.log(
+            `No main product found in cart for pro_code1: ${data.pro_code1}, skipping hotdeal freebie.`,
+          );
           continue;
         }
-
         // เช็คว่าครบเงื่อนไข hotdeal หรือไม่
+        // แปลง spc_unit_enum เป็นชื่อหน่วยจริงสำหรับการเช็ค
+        const mainProductInCartWithUnitNames = await Promise.all(
+          mainProductInCart.map(async (item) => {
+            const mainProduct = await this.productRepo.findOne({
+              where: { pro_code: item.pro_code },
+              relations: ['units'],
+            });
+
+            if (!mainProduct) {
+              return {
+                pro1_unit: item.spc_unit_enum,
+                pro1_amount: item.spc_amount.toString(),
+              };
+            }
+
+            const transformedMainProduct =
+              await this.transformProductWithUnits(mainProduct);
+            const unitName = this.convertEnumToUnitName(
+              item.spc_unit_enum,
+              transformedMainProduct.pro_unit1,
+              transformedMainProduct.pro_unit2,
+              transformedMainProduct.pro_unit3,
+            );
+
+            return {
+              pro1_unit: unitName,
+              pro1_amount: item.spc_amount.toString(),
+            };
+          }),
+        );
+
         const hotdealMatch = await this.hotdealService.checkHotdealMatch(
           data.pro_code1,
-          mainProductInCart.map((item) => ({
-            pro1_unit: item.spc_unit,
-            pro1_amount: item.spc_amount.toString(),
-          })),
+          mainProductInCartWithUnitNames,
         );
 
         if (!hotdealMatch?.match) {
@@ -2118,6 +2339,10 @@ export class ShoppingCartService {
           continue;
         }
 
+        this.logger.log(
+          `Hotdeal conditions met for pro_code1: ${data.pro_code1}, processing freebie: ${data.pro_code}`,
+        );
+
         // ถ้าครบเงื่อนไขแล้ว จึงเพิ่มหรืออัปเดตของแถม
         const existingFreebie = await this.shoppingCartRepo.findOne({
           where: {
@@ -2128,9 +2353,15 @@ export class ShoppingCartService {
           },
         });
 
+        this.logger.log(`Existing freebie: ${JSON.stringify(existingFreebie)}`);
+
         const actualFreebieAmount = Math.min(
           data.amount,
           Number(hotdealMatch.countFreeBies) || 0,
+        );
+
+        this.logger.log(
+          `Processing hotdeal freebie for mem_code: ${mem_code}, pro_code: ${data.pro_code}, required amount: ${data.amount}, actual freebie amount: ${actualFreebieAmount}`,
         );
 
         if (existingFreebie) {
@@ -2144,16 +2375,50 @@ export class ShoppingCartService {
             { spc_amount: actualFreebieAmount },
           );
         } else {
+          // แปลงชื่อหน่วยเป็น enum level สำหรับสินค้าแถม
+          const freebieProduct = await this.productRepo.findOne({
+            where: { pro_code: data.pro_code },
+            relations: ['units'],
+          });
+
+          if (!freebieProduct) {
+            this.logger.warn(`Freebie product not found: ${data.pro_code}`);
+            continue;
+          }
+
+          const transformedFreebieProduct =
+            await this.transformProductWithUnits(freebieProduct);
+
+          // หา enum level จากชื่อหน่วย
+          let unitEnum: '1' | '2' | '3' = '1'; // default
+          if (data.unit === transformedFreebieProduct.pro_unit1) {
+            unitEnum = '1';
+          } else if (data.unit === transformedFreebieProduct.pro_unit2) {
+            unitEnum = '2';
+          } else if (data.unit === transformedFreebieProduct.pro_unit3) {
+            unitEnum = '3';
+          } else {
+            this.logger.warn(
+              `Unit not found for freebie ${data.pro_code}: ${data.unit}, using default '1'`,
+            );
+          }
+
+          this.logger.log(
+            `Adding/updating hotdeal freebie for mem_code: ${mem_code}, pro_code: ${data.pro_code}, unitEnum: ${unitEnum}, amount: ${actualFreebieAmount}`,
+          );
+
           const hotdeal = this.shoppingCartRepo.create({
             pro_code: data.pro_code,
             mem_code,
-            spc_unit: data.unit,
+            spc_unit_enum: unitEnum,
             spc_amount: actualFreebieAmount,
             hotdeal_promain: data.pro_code1,
             spc_checked: true,
             hotdeal_free: true,
             spc_datetime: new Date(),
           });
+
+          this.logger.log('Adding hotdeal freebie to cart:', hotdeal);
 
           await this.shoppingCartRepo.save(hotdeal);
         }
@@ -2184,15 +2449,13 @@ export class ShoppingCartService {
         },
         relations: { product: true },
       });
-
       if (freebies.length === 0) {
         return 0;
       }
 
       // ดึงข้อมูล hotdeal สำหรับสินค้าหลัก
-      const hotdeals = await this.hotdealService.getHotdealByProCode([
-        pro_code,
-      ]);
+      const hotdeals: HotdealEntity[] | null =
+        await this.hotdealService.getHotdealByProCode([pro_code]);
       if (!hotdeals || hotdeals.length === 0) {
         return 0;
       }
@@ -2201,11 +2464,27 @@ export class ShoppingCartService {
 
       // คำนวณแต้มที่ใช้สำหรับแต่ละของแถม
       for (const freebie of freebies) {
-        // หา hotdeal rule ที่ตรงกับของแถมนี้
+        // แปลง spc_unit_enum เป็นชื่อหน่วยจริงก่อน
+        let freebieUnitName = '';
+        if (freebie.product) {
+          const transformedProduct = await this.transformProductWithUnits(
+            freebie.product,
+          );
+          freebieUnitName = this.convertEnumToUnitName(
+            freebie.spc_unit_enum,
+            transformedProduct.pro_unit1,
+            transformedProduct.pro_unit2,
+            transformedProduct.pro_unit3,
+          );
+        } else {
+          freebieUnitName = String(freebie.spc_unit_enum);
+        }
+
+        // หา hotdeal rule ที่ตรงกับของแถมนี้ (เทียบด้วยชื่อหน่วย string)
         const matchingHotdeal = hotdeals.find(
           (hd) =>
             hd.product2?.pro_code === freebie.pro_code &&
-            hd.pro2_unit === freebie.spc_unit,
+            hd.pro2_unit === freebieUnitName,
         );
 
         if (
@@ -2223,7 +2502,10 @@ export class ShoppingCartService {
           ];
 
           const pointsPerFreebie =
-            await this.productsService.calculateSmallestUnit(requiredItems);
+            await this.calculateSmallestUnitWithTransformed(
+              requiredItems,
+              pro_code,
+            );
 
           // คำนวณแต้มรวมที่ใช้ = จำนวนของแถม × แต้มต่อหน่วย
           const freebieAmount = Number(freebie.spc_amount);
@@ -2251,22 +2533,35 @@ export class ShoppingCartService {
           hotdeal_free: false,
           spc_checked: true,
         },
-        relations: { product: true },
+        relations: { product: { units: true } },
       });
 
       if (mainProductsInCart.length === 0) {
         return 0;
       }
 
-      // คำนวณแต้มรวมของสินค้าหลัก (หน่วยเล็กสุด)
-      const cartItems = mainProductsInCart.map((item) => ({
-        pro_code: item.pro_code,
-        unit: item.spc_unit,
-        quantity: Number(item.spc_amount),
-      }));
+      // แปลง spc_unit_enum เป็น unit name สำหรับการคำนวณ
+      const transformedProduct = await this.transformProductWithUnits({
+        pro_code,
+      });
+      const cartItemsWithUnitNames = mainProductsInCart.map((item) => {
+        const unitName = this.convertEnumToUnitName(
+          item.spc_unit_enum,
+          transformedProduct.pro_unit1,
+          transformedProduct.pro_unit2,
+          transformedProduct.pro_unit3,
+        );
+        return {
+          pro_code: item.pro_code,
+          unit: unitName,
+          quantity: Number(item.spc_amount),
+        };
+      });
 
-      const totalPoints =
-        await this.productsService.calculateSmallestUnit(cartItems);
+      const totalPoints = await this.calculateSmallestUnitWithTransformed(
+        cartItemsWithUnitNames,
+        pro_code,
+      );
       const usedPoints = await this.calculateUsedHotdealPoints(
         mem_code,
         pro_code,

@@ -37,6 +37,7 @@ import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
+import type { PromotionEntityWithTransformedData } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
@@ -59,7 +60,6 @@ import { SessionsService } from './sessions/sessions.service';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
-import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
@@ -330,7 +330,6 @@ export class AppController {
   @Get('/ecom/favorite/:mem_code')
   async getListFavorite(
     @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
     const memberCode = req.user.mem_code;
@@ -1839,7 +1838,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/company-days')
   async getCompanyDays(@Req() req: Request & { user: JwtPayload }): Promise<{
-    promotions: PromotionEntity[];
+    promotions: PromotionEntityWithTransformedData[];
   }> {
     const permission = req.user.permission;
     if (permission !== true) {
