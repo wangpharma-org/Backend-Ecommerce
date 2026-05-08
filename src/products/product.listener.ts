@@ -4,7 +4,8 @@ import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
-import axios from 'axios';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 export interface UpdateProductImageEcommercePayload {
   product_code: string;
@@ -50,7 +51,22 @@ export interface ProductEasyAcc {
 @Controller()
 export class ProductListner {
   private readonly logger = new Logger(ProductListner.name);
-  constructor(private readonly productServerce: ProductsService) {}
+  private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL ?? '';
+
+  constructor(
+    private readonly productServerce: ProductsService,
+    private readonly httpService: HttpService,
+  ) {}
+
+  private async notifySynced(reply_id: string): Promise<void> {
+    try {
+      await firstValueFrom(
+        this.httpService.post(`${this.productServiceUrl}/product/synced`, { reply_id }),
+      );
+    } catch (error) {
+      this.logger.error('Failed to notify synced', String(error));
+    }
+  }
   @MessagePattern('product_created_ecom')
   async addProduct(@Payload() message: ProductEntity) {
     try {
@@ -148,10 +164,7 @@ export class ProductListner {
   ) {
     try {
       await this.productServerce.updateProductImageFromCentral(message);
-      if (message.reply_id) {
-        const url = process.env.PRODUCT_SERVICE_URL ?? '';
-        await axios.post(`${url}/product/synced`, { reply_id: message.reply_id });
-      }
+      if (message.reply_id) await this.notifySynced(message.reply_id);
     } catch (error) {
       this.logger.error(
         'Kafka Received message in update_product_image_ecommerce listener',
