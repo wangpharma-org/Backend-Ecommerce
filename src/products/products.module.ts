@@ -1,4 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { ProductsService } from './products.service';
 import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -16,6 +17,7 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
 
 @Module({
   imports: [
+    HttpModule,
     TypeOrmModule.forFeature([
       ProductEntity,
       ProductPharmaEntity,

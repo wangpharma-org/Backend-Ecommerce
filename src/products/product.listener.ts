@@ -4,6 +4,18 @@ import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+
+export interface UpdateProductImageEcommercePayload {
+  product_code: string;
+  pro_imgmain?: string | null;
+  pro_img2?: string | null;
+  pro_img3?: string | null;
+  pro_img4?: string | null;
+  pro_img5?: string | null;
+  reply_id?: string;
+}
 
 export interface ProductEasyAcc {
   product_code: string;
@@ -39,7 +51,22 @@ export interface ProductEasyAcc {
 @Controller()
 export class ProductListner {
   private readonly logger = new Logger(ProductListner.name);
-  constructor(private readonly productServerce: ProductsService) {}
+  private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL ?? '';
+
+  constructor(
+    private readonly productServerce: ProductsService,
+    private readonly httpService: HttpService,
+  ) {}
+
+  private async notifySynced(reply_id: string): Promise<void> {
+    try {
+      await firstValueFrom(
+        this.httpService.post(`${this.productServiceUrl}/product/synced`, { reply_id }),
+      );
+    } catch (error) {
+      this.logger.error('Failed to notify synced', String(error));
+    }
+  }
   @MessagePattern('product_created_ecom')
   async addProduct(@Payload() message: ProductEntity) {
     try {
@@ -126,6 +153,21 @@ export class ProductListner {
     } catch (error) {
       this.logger.error(
         'Kafka Received message in product_update_from_easyacc listener',
+        String(error),
+      );
+    }
+  }
+
+  @MessagePattern('update_product_image_ecommerce')
+  async handleUpdateProductImageEcommerce(
+    @Payload() message: UpdateProductImageEcommercePayload,
+  ) {
+    try {
+      await this.productServerce.updateProductImageFromCentral(message);
+      if (message.reply_id) await this.notifySynced(message.reply_id);
+    } catch (error) {
+      this.logger.error(
+        'Kafka Received message in update_product_image_ecommerce listener',
         String(error),
       );
     }
