@@ -59,18 +59,14 @@ export class ProductListner {
   ) {}
 
   private async notifySynced(reply_id: string): Promise<void> {
-    try {
-      const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
-      await firstValueFrom(
-        this.httpService.post(
-          `${this.productServiceUrl}/api/products/kafka/image-sync-reply`,
-          { reply_id },
-          { headers: { 'x-webhook-secret': webhookSecret } },
-        ),
-      );
-    } catch (error) {
-      this.logger.error('Failed to notify synced', String(error));
-    }
+    const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
+    await firstValueFrom(
+      this.httpService.post(
+        `${this.productServiceUrl}/api/products/kafka/image-sync-reply`,
+        { reply_id },
+        { headers: { 'x-webhook-secret': webhookSecret } },
+      ),
+    );
   }
   @MessagePattern('product_created_ecom')
   async addProduct(@Payload() message: ProductEntity) {
@@ -168,8 +164,30 @@ export class ProductListner {
     @Payload() message: UpdateProductImageEcommercePayload,
   ) {
     try {
+      const oldImages = await this.productServerce.getProductImageUrls(message.product_code);
       await this.productServerce.updateProductImageFromCentral(message);
-      if (message.reply_id) await this.notifySynced(message.reply_id);
+
+      if (message.reply_id) {
+        try {
+          await this.notifySynced(message.reply_id);
+        } catch (notifyError) {
+          this.logger.error('Notify failed, rolling back', String(notifyError));
+          if (oldImages) {
+            await this.productServerce
+              .updateProductImageFromCentral({
+                product_code: message.product_code,
+                pro_imgmain: oldImages.pro_imgmain,
+                pro_img2: oldImages.pro_img2,
+                pro_img3: oldImages.pro_img3,
+                pro_img4: oldImages.pro_img4,
+                pro_img5: oldImages.pro_img5,
+              })
+              .catch((e: unknown) =>
+                this.logger.error('Rollback image failed', String(e)),
+              );
+          }
+        }
+      }
     } catch (error) {
       this.logger.error(
         'Kafka Received message in update_product_image_ecommerce listener',
