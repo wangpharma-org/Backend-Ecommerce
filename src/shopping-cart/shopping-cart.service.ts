@@ -7,7 +7,14 @@ import {
 } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, Not, Brackets } from 'typeorm';
+import {
+  In,
+  Repository,
+  Not,
+  Brackets,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { PromotionEntity } from 'src/promotion/promotion.entity';
 import { PromotionConditionEntity } from 'src/promotion/promotion-condition.entity';
@@ -646,9 +653,13 @@ export class ShoppingCartService {
       );
     }
 
-    // 6) โหลด promotions + tiers
+    // 6) โหลด promotions + tiers (เฉพาะที่ active และยังไม่หมดอายุ)
     const promotions = await this.promotionRepo.find({
-      where: { status: true },
+      where: {
+        status: true,
+        start_date: LessThanOrEqual(today),
+        end_date: MoreThanOrEqual(today),
+      },
       relations: { tiers: { rewards: { giftProduct: true } } },
     });
 
@@ -715,7 +726,6 @@ export class ShoppingCartService {
     console.log('Condition-based tiers to evaluate:', conditionBasedTiers);
 
     // คำนวณโปรโมชั่นแบบ cascade (จากมากไปน้อย)
-    const processedTierIds = new Set<number>();
     const consumedItems = new Map<number, number>(); // spc_id -> consumed value
 
     for (const tier of conditionBasedTiers) {
@@ -877,7 +887,6 @@ export class ShoppingCartService {
         }
       }
 
-      processedTierIds.add(tier.tier_id);
     }
 
     // 9) คำนวณยอดรวม/จำนวนหน่วยรวมของสินค้าที่ "ยังไม่ได้ใช้" ในโปรโมชั่นแบบมีเงื่อนไข
@@ -1016,14 +1025,17 @@ export class ShoppingCartService {
     // 11) อัปเดต / ลบของแถมตาม shouldHaveMap
     const rewardInCart = cart.filter((c) => c.is_reward);
     const rewardCartMap = new Map<string, ShoppingCartEntity>();
+    const rewardDuplicates: ShoppingCartEntity[] = [];
     for (const r of rewardInCart) {
-      rewardCartMap.set(
-        `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`,
-        r,
-      );
+      const key = `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`;
+      if (rewardCartMap.has(key)) {
+        rewardDuplicates.push(r);
+      } else {
+        rewardCartMap.set(key, r);
+      }
     }
 
-    const toRemove: ShoppingCartEntity[] = [];
+    const toRemove: ShoppingCartEntity[] = [...rewardDuplicates];
     for (const r of rewardInCart) {
       const key = `${r.pro_code}|${r.spc_unit}|${r.promo_id}|${r.tier_id}`;
       if (!shouldHaveMap.has(key) && r.spc_checked && r.use_code === false) {
