@@ -63,7 +63,7 @@ export class ProductListner {
       const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
       await firstValueFrom(
         this.httpService.post(
-          `${this.productServiceUrl}/product/synced`,
+          `${this.productServiceUrl}/api/products/kafka/image-sync-reply`,
           { reply_id },
           { headers: { 'x-webhook-secret': webhookSecret } },
         ),
