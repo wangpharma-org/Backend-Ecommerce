@@ -753,7 +753,7 @@ export class ShoppingCartService {
           return sum + Number(line.spc_amount) * Number(ratio);
         }, 0);
       } else {
-        // เช็คยอดเงิน (ระบบเดิม)
+        // เช็คยอดเงิน — หัก consumed value ที่ tier ก่อนหน้าใช้ไปแล้ว
         tierValue = eligibleItemsForTier.reduce((sum, line) => {
           const p = line.product;
           const ratio =
@@ -769,11 +769,10 @@ export class ShoppingCartService {
             p.pro_promotion_month === promoMonth &&
             totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
 
+          let lineValue: number;
           if (isPromo) {
-            return (
-              sum +
-              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio)
-            );
+            lineValue =
+              Number(line.spc_amount) * Number(p.pro_priceA) * Number(ratio);
           } else {
             const price =
               priceOption === 'A'
@@ -781,8 +780,11 @@ export class ShoppingCartService {
                 : priceOption === 'B'
                   ? Number(p.pro_priceB)
                   : Number(p.pro_priceC);
-            return sum + Number(line.spc_amount) * price * Number(ratio);
+            lineValue = Number(line.spc_amount) * price * Number(ratio);
           }
+
+          const alreadyConsumed = consumedItems.get(line.spc_id) || 0;
+          return sum + Math.max(0, lineValue - alreadyConsumed);
         }, 0);
       }
 
@@ -852,9 +854,42 @@ export class ShoppingCartService {
           }
         }
 
-        // Mark items as used and tag them
+        // Mark fully-consumed items as used and tag eligible items
         for (const line of eligibleItemsForTier) {
-          usedSpcIds.add(line.spc_id);
+          if (tier.is_unit) {
+            usedSpcIds.add(line.spc_id);
+          } else {
+            const p = line.product;
+            const ratio =
+              (p.pro_unit1 === line.spc_unit && p.pro_ratio1) ||
+              (p.pro_unit2 === line.spc_unit && p.pro_ratio2) ||
+              (p.pro_unit3 === line.spc_unit && p.pro_ratio3) ||
+              1;
+            const totalUnitsSameCode =
+              perProductTotalUnits.get(line.pro_code) || 0;
+            const isPromo =
+              p.pro_promotion_month === promoMonth &&
+              totalUnitsSameCode >= (p.pro_promotion_amount ?? 0);
+            let lineValue: number;
+            if (isPromo) {
+              lineValue =
+                Number(line.spc_amount) *
+                Number(p.pro_priceA) *
+                Number(ratio);
+            } else {
+              const price =
+                priceOption === 'A'
+                  ? Number(p.pro_priceA)
+                  : priceOption === 'B'
+                    ? Number(p.pro_priceB)
+                    : Number(p.pro_priceC);
+              lineValue =
+                Number(line.spc_amount) * price * Number(ratio);
+            }
+            if ((consumedItems.get(line.spc_id) || 0) >= lineValue) {
+              usedSpcIds.add(line.spc_id);
+            }
+          }
           if (!conditionTagMap.has(line.spc_id)) {
             conditionTagMap.set(line.spc_id, {
               promo_id: tier.promotion.promo_id,
