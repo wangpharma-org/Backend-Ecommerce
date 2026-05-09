@@ -107,9 +107,6 @@ export class FavoriteService {
             pro_code: string;
             pro_name: string;
             pro_imgmain: string;
-            pro_unit1: string;
-            pro_unit2: string;
-            pro_unit3: string;
           } | null;
         };
         monthly?: {
@@ -166,9 +163,6 @@ export class FavoriteService {
         'product.pro_priceC',
         'product.pro_stock',
         'product.pro_point',
-        // 'product.pro_unit1',
-        // 'product.pro_unit2',
-        // 'product.pro_unit3',
         'product.pro_promotion_month',
         'product.pro_promotion_amount',
         'product.pro_sale_amount',
@@ -186,9 +180,6 @@ export class FavoriteService {
         'hotdealProduct2.pro_code',
         'hotdealProduct2.pro_name',
         'hotdealProduct2.pro_imgmain',
-        // 'hotdealProduct2.pro_unit1',
-        // 'hotdealProduct2.pro_unit2',
-        // 'hotdealProduct2.pro_unit3',
       ]);
 
       const data = await qb.getMany();
@@ -208,9 +199,6 @@ export class FavoriteService {
                 pro_code: string;
                 pro_name: string;
                 pro_imgmain: string;
-                pro_unit1: string;
-                pro_unit2: string;
-                pro_unit3: string;
               } | null;
             };
             monthly?: {

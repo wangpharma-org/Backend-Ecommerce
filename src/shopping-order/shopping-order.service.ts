@@ -57,7 +57,7 @@ export class ShoppingOrderService {
     productUnits?: { level: number; unit_name: string; ratio: number }[],
   ): string {
     if (!productUnits || productUnits.length === 0) {
-      return String(unitEnum);
+      return '';
     }
 
     const targetLevel = Number(unitEnum);

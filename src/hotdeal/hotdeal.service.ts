@@ -198,13 +198,10 @@ export class HotdealService {
           where: { id: id },
         });
         if (existingHotdeal) {
-          const hotdealId = existingHotdeal.id === id;
-          if (hotdealId) {
-            await this.hotdealRepo.update(
-              { id: existingHotdeal.id },
-              { order: order, special_deal: special_deal },
-            );
-          }
+          await this.hotdealRepo.update(
+            { id: existingHotdeal.id },
+            { order: order, special_deal: special_deal },
+          );
         }
       } else {
         const hotdeal = this.hotdealRepo.create({
@@ -889,37 +886,34 @@ export class HotdealService {
       order: { pro1_amount: 'ASC' },
     });
 
-    // แปลงหน่วยเป็น string เหมือน methods อื่นๆ
-    const transformedHotdeals = await Promise.all(
-      hotdeals.map(async (hotdeal) => {
-        let pro1_unit = hotdeal.pro1_unit;
-        let pro2_unit = hotdeal.pro2_unit;
+    // รวม unique pro_code ทั้งหมด (product1 + product2) แล้ว fetch ครั้งเดียว
+    const uniqueCodes = [
+      ...new Set([
+        ...hotdeals.map((hd) => hd.product?.pro_code).filter(Boolean),
+        ...hotdeals.map((hd) => hd.product2?.pro_code).filter(Boolean),
+      ]),
+    ] as string[];
 
-        // แปลงหน่วย product 1
-        if (hotdeal.product) {
-          const transformedProduct = await this.productService.transformProductWithUnits(hotdeal.product);
-          const unitLevel = Number(hotdeal.pro1_unit);
-          if (unitLevel === 1) pro1_unit = transformedProduct.pro_unit1;
-          else if (unitLevel === 2) pro1_unit = transformedProduct.pro_unit2;
-          else if (unitLevel === 3) pro1_unit = transformedProduct.pro_unit3;
-        }
-
-        // แปลงหน่วย product 2
-        if (hotdeal.product2) {
-          const transformedProduct2 = await this.productService.transformProductWithUnits(hotdeal.product2);
-          const unitLevel = Number(hotdeal.pro2_unit);
-          if (unitLevel === 1) pro2_unit = transformedProduct2.pro_unit1;
-          else if (unitLevel === 2) pro2_unit = transformedProduct2.pro_unit2;
-          else if (unitLevel === 3) pro2_unit = transformedProduct2.pro_unit3;
-        }
-
-        return {
-          ...hotdeal,
-          pro1_unit,
-          pro2_unit,
-        };
-      })
+    const transformedMap = new Map<string, { pro_unit1: string; pro_unit2: string; pro_unit3: string }>();
+    await Promise.all(
+      uniqueCodes.map(async (code) => {
+        const t = await this.productService.transformProductWithUnits({ pro_code: code } as ProductEntity);
+        transformedMap.set(code, t);
+      }),
     );
-    return transformedHotdeals;
+
+    const resolveUnit = (transformed: { pro_unit1: string; pro_unit2: string; pro_unit3: string } | undefined, level: number, fallback: string) => {
+      if (!transformed) return fallback;
+      if (level === 1) return transformed.pro_unit1;
+      if (level === 2) return transformed.pro_unit2;
+      if (level === 3) return transformed.pro_unit3;
+      return fallback;
+    };
+
+    return hotdeals.map((hotdeal) => ({
+      ...hotdeal,
+      pro1_unit: resolveUnit(transformedMap.get(hotdeal.product?.pro_code), Number(hotdeal.pro1_unit), hotdeal.pro1_unit),
+      pro2_unit: resolveUnit(transformedMap.get(hotdeal.product2?.pro_code), Number(hotdeal.pro2_unit), hotdeal.pro2_unit),
+    }));
   }
 }

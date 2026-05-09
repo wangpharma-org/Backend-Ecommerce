@@ -232,8 +232,33 @@ export class ProductsService {
         .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
         .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
         .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .andWhere('product.pro_name NOT LIKE :p8', { p8: 'โอน%' })
+        .andWhere('product.pro_code NOT LIKE :p9', { p9: '@%' })
         .getMany();
-      return data;
+
+      const proCodes = data.map((p) => p.pro_code);
+      const allUnits = await this.productUnitRepo.find({
+        where: { pro_code: In(proCodes) },
+        select: ['pro_code', 'level', 'unit_name', 'ratio'],
+      });
+      const unitsMap = new Map<string, typeof allUnits>();
+      for (const u of allUnits) {
+        if (!unitsMap.has(u.pro_code)) unitsMap.set(u.pro_code, []);
+        unitsMap.get(u.pro_code)!.push(u);
+      }
+
+      return data.map((p) => {
+        const units = unitsMap.get(p.pro_code) ?? [];
+        return {
+          ...p,
+          pro_unit1: units.find((u) => u.level === 1)?.unit_name ?? '',
+          pro_unit2: units.find((u) => u.level === 2)?.unit_name ?? '',
+          pro_unit3: units.find((u) => u.level === 3)?.unit_name ?? '',
+          pro_ratio1: units.find((u) => u.level === 1)?.ratio ?? 1,
+          pro_ratio2: units.find((u) => u.level === 2)?.ratio ?? 1,
+          pro_ratio3: units.find((u) => u.level === 3)?.ratio ?? 1,
+        };
+      });
     } catch (error) {
       this.logger.error('Error in getProductByCreditor', error);
       throw error;
@@ -1603,8 +1628,6 @@ export class ProductsService {
     try {
       const products = await this.productRepo
         .createQueryBuilder('product')
-        .leftJoinAndSelect('product.units', 'units')
-        .leftJoinAndSelect('product.units', 'units')
         .where(
           new Brackets((qb) => {
             qb.where('product.pro_code LIKE :keyword', {
@@ -1635,7 +1658,30 @@ export class ProductsService {
         ])
         .take(10)
         .getMany();
-      return products;
+
+      const proCodes = products.map((p) => p.pro_code);
+      const allUnits = await this.productUnitRepo.find({
+        where: { pro_code: In(proCodes) },
+        select: ['pro_code', 'level', 'unit_name', 'ratio'],
+      });
+      const unitsMap = new Map<string, typeof allUnits>();
+      for (const u of allUnits) {
+        if (!unitsMap.has(u.pro_code)) unitsMap.set(u.pro_code, []);
+        unitsMap.get(u.pro_code)!.push(u);
+      }
+
+      return products.map((p) => {
+        const units = unitsMap.get(p.pro_code) ?? [];
+        return {
+          ...p,
+          pro_unit1: units.find((u) => u.level === 1)?.unit_name ?? '',
+          pro_unit2: units.find((u) => u.level === 2)?.unit_name ?? '',
+          pro_unit3: units.find((u) => u.level === 3)?.unit_name ?? '',
+          pro_ratio1: units.find((u) => u.level === 1)?.ratio ?? 1,
+          pro_ratio2: units.find((u) => u.level === 2)?.ratio ?? 1,
+          pro_ratio3: units.find((u) => u.level === 3)?.ratio ?? 1,
+        };
+      });
     } catch (error) {
       this.logger.error('Error searching by code or supplier:', error);
       throw new Error('Error searching by code or supplier');
@@ -1754,7 +1800,6 @@ export class ProductsService {
               pro_code: item.pro_code,
               unit_name: item.unit1.trim(),
               ratio: ratio1 || 1,
-              price: item.priceA || 0,
               level: 1,
             }),
           );
@@ -1765,7 +1810,6 @@ export class ProductsService {
               pro_code: item.pro_code,
               unit_name: item.unit2.trim(),
               ratio: ratio2 || 1,
-              price: item.priceB || 0,
               level: 2,
             }),
           );
@@ -1776,7 +1820,6 @@ export class ProductsService {
               pro_code: item.pro_code,
               unit_name: item.unit3.trim(),
               ratio: ratio3 || 1,
-              price: item.priceC || 0,
               level: 3,
             }),
           );
@@ -1950,7 +1993,6 @@ export class ProductsService {
       const isL16 = await this.isL16Member(mem_code, mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
-        .leftJoinAndSelect('product.units', 'units')
         .leftJoinAndSelect('product.units', 'units')
         .where('product.pro_priceA != 0')
         .andWhere(

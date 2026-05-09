@@ -13,6 +13,7 @@ export class Unit1777869005107 implements MigrationInterface {
     await queryRunner.query(
       `CREATE TABLE \`product_unit\` (\`id\` int NOT NULL AUTO_INCREMENT, \`pro_code\` varchar(20) NOT NULL, \`unit_name\` varchar(30) NOT NULL, \`ratio\` int NOT NULL DEFAULT '1', \`level\` int NOT NULL, PRIMARY KEY (\`id\`)) ENGINE=InnoDB`,
     );
+
     await queryRunner.query(
       `ALTER TABLE \`product_unit\` ADD CONSTRAINT \`FK_86e4bbe0fb61335628ca7601fde\` FOREIGN KEY (\`pro_code\`) REFERENCES \`product\`(\`pro_code\`) ON DELETE CASCADE ON UPDATE NO ACTION`,
     );
@@ -66,7 +67,7 @@ export class Unit1777869005107 implements MigrationInterface {
       UPDATE shopping_cart sc
       LEFT JOIN product_unit pu ON sc.pro_code COLLATE utf8mb4_unicode_ci = pu.pro_code COLLATE utf8mb4_unicode_ci
         AND sc.spc_unit COLLATE utf8mb4_unicode_ci = pu.unit_name COLLATE utf8mb4_unicode_ci
-      SET sc.spc_unit_enum = IFNULL(CAST(pu.level AS CHAR), NULL)
+      SET sc.spc_unit_enum = IFNULL(CAST(pu.level AS CHAR), 1)
     `);
 
     await queryRunner.query(

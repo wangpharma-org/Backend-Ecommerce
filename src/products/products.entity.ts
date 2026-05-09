@@ -168,7 +168,9 @@ export class ProductEntity {
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
   creditor!: CreditorEntity | null;
 
-  @OneToMany(() => ProductUnitEntity, (unit) => unit.product)
+  @OneToMany(() => ProductUnitEntity, (unit) => unit.product, {
+    cascade: ['insert', 'update'],
+  })
   units!: ProductUnitEntity[];
 
   @OneToOne(() => ProductPharmaEntity, (pharma) => pharma.product)

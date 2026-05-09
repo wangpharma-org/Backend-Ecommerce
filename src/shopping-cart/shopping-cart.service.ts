@@ -22,7 +22,6 @@ import {
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.enity';
-import { console } from 'node:inspector';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -297,12 +296,12 @@ export class ShoppingCartService {
   }
 
   private convertEnumToUnitName(
-    unitEnum: 1 | 2 | 3 | string,
+    unitEnum: 1 | 2 | 3 | string | null | undefined,
     pro_unit1: string,
     pro_unit2: string,
     pro_unit3: string,
   ): string {
-    switch (unitEnum) {
+    switch (String(unitEnum)) {
       case '1':
         return pro_unit1 || '';
       case '2':
@@ -310,7 +309,7 @@ export class ShoppingCartService {
       case '3':
         return pro_unit3 || '';
       default:
-        return String(unitEnum);
+        return '';
     }
   }
 
@@ -689,7 +688,7 @@ export class ShoppingCartService {
       ) {
         throw error;
       }
-      throw new Error('Error in Add product Cart22');
+      throw new Error('Error in Add product Cart');
     }
   }
 
@@ -745,7 +744,7 @@ export class ShoppingCartService {
       ) {
         throw error;
       }
-      throw new Error('Error in Add product Cart11');
+      throw new Error('Error in Add product Cart');
     }
   }
 
@@ -1371,7 +1370,7 @@ export class ShoppingCartService {
           );
         }
       } else {
-        throw new Error('Something wrong in checkedProductCart55');
+        throw new Error('Something wrong in checkedProductCart');
       }
 
       const companyDayRewardContext = await this.checkPromotionReward(
@@ -1387,7 +1386,7 @@ export class ShoppingCartService {
       if (e instanceof ConflictException) {
         throw e;
       }
-      throw new Error('Something wrong in checkedProductCart77');
+      throw new Error('Something wrong in checkedProductCart');
     }
   }
 
@@ -1764,7 +1763,7 @@ export class ShoppingCartService {
             transformedProduct?.pro_unit3 || '',
           );
 
-          if (displayUnit === 'null') {
+          if (!displayUnit) {
             await this.shoppingCartRepo.delete({ spc_id: row.spc_id });
           } else {
             grouped[key].shopping_cart.push({
