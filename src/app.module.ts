@@ -43,10 +43,12 @@ import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
+import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
 import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 
 import { MailerModule } from '@nestjs-modules/mailer';
+import { RatingModule } from './rating/rating.module';
 import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
 
 @Module({
@@ -111,6 +113,7 @@ import { LineRegisterMeetingModule } from './line-register-meeting/line-register
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,
+    LineOaMonitorModule,
     ElasticsearchModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
@@ -136,6 +139,7 @@ import { LineRegisterMeetingModule } from './line-register-meeting/line-register
         },
       }),
     }),
+    RatingModule,
     LineRegisterMeetingModule,
   ],
   controllers: [AppController],
