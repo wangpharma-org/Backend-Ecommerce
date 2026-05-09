@@ -723,8 +723,9 @@ export class ShoppingCartService {
       if (!threshold) continue;
 
       const conditionCodes = promoConditionMap.get(tier.tier_id)!;
-      const eligibleItemsForTier = baseEligibleCart.filter((line) =>
-        conditionCodes.has(line.pro_code),
+      const eligibleItemsForTier = baseEligibleCart.filter(
+        (line) =>
+          conditionCodes.has(line.pro_code) && !usedSpcIds.has(line.spc_id),
       );
 
       // เช็คว่าเป็นการเช็คจำนวนหน่วย (is_unit = true) หรือเช็คยอดเงิน (is_unit = false)
