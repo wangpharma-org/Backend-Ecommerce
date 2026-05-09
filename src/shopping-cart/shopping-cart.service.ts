@@ -611,6 +611,38 @@ export class ShoppingCartService {
     }
   }
 
+  async callCheckCartPromotion() {
+    try {
+      const shoppingCarts = await this.shoppingCartRepo.find({
+        select: {
+          member: { mem_code: true, mem_price: true },
+        },
+        relations: { member: true },
+      });
+
+      const uniqueMembers = new Map<
+        string,
+        { mem_code: string; mem_price: string }
+      >();
+
+      for (const cart of shoppingCarts) {
+        if (!uniqueMembers.has(cart.member.mem_code)) {
+          uniqueMembers.set(cart.member.mem_code, {
+            mem_code: cart.member.mem_code,
+            mem_price: cart.member.mem_price,
+          });
+        }
+      }
+
+      for (const member of uniqueMembers.values()) {
+        await this.checkPromotionReward(member.mem_code, member.mem_price);
+      }
+    } catch (error) {
+      console.error('Error in Check Cart Promotion:', error);
+      throw new Error('Error in Check Cart Promotion');
+    }
+  }
+
   async addProductCart(data: {
     mem_code: string;
     pro_code: string;

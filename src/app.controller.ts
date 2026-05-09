@@ -4138,4 +4138,10 @@ export class AppController {
       );
     }
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/trigger/check-promotion-company-day')
+  async triggerCheckPromotionCompanyDay() {
+    await this.shoppingCartService.callCheckCartPromotion();
+  }
 }
