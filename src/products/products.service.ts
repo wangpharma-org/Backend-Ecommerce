@@ -1105,6 +1105,9 @@ export class ProductsService {
       pro_keysearch: string;
     }
 
+    let proCodes: string[] = [];
+    let totalCount = 0;
+
     try {
       const keyword = data.keyword?.trim();
 
@@ -1113,9 +1116,6 @@ export class ProductsService {
       }
 
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
-
-      let proCodes: string[] = [];
-      let totalCount = 0;
 
       try {
         const esResult =
@@ -1236,7 +1236,7 @@ export class ProductsService {
                           match: {
                             pro_keysearch: {
                               query: keyword,
-                              operator: 'or',
+                              operator: 'and',
                               fuzziness: 'AUTO',
                               boost: 50,
                             },
@@ -1259,8 +1259,8 @@ export class ProductsService {
                               'pro_drugmain4^3',
                             ],
                             type: 'best_fields',
-                            operator: 'or',
-                            fuzziness: 'AUTO',
+                            operator: 'and',
+                            // fuzziness: 'AUTO',
                             boost: 30,
                           },
                         },
@@ -2323,33 +2323,6 @@ export class ProductsService {
     }
   }
 
-  async getProductImageUrls(pro_code: string): Promise<{
-    pro_imgmain: string | null;
-    pro_img2: string | null;
-    pro_img3: string | null;
-    pro_img4: string | null;
-    pro_img5: string | null;
-  } | null> {
-    const product = await this.productRepo.findOne({
-      where: { pro_code },
-      select: {
-        pro_imgmain: true,
-        pro_img2: true,
-        pro_img3: true,
-        pro_img4: true,
-        pro_img5: true,
-      },
-    });
-    if (!product) return null;
-    return {
-      pro_imgmain: product.pro_imgmain ?? null,
-      pro_img2: product.pro_img2 ?? null,
-      pro_img3: product.pro_img3 ?? null,
-      pro_img4: product.pro_img4 ?? null,
-      pro_img5: product.pro_img5 ?? null,
-    };
-  }
-
   async updateProductImageFromCentral(
     data: UpdateProductImageEcommercePayload,
   ): Promise<void> {
@@ -2370,7 +2343,6 @@ export class ProductsService {
       );
     } catch (error) {
       this.logger.error('Error updating product image from central:', error);
-      throw error;
     }
   }
 
@@ -2427,5 +2399,32 @@ export class ProductsService {
     } catch {
       throw new Error('Error in checkCartByProcode');
     }
+  }
+
+  async getProductImageUrls(pro_code: string): Promise<{
+    pro_imgmain: string | null;
+    pro_img2: string | null;
+    pro_img3: string | null;
+    pro_img4: string | null;
+    pro_img5: string | null;
+  } | null> {
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: {
+        pro_imgmain: true,
+        pro_img2: true,
+        pro_img3: true,
+        pro_img4: true,
+        pro_img5: true,
+      },
+    });
+    if (!product) return null;
+    return {
+      pro_imgmain: product.pro_imgmain ?? null,
+      pro_img2: product.pro_img2 ?? null,
+      pro_img3: product.pro_img3 ?? null,
+      pro_img4: product.pro_img4 ?? null,
+      pro_img5: product.pro_img5 ?? null,
+    };
   }
 }
