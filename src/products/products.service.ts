@@ -2343,6 +2343,7 @@ export class ProductsService {
       );
     } catch (error) {
       this.logger.error('Error updating product image from central:', error);
+      throw error;
     }
   }
 
