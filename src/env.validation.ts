@@ -16,4 +16,6 @@ export const envValidationSchema = Joi.object({
   SLACK_WEBHOOK_URL: Joi.string().required(),
   SYNCHRONIZE: Joi.boolean().default(false),
   PORT: Joi.number().default(3000),
+  PRODUCT_SERVICE_URL: Joi.string().optional(),
+  WEBHOOK_SECRET: Joi.string().optional(),
 });

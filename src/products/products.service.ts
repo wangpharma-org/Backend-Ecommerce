@@ -17,7 +17,10 @@ import { UserEntity } from 'src/users/users.entity';
 import axios from 'axios';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
-import { ProductEasyAcc } from './product.listener';
+import {
+  ProductEasyAcc,
+  UpdateProductImageEcommercePayload,
+} from './product.listener';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
@@ -165,7 +168,7 @@ export class ProductsService {
     }
     const member = await this.userRepo.findOne({
       where: { mem_code },
-      select: ['mem_route'],
+      select: { mem_route: true },
     });
     return member?.mem_route?.toUpperCase() === 'L16';
   }
@@ -1195,6 +1198,9 @@ export class ProductsService {
       pro_keysearch: string;
     }
 
+    let proCodes: string[] = [];
+    let totalCount = 0;
+
     try {
       const keyword = data.keyword?.trim();
 
@@ -1203,9 +1209,6 @@ export class ProductsService {
       }
 
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
-
-      let proCodes: string[] = [];
-      let totalCount = 0;
 
       try {
         const esResult =
@@ -1326,7 +1329,7 @@ export class ProductsService {
                           match: {
                             pro_keysearch: {
                               query: keyword,
-                              operator: 'or',
+                              operator: 'and',
                               fuzziness: 'AUTO',
                               boost: 50,
                             },
@@ -1349,8 +1352,8 @@ export class ProductsService {
                               'pro_drugmain4^3',
                             ],
                             type: 'best_fields',
-                            operator: 'or',
-                            fuzziness: 'AUTO',
+                            operator: 'and',
+                            // fuzziness: 'AUTO',
                             boost: 30,
                           },
                         },
@@ -1893,7 +1896,7 @@ export class ProductsService {
       const chunk = uniqueCodes.slice(i, i + chunkSize);
       const found = await this.productRepo.find({
         where: { pro_code: In(chunk) },
-        select: ['pro_code'],
+        select: { pro_code: true },
       });
       for (const product of found) {
         existingCodes.add(product.pro_code);
@@ -2076,7 +2079,11 @@ export class ProductsService {
     try {
       const products = await this.productRepo.find({
         where: { pro_promotion_month: MoreThan(0) },
-        select: ['pro_code', 'pro_promotion_month', 'pro_promotion_amount'],
+        select: {
+          pro_code: true,
+          pro_promotion_month: true,
+          pro_promotion_amount: true,
+        },
       });
       return products.map((product) => ({
         pro_code: product.pro_code,
@@ -2213,14 +2220,14 @@ export class ProductsService {
     try {
       const product = await this.productRepo.findOne({
         where: { pro_code },
-        select: [
-          'pro_imgmain',
-          'pro_code',
-          'pro_img2',
-          'pro_img3',
-          'pro_img4',
-          'pro_img5',
-        ],
+        select: {
+          pro_imgmain: true,
+          pro_code: true,
+          pro_img2: true,
+          pro_img3: true,
+          pro_img4: true,
+          pro_img5: true,
+        },
       });
       return product;
     } catch (error) {
@@ -2260,14 +2267,14 @@ export class ProductsService {
             { pro_img4: img },
             { pro_img5: img },
           ],
-          select: [
-            'pro_code',
-            'pro_imgmain',
-            'pro_img2',
-            'pro_img3',
-            'pro_img4',
-            'pro_img5',
-          ],
+          select: {
+            pro_code: true,
+            pro_imgmain: true,
+            pro_img2: true,
+            pro_img3: true,
+            pro_img4: true,
+            pro_img5: true,
+          },
         });
         if (!product) continue;
 
@@ -2490,6 +2497,29 @@ export class ProductsService {
     }
   }
 
+  async updateProductImageFromCentral(
+    data: UpdateProductImageEcommercePayload,
+  ): Promise<void> {
+    try {
+      const updateData: Record<string, string | null> = {};
+      if (data.pro_imgmain !== undefined)
+        updateData.pro_imgmain = data.pro_imgmain;
+      if (data.pro_img2 !== undefined) updateData.pro_img2 = data.pro_img2;
+      if (data.pro_img3 !== undefined) updateData.pro_img3 = data.pro_img3;
+      if (data.pro_img4 !== undefined) updateData.pro_img4 = data.pro_img4;
+      if (data.pro_img5 !== undefined) updateData.pro_img5 = data.pro_img5;
+
+      if (Object.keys(updateData).length === 0) return;
+
+      await this.productRepo.update(
+        { pro_code: data.product_code },
+        updateData,
+      );
+    } catch (error) {
+      this.logger.error('Error updating product image from central:', error);
+    }
+  }
+
   async createDeleteCartByProcode(
     pro_code: string,
     pro_imgmain: string,
@@ -2543,5 +2573,32 @@ export class ProductsService {
     } catch {
       throw new Error('Error in checkCartByProcode');
     }
+  }
+
+  async getProductImageUrls(pro_code: string): Promise<{
+    pro_imgmain: string | null;
+    pro_img2: string | null;
+    pro_img3: string | null;
+    pro_img4: string | null;
+    pro_img5: string | null;
+  } | null> {
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: {
+        pro_imgmain: true,
+        pro_img2: true,
+        pro_img3: true,
+        pro_img4: true,
+        pro_img5: true,
+      },
+    });
+    if (!product) return null;
+    return {
+      pro_imgmain: product.pro_imgmain ?? null,
+      pro_img2: product.pro_img2 ?? null,
+      pro_img3: product.pro_img3 ?? null,
+      pro_img4: product.pro_img4 ?? null,
+      pro_img5: product.pro_img5 ?? null,
+    };
   }
 }

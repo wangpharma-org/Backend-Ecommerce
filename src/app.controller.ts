@@ -4071,6 +4071,12 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/trigger/check-promotion-company-day')
+  async triggerCheckPromotionCompanyDay() {
+    await this.shoppingCartService.callCheckCartPromotion();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-search-autocomplete')
   async productSearchAutoComplete(@Query('search') search: string) {
     try {
@@ -4082,4 +4088,5 @@ export class AppController {
       );
     }
   }
+
 }

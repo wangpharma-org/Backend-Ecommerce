@@ -49,6 +49,7 @@ import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 import { RatingModule } from './rating/rating.module';
+import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
 
 @Module({
   imports: [
@@ -139,6 +140,7 @@ import { RatingModule } from './rating/rating.module';
       }),
     }),
     RatingModule,
+    LineRegisterMeetingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,6 +4,18 @@ import { ProductEntity } from './products.entity';
 import { ProductsService } from './products.service';
 import { UpdateProductImageDto } from './update-product-image.dto';
 import { ProductPharmaEntity } from './product-pharma.entity';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+
+export interface UpdateProductImageEcommercePayload {
+  product_code: string;
+  pro_imgmain?: string | null;
+  pro_img2?: string | null;
+  pro_img3?: string | null;
+  pro_img4?: string | null;
+  pro_img5?: string | null;
+  reply_id?: string;
+}
 
 export interface ProductEasyAcc {
   product_code: string;
@@ -39,7 +51,23 @@ export interface ProductEasyAcc {
 @Controller()
 export class ProductListner {
   private readonly logger = new Logger(ProductListner.name);
-  constructor(private readonly productServerce: ProductsService) {}
+  private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL ?? '';
+
+  constructor(
+    private readonly productServerce: ProductsService,
+    private readonly httpService: HttpService,
+  ) {}
+
+  private async notifySynced(reply_id: string): Promise<void> {
+    const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
+    await firstValueFrom(
+      this.httpService.post(
+        `${this.productServiceUrl}/api/products/kafka/image-sync-reply`,
+        { reply_id },
+        { headers: { 'x-webhook-secret': webhookSecret } },
+      ),
+    );
+  }
   @MessagePattern('product_created_ecom')
   async addProduct(@Payload() message: ProductEntity) {
     try {
@@ -126,6 +154,43 @@ export class ProductListner {
     } catch (error) {
       this.logger.error(
         'Kafka Received message in product_update_from_easyacc listener',
+        String(error),
+      );
+    }
+  }
+
+  @MessagePattern('update_product_image_ecommerce')
+  async handleUpdateProductImageEcommerce(
+    @Payload() message: UpdateProductImageEcommercePayload,
+  ) {
+    try {
+      const oldImages = await this.productServerce.getProductImageUrls(message.product_code);
+      await this.productServerce.updateProductImageFromCentral(message);
+
+      if (message.reply_id) {
+        try {
+          await this.notifySynced(message.reply_id);
+        } catch (notifyError) {
+          this.logger.error('Notify failed, rolling back', String(notifyError));
+          if (oldImages) {
+            await this.productServerce
+              .updateProductImageFromCentral({
+                product_code: message.product_code,
+                pro_imgmain: oldImages.pro_imgmain,
+                pro_img2: oldImages.pro_img2,
+                pro_img3: oldImages.pro_img3,
+                pro_img4: oldImages.pro_img4,
+                pro_img5: oldImages.pro_img5,
+              })
+              .catch((e: unknown) =>
+                this.logger.error('Rollback image failed', String(e)),
+              );
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        'Kafka Received message in update_product_image_ecommerce listener',
         String(error),
       );
     }
