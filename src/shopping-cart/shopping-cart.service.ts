@@ -1786,40 +1786,32 @@ export class ShoppingCartService {
       let totalCartInSmallest =
         getHotdealFromproCode?.totalAmountInSmallestUnit || 0;
 
-      const minPoint = Math.min(
-        ...hotdeals.map((hd) => Number(hd.pro1_amount)),
-      );
-      const bestHotdeal = hotdeals.filter(
-        (hd) => Number(hd.pro1_amount) === minPoint,
-      );
-      for (const hd of bestHotdeal) {
-        if (!hd.pro1_amount || !hd.pro1_unit || !hd.product2?.pro_code) {
-          continue;
-        }
-
-        try {
-          const cartByUnit = new Map<string, number>();
-          for (const item of mainProductsInCart) {
-            const currentQty = cartByUnit.get(item.spc_unit) || 0;
-            cartByUnit.set(item.spc_unit, currentQty + Number(item.spc_amount));
-          }
-
-          const hotdealRequirement = [
+      const hotdealSmallestAmounts = await Promise.all(
+        hotdeals.map(async (hd) => {
+          const smallest = await this.productsService.calculateSmallestUnit([
             {
               pro_code: pro_code,
               unit: hd.pro1_unit,
               quantity: Number(hd.pro1_amount),
             },
-          ];
+          ]);
+          return { hd, smallest };
+        }),
+      );
 
-          const hotdealRequiredInSmallest =
-            await this.productsService.calculateSmallestUnit(
-              hotdealRequirement,
-            );
-          if (hotdealRequiredInSmallest <= 0) {
-            continue;
-          }
+      const sortedHotdeals = hotdealSmallestAmounts
+        .filter(({ smallest }) => smallest > 0)
+        .sort((a, b) => b.smallest - a.smallest);
 
+      for (const {
+        hd,
+        smallest: hotdealRequiredInSmallest,
+      } of sortedHotdeals) {
+        if (!hd.pro1_amount || !hd.pro1_unit || !hd.product2?.pro_code) {
+          continue;
+        }
+
+        try {
           const totalFreebies = Math.floor(
             totalCartInSmallest / hotdealRequiredInSmallest,
           );
@@ -1828,7 +1820,7 @@ export class ShoppingCartService {
             freebiesData.push({
               pro_code: hd.product2.pro_code,
               unit: hd.pro2_unit,
-              quantity: totalFreebies,
+              quantity: totalFreebies * Number(hd.pro2_amount),
             });
           }
 
@@ -1846,7 +1838,22 @@ export class ShoppingCartService {
         return await this.getProductCart(mem_code);
       }
 
-      const validFreebieProCodes = new Set(freebiesData.map((f) => f.pro_code));
+      const freebiesMap = new Map<
+        string,
+        { pro_code: string; unit: string; quantity: number }
+      >();
+      for (const f of freebiesData) {
+        const key = `${f.pro_code}::${f.unit}`;
+        const existing = freebiesMap.get(key);
+        if (existing) {
+          existing.quantity += f.quantity;
+        } else {
+          freebiesMap.set(key, { ...f });
+        }
+      }
+      const mergedFreebies = Array.from(freebiesMap.values());
+
+      const validFreebieProCodes = new Set(mergedFreebies.map((f) => f.pro_code));
 
       const freebiesToRemove = allFreebiesInCart.filter(
         (fb) => !validFreebieProCodes.has(fb.pro_code),
@@ -1855,11 +1862,10 @@ export class ShoppingCartService {
         await this.shoppingCartRepo.remove(freebiesToRemove);
       }
 
-      for (const freebieData of freebiesData) {
+      for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code,
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
         );
-
         if (existingFreebie) {
           if (Number(existingFreebie.spc_amount) !== freebieData.quantity) {
             await this.shoppingCartRepo.update(
@@ -1867,8 +1873,14 @@ export class ShoppingCartService {
               { spc_amount: freebieData.quantity },
             );
           }
-        } else {
-          // เพิ่มของแถมใหม่
+        }
+      }
+
+      for (const freebieData of mergedFreebies) {
+        const existingFreebie = allFreebiesInCart.find(
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
+        );
+        if (!existingFreebie) {
           await this.addProductCartHotDeal(
             {
               mem_code: mem_code,
@@ -2063,7 +2075,14 @@ export class ShoppingCartService {
   async getOrderFromCartMember(
     mem_code: string,
     pro_code: string,
-  ): Promise<{ pro_code: string; spc_amount: number; spc_unit: string }[]> {
+  ): Promise<
+    {
+      pro_code: string;
+      spc_amount: number;
+      spc_unit: string;
+      hotdeal_free: boolean;
+    }[]
+  > {
     try {
       const cartItems = await this.shoppingCartRepo.find({
         where: {
@@ -2075,6 +2094,7 @@ export class ShoppingCartService {
           pro_code: true,
           spc_amount: true,
           spc_unit: true,
+          hotdeal_free: true,
         },
       });
       return cartItems;
@@ -2120,6 +2140,7 @@ export class ShoppingCartService {
             pro1_unit: item.spc_unit,
             pro1_amount: item.spc_amount.toString(),
           })),
+          data.pro_code,
         );
 
         if (!hotdealMatch?.match) {
