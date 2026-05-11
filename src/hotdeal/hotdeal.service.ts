@@ -126,8 +126,8 @@ export class HotdealService {
       }
 
       const amountSmallestHotdeal = minSmallestAmount;
-      const targetProCode2 = bestHotdeal?.product2?.pro_code || pro_code2;
-      const targetProUnit2 = bestHotdeal?.pro2_unit || pro_unit2;
+      const targetProCode2 = bestHotdeal ? (bestHotdeal.product2?.pro_code || pro_code2) : pro_code2;
+      const targetProUnit2 = bestHotdeal ? (bestHotdeal.pro2_unit || pro_unit2) : pro_unit2;
       const targetProAmount2 = bestHotdeal ? Number(bestHotdeal.pro2_amount) : 1;
 
       const hotdealProductInCart =
@@ -188,6 +188,18 @@ export class HotdealService {
           );
         }
       } else {
+        const duplicate = await this.hotdealRepo.findOne({
+          where: {
+            product: { pro_code: datainput.pro1_code },
+            product2: { pro_code: datainput.pro2_code },
+          },
+          relations: ['product', 'product2'],
+        });
+
+        if (duplicate) {
+          await this.hotdealRepo.delete({ id: duplicate.id });
+        }
+
         const hotdeal = this.hotdealRepo.create({
           pro1_amount: datainput.pro1_amount,
           pro1_unit: datainput.pro1_unit,
@@ -655,15 +667,6 @@ export class HotdealService {
           if (conditionInSmallestUnit) {
             hd.pro1_amount = (Number(hd.pro1_amount) * Number(conditionInSmallestUnit)).toString();
             hd.pro1_unit =  product.pro_unit1 as string;
-          }
-        });
-        hotdeal.forEach((hd) => {
-          const conditionInSmallestUnit = units.find(
-            (u) => u.unit === hd.pro2_unit,
-          )?.ratio;
-          if (conditionInSmallestUnit) {
-            hd.pro2_amount = (Number(hd.pro2_amount) * Number(conditionInSmallestUnit)).toString();
-            hd.pro2_unit = product.pro_unit1 as string;
           }
         });
       }

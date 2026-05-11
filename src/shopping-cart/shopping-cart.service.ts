@@ -1820,7 +1820,7 @@ export class ShoppingCartService {
             freebiesData.push({
               pro_code: hd.product2.pro_code,
               unit: hd.pro2_unit,
-              quantity: totalFreebies,
+              quantity: totalFreebies * Number(hd.pro2_amount),
             });
           }
 
@@ -1838,7 +1838,22 @@ export class ShoppingCartService {
         return await this.getProductCart(mem_code);
       }
 
-      const validFreebieProCodes = new Set(freebiesData.map((f) => f.pro_code));
+      const freebiesMap = new Map<
+        string,
+        { pro_code: string; unit: string; quantity: number }
+      >();
+      for (const f of freebiesData) {
+        const key = `${f.pro_code}::${f.unit}`;
+        const existing = freebiesMap.get(key);
+        if (existing) {
+          existing.quantity += f.quantity;
+        } else {
+          freebiesMap.set(key, { ...f });
+        }
+      }
+      const mergedFreebies = Array.from(freebiesMap.values());
+
+      const validFreebieProCodes = new Set(mergedFreebies.map((f) => f.pro_code));
 
       const freebiesToRemove = allFreebiesInCart.filter(
         (fb) => !validFreebieProCodes.has(fb.pro_code),
@@ -1847,9 +1862,9 @@ export class ShoppingCartService {
         await this.shoppingCartRepo.remove(freebiesToRemove);
       }
 
-      for (const freebieData of freebiesData) {
+      for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code,
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
         );
         if (existingFreebie) {
           if (Number(existingFreebie.spc_amount) !== freebieData.quantity) {
@@ -1861,9 +1876,9 @@ export class ShoppingCartService {
         }
       }
 
-      for (const freebieData of freebiesData) {
+      for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code,
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
         );
         if (!existingFreebie) {
           await this.addProductCartHotDeal(
