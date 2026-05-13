@@ -28,7 +28,7 @@ import {
   type CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
-import { DeleteCartEntity } from './delete-cart.enity';
+import { DeleteCartEntity } from './delete-cart.entity';
 
 export interface ShoppingProductCart {
   pro_code: string;
