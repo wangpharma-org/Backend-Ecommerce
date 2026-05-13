@@ -3183,7 +3183,8 @@ export class AppController {
   async removeBannerLink(@Param('linkId') linkId: string) {
     try {
       const bannerId = await this.campaignsService.removeBannerLink(linkId);
-      await this.bannerService.deleteBannerById(bannerId);
+      // ลบแค่ record ใน DB — ไม่ลบไฟล์ใน DO Spaces เพราะ URL เดียวกับ poster history
+      await this.bannerService.deleteBannerRecordOnly(bannerId);
       return { success: true };
     } catch (error: unknown) {
       if (error instanceof HttpException) throw error;

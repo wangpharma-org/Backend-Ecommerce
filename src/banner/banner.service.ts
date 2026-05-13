@@ -238,6 +238,10 @@ export class BannerService {
     }
   }
 
+  async deleteBannerRecordOnly(bannerId: number) {
+    return this.bannerRepo.delete(bannerId);
+  }
+
   async findAllBanners(): Promise<BannerEntity[]> {
     return this.bannerRepo.find({
       order: {
