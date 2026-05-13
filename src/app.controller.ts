@@ -88,7 +88,7 @@ import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 
-interface JwtPayload {
+export interface JwtPayload {
   username: string;
   name: string;
   mem_code: string;
