@@ -7,6 +7,8 @@ import { CampaignRewardEntity } from './campaigns-reward.entity';
 import { CampaignsPromoRewardEntity } from './campaigns-promo-reward.entity';
 import { PromoProductEntity } from './campaigns-product.entity';
 import { CampaignPurchaseProductEntity } from './campaigns-purchase-product.entity';
+import { CampaignPosterHistoryEntity } from './campaigns-poster-history.entity';
+import { CampaignPosterBannerLinkEntity } from './campaigns-poster-banner-link.entity';
 import { ProductEntity } from '../products/products.entity';
 import axios, { AxiosResponse } from 'axios';
 import { IdeogramBrowserService } from './ideogram-browser.service';
@@ -161,6 +163,10 @@ export class CampaignsService {
     private readonly promoProductRepository: Repository<PromoProductEntity>,
     @InjectRepository(CampaignPurchaseProductEntity)
     private readonly purchaseProductRepository: Repository<CampaignPurchaseProductEntity>,
+    @InjectRepository(CampaignPosterHistoryEntity)
+    private readonly posterHistoryRepository: Repository<CampaignPosterHistoryEntity>,
+    @InjectRepository(CampaignPosterBannerLinkEntity)
+    private readonly posterBannerLinkRepository: Repository<CampaignPosterBannerLinkEntity>,
     @InjectRepository(ProductEntity)
     private readonly productRepository: Repository<ProductEntity>,
     private readonly ideogramBrowser: IdeogramBrowserService,
@@ -646,6 +652,71 @@ export class CampaignsService {
     if (result.affected === 0) {
       throw new HttpException('Purchase product not found', HttpStatus.NOT_FOUND);
     }
+  }
+
+  async savePosterHistory(rowId: string, imgUrl: string) {
+    const row = await this.campaignRowRepository.findOne({
+      where: { id: rowId },
+    });
+    if (!row) {
+      throw new HttpException('Row not found', HttpStatus.NOT_FOUND);
+    }
+
+    let savedUrl = imgUrl;
+    try {
+      const { buffer, mimeType } = await this.downloadImageAsBuffer(imgUrl);
+      const ext = mimeType.split('/')[1] || 'jpg';
+      const result = await this.s3
+        .upload({
+          Bucket: process.env.DO_SPACES_BUCKET || 'wang-storage',
+          Key: `campaign-posters/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`,
+          Body: buffer,
+          ContentType: mimeType,
+          ACL: 'public-read',
+        })
+        .promise();
+      savedUrl = result.Location;
+    } catch {
+      // fallback เก็บ Ideogram URL ถ้า upload ไม่สำเร็จ
+    }
+
+    const history = this.posterHistoryRepository.create({ row, img_url: savedUrl });
+    return this.posterHistoryRepository.save(history);
+  }
+
+  async getPosterHistory(rowId: string) {
+    return this.posterHistoryRepository.find({
+      where: { row: { id: rowId } },
+      relations: ['banner_links'],
+      order: { created_at: 'DESC' },
+    });
+  }
+
+  async addBannerLink(historyId: string, bannerId: number, bannerLocation: string) {
+    const history = await this.posterHistoryRepository.findOne({
+      where: { id: historyId },
+    });
+    if (!history) {
+      throw new HttpException('Poster history not found', HttpStatus.NOT_FOUND);
+    }
+    const link = this.posterBannerLinkRepository.create({
+      history,
+      banner_id: bannerId,
+      banner_location: bannerLocation,
+    });
+    return this.posterBannerLinkRepository.save(link);
+  }
+
+  async removeBannerLink(linkId: string): Promise<number> {
+    const link = await this.posterBannerLinkRepository.findOne({
+      where: { id: linkId },
+    });
+    if (!link) {
+      throw new HttpException('Banner link not found', HttpStatus.NOT_FOUND);
+    }
+    const bannerId = link.banner_id;
+    await this.posterBannerLinkRepository.delete(linkId);
+    return bannerId;
   }
 
   async uploadPurchaseProductImage(
