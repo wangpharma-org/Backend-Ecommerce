@@ -251,4 +251,20 @@ export class BannerService {
   async findBannerById(bannerId: number): Promise<BannerEntity | null> {
     return this.bannerRepo.findOne({ where: { banner_id: bannerId } });
   }
+
+  async createBannerFromUrl(
+    imgUrl: string,
+    data: Pick<UploadBannerDto, 'date_start' | 'date_end' | 'banner_name' | 'banner_location'>,
+  ): Promise<BannerEntity> {
+    const banner = this.bannerRepo.create({
+      banner_image: imgUrl,
+      banner_name: data.banner_name,
+      banner_location: data.banner_location ?? 'store_carousel',
+      date_start: data.date_start,
+      date_end: data.date_end,
+      display_type: 'image_only',
+      is_active: true,
+    });
+    return this.bannerRepo.save(banner);
+  }
 }

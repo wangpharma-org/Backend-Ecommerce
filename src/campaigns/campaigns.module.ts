@@ -7,6 +7,8 @@ import { CampaignRewardEntity } from './campaigns-reward.entity';
 import { CampaignsPromoRewardEntity } from './campaigns-promo-reward.entity';
 import { PromoProductEntity } from './campaigns-product.entity';
 import { CampaignPurchaseProductEntity } from './campaigns-purchase-product.entity';
+import { CampaignPosterHistoryEntity } from './campaigns-poster-history.entity';
+import { CampaignPosterBannerLinkEntity } from './campaigns-poster-banner-link.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductEntity } from 'src/products/products.entity';
 
@@ -19,6 +21,8 @@ import { ProductEntity } from 'src/products/products.entity';
       CampaignsPromoRewardEntity,
       PromoProductEntity,
       CampaignPurchaseProductEntity,
+      CampaignPosterHistoryEntity,
+      CampaignPosterBannerLinkEntity,
       ProductEntity,
     ]),
   ],
