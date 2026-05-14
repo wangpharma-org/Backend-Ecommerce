@@ -241,9 +241,6 @@ export class FlashsaleService {
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', mem_code)
-        .leftJoin('product.units', 'u1', 'u1.level = 1')
-        .leftJoin('product.units', 'u2', 'u2.level = 2')
-        .leftJoin('product.units', 'u3', 'u3.level = 3')
         .where('flash.date = :date', { date: currentDate })
         .andWhere(':nowTime BETWEEN flash.time_start AND flash.time_end', {
           nowTime: currentTime,
@@ -266,14 +263,15 @@ export class FlashsaleService {
           'product.pro_code',
           'product.pro_name',
           'product.pro_priceA',
-          'u1.unit_name as pro_unit1',
-          'u2.unit_name as pro_unit2',
-          'u3.unit_name as pro_unit3',
           'product.pro_imgmain',
           'product.pro_promotion_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
+          'units.id',
+          'units.unit_name',
+          'units.level',
+          'units.ratio',
           'cart.spc_id',
           'cart.spc_amount',
           'cart.spc_unit_enum',
@@ -282,7 +280,31 @@ export class FlashsaleService {
         .take(Number(limit))
         .getMany();
 
-      return data;
+      return data.map((flash) => ({
+        ...flash,
+        flashsaleProducts: flash.flashsaleProducts?.map((fsp) => {
+          const units = fsp.product?.units ?? [];
+          const unit1 = units.find((u) => u.level === 1);
+          const unit2 = units.find((u) => u.level === 2);
+          const unit3 = units.find((u) => u.level === 3);
+          const inCarts = (fsp.product?.inCarts ?? []).map((cart) => ({
+            ...cart,
+            spc_unit:
+              units.find((u) => u.level === Number(cart.spc_unit_enum))
+                ?.unit_name ?? '',
+          }));
+          return {
+            ...fsp,
+            product: {
+              ...fsp.product,
+              pro_unit1: unit1?.unit_name ?? '',
+              pro_unit2: unit2?.unit_name ?? '',
+              pro_unit3: unit3?.unit_name ?? '',
+              inCarts,
+            },
+          };
+        }),
+      }));
     } catch (error) {
       this.logger.error(`Error in getFlashSale: ${error}`);
       throw new Error('Error in getFlashSale');

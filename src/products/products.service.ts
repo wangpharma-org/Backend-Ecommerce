@@ -1621,6 +1621,7 @@ export class ProductsService {
       .createQueryBuilder('product')
       .where('product.pro_code = :pro_code', { pro_code })
       .select(['product.pro_code'])
+      .leftJoinAndSelect('product.units', 'units')
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array

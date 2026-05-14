@@ -123,6 +123,7 @@ export class FavoriteService {
       const qb = this.favoriteRepo
         .createQueryBuilder('fav')
         .leftJoinAndSelect('fav.product', 'product')
+        .leftJoin('product.units', 'units')
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
@@ -168,6 +169,10 @@ export class FavoriteService {
         'product.pro_sale_amount',
         'product.pro_lowest_stock',
         'product.order_quantity',
+        'units.id',
+        'units.unit_name',
+        'units.level',
+        'units.ratio',
         'cart.spc_id',
         'cart.spc_amount',
         'cart.spc_unit_enum',
@@ -184,7 +189,33 @@ export class FavoriteService {
 
       const data = await qb.getMany();
       return data.map((favorite) => {
-        const favWithFlag = favorite as FavoriteEntity & {
+        const units = (favorite.product?.units ?? []) as {
+          level: number;
+          unit_name: string;
+          ratio: number;
+        }[];
+        const unit1 = units.find((u) => u.level === 1);
+        const unit2 = units.find((u) => u.level === 2);
+        const unit3 = units.find((u) => u.level === 3);
+        const inCarts = (favorite.product?.inCarts ?? []).map((cart) => ({
+          ...cart,
+          spc_unit:
+            units.find((u) => u.level === Number(cart.spc_unit_enum))
+              ?.unit_name ?? '',
+        }));
+        const favWithFlag = {
+          ...favorite,
+          product: {
+            ...favorite.product,
+            pro_unit1: unit1?.unit_name ?? '',
+            pro_unit2: unit2?.unit_name ?? '',
+            pro_unit3: unit3?.unit_name ?? '',
+            pro_ratio1: unit1?.ratio ?? 1,
+            pro_ratio2: unit2?.ratio ?? 1,
+            pro_ratio3: unit3?.ratio ?? 1,
+            inCarts,
+          },
+        } as unknown as FavoriteEntity & {
           isMonthlyDeal: boolean;
           hasHotdeal: boolean;
           promotionDetail: {
