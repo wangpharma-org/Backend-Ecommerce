@@ -464,8 +464,9 @@ export class ShoppingCartService {
     const baseItems = cart.filter(
       (c) => c.product && c.spc_checked && !c.is_reward && !c.hotdeal_free,
     );
+
     for (const line of baseItems) {
-      const ratio = this.getUnitRatio(line.product, line.spc_unit);
+      const ratio = this.getUnitRatio(line.product, line.spc_unit_enum);
       perProductTotalUnits.set(
         line.pro_code,
         (perProductTotalUnits.get(line.pro_code) ?? 0) +
@@ -496,7 +497,7 @@ export class ShoppingCartService {
 
       const sumPrice = cartItems.reduce((sum, item) => {
         const p = item.product;
-        const ratio = this.getUnitRatio(p, item.spc_unit);
+        const ratio = this.getUnitRatio(p, item.spc_unit_enum);
         const totalUnits = perProductTotalUnits.get(item.pro_code) ?? 0;
         const isPromoPrice =
           p.pro_promotion_month === promoMonth &&
@@ -617,13 +618,17 @@ export class ShoppingCartService {
     return this.getCartVersionState(mem_code);
   }
 
-  private getUnitRatio(product: any, unit: string): number {
-    return (
-      (product.pro_unit1 === unit && Number(product.pro_ratio1)) ||
-      (product.pro_unit2 === unit && Number(product.pro_ratio2)) ||
-      (product.pro_unit3 === unit && Number(product.pro_ratio3)) ||
-      1
-    );
+  private getUnitRatio(
+    product: ProductEntity,
+    unitEnum: string | null | undefined,
+  ): number {
+    if (!unitEnum) return 1;
+    const level = Number(unitEnum);
+    const units = product.units as
+      | { level: number; ratio: number }[]
+      | undefined;
+    const match = units?.find((u) => u.level === level);
+    return match ? Number(match.ratio) : 1;
   }
 
   private async removeRewardLines(
@@ -662,7 +667,7 @@ export class ShoppingCartService {
     for (const r of rewardInCart) {
       // skip use_code rewards
       if (r.use_code) continue;
-      const key = `${r.pro_code}|${r.spc_unit}|${r.promo_id}`;
+      const key = `${r.pro_code}|${r.spc_unit_enum}|${r.promo_id}`;
       if (rewardCartMap.has(key)) duplicates.push(r);
       else rewardCartMap.set(key, r);
     }
@@ -670,7 +675,7 @@ export class ShoppingCartService {
     const toRemove = [...duplicates];
     for (const r of rewardInCart) {
       if (r.use_code) continue;
-      const key = `${r.pro_code}|${r.spc_unit}|${r.promo_id}`;
+      const key = `${r.pro_code}|${r.spc_unit_enum}|${r.promo_id}`;
       if (!shouldHaveMap.has(key) && r.spc_checked) toRemove.push(r);
     }
 
@@ -683,7 +688,10 @@ export class ShoppingCartService {
       });
       for (const r of refreshed) {
         if (!r.use_code) {
-          rewardCartMap.set(`${r.pro_code}|${r.spc_unit}|${r.promo_id}`, r);
+          rewardCartMap.set(
+            `${r.pro_code}|${r.spc_unit_enum}|${r.promo_id}`,
+            r,
+          );
         }
       }
     }
@@ -1040,7 +1048,7 @@ export class ShoppingCartService {
 
     const perProductTotalUnits = new Map<string, number>();
     for (const line of baseEligibleCart) {
-      const ratio = this.getUnitRatio(line.product, line.spc_unit);
+      const ratio = this.getUnitRatio(line.product, line.spc_unit_enum);
       perProductTotalUnits.set(
         line.pro_code,
         (perProductTotalUnits.get(line.pro_code) ?? 0) +
@@ -1082,7 +1090,7 @@ export class ShoppingCartService {
     // ─── helper: คำนวณ line value ─────────────────────────────────────────────
     const getLineValue = (line: ShoppingCartEntity): number => {
       const p = line.product;
-      const ratio = this.getUnitRatio(p, line.spc_unit);
+      const ratio = this.getUnitRatio(p, line.spc_unit_enum);
       const totalUnits = perProductTotalUnits.get(line.pro_code) ?? 0;
       const isPromoPrice =
         p.pro_promotion_month === promoMonth &&
@@ -1162,7 +1170,7 @@ export class ShoppingCartService {
       let tierValue: number;
       if (tier.is_unit) {
         tierValue = eligibleItems.reduce((sum, line) => {
-          const ratio = this.getUnitRatio(line.product, line.spc_unit);
+          const ratio = this.getUnitRatio(line.product, line.spc_unit_enum);
           return sum + Number(line.spc_amount) * ratio;
         }, 0);
       } else {
@@ -1254,7 +1262,7 @@ export class ShoppingCartService {
       0,
     );
     const totalRemainingUnits = remainingEligibleCart.reduce((sum, l) => {
-      const ratio = this.getUnitRatio(l.product, l.spc_unit);
+      const ratio = this.getUnitRatio(l.product, l.spc_unit_enum);
       return sum + Number(l.spc_amount) * ratio;
     }, 0);
 

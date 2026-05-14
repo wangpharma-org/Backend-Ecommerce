@@ -176,6 +176,12 @@ export class RecommendService {
         .leftJoinAndSelect('mainProduct.creditor', 'creditor')
         .leftJoinAndSelect('mainProduct.flashsale', 'product_flashsale')
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
+        .leftJoin('mainProduct.units', 'u1', 'u1.level = 1')
+        .leftJoin('mainProduct.units', 'u2', 'u2.level = 2')
+        .leftJoin('mainProduct.units', 'u3', 'u3.level = 3')
+        .leftJoin('product.units', 'cartU1', 'cartU1.level = 1')
+        .leftJoin('product.units', 'cartU2', 'cartU2.level = 2')
+        .leftJoin('product.units', 'cartU3', 'cartU3.level = 3')
         .where('cart.spc_id IS NOT NULL')
         .andWhere('mainProduct.pro_stock > 0')
         .andWhere(
@@ -192,15 +198,14 @@ export class RecommendService {
           'mainProduct.pro_priceB AS pro_priceB',
           'mainProduct.pro_priceC AS pro_priceC',
           'mainProduct.pro_imgmain AS pro_imgmain',
-          'mainProduct.pro_unit1 AS pro_unit1',
-          'mainProduct.pro_unit2 AS pro_unit2',
-          'mainProduct.pro_unit3 AS pro_unit3',
+          'u1.unit_name AS pro_unit1',
+          'u2.unit_name AS pro_unit2',
+          'u3.unit_name AS pro_unit3',
           'mainProduct.pro_stock AS pro_stock',
           'mainProduct.pro_promotion_month AS pro_promotion_month',
           'creditor.creditor_code AS creditor_code',
           'cart.mem_code AS mem_code',
           'cart.spc_amount AS spc_amount',
-          'cart.spc_unit_enum AS spc_unit',
           'product_flashsale.id AS flashsale_id',
           'product_flashsale.limit AS flashsale_limit',
           'flashsale.promotion_id AS promotion_id',
@@ -208,6 +213,10 @@ export class RecommendService {
           'flashsale.time_start AS flashsale_time_start',
           'flashsale.time_end AS flashsale_time_end',
         ])
+        .addSelect(
+          `CASE cart.spc_unit_enum WHEN '1' THEN cartU1.unit_name WHEN '2' THEN cartU2.unit_name WHEN '3' THEN cartU3.unit_name ELSE '' END`,
+          'spc_unit',
+        )
         .getRawMany();
 
       const RecommendMany: Array<{
@@ -246,6 +255,9 @@ export class RecommendService {
         .setParameter('memCode', mem_code)
         .leftJoinAndSelect('product.flashsale', 'product_flashsale')
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
+        .leftJoin('product.units', 'u1', 'u1.level = 1')
+        .leftJoin('product.units', 'u2', 'u2.level = 2')
+        .leftJoin('product.units', 'u3', 'u3.level = 3')
         .where('recommend.id IN (:...recommend_id)', { recommend_id })
         .andWhere('product.pro_stock > 0')
         .andWhere('product.recommend_rank IS NOT NULL')
@@ -262,16 +274,15 @@ export class RecommendService {
           'product.pro_priceB AS pro_priceB',
           'product.pro_priceC AS pro_priceC',
           'product.pro_imgmain AS pro_imgmain',
-          'product.pro_unit1 AS pro_unit1',
-          'product.pro_unit2 AS pro_unit2',
-          'product.pro_unit3 AS pro_unit3',
+          'u1.unit_name AS pro_unit1',
+          'u2.unit_name AS pro_unit2',
+          'u3.unit_name AS pro_unit3',
           'product.pro_stock AS pro_stock',
           'product.pro_promotion_month AS pro_promotion_month',
           'product.recommend_rank AS recommend_rank',
           'creditor.creditor_code AS creditor_code',
           'cart.mem_code AS mem_code',
           'cart.spc_amount AS spc_amount',
-          'cart.spc_unit_enum AS spc_unit',
           'product_flashsale.id AS flashsale_id',
           'product_flashsale.limit AS flashsale_limit',
           'flashsale.promotion_id AS promotion_id',
@@ -279,6 +290,10 @@ export class RecommendService {
           'flashsale.time_start AS flashsale_time_start',
           'flashsale.time_end AS flashsale_time_end',
         ])
+        .addSelect(
+          `CASE cart.spc_unit_enum WHEN '1' THEN u1.unit_name WHEN '2' THEN u2.unit_name WHEN '3' THEN u3.unit_name ELSE '' END`,
+          'spc_unit',
+        )
         .getRawMany();
 
       const allRecommend = [...replacedProducts, ...RecommendMany];

@@ -795,9 +795,7 @@ export class ShoppingOrderService {
     }
   }
 
-  async getLast6OrdersByMemberCode(
-    memCode: string,
-  ): Promise<ShoppingOrderEntity[]> {
+  async getLast6OrdersByMemberCode(memCode: string): Promise<any[]> {
     try {
       const isL16 = await this.isL16Member(memCode);
       const query = this.shoppingOrderRepo
@@ -812,9 +810,6 @@ export class ShoppingOrderService {
         .setParameter('memCode', memCode)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .leftJoin('product.units', 'u1', 'u1.level = 1')
-        .leftJoin('product.units', 'u2', 'u2.level = 2')
-        .leftJoin('product.units', 'u3', 'u3.level = 3')
         .leftJoin('order.orderHeader', 'header')
         .where('header.mem_code = :memCode', { memCode })
         .andWhere(
@@ -855,9 +850,10 @@ export class ShoppingOrderService {
           'fs.time_start',
           'fs.time_end',
           'fs.date',
-          'u1.unit_name as pro_unit1',
-          'u2.unit_name as pro_unit2',
-          'u3.unit_name as pro_unit3',
+          'units.id',
+          'units.level',
+          'units.unit_name',
+          'units.ratio',
         ])
         .getMany();
 
@@ -868,7 +864,52 @@ export class ShoppingOrderService {
           uniqueMap.set(code, order);
         }
       }
-      return Array.from(uniqueMap.values()).slice(0, 6); //ส่งไปแค่ 6 อัน
+
+      return Array.from(uniqueMap.values())
+        .slice(0, 6)
+        .map((order) => {
+          const product = order.product;
+          if (!product) return order;
+
+          const units = (product.units ?? []) as unknown as {
+            level: number;
+            unit_name: string;
+            ratio: number;
+          }[];
+          const unit1 = units.find((u) => u.level === 1);
+          const unit2 = units.find((u) => u.level === 2);
+          const unit3 = units.find((u) => u.level === 3);
+
+          const resolvedCarts = (product.inCarts ?? []).map((cart) => {
+            const found = units.find(
+              (u) => u.level === Number(cart.spc_unit_enum),
+            );
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { spc_unit_enum, ...cartWithoutEnum } = cart as typeof cart & {
+              spc_unit_enum: string;
+            };
+            return { ...cartWithoutEnum, spc_unit: found?.unit_name ?? '' };
+          });
+
+          const productWithoutUnits = {
+            ...(product as unknown as Record<string, unknown>),
+          };
+          delete productWithoutUnits['units'];
+
+          return {
+            ...order,
+            product: {
+              ...productWithoutUnits,
+              pro_unit1: unit1?.unit_name ?? '',
+              pro_unit2: unit2?.unit_name ?? '',
+              pro_unit3: unit3?.unit_name ?? '',
+              pro_ratio1: unit1?.ratio ?? 1,
+              pro_ratio2: unit2?.ratio ?? 1,
+              pro_ratio3: unit3?.ratio ?? 1,
+              inCarts: resolvedCarts,
+            },
+          };
+        }); //ส่งไปแค่ 6 อัน
     } catch (error) {
       console.log(error);
       throw new Error('Failed to fetch order data.');

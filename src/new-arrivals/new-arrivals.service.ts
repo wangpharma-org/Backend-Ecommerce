@@ -128,6 +128,7 @@ export class NewArrivalsService {
         'cart',
         'cart.mem_code = :memCode AND cart.is_reward = false',
       )
+      .leftJoinAndSelect('product.units', 'productUnits')
       .setParameter('memCode', memCode)
       .where(
         'product.pro_priceA != 1 AND product.pro_priceB != 1 AND product.pro_priceC != 1',
@@ -144,6 +145,10 @@ export class NewArrivalsService {
       .addGroupBy('cart.spc_amount')
       .addGroupBy('cart.spc_unit_enum')
       .addGroupBy('cart.mem_code')
+      .addGroupBy('productUnits.id')
+      .addGroupBy('productUnits.level')
+      .addGroupBy('productUnits.unit_name')
+      .addGroupBy('productUnits.ratio')
       .orderBy('newArrival.createdAt', 'DESC')
       .addOrderBy('newArrival.id', 'DESC')
       .take(30)
@@ -163,10 +168,52 @@ export class NewArrivalsService {
         'cart.spc_amount',
         'cart.spc_unit_enum',
         'cart.mem_code',
+        'productUnits.id',
+        'productUnits.level',
+        'productUnits.unit_name',
+        'productUnits.ratio',
       ])
       .getMany();
 
-    // Return เฉพาะข้อมูล product
-    return results.map((item) => item.product);
+    // Return เฉพาะข้อมูล product พร้อมแปลง units → pro_unit1/2/3 และ spc_unit_enum → spc_unit
+    return results.map((item) => {
+      const product = item.product;
+      if (!product) return product;
+
+      const units = (product.units ?? []) as unknown as {
+        level: number;
+        unit_name: string;
+        ratio: number;
+      }[];
+
+      const unit1 = units.find((u) => u.level === 1);
+      const unit2 = units.find((u) => u.level === 2);
+      const unit3 = units.find((u) => u.level === 3);
+
+      const resolvedCarts = (product.inCarts ?? []).map((cart) => {
+        const found = units.find((u) => u.level === Number(cart.spc_unit_enum));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { spc_unit_enum, ...cartWithoutEnum } = cart as typeof cart & {
+          spc_unit_enum: string;
+        };
+        return { ...cartWithoutEnum, spc_unit: found?.unit_name ?? '' };
+      });
+
+      const productWithoutUnits = {
+        ...(product as unknown as Record<string, unknown>),
+      };
+      delete productWithoutUnits['units'];
+
+      return {
+        ...productWithoutUnits,
+        pro_unit1: unit1?.unit_name ?? '',
+        pro_unit2: unit2?.unit_name ?? '',
+        pro_unit3: unit3?.unit_name ?? '',
+        pro_ratio1: unit1?.ratio ?? 1,
+        pro_ratio2: unit2?.ratio ?? 1,
+        pro_ratio3: unit3?.ratio ?? 1,
+        inCarts: resolvedCarts,
+      };
+    });
   }
 }

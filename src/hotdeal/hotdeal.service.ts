@@ -9,6 +9,7 @@ import { UserEntity } from 'src/users/users.entity';
 import * as AWS from 'aws-sdk';
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -345,93 +346,83 @@ export class HotdealService {
 
     const hotdeals = await query.getMany();
 
-    const result = await Promise.all(
-      hotdeals.map(async (hotdeal) => {
-        type ProductType = {
-          pro_code: string;
-          pro_name: string;
-          pro_priceA: number;
-          pro_priceB: number;
-          pro_priceC: number;
-          pro_imgmain: string;
-          pro_ratio1: number;
-          pro_ratio2: number;
-          pro_ratio3: number;
-          pro_unit1: string;
-          pro_unit2: string;
-          pro_unit3: string;
-          viwers: number;
-          pro_stock: number;
-          order_quantity: number;
-          pro_lowest_stock: number;
-          inCarts?: any[];
-          units?: { level: number; unit_name: string; ratio: number }[];
-        };
+    type UnitDef = { level: number; unit_name: string; ratio: number };
 
-        const pickProductFields = async (product: ProductType | ProductEntity | null | undefined) => {
-          if (!product) return null;
+    const getUnits = (product: ProductEntity | null | undefined): UnitDef[] =>
+      (product as unknown as { units?: UnitDef[] })?.units ?? [];
 
-          const transformedProduct = await this.productService.transformProductWithUnits(product);
-          return {
-            pro_code: product.pro_code,
-            pro_name: product.pro_name,
-            pro_priceA: product.pro_priceA,
-            pro_priceB: product.pro_priceB,
-            pro_priceC: product.pro_priceC,
-            pro_imgmain: product.pro_imgmain,
-            pro_stock: product.pro_stock,
-            viwers: product.viwers,
-            order_quantity: product.order_quantity,
-            pro_lowest_stock: product.pro_lowest_stock,
-            // ใช้ข้อมูลจาก transformProductWithUnits
-            pro_unit1: transformedProduct.pro_unit1,
-            pro_unit2: transformedProduct.pro_unit2,
-            pro_unit3: transformedProduct.pro_unit3,
-            pro_ratio1: transformedProduct.pro_ratio1,
-            pro_ratio2: transformedProduct.pro_ratio2,
-            pro_ratio3: transformedProduct.pro_ratio3,
-          };
-        };
+    const resolveUnitName = (enumVal: string, units: UnitDef[]): string => {
+      const level = Number(enumVal);
+      return units.find((u) => u.level === level)?.unit_name ?? enumVal;
+    };
 
-        // ใช้ transformProductWithUnits สำหรับ hotdeal units
-        let pro1_unit = hotdeal.pro1_unit;
-        let pro2_unit = hotdeal.pro2_unit;
+    const pickProductFields = (product: ProductEntity | null | undefined) => {
+      if (!product) return null;
+      const units = getUnits(product);
+      const unit1 = units.find((u) => u.level === 1);
+      const unit2 = units.find((u) => u.level === 2);
+      const unit3 = units.find((u) => u.level === 3);
+      return {
+        pro_code: product.pro_code,
+        pro_name: product.pro_name,
+        pro_priceA: product.pro_priceA,
+        pro_priceB: product.pro_priceB,
+        pro_priceC: product.pro_priceC,
+        pro_imgmain: product.pro_imgmain,
+        pro_stock: product.pro_stock,
+        viwers: product.viwers,
+        order_quantity: product.order_quantity,
+        pro_lowest_stock: product.pro_lowest_stock,
+        pro_unit1: unit1?.unit_name ?? '',
+        pro_unit2: unit2?.unit_name ?? '',
+        pro_unit3: unit3?.unit_name ?? '',
+        pro_ratio1: unit1?.ratio ?? 1,
+        pro_ratio2: unit2?.ratio ?? 1,
+        pro_ratio3: unit3?.ratio ?? 1,
+      };
+    };
 
-        if (hotdeal.product) {
-          const transformedProduct = await this.productService.transformProductWithUnits(hotdeal.product);
-          const unitLevel = Number(hotdeal.pro1_unit);
-          if (unitLevel === 1) pro1_unit = transformedProduct.pro_unit1;
-          else if (unitLevel === 2) pro1_unit = transformedProduct.pro_unit2;
-          else if (unitLevel === 3) pro1_unit = transformedProduct.pro_unit3;
-        }
+    const resolveCartItems = (
+      carts: ShoppingCartEntity[],
+      units: UnitDef[],
+    ) =>
+      carts.map((cart) => {
+        const found = units.find(
+          (u) => u.level === Number(cart.spc_unit_enum),
+        );
+        const cartObj = { ...(cart as unknown as Record<string, unknown>) };
+        delete cartObj['spc_unit_enum'];
+        return { ...cartObj, spc_unit: found?.unit_name ?? '' };
+      });
 
-        if (hotdeal.product2) {
-          const transformedProduct2 = await this.productService.transformProductWithUnits(hotdeal.product2);
-          const unitLevel = Number(hotdeal.pro2_unit);
-          if (unitLevel === 1) pro2_unit = transformedProduct2.pro_unit1;
-          else if (unitLevel === 2) pro2_unit = transformedProduct2.pro_unit2;
-          else if (unitLevel === 3) pro2_unit = transformedProduct2.pro_unit3;
-        }
+    const result = hotdeals.map((hotdeal) => {
+      const units1 = getUnits(hotdeal.product);
+      const units2 = getUnits(hotdeal.product2);
 
-        return {
-          id: hotdeal.id,
-          pro1_amount: hotdeal.pro1_amount,
-          pro1_unit,
-          pro2_amount: hotdeal.pro2_amount,
-          pro2_unit,
-          product: await pickProductFields(hotdeal.product),
-          product2: await pickProductFields(hotdeal.product2),
-          shopping_cart: mem_code
-            ? {
-              product_cart: hotdeal.product?.inCarts || [],
-              product2_cart: hotdeal.product2?.inCarts || [],
+      return {
+        id: hotdeal.id,
+        pro1_amount: hotdeal.pro1_amount,
+        pro1_unit: resolveUnitName(hotdeal.pro1_unit, units1),
+        pro2_amount: hotdeal.pro2_amount,
+        pro2_unit: resolveUnitName(hotdeal.pro2_unit, units2),
+        product: pickProductFields(hotdeal.product),
+        product2: pickProductFields(hotdeal.product2),
+        shopping_cart: mem_code
+          ? {
+              product_cart: resolveCartItems(
+                hotdeal.product?.inCarts ?? [],
+                units1,
+              ),
+              product2_cart: resolveCartItems(
+                hotdeal.product2?.inCarts ?? [],
+                units2,
+              ),
             }
-            : 'ไม่เจอข้อมูล',
-          order: hotdeal.order,
-          special_deal: hotdeal.special_deal,
-        };
-      })
-    );
+          : 'ไม่เจอข้อมูล',
+        order: hotdeal.order,
+        special_deal: hotdeal.special_deal,
+      };
+    });
     return result;
   }
 

@@ -453,6 +453,7 @@ export class ProductsService {
       }
 
       const data = await qb
+        .leftJoinAndSelect('product.units', 'units')
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -467,11 +468,49 @@ export class ProductsService {
           'cart.spc_amount',
           'cart.spc_unit_enum',
           'cart.mem_code',
+          'units.id',
+          'units.level',
+          'units.unit_name',
+          'units.ratio',
         ])
         .take(Number(limit))
         .getMany();
 
-      return data;
+      type UnitDef = { level: number; unit_name: string; ratio: number };
+
+      return data.map((product) => {
+        const units = (product.units ?? []) as unknown as UnitDef[];
+        const unit1 = units.find((u) => u.level === 1);
+        const unit2 = units.find((u) => u.level === 2);
+        const unit3 = units.find((u) => u.level === 3);
+
+        const resolvedCarts = (product.inCarts ?? []).map((cart) => {
+          const found = units.find(
+            (u) => u.level === Number(cart.spc_unit_enum),
+          );
+          const cartObj = {
+            ...(cart as unknown as Record<string, unknown>),
+          };
+          delete cartObj['spc_unit_enum'];
+          return { ...cartObj, spc_unit: found?.unit_name ?? '' };
+        });
+
+        const productObj = {
+          ...(product as unknown as Record<string, unknown>),
+        };
+        delete productObj['units'];
+
+        return {
+          ...productObj,
+          pro_unit1: unit1?.unit_name ?? '',
+          pro_unit2: unit2?.unit_name ?? '',
+          pro_unit3: unit3?.unit_name ?? '',
+          pro_ratio1: unit1?.ratio ?? 1,
+          pro_ratio2: unit2?.ratio ?? 1,
+          pro_ratio3: unit3?.ratio ?? 1,
+          inCarts: resolvedCarts,
+        };
+      });
     } catch (error) {
       this.logger.error('Error in getFlashSale:', error);
       throw new Error('Error in getFlashSale');
@@ -2338,7 +2377,6 @@ export class ProductsService {
           'product.pro_priceC',
           'product.pro_imgmain',
           'product.pro_genericname',
-          'product.pro_unit1',
           'product.pro_nameSale',
           'product.pro_nameEN',
           'product.pro_keysearch',

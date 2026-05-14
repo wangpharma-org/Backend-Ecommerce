@@ -352,7 +352,10 @@ export class AppController {
       mem_code,
       req.user.mem_route,
     );
-    for (const funcItem of func) {
+    for (const funcItem of func as unknown as {
+      pro_code: string;
+      pro_imgmain: string;
+    }[]) {
       await this.imagedebugService.UpsercetImg({
         pro_code: funcItem.pro_code,
         imageUrl: funcItem.pro_imgmain,
@@ -4088,5 +4091,4 @@ export class AppController {
       );
     }
   }
-
 }
