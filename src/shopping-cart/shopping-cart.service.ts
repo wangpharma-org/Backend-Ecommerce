@@ -1991,26 +1991,22 @@ export class ShoppingCartService {
         if (!hd.pro1_amount || !hd.pro1_unit || !hd.product2?.pro_code) {
           continue;
         }
-        try {
-          const hotdealRequirement = [
-            {
-              pro_code: pro_code,
-              unit: hd.pro1_unit,
-              quantity: Number(hd.pro1_amount),
-            },
-          ]);
-          return { hd, smallest };
-        }),
-      );
+        const hotdealRequirement = [
+          {
+            pro_code: pro_code,
+            unit: hd.pro1_unit,
+            quantity: Number(hd.pro1_amount),
+          },
+        ];
 
-          const hotdealRequiredInSmallest =
-            await this.calculateSmallestUnitWithTransformed(
-              hotdealRequirement,
-              pro_code,
-            );
-          if (hotdealRequiredInSmallest <= 0) {
-            continue;
-          }
+        const hotdealRequiredInSmallest =
+          await this.calculateSmallestUnitWithTransformed(
+            hotdealRequirement,
+            pro_code,
+          );
+        if (hotdealRequiredInSmallest <= 0) {
+          continue;
+        }
 
         try {
           const totalFreebies = Math.floor(
@@ -2065,7 +2061,7 @@ export class ShoppingCartService {
 
       for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit_enum === freebieData.unit,
         );
         if (existingFreebie) {
           if (Number(existingFreebie.spc_amount) !== freebieData.quantity) {
@@ -2079,7 +2075,7 @@ export class ShoppingCartService {
 
       for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit_enum === freebieData.unit,
         );
         if (!existingFreebie) {
           await this.addProductCartHotDeal(
@@ -2293,6 +2289,7 @@ export class ShoppingCartService {
           pro_code: true,
           spc_amount: true,
           spc_unit_enum: true,
+          hotdeal_free: true,
           product: {
             pro_code: true,
           },
@@ -2320,6 +2317,7 @@ export class ShoppingCartService {
             pro_code: item.pro_code,
             spc_amount: item.spc_amount,
             spc_unit,
+            hotdeal_free: item.hotdeal_free,
           };
         }),
       );

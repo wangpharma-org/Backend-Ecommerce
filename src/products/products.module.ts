@@ -13,7 +13,7 @@ import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
 import { UserEntity } from 'src/users/users.entity';
 import { ElasticsearchModule } from 'src/elasticsearch/elasticsearch.module';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
+import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
 
 @Module({

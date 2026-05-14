@@ -532,22 +532,7 @@ export class HotdealService {
         };
       }
 
-      return {
-        pro_code,
-        match: threshold > 0 && cal >= 1,
-        countFreeBies: hotdealFreebies.toString(),
-        product2: {
-          pro_code: found.product2?.pro_code || '',
-          pro_name: found.product2?.pro_name || '',
-          pro_imgmain: found.product2?.pro_imgmain || '',
-        },
-        hotdeal: {
-          pro1_amount: found.pro1_amount,
-          pro1_unit: found.pro1_unit,
-          pro2_amount: found.pro2_amount,
-          pro2_unit: found.pro2_unit,
-        },
-      };
+      return undefined;
     } catch (error) {
       console.error('Error checking hotdeal match:', error);
       throw error;
