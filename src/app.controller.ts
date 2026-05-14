@@ -88,7 +88,7 @@ import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 
-interface JwtPayload {
+export interface JwtPayload {
   username: string;
   name: string;
   mem_code: string;
@@ -224,6 +224,27 @@ export class AppController {
     this.logger.log('Data:', JSON.stringify(data, null, 2));
     const result = await this.bannerService.UploadImage(file, data);
     return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/banner/from-url')
+  async createBannerFromUrl(
+    @Body()
+    body: {
+      img_url: string;
+      banner_name?: string;
+      banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      date_start: Date;
+      date_end: Date;
+    },
+  ) {
+    const banner = await this.bannerService.createBannerFromUrl(body.img_url, {
+      date_start: body.date_start,
+      date_end: body.date_end,
+      banner_name: body.banner_name,
+      banner_location: body.banner_location,
+    });
+    return { success: true, data: banner };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -3099,6 +3120,93 @@ export class AppController {
       body.value_per_unit,
     );
     return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/poster-history')
+  async savePosterHistory(
+    @Param('rowId') rowId: string,
+    @Body() body: { img_url: string },
+  ) {
+    try {
+      const result = await this.campaignsService.savePosterHistory(
+        rowId,
+        body.img_url,
+      );
+      return { success: true, data: result };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'SAVE_POSTER_HISTORY_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links')
+  async addBannerLink(
+    @Param('historyId') historyId: string,
+    @Body()
+    body: {
+      img_url: string;
+      banner_name?: string;
+      banner_location: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      date_start: Date;
+      date_end: Date;
+    },
+  ) {
+    const banner = await this.bannerService.createBannerFromUrl(body.img_url, {
+      date_start: body.date_start,
+      date_end: body.date_end,
+      banner_name: body.banner_name,
+      banner_location: body.banner_location,
+    });
+    try {
+      const link = await this.campaignsService.addBannerLink(
+        historyId,
+        banner.banner_id,
+        body.banner_location,
+      );
+      return { success: true, data: link };
+    } catch {
+      // rollback: ลบ banner ที่สร้างไปแล้วถ้า link สร้างไม่สำเร็จ
+      await this.bannerService.deleteBannerById(banner.banner_id);
+      throw new HttpException(
+        { success: false, error: { code: 'ADD_BANNER_LINK_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId')
+  async removeBannerLink(@Param('linkId') linkId: string) {
+    try {
+      const bannerId = await this.campaignsService.removeBannerLink(linkId);
+      // ลบแค่ record ใน DB — ไม่ลบไฟล์ใน DO Spaces เพราะ URL เดียวกับ poster history
+      await this.bannerService.deleteBannerRecordOnly(bannerId);
+      return { success: true };
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, error: { code: 'REMOVE_BANNER_LINK_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/data/:rowId/poster-history')
+  async getPosterHistory(@Param('rowId') rowId: string) {
+    try {
+      const items = await this.campaignsService.getPosterHistory(rowId);
+      return { success: true, data: items };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'GET_POSTER_HISTORY_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Get('/campaigns/proxy-image')

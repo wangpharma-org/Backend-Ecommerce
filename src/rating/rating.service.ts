@@ -24,6 +24,20 @@ export interface CreateRatingDto {
   negative_select?: string[];
 }
 
+export interface BatchRatingItemDto {
+  sh_running: string;
+  mem_code?: string;
+  rating_point: number;
+  comment?: string;
+  positive_select?: string[];
+  negative_select?: string[];
+}
+
+export interface BatchRatingResult {
+  sh_running: string;
+  rating_id: number;
+}
+
 export interface CreateQuestionnaireAnswerDto {
   question_id: number;
   rating_point: number;
@@ -100,6 +114,22 @@ export class RatingService {
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('ไม่สามารถบันทึกรีวิวได้');
+    }
+  }
+
+  async submitBatchRating(
+    items: BatchRatingItemDto[],
+  ): Promise<BatchRatingResult[]> {
+    try {
+      const results: BatchRatingResult[] = [];
+      for (const item of items) {
+        const rating = this.ratingRepo.create(item);
+        const saved = await this.ratingRepo.save(rating);
+        results.push({ sh_running: item.sh_running, rating_id: saved.id });
+      }
+      return results;
+    } catch (error) {
+      throw new InternalServerErrorException('ไม่สามารถบันทึกรีวิวแบบกลุ่มได้');
     }
   }
 
