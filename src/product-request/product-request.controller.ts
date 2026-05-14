@@ -53,13 +53,25 @@ export class ProductRequestController {
     @Body('keyword') keyword: string,
     @Body('pro_name') pro_name: string,
     @Body('note') note?: string,
+    @Body('source_page') source_page?: string,
+    @Body('shown_products') shown_products?: string,
+    @Body('current_page') current_page?: number,
     @UploadedFile() image?: Express.Multer.File,
   ) {
     if (!keyword || !pro_name) {
       throw new BadRequestException('keyword และ pro_name จำเป็นต้องระบุ');
     }
     return this.service.createRequest(
-      { mem_code: req.user.mem_code, keyword, pro_name, note },
+      {
+        mem_code: req.user.mem_code,
+        keyword,
+        pro_name,
+        note,
+        source_page,
+        shown_products,
+        current_page:
+          current_page !== undefined ? Number(current_page) : undefined,
+      },
       image,
     );
   }
