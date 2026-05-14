@@ -34,6 +34,15 @@ export class ProductRequestEntity {
   @Column({ type: 'text', nullable: true })
   img_url?: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  source_page?: string;
+
+  @Column({ type: 'text', nullable: true })
+  shown_products?: string;
+
+  @Column({ type: 'int', nullable: true })
+  current_page?: number;
+
   @Column({
     type: 'enum',
     enum: ProductRequestStatus,

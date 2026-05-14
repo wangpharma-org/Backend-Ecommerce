@@ -17,6 +17,9 @@ export interface CreateProductRequestDto {
   keyword: string;
   pro_name: string;
   note?: string;
+  source_page?: string;
+  shown_products?: string;
+  current_page?: number;
 }
 
 export interface UpdateProductRequestStatusDto {
