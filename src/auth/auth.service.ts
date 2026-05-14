@@ -296,6 +296,60 @@ export class AuthService {
     return { token: access_token, refresh_token: refresh_token };
   }
 
+  async signinWithLine(lineAccessToken: string): Promise<SigninResponse> {
+    const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
+
+    let memCode: string;
+    try {
+      const res = await lastValueFrom(
+        this.httpService.post<{ mem_code: string }>(
+          `${notificationUrl}/line/verify-token`,
+          { lineAccessToken },
+        ),
+      );
+      memCode = res.data.mem_code;
+    } catch {
+      throw new UnauthorizedException('LINE token ไม่ถูกต้องหรือยังไม่ได้ผูกบัญชี');
+    }
+
+    const user = await this.userRepo.findOne({ where: { mem_code: memCode } });
+    if (!user) {
+      throw new UnauthorizedException('ไม่พบข้อมูลสมาชิก');
+    }
+
+    const payload = {
+      username: user.mem_username,
+      name: user.mem_nameSite ?? '',
+      mem_code: user.mem_code ?? '',
+      price_option: user.mem_price ?? '',
+      mem_address: user.mem_address ?? '',
+      mem_village: user.mem_village ?? '',
+      mem_alley: user.mem_alley ?? '',
+      mem_tumbon: user.mem_tumbon ?? '',
+      mem_amphur: user.mem_amphur ?? '',
+      mem_province: user.mem_province ?? '',
+      mem_post: user.mem_post ?? '',
+      mem_phone: user.mem_phone ?? '',
+      mem_route: user.mem_route ?? '',
+      permission: user.permision_admin,
+      role: user.role,
+    };
+    const payload_reflesh = {
+      username: user.mem_username,
+      name: user.mem_nameSite ?? '',
+      mem_code: user.mem_code ?? '',
+    };
+
+    const access_token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
+      secret: process.env.ACCESS_TOKEN_SECRET,
+      expiresIn: '18h',
+    });
+
+    await this.refreshTokenRepo.save({ mem_code: user.mem_code, refresh_token });
+    return { token: access_token, refresh_token };
+  }
+
   async refreshToken(
     refresh_token: string,
     source: string,

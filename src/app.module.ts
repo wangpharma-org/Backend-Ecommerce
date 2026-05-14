@@ -50,6 +50,7 @@ import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { RatingModule } from './rating/rating.module';
 import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
+import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
 
 @Module({
@@ -143,6 +144,7 @@ import { ProductRequestModule } from './product-request/product-request.module';
     }),
     RatingModule,
     LineRegisterMeetingModule,
+    ReviewRequestModule,
     ProductRequestModule,
   ],
   controllers: [AppController],
