@@ -23,7 +23,7 @@ import {
 } from './product.listener';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
+import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 
 interface OrderItem {
   pro_code: string;
