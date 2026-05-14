@@ -50,6 +50,7 @@ import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { RatingModule } from './rating/rating.module';
 import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
+import { ProductRequestModule } from './product-request/product-request.module';
 
 @Module({
   imports: [
@@ -129,7 +130,8 @@ import { LineRegisterMeetingModule } from './line-register-meeting/line-register
           },
         },
         defaults: {
-          from: '"Wang System" <' + configService.get<string>('EMAIL_USER') + '>',
+          from:
+            '"Wang System" <' + configService.get<string>('EMAIL_USER') + '>',
         },
         template: {
           dir: __dirname + '/templates',
@@ -141,8 +143,9 @@ import { LineRegisterMeetingModule } from './line-register-meeting/line-register
     }),
     RatingModule,
     LineRegisterMeetingModule,
+    ProductRequestModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

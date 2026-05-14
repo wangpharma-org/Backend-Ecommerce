@@ -28,7 +28,7 @@ import {
   type CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
-import { DeleteCartEntity } from './delete-cart.enity';
+import { DeleteCartEntity } from './delete-cart.entity';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -1998,7 +1998,10 @@ export class ShoppingCartService {
               unit: hd.pro1_unit,
               quantity: Number(hd.pro1_amount),
             },
-          ];
+          ]);
+          return { hd, smallest };
+        }),
+      );
 
           const hotdealRequiredInSmallest =
             await this.calculateSmallestUnitWithTransformed(
@@ -2009,6 +2012,7 @@ export class ShoppingCartService {
             continue;
           }
 
+        try {
           const totalFreebies = Math.floor(
             totalCartInSmallest / hotdealRequiredInSmallest,
           );
@@ -2017,7 +2021,7 @@ export class ShoppingCartService {
             freebiesData.push({
               pro_code: hd.product2.pro_code,
               unit: hd.pro2_unit,
-              quantity: totalFreebies,
+              quantity: totalFreebies * Number(hd.pro2_amount),
             });
           }
 
@@ -2035,7 +2039,22 @@ export class ShoppingCartService {
         return await this.getProductCart(mem_code);
       }
 
-      const validFreebieProCodes = new Set(freebiesData.map((f) => f.pro_code));
+      const freebiesMap = new Map<
+        string,
+        { pro_code: string; unit: string; quantity: number }
+      >();
+      for (const f of freebiesData) {
+        const key = `${f.pro_code}::${f.unit}`;
+        const existing = freebiesMap.get(key);
+        if (existing) {
+          existing.quantity += f.quantity;
+        } else {
+          freebiesMap.set(key, { ...f });
+        }
+      }
+      const mergedFreebies = Array.from(freebiesMap.values());
+
+      const validFreebieProCodes = new Set(mergedFreebies.map((f) => f.pro_code));
 
       const freebiesToRemove = allFreebiesInCart.filter(
         (fb) => !validFreebieProCodes.has(fb.pro_code),
@@ -2044,11 +2063,10 @@ export class ShoppingCartService {
         await this.shoppingCartRepo.remove(freebiesToRemove);
       }
 
-      for (const freebieData of freebiesData) {
+      for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code,
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
         );
-
         if (existingFreebie) {
           if (Number(existingFreebie.spc_amount) !== freebieData.quantity) {
             await this.shoppingCartRepo.update(
@@ -2056,8 +2074,14 @@ export class ShoppingCartService {
               { spc_amount: freebieData.quantity },
             );
           }
-        } else {
-          // เพิ่มของแถมใหม่
+        }
+      }
+
+      for (const freebieData of mergedFreebies) {
+        const existingFreebie = allFreebiesInCart.find(
+          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit === freebieData.unit,
+        );
+        if (!existingFreebie) {
           await this.addProductCartHotDeal(
             {
               mem_code: mem_code,
@@ -2249,7 +2273,14 @@ export class ShoppingCartService {
   async getOrderFromCartMember(
     mem_code: string,
     pro_code: string,
-  ): Promise<{ pro_code: string; spc_amount: number; spc_unit: string }[]> {
+  ): Promise<
+    {
+      pro_code: string;
+      spc_amount: number;
+      spc_unit: string;
+      hotdeal_free: boolean;
+    }[]
+  > {
     try {
       const cartItems = await this.shoppingCartRepo.find({
         where: {
