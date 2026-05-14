@@ -205,6 +205,18 @@ export class HotdealService {
           );
         }
       } else {
+        const duplicate = await this.hotdealRepo.findOne({
+          where: {
+            product: { pro_code: datainput.pro1_code },
+            product2: { pro_code: datainput.pro2_code },
+          },
+          relations: ['product', 'product2'],
+        });
+
+        if (duplicate) {
+          await this.hotdealRepo.delete({ id: duplicate.id });
+        }
+
         const hotdeal = this.hotdealRepo.create({
           pro1_amount: datainput.pro1_amount,
           pro1_unit: datainput.pro1_unit,
@@ -334,7 +346,7 @@ export class HotdealService {
       query.skip(offset);
     }
 
-    if (isL16) {
+    if (!isL16) {
       query
         .andWhere(
           '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
@@ -430,6 +442,7 @@ export class HotdealService {
   async checkHotdealMatch(
     pro_code: string,
     shopping_cart: { pro1_unit: string; pro1_amount: string }[],
+    freebie_pro_code?: string,
   ): Promise<
     | {
       pro_code: string;
@@ -474,13 +487,13 @@ export class HotdealService {
 
 
       let fromFrontend = 0;
-      for (let i = 0; i < shopping_cart.length; i++) {
-        const convertedFrontend = await this.convertToSmallestUnit(
+      for (const item of shopping_cart) {
+        const converted = await this.convertToSmallestUnit(
           pro_code,
-          shopping_cart[i].pro1_amount,
-          shopping_cart[i].pro1_unit,
+          item.pro1_amount,
+          item.pro1_unit,
         );
-        fromFrontend += convertedFrontend ?? 0;
+        fromFrontend += converted ?? 0;
       }
       const fromDatabase = await this.convertToSmallestUnit(
         pro_code,
@@ -519,7 +532,22 @@ export class HotdealService {
         };
       }
 
-      return undefined;
+      return {
+        pro_code,
+        match: threshold > 0 && cal >= 1,
+        countFreeBies: hotdealFreebies.toString(),
+        product2: {
+          pro_code: found.product2?.pro_code || '',
+          pro_name: found.product2?.pro_name || '',
+          pro_imgmain: found.product2?.pro_imgmain || '',
+        },
+        hotdeal: {
+          pro1_amount: found.pro1_amount,
+          pro1_unit: found.pro1_unit,
+          pro2_amount: found.pro2_amount,
+          pro2_unit: found.pro2_unit,
+        },
+      };
     } catch (error) {
       console.error('Error checking hotdeal match:', error);
       throw error;
