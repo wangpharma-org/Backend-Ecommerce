@@ -55,7 +55,7 @@ export class ProductRequestController {
     @Body('note') note?: string,
     @Body('source_page') source_page?: string,
     @Body('shown_products') shown_products?: string,
-    @Body('current_page') current_page?: string,
+    @Body('current_page') current_page?: number,
     @UploadedFile() image?: Express.Multer.File,
   ) {
     if (!keyword || !pro_name) {
@@ -69,7 +69,8 @@ export class ProductRequestController {
         note,
         source_page,
         shown_products,
-        current_page: current_page !== undefined ? Number(current_page) : undefined,
+        current_page:
+          current_page !== undefined ? Number(current_page) : undefined,
       },
       image,
     );
