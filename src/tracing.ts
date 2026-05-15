@@ -6,7 +6,7 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 const traceExporter = new OTLPTraceExporter({
   url:
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
-    'http://localhost:4318/v1/traces',
+    'http://157.245.202.242:4318/v1/traces',
 });
 
 const sdk = new NodeSDK({
