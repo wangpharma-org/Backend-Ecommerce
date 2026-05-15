@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 import { NotificationTokenEntity } from './notification-token.entity';
 import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
+import {
+  AdminNotificationChannel,
+  SendAdminNotificationDto,
+} from './dto/send-admin-notification.dto';
 type NotificationTokenEventType = 'upsert' | 'remove';
 
 @Injectable()
@@ -236,5 +240,72 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     console.log(
       `Sent ${event_type} token event for mem_code ${mem_code} token ${token} to Kafka topic ${process.env.KAFKA_TOPIC || 'noti_token'} successfully`,
     );
+  }
+
+  async sendAdminNotification(payload: SendAdminNotificationDto) {
+    const broadcast = payload.broadcast === true;
+    const targets = [payload.memCode, payload.phoneNumber].filter(Boolean);
+
+    if (broadcast && targets.length > 0) {
+      throw new BadRequestException(
+        'broadcast cannot be used together with memCode or phoneNumber',
+      );
+    }
+
+    if (!broadcast && targets.length === 0) {
+      throw new BadRequestException(
+        'At least one target is required when broadcast is false',
+      );
+    }
+
+    const channels =
+      payload.channels && payload.channels.length > 0
+        ? payload.channels
+        : this.getDefaultChannels(payload);
+
+    const isFcmOnlyChannel =
+      channels.length === 1 && channels[0] === AdminNotificationChannel.FCM;
+
+    if (payload.data && !isFcmOnlyChannel) {
+      throw new BadRequestException(
+        'data is supported only when the notification channel is FCM only',
+      );
+    }
+
+    const notificationPayload = {
+      ...(payload.memCode ? { memCode: payload.memCode } : {}),
+      ...(payload.phoneNumber ? { phoneNumber: payload.phoneNumber } : {}),
+      ...(broadcast ? { broadcast: true } : {}),
+      type: payload.type?.trim() || 'GENERAL',
+      title: payload.title.trim(),
+      message: payload.message.trim(),
+      channels,
+      ...(payload.data ? { data: payload.data } : {}),
+    };
+
+    const topic =
+      process.env.KAFKA_NOTIFICATION_CREATED_TOPIC || 'notification.created';
+
+    await this.producer.send({
+      topic,
+      messages: [{ value: JSON.stringify(notificationPayload) }],
+    });
+
+    return {
+      success: true,
+      topic,
+      payload: notificationPayload,
+      message: 'Notification event published successfully',
+    };
+  }
+
+  private getDefaultChannels(
+    payload: SendAdminNotificationDto,
+  ): AdminNotificationChannel[] {
+    if (payload.phoneNumber) {
+      return [AdminNotificationChannel.SMS];
+    }
+
+    return [AdminNotificationChannel.FCM];
   }
 }
