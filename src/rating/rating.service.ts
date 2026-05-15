@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import * as AWS from 'aws-sdk';
 import { RatingEntity } from './rating.entity';
 import { ImageReviewEntity } from './image-review.entity';
@@ -121,8 +121,20 @@ export class RatingService {
     items: BatchRatingItemDto[],
   ): Promise<BatchRatingResult[]> {
     try {
+      const shRunnings = items.map((i) => i.sh_running);
+      const existing = await this.ratingRepo.find({
+        where: { sh_running: In(shRunnings) },
+        select: { sh_running: true, id: true },
+      });
+      const existingMap = new Map(existing.map((r) => [r.sh_running, r.id]));
+
       const results: BatchRatingResult[] = [];
       for (const item of items) {
+        const existingId = existingMap.get(item.sh_running);
+        if (existingId !== undefined) {
+          results.push({ sh_running: item.sh_running, rating_id: existingId });
+          continue;
+        }
         const rating = this.ratingRepo.create(item);
         const saved = await this.ratingRepo.save(rating);
         results.push({ sh_running: item.sh_running, rating_id: saved.id });

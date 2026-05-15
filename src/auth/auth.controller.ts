@@ -9,4 +9,9 @@ export class AuthController {
   async lineLogin(@Body() body: { lineAccessToken: string }) {
     return this.authService.signinWithLine(body.lineAccessToken);
   }
+
+  @Post('line-login-by-id')
+  async lineLoginById(@Body() body: { lineUserId: string }) {
+    return this.authService.signinWithLineUserId(body.lineUserId);
+  }
 }
