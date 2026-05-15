@@ -22,6 +22,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import type { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import {
   CompanyDayAnalyticService,
@@ -282,24 +283,21 @@ export class ShoppingCartService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     @InjectRepository(DeleteCartEntity)
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
-  ) { }
+  ) {}
 
   private convertUnitNameToEnum(
     unitName: string,
     product: ProductEntity,
   ): '1' | '2' | '3' {
-    const foundUnit = product?.units?.find((u) => u.unit_name === unitName);
+    const units: ProductUnitEntity[] = product.units ?? [];
+    const foundUnit = units.find((u) => u.unit_name === unitName);
     if (!foundUnit) {
-      this.logger.warn(
-        `[convertUnitNameToEnum] unit name '${unitName}' not found for pro_code '${product?.pro_code}', defaulting to level 1`,
+      throw new BadRequestException(
+        `หน่วย '${unitName}' ไม่ถูกต้องสำหรับสินค้า '${product?.pro_code}'`,
       );
     }
-    const unitLevel = foundUnit?.level || 1;
-    const validatedUnitLevel = [1, 2, 3].includes(Number(unitLevel))
-      ? Number(unitLevel)
-      : 1;
-
-    return String(validatedUnitLevel) as '1' | '2' | '3';
+    const level = Number(foundUnit.level);
+    return String([1, 2, 3].includes(level) ? level : 1) as '1' | '2' | '3';
   }
 
   private convertEnumToUnitName(
@@ -346,7 +344,7 @@ export class ShoppingCartService {
       pro_ratio3: number;
     }
   > {
-    return this.productsService.transformProductWithUnits(product);
+    return await this.productsService.transformProductWithUnits(product);
   }
 
   private async calculateSmallestUnitWithTransformed(
@@ -2050,7 +2048,9 @@ export class ShoppingCartService {
       }
       const mergedFreebies = Array.from(freebiesMap.values());
 
-      const validFreebieProCodes = new Set(mergedFreebies.map((f) => f.pro_code));
+      const validFreebieProCodes = new Set(
+        mergedFreebies.map((f) => f.pro_code),
+      );
 
       const freebiesToRemove = allFreebiesInCart.filter(
         (fb) => !validFreebieProCodes.has(fb.pro_code),
@@ -2061,7 +2061,9 @@ export class ShoppingCartService {
 
       for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit_enum === freebieData.unit,
+          (fb) =>
+            fb.pro_code === freebieData.pro_code &&
+            fb.spc_unit_enum === freebieData.unit,
         );
         if (existingFreebie) {
           if (Number(existingFreebie.spc_amount) !== freebieData.quantity) {
@@ -2075,7 +2077,9 @@ export class ShoppingCartService {
 
       for (const freebieData of mergedFreebies) {
         const existingFreebie = allFreebiesInCart.find(
-          (fb) => fb.pro_code === freebieData.pro_code && fb.spc_unit_enum === freebieData.unit,
+          (fb) =>
+            fb.pro_code === freebieData.pro_code &&
+            fb.spc_unit_enum === freebieData.unit,
         );
         if (!existingFreebie) {
           await this.addProductCartHotDeal(

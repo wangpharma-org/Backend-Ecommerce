@@ -453,7 +453,7 @@ export class ProductsService {
       }
 
       const data = await qb
-        .leftJoinAndSelect('product.units', 'units')
+        .innerJoinAndSelect('product.units', 'units')
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -882,7 +882,7 @@ export class ProductsService {
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .leftJoinAndSelect('product.units', 'units');
+        .innerJoinAndSelect('product.units', 'units');
 
       if (data.category === 8) {
         qb.where('product.pro_free = :free', { free: true })
@@ -1511,7 +1511,7 @@ export class ProductsService {
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .leftJoinAndSelect('product.units', 'units')
+        .innerJoinAndSelect('product.units', 'units')
         .where('product.pro_code IN (:...proCodes)', { proCodes })
         .select([
           'product.pro_code',
@@ -1621,7 +1621,7 @@ export class ProductsService {
       .createQueryBuilder('product')
       .where('product.pro_code = :pro_code', { pro_code })
       .select(['product.pro_code'])
-      .leftJoinAndSelect('product.units', 'units')
+      .innerJoinAndSelect('product.units', 'units')
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array
@@ -2036,7 +2036,7 @@ export class ProductsService {
       const isL16 = await this.isL16Member(mem_code, mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
-        .leftJoinAndSelect('product.units', 'units')
+        .innerJoinAndSelect('product.units', 'units')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
