@@ -52,6 +52,7 @@ import { RatingModule } from './rating/rating.module';
 import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
 import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
+import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 
 @Module({
   imports: [
@@ -146,6 +147,7 @@ import { ProductRequestModule } from './product-request/product-request.module';
     LineRegisterMeetingModule,
     ReviewRequestModule,
     ProductRequestModule,
+    WatermarkAuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],
