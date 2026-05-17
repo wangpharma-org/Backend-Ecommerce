@@ -7,6 +7,10 @@ import { WatermarkAuditEntity } from './watermark-audit.entity';
 import { WatermarkAuditArchiveEntity } from './watermark-audit-archive.entity';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 
+// Decoupled flags: display (visible watermark) and audit (forensic logging)
+// can be toggled independently — logging keeps running even if the visible
+// watermark is turned off, so trace data is not lost during an investigation.
+export const WATERMARK_DISPLAY_FLAG = 'watermark_display';
 export const WATERMARK_AUDIT_FLAG = 'watermark_audit';
 const RETENTION_DAYS = 90;
 const ARCHIVE_BATCH_SIZE = 5000;
@@ -34,24 +38,34 @@ export class WatermarkAuditService {
     ip: string | null;
     user_agent: string | null;
   }): Promise<IssuedToken> {
-    const enabled =
-      await this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG);
-    if (!enabled) {
+    const [displayEnabled, auditEnabled] = await Promise.all([
+      this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
+    ]);
+
+    if (!displayEnabled && !auditEnabled) {
       return { enabled: false, token: null };
     }
 
     const token = randomBytes(12).toString('base64url');
 
-    // Fire-and-forget: do not block the response on the audit write.
-    this.persist({
-      token,
-      mem_code: input.mem_code,
-      page: input.page,
-      ip: input.ip,
-      user_agent: input.user_agent,
-    });
+    if (auditEnabled) {
+      // Fire-and-forget: do not block the response on the audit write.
+      this.persist({
+        token,
+        mem_code: input.mem_code,
+        page: input.page,
+        ip: input.ip,
+        user_agent: input.user_agent,
+      });
+    }
 
-    return { enabled: true, token };
+    // `enabled` drives the visible watermark on the client. Logging is
+    // independent: it may have persisted above even when display is off.
+    return {
+      enabled: displayEnabled,
+      token: displayEnabled ? token : null,
+    };
   }
 
   private persist(row: {
