@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -37,5 +39,15 @@ export class WatermarkAuditController {
       ip,
       user_agent: userAgent,
     });
+  }
+
+  // Admin: resolve a leaked watermark token -> who/when/which page.
+  @UseGuards(JwtAuthGuard)
+  @Get('watermark/lookup')
+  lookup(@Query('token') token: string) {
+    if (!token) {
+      throw new BadRequestException('token จำเป็นต้องระบุ');
+    }
+    return this.service.lookup(token.trim());
   }
 }

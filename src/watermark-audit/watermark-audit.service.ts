@@ -68,6 +68,45 @@ export class WatermarkAuditService {
     };
   }
 
+  // Admin lookup: resolve a leaked watermark token back to who saw it,
+  // when, and on which page. Checks the hot table first, then the archive
+  // (rows older than the retention window).
+  async lookup(token: string): Promise<{
+    found: boolean;
+    source?: 'live' | 'archive';
+    mem_code?: string;
+    page?: string;
+    ip?: string | null;
+    user_agent?: string | null;
+    created_at?: Date;
+  }> {
+    const live = await this.auditRepo.findOne({ where: { token } });
+    if (live) {
+      return {
+        found: true,
+        source: 'live',
+        mem_code: live.mem_code,
+        page: live.page,
+        ip: live.ip,
+        user_agent: live.user_agent,
+        created_at: live.created_at,
+      };
+    }
+    const archived = await this.archiveRepo.findOne({ where: { token } });
+    if (archived) {
+      return {
+        found: true,
+        source: 'archive',
+        mem_code: archived.mem_code,
+        page: archived.page,
+        ip: archived.ip,
+        user_agent: archived.user_agent,
+        created_at: archived.created_at,
+      };
+    }
+    return { found: false };
+  }
+
   private persist(row: {
     token: string;
     mem_code: string;
