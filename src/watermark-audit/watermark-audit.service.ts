@@ -12,11 +12,15 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 // watermark is turned off, so trace data is not lost during an investigation.
 export const WATERMARK_DISPLAY_FLAG = 'watermark_display';
 export const WATERMARK_AUDIT_FLAG = 'watermark_audit';
+// QR can be toggled independently of the faint text watermark: turn QR off
+// while keeping the text token (still traceable) when QR is too noisy.
+export const WATERMARK_QR_FLAG = 'watermark_qr';
 const RETENTION_DAYS = 90;
 const ARCHIVE_BATCH_SIZE = 5000;
 
 export interface IssuedToken {
   enabled: boolean;
+  qr: boolean;
   token: string | null;
 }
 
@@ -38,13 +42,14 @@ export class WatermarkAuditService {
     ip: string | null;
     user_agent: string | null;
   }): Promise<IssuedToken> {
-    const [displayEnabled, auditEnabled] = await Promise.all([
+    const [displayEnabled, auditEnabled, qrEnabled] = await Promise.all([
       this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
       this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_QR_FLAG),
     ]);
 
     if (!displayEnabled && !auditEnabled) {
-      return { enabled: false, token: null };
+      return { enabled: false, qr: false, token: null };
     }
 
     const token = randomBytes(12).toString('base64url');
@@ -64,6 +69,7 @@ export class WatermarkAuditService {
     // independent: it may have persisted above even when display is off.
     return {
       enabled: displayEnabled,
+      qr: displayEnabled && qrEnabled,
       token: displayEnabled ? token : null,
     };
   }
