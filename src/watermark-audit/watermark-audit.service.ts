@@ -10,12 +10,14 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 // Decoupled flags: display (visible watermark) and audit (forensic logging)
 // can be toggled independently — logging keeps running even if the visible
 // watermark is turned off, so trace data is not lost during an investigation.
-// watermark_display = master switch for ALL visible watermark (text + QR).
-// watermark_text and watermark_qr are independent sub-toggles under it, so
-// text and QR can each be turned off while the other (and audit) stays on.
+// watermark_display = master switch for ALL visible watermark (text + QR +
+// sticky identity header). watermark_text, watermark_qr and watermark_header
+// are independent sub-toggles under it, so each can be turned off while the
+// others (and audit) stay on.
 export const WATERMARK_DISPLAY_FLAG = 'watermark_display';
 export const WATERMARK_TEXT_FLAG = 'watermark_text';
 export const WATERMARK_QR_FLAG = 'watermark_qr';
+export const WATERMARK_HEADER_FLAG = 'watermark_header';
 export const WATERMARK_AUDIT_FLAG = 'watermark_audit';
 const RETENTION_DAYS = 90;
 const ARCHIVE_BATCH_SIZE = 5000;
@@ -24,6 +26,7 @@ export interface IssuedToken {
   enabled: boolean;
   text: boolean;
   qr: boolean;
+  header: boolean;
   token: string | null;
 }
 
@@ -45,19 +48,32 @@ export class WatermarkAuditService {
     ip: string | null;
     user_agent: string | null;
   }): Promise<IssuedToken> {
-    const [displayEnabled, textEnabled, qrEnabled, auditEnabled] =
-      await Promise.all([
-        this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
-        this.featureFlagsService.getFlag(WATERMARK_TEXT_FLAG),
-        this.featureFlagsService.getFlag(WATERMARK_QR_FLAG),
-        this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
-      ]);
+    const [
+      displayEnabled,
+      textEnabled,
+      qrEnabled,
+      headerEnabled,
+      auditEnabled,
+    ] = await Promise.all([
+      this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_TEXT_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_QR_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_HEADER_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
+    ]);
 
     const textOn = displayEnabled && textEnabled;
     const qrOn = displayEnabled && qrEnabled;
+    const headerOn = displayEnabled && headerEnabled;
 
     if (!displayEnabled && !auditEnabled) {
-      return { enabled: false, text: false, qr: false, token: null };
+      return {
+        enabled: false,
+        text: false,
+        qr: false,
+        header: false,
+        token: null,
+      };
     }
 
     const token = randomBytes(12).toString('base64url');
@@ -81,6 +97,7 @@ export class WatermarkAuditService {
       enabled: displayEnabled,
       text: textOn,
       qr: qrOn,
+      header: headerOn,
       token: showAny ? token : null,
     };
   }
