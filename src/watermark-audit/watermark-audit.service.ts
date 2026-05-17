@@ -11,13 +11,15 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 // can be toggled independently — logging keeps running even if the visible
 // watermark is turned off, so trace data is not lost during an investigation.
 // watermark_display = master switch for ALL visible watermark (text + QR +
-// sticky identity header). watermark_text, watermark_qr and watermark_header
-// are independent sub-toggles under it, so each can be turned off while the
-// others (and audit) stay on.
+// sticky identity header + per-card token line). watermark_text,
+// watermark_qr, watermark_header and watermark_card_token are independent
+// sub-toggles under it, so each can be turned off while the others (and
+// audit) stay on.
 export const WATERMARK_DISPLAY_FLAG = 'watermark_display';
 export const WATERMARK_TEXT_FLAG = 'watermark_text';
 export const WATERMARK_QR_FLAG = 'watermark_qr';
 export const WATERMARK_HEADER_FLAG = 'watermark_header';
+export const WATERMARK_CARD_TOKEN_FLAG = 'watermark_card_token';
 export const WATERMARK_AUDIT_FLAG = 'watermark_audit';
 const RETENTION_DAYS = 90;
 const ARCHIVE_BATCH_SIZE = 5000;
@@ -27,6 +29,7 @@ export interface IssuedToken {
   text: boolean;
   qr: boolean;
   header: boolean;
+  cardToken: boolean;
   token: string | null;
 }
 
@@ -53,18 +56,21 @@ export class WatermarkAuditService {
       textEnabled,
       qrEnabled,
       headerEnabled,
+      cardTokenEnabled,
       auditEnabled,
     ] = await Promise.all([
       this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
       this.featureFlagsService.getFlag(WATERMARK_TEXT_FLAG),
       this.featureFlagsService.getFlag(WATERMARK_QR_FLAG),
       this.featureFlagsService.getFlag(WATERMARK_HEADER_FLAG),
+      this.featureFlagsService.getFlag(WATERMARK_CARD_TOKEN_FLAG),
       this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
     ]);
 
     const textOn = displayEnabled && textEnabled;
     const qrOn = displayEnabled && qrEnabled;
     const headerOn = displayEnabled && headerEnabled;
+    const cardTokenOn = displayEnabled && cardTokenEnabled;
 
     if (!displayEnabled && !auditEnabled) {
       return {
@@ -72,6 +78,7 @@ export class WatermarkAuditService {
         text: false,
         qr: false,
         header: false,
+        cardToken: false,
         token: null,
       };
     }
@@ -92,12 +99,13 @@ export class WatermarkAuditService {
     // `enabled` = master switch. text/qr are independent sub-toggles under
     // it. Logging is independent and may have persisted above even when the
     // visible watermark is off. Token is sent only if something is shown.
-    const showAny = textOn || qrOn;
+    const showAny = textOn || qrOn || cardTokenOn;
     return {
       enabled: displayEnabled,
       text: textOn,
       qr: qrOn,
       header: headerOn,
+      cardToken: cardTokenOn,
       token: showAny ? token : null,
     };
   }
