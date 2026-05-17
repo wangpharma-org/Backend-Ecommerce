@@ -10,16 +10,19 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 // Decoupled flags: display (visible watermark) and audit (forensic logging)
 // can be toggled independently — logging keeps running even if the visible
 // watermark is turned off, so trace data is not lost during an investigation.
+// watermark_display = master switch for ALL visible watermark (text + QR).
+// watermark_text and watermark_qr are independent sub-toggles under it, so
+// text and QR can each be turned off while the other (and audit) stays on.
 export const WATERMARK_DISPLAY_FLAG = 'watermark_display';
-export const WATERMARK_AUDIT_FLAG = 'watermark_audit';
-// QR can be toggled independently of the faint text watermark: turn QR off
-// while keeping the text token (still traceable) when QR is too noisy.
+export const WATERMARK_TEXT_FLAG = 'watermark_text';
 export const WATERMARK_QR_FLAG = 'watermark_qr';
+export const WATERMARK_AUDIT_FLAG = 'watermark_audit';
 const RETENTION_DAYS = 90;
 const ARCHIVE_BATCH_SIZE = 5000;
 
 export interface IssuedToken {
   enabled: boolean;
+  text: boolean;
   qr: boolean;
   token: string | null;
 }
@@ -42,14 +45,19 @@ export class WatermarkAuditService {
     ip: string | null;
     user_agent: string | null;
   }): Promise<IssuedToken> {
-    const [displayEnabled, auditEnabled, qrEnabled] = await Promise.all([
-      this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
-      this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
-      this.featureFlagsService.getFlag(WATERMARK_QR_FLAG),
-    ]);
+    const [displayEnabled, textEnabled, qrEnabled, auditEnabled] =
+      await Promise.all([
+        this.featureFlagsService.getFlag(WATERMARK_DISPLAY_FLAG),
+        this.featureFlagsService.getFlag(WATERMARK_TEXT_FLAG),
+        this.featureFlagsService.getFlag(WATERMARK_QR_FLAG),
+        this.featureFlagsService.getFlag(WATERMARK_AUDIT_FLAG),
+      ]);
+
+    const textOn = displayEnabled && textEnabled;
+    const qrOn = displayEnabled && qrEnabled;
 
     if (!displayEnabled && !auditEnabled) {
-      return { enabled: false, qr: false, token: null };
+      return { enabled: false, text: false, qr: false, token: null };
     }
 
     const token = randomBytes(12).toString('base64url');
@@ -65,12 +73,15 @@ export class WatermarkAuditService {
       });
     }
 
-    // `enabled` drives the visible watermark on the client. Logging is
-    // independent: it may have persisted above even when display is off.
+    // `enabled` = master switch. text/qr are independent sub-toggles under
+    // it. Logging is independent and may have persisted above even when the
+    // visible watermark is off. Token is sent only if something is shown.
+    const showAny = textOn || qrOn;
     return {
       enabled: displayEnabled,
-      qr: displayEnabled && qrEnabled,
-      token: displayEnabled ? token : null,
+      text: textOn,
+      qr: qrOn,
+      token: showAny ? token : null,
     };
   }
 
