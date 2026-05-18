@@ -171,6 +171,8 @@ export class HappyHourService implements OnModuleInit {
     // Greedy: maximize cards first, then maximize discount steps from remainder
     const minOrder = Number(slot.min_order_amount);
     const numCards = Math.floor(orderAmount / minOrder);
+    if (numCards === 0) return null;
+
     const excess = orderAmount - numCards * minOrder;
     const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
     const excessDiscount = excessSteps * Number(slot.discount_per_step);
@@ -201,6 +203,10 @@ export class HappyHourService implements OnModuleInit {
     }
 
     const num_cards = Math.floor(order_amount / Number(slot.min_order_amount));
+    if (num_cards === 0) {
+      return { is_happy_hour: false };
+    }
+
     const excess = order_amount - num_cards * Number(slot.min_order_amount);
     const excess_steps = Math.floor(excess / Number(slot.excess_threshold));
     const excess_discount = excess_steps * Number(slot.discount_per_step);
