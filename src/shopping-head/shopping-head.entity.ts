@@ -79,6 +79,15 @@ export class ShoppingHeadEntity {
   @OneToMany(() => ShoppingOrderEntity, (detail) => detail.orderHeader)
   details: ShoppingOrderEntity[];
 
+  @Column({
+    type: 'decimal',
+    precision: 16,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  discount: number;
+
   @Column({ type: 'json', nullable: true, default: null })
   editAddress: string;
 }

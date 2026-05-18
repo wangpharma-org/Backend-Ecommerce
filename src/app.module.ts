@@ -52,6 +52,7 @@ import { RatingModule } from './rating/rating.module';
 import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
 import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
+import { HappyHourModule } from './happy-hour/happy-hour.module';
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { ProductRequestModule } from './product-request/product-request.module';
     CompanyDayAnalyticModule,
     LineOaMonitorModule,
     ElasticsearchModule,
+    HappyHourModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
