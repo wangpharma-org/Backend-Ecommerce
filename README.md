@@ -25,6 +25,50 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Database Architecture
+
+โปรเจกต์นี้ใช้ **2 MySQL databases** แยกกัน:
+
+| Database | ใช้สำหรับ |
+|----------|----------|
+| `ecommerce-db` | Main database — entities ทั้งหมดทั่วไป |
+| `e-commerce-database-other` | Secondary database — features ที่แยกออกมา เช่น Happy Hour |
+
+Entity ที่อยู่ใน secondary database จะระบุ `database` ใน decorator:
+
+```ts
+@Entity({ name: 'happy_hour_config', database: 'e-commerce-database-other' })
+```
+
+### Migration
+
+```bash
+# รัน migration ที่ยังไม่ได้รัน
+npm run migration:run
+
+# สร้าง migration ใหม่
+npm run migration:generate -- src/migrations/<ชื่อ>
+
+# ย้อน migration ล่าสุด
+npm run migration:revert
+```
+
+> DB user ต้องมีสิทธิ์ `CREATE ON *.*` เพื่อสร้าง database ใหม่ได้
+> ห้ามใช้ `SYNCHRONIZE=true` ใน production — ใช้ migration แทนเสมอ
+
+### การเพิ่ม Table ใน Secondary Database
+
+Migration ที่สร้าง table ข้าม database ต้อง `CREATE DATABASE IF NOT EXISTS` ก่อน:
+
+```ts
+await queryRunner.query(
+  `CREATE DATABASE IF NOT EXISTS \`e-commerce-database-other\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+);
+await queryRunner.query(
+  `CREATE TABLE IF NOT EXISTS \`e-commerce-database-other\`.\`my_table\` (...) ENGINE=InnoDB`
+);
+```
+
 ## Project setup
 
 ```bash
