@@ -53,6 +53,7 @@ import { LineRegisterMeetingModule } from './line-register-meeting/line-register
 import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
+import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 
 @Module({
   imports: [
@@ -148,6 +149,7 @@ import { HappyHourModule } from './happy-hour/happy-hour.module';
     LineRegisterMeetingModule,
     ReviewRequestModule,
     ProductRequestModule,
+    WatermarkAuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],
