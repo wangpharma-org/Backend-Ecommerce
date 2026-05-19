@@ -6,11 +6,18 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
 import { CreateSlotDto } from './dto/create-slot.dto';
+import { UpdateSlotDto } from './dto/update-slot.dto';
 import { SimulateDto } from './dto/simulate.dto';
 import { ProductEntity } from 'src/products/products.entity';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const DEFAULT_SLOTS: Omit<
   HappyHourSlotEntity,
@@ -18,6 +25,7 @@ const DEFAULT_SLOTS: Omit<
 >[] = [
   {
     start_time: '22:00',
+    // MySQL TIME ยอมรับ 24:00:00 เป็น special case — ใช้เพื่อครอบคลุม slot จนถึงก่อนเที่ยงคืน
     end_time: '24:00',
     min_order_amount: 9999,
     card_value: 100,
@@ -120,7 +128,7 @@ export class HappyHourService implements OnModuleInit {
 
   async updateSlot(
     id: number,
-    dto: Partial<CreateSlotDto>,
+    dto: UpdateSlotDto,
   ): Promise<HappyHourSlotEntity> {
     const slot = await this.slotRepo.findOneBy({ id });
     if (!slot) {
@@ -150,14 +158,13 @@ export class HappyHourService implements OnModuleInit {
     numCards: number;
     excessDiscount: number;
     totalCardValue: number;
+    totalReward: number;
   } | null> {
     const config = await this.getConfig();
     if (!config.is_enabled) return null;
 
-    const now = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }),
-    );
-    const orderTimeSql = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+    const now = dayjs().tz('Asia/Bangkok');
+    const orderTimeSql = now.format('HH:mm:00');
 
     const slot = await this.slotRepo
       .createQueryBuilder('slot')
@@ -177,11 +184,13 @@ export class HappyHourService implements OnModuleInit {
     const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
     const excessDiscount = excessSteps * Number(slot.discount_per_step);
 
+    const totalCardValue = numCards * Number(slot.card_value);
     return {
       slot,
       numCards,
       excessDiscount,
-      totalCardValue: numCards * Number(slot.card_value),
+      totalCardValue,
+      totalReward: totalCardValue + excessDiscount,
     };
   }
 

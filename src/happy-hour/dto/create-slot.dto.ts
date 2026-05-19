@@ -8,10 +8,14 @@ import {
 } from 'class-validator';
 
 export class CreateSlotDto {
-  @Matches(/^\d{2}:\d{2}$/, { message: 'start_time ต้องอยู่ในรูปแบบ HH:mm' })
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'start_time ต้องอยู่ในรูปแบบ HH:mm (00:00–23:59)',
+  })
   start_time!: string;
 
-  @Matches(/^\d{2}:\d{2}$/, { message: 'end_time ต้องอยู่ในรูปแบบ HH:mm' })
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'end_time ต้องอยู่ในรูปแบบ HH:mm (00:00–23:59)',
+  })
   end_time!: string;
 
   @IsNumber()
