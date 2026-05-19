@@ -53,10 +53,13 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: >-
             Run the project skill at .claude/skills/learn-from-reviews/SKILL.md
-            using the feedback in /tmp/lfr.json. Classify, promote per the
-            ledger, and APPLY approved-kind entries to the .ai/ files and
-            ledger.json exactly as the skill specifies. Do NOT commit, push,
-            merge, or open a PR. Leave changes in the working tree only.
+            using the feedback in /tmp/lfr.json. You are running in CI
+            (non-interactive). Classify, promote per the ledger, then proceed
+            DIRECTLY to Step 5 (Apply) without waiting for human approval —
+            the Draft PR that follows IS the human review gate. Write all
+            approved-kind entries to the .ai/ files and update ledger.json.
+            Do NOT commit, push, merge, or open a PR. Leave changes in the
+            working tree only.
 
       - name: Open / update a DRAFT proposal PR (never auto-merged)
         if: steps.fetch.outputs.feedback_count != '0'
