@@ -4158,6 +4158,7 @@ export class AppController {
 
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
+    console.log('Fetching product image for pro_code:', pro_code);
     try {
       const product =
         await this.productsService.getProductImageByCode(pro_code);
