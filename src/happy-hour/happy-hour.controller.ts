@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -47,11 +46,6 @@ export class HappyHourController {
 
   @Patch('toggle')
   toggle(@Req() req: { user: JwtUser }) {
-    if (req.user.permission === false && req.user.role !== 'admin') {
-      throw new ForbiddenException(
-        'You do not have permission to perform this action',
-      );
-    }
     console.log(`User ${req.user.username} is toggling happy hour`, {
       mem_code: req.user.mem_code,
       role: req.user.role,
@@ -66,12 +60,7 @@ export class HappyHourController {
   }
 
   @Post('slots')
-  createSlot(@Body() dto: CreateSlotDto, @Req() req: { user: JwtUser }) {
-    if (req.user.permission === false && req.user.role !== 'admin') {
-      throw new ForbiddenException(
-        'You do not have permission to perform this action',
-      );
-    }
+  createSlot(@Body() dto: CreateSlotDto) {
     return this.happyHourService.createSlot(dto);
   }
 
