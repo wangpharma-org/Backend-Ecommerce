@@ -8,6 +8,7 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
+  DataSource,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -42,6 +43,7 @@ export class PromotionService {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    private readonly dataSource: DataSource,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -1175,51 +1177,57 @@ export class PromotionService {
       );
     }
 
-    const newPromotion = this.promotionRepo.create({
-      promo_name: source.promo_name,
-      creditor: source.creditor ?? undefined,
-      start_date: data.start_date,
-      end_date: data.end_date,
-      status: false,
+    return await this.dataSource.transaction(async (manager) => {
+      const savedPromotion = await manager.save(
+        manager.create(PromotionEntity, {
+          promo_name: source.promo_name,
+          creditor: source.creditor ?? undefined,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          status: false,
+        }),
+      );
+
+      for (const tier of source.tiers ?? []) {
+        const savedTier = await manager.save(
+          manager.create(PromotionTierEntity, {
+            tier_name: tier.tier_name,
+            min_amount: tier.min_amount,
+            description: tier.description,
+            detail: tier.detail,
+            tier_postter: tier.tier_postter,
+            all_products: tier.all_products,
+            is_unit: tier.is_unit,
+            promotion: savedPromotion,
+          }),
+        );
+
+        if (tier.conditions?.length) {
+          await manager.save(
+            tier.conditions.map((c) =>
+              manager.create(PromotionConditionEntity, {
+                tier: savedTier,
+                product: { pro_code: c.product.pro_code },
+              } as DeepPartial<PromotionConditionEntity>),
+            ),
+          );
+        }
+
+        if (tier.rewards?.length) {
+          await manager.save(
+            tier.rewards.map((r) =>
+              manager.create(PromotionRewardEntity, {
+                tier: savedTier,
+                giftProduct: { pro_code: r.giftProduct.pro_code },
+                qty: r.qty,
+                unit: r.unit,
+              } as DeepPartial<PromotionRewardEntity>),
+            ),
+          );
+        }
+      }
+
+      return { promo_id: savedPromotion.promo_id };
     });
-    const savedPromotion = await this.promotionRepo.save(newPromotion);
-
-    for (const tier of source.tiers ?? []) {
-      const newTier = this.promotionTierRepo.create({
-        tier_name: tier.tier_name,
-        min_amount: tier.min_amount,
-        description: tier.description,
-        detail: tier.detail,
-        tier_postter: tier.tier_postter,
-        all_products: tier.all_products,
-        is_unit: tier.is_unit,
-        promotion: savedPromotion,
-      });
-      const savedTier = await this.promotionTierRepo.save(newTier);
-
-      if (tier.conditions?.length) {
-        const newConditions = tier.conditions.map((c) =>
-          this.promotionConditionRepo.create({
-            tier: savedTier,
-            product: { pro_code: c.product.pro_code },
-          } as DeepPartial<PromotionConditionEntity>),
-        );
-        await this.promotionConditionRepo.save(newConditions);
-      }
-
-      if (tier.rewards?.length) {
-        const newRewards = tier.rewards.map((r) =>
-          this.promotionRewardRepo.create({
-            tier: savedTier,
-            giftProduct: { pro_code: r.giftProduct.pro_code },
-            qty: r.qty,
-            unit: r.unit,
-          } as DeepPartial<PromotionRewardEntity>),
-        );
-        await this.promotionRewardRepo.save(newRewards);
-      }
-    }
-
-    return { promo_id: savedPromotion.promo_id };
   }
 }
