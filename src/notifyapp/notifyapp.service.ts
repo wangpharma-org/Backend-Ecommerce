@@ -7,9 +7,14 @@ import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
 import {
   AdminNotificationChannel,
+  AdminNotificationFilterDto,
+  AdminNotificationTargetMode,
   SendAdminNotificationDto,
 } from './dto/send-admin-notification.dto';
+import { UserEntity } from '../users/users.entity';
 type NotificationTokenEventType = 'upsert' | 'remove';
+
+const NOTIFICATION_BATCH_SIZE = 500;
 
 @Injectable()
 export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
@@ -20,6 +25,8 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     private readonly shoppingOrderRepository: Repository<ShoppingOrderEntity>,
     @InjectRepository(NotificationTokenEntity)
     private readonly notificationTokenRepository: Repository<NotificationTokenEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
   ) {
     const kafka = new Kafka({
       clientId: process.env.KAFKA_CLIENT_ID || 'notifyapp',
@@ -243,18 +250,15 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
   }
 
   async sendAdminNotification(payload: SendAdminNotificationDto) {
-    const broadcast = payload.broadcast === true;
+    const targetMode = this.resolveTargetMode(payload);
     const targets = [payload.memCode, payload.phoneNumber].filter(Boolean);
 
-    if (broadcast && targets.length > 0) {
+    if (
+      targetMode !== AdminNotificationTargetMode.SINGLE &&
+      targets.length > 0
+    ) {
       throw new BadRequestException(
-        'broadcast cannot be used together with memCode or phoneNumber',
-      );
-    }
-
-    if (!broadcast && targets.length === 0) {
-      throw new BadRequestException(
-        'At least one target is required when broadcast is false',
+        'memCode or phoneNumber can be used only with single target mode',
       );
     }
 
@@ -272,10 +276,16 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const notificationPayload = {
-      ...(payload.memCode ? { memCode: payload.memCode } : {}),
-      ...(payload.phoneNumber ? { phoneNumber: payload.phoneNumber } : {}),
-      ...(broadcast ? { broadcast: true } : {}),
+    const recipientMemCodes = await this.resolveRecipientMemCodes(
+      payload,
+      targetMode,
+    );
+
+    if (recipientMemCodes.length === 0) {
+      throw new BadRequestException('No recipients found for this notification');
+    }
+
+    const baseNotificationPayload = {
       type: payload.type?.trim() || 'GENERAL',
       title: payload.title.trim(),
       message: payload.message.trim(),
@@ -286,16 +296,45 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     const topic =
       process.env.KAFKA_NOTIFICATION_CREATED_TOPIC || 'notification.created';
 
-    await this.producer.send({
-      topic,
-      messages: [{ value: JSON.stringify(notificationPayload) }],
-    });
+    for (
+      let index = 0;
+      index < recipientMemCodes.length;
+      index += NOTIFICATION_BATCH_SIZE
+    ) {
+      const batch = recipientMemCodes.slice(index, index + NOTIFICATION_BATCH_SIZE);
+      await this.producer.send({
+        topic,
+        messages: batch.map((memCode) => ({
+          value: JSON.stringify({
+            memCode,
+            ...baseNotificationPayload,
+          }),
+        })),
+      });
+    }
 
     return {
       success: true,
       topic,
-      payload: notificationPayload,
-      message: 'Notification event published successfully',
+      targetMode,
+      recipientCount: recipientMemCodes.length,
+      message: `Published ${recipientMemCodes.length} notification event(s) successfully`,
+    };
+  }
+
+  async getNotificationProvinces() {
+    const provinces = await this.userRepository
+      .createQueryBuilder('user')
+      .select('DISTINCT user.mem_province', 'province')
+      .where('user.mem_province IS NOT NULL')
+      .andWhere("TRIM(user.mem_province) <> ''")
+      .orderBy('user.mem_province', 'ASC')
+      .getRawMany<{ province: string }>();
+
+    return {
+      provinces: provinces
+        .map((item) => item.province?.trim())
+        .filter((province): province is string => Boolean(province)),
     };
   }
 
@@ -307,5 +346,98 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     }
 
     return [AdminNotificationChannel.FCM];
+  }
+
+  private resolveTargetMode(
+    payload: SendAdminNotificationDto,
+  ): AdminNotificationTargetMode {
+    if (payload.targetMode) {
+      return payload.targetMode;
+    }
+
+    if (payload.broadcast === true) {
+      return AdminNotificationTargetMode.BROADCAST;
+    }
+
+    if (payload.memCode || payload.phoneNumber) {
+      return AdminNotificationTargetMode.SINGLE;
+    }
+
+    return AdminNotificationTargetMode.SINGLE;
+  }
+
+  private async resolveRecipientMemCodes(
+    payload: SendAdminNotificationDto,
+    targetMode: AdminNotificationTargetMode,
+  ): Promise<string[]> {
+    if (targetMode === AdminNotificationTargetMode.SINGLE) {
+      if (payload.memCode?.trim()) {
+        return [payload.memCode.trim()];
+      }
+
+      if (payload.phoneNumber?.trim()) {
+        throw new BadRequestException(
+          'phoneNumber direct target is not supported for admin notifications, use memCode instead',
+        );
+      }
+
+      throw new BadRequestException(
+        'memCode is required when target mode is single',
+      );
+    }
+
+    if (targetMode === AdminNotificationTargetMode.BROADCAST) {
+      return this.findMemberCodes();
+    }
+
+    if (targetMode === AdminNotificationTargetMode.SEGMENT) {
+      this.validateSegmentFilter(payload.filter);
+      return this.findMemberCodes(payload.filter);
+    }
+
+    throw new BadRequestException('Unsupported target mode');
+  }
+
+  private validateSegmentFilter(filter?: AdminNotificationFilterDto) {
+    const hasProvinceFilter = (filter?.provinces?.length ?? 0) > 0;
+    const hasPriceGroupFilter = (filter?.priceGroups?.length ?? 0) > 0;
+
+    if (!hasProvinceFilter && !hasPriceGroupFilter) {
+      throw new BadRequestException(
+        'At least one segment filter is required for segment mode',
+      );
+    }
+  }
+
+  private async findMemberCodes(
+    filter?: AdminNotificationFilterDto,
+  ): Promise<string[]> {
+    const queryBuilder = this.userRepository
+      .createQueryBuilder('user')
+      .select('user.mem_code', 'mem_code')
+      .where('user.mem_code IS NOT NULL')
+      .andWhere("TRIM(user.mem_code) <> ''");
+
+    if (filter?.provinces?.length) {
+      queryBuilder.andWhere('user.mem_province IN (:...provinces)', {
+        provinces: filter.provinces,
+      });
+    }
+
+    if (filter?.priceGroups?.length) {
+      queryBuilder.andWhere('user.mem_price IN (:...priceGroups)', {
+        priceGroups: filter.priceGroups,
+      });
+    }
+
+    const users = await queryBuilder.getRawMany<{ mem_code: string }>();
+
+    return Array.from(
+      new Set(
+        users
+          .map((user) => user.mem_code?.trim())
+          .filter((memCode): memCode is string => Boolean(memCode)),
+      ),
+    );
   }
 }

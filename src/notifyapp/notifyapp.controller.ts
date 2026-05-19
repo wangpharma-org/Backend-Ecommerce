@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   Post,
   Req,
   UseGuards,
@@ -24,6 +25,16 @@ interface AuthenticatedRequest extends Request {
 @Controller('ecom/admin/notifications')
 export class NotifyRtController {
   constructor(private readonly notifyRtService: NotifyRtService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Get('filters/provinces')
+  async getNotificationProvinces(@Req() req: AuthenticatedRequest) {
+    if (req.user?.permission !== true) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    return this.notifyRtService.getNotificationProvinces();
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('send')

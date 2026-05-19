@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  ValidateNested,
 } from 'class-validator';
 
 export enum AdminNotificationChannel {
@@ -15,6 +16,12 @@ export enum AdminNotificationChannel {
   LINE = 'LINE',
   EMAIL = 'EMAIL',
   SMS = 'SMS',
+}
+
+export enum AdminNotificationTargetMode {
+  SINGLE = 'single',
+  BROADCAST = 'broadcast',
+  SEGMENT = 'segment',
 }
 
 const trimString = ({ value }: { value: unknown }) => {
@@ -33,6 +40,46 @@ const emptyStringToUndefined = ({ value }: { value: unknown }) => {
   const trimmed = value.trim();
   return trimmed === '' ? undefined : trimmed;
 };
+
+const normalizeStringArray = ({ value }: { value: unknown }) => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  const normalized = value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item !== '');
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
+};
+
+const normalizePriceGroups = ({ value }: { value: unknown }) => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  const normalized = value
+    .map((item) =>
+      typeof item === 'string' ? item.trim().toUpperCase() : '',
+    )
+    .filter((item) => item !== '');
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
+};
+
+export class AdminNotificationFilterDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(normalizeStringArray)
+  provinces?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(normalizePriceGroups)
+  priceGroups?: string[];
+}
 
 export class SendAdminNotificationDto {
   @IsOptional()
@@ -55,6 +102,10 @@ export class SendAdminNotificationDto {
   broadcast?: boolean;
 
   @IsOptional()
+  @IsEnum(AdminNotificationTargetMode)
+  targetMode?: AdminNotificationTargetMode;
+
+  @IsOptional()
   @IsString()
   @Transform(trimString)
   @Transform(emptyStringToUndefined)
@@ -63,12 +114,12 @@ export class SendAdminNotificationDto {
   @IsString()
   @IsNotEmpty()
   @Transform(trimString)
-  title: string;
+  title!: string;
 
   @IsString()
   @IsNotEmpty()
   @Transform(trimString)
-  message: string;
+  message!: string;
 
   @IsOptional()
   @IsArray()
@@ -78,4 +129,9 @@ export class SendAdminNotificationDto {
   @IsOptional()
   @IsObject()
   data?: Record<string, unknown>;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdminNotificationFilterDto)
+  filter?: AdminNotificationFilterDto;
 }
