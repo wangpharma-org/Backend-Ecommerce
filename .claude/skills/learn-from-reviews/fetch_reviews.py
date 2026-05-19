@@ -4,8 +4,23 @@
 Usage: fetch_reviews.py <owner/repo> [--limit N] [--since YYYY-MM-DD]
 Writes JSON to stdout: a list of feedback items, each with source provenance.
 Read-only. Requires `gh` authenticated.
+
+Each item carries `origin`:
+  - "human"     : a person's review/comment   -> full-tier signal
+  - "ai-review" : an automated Claude/bot review (e.g. the claude-code-review
+                  workflow that posts via `gh pr comment`) -> SECONDARY signal.
+                  Distil it but never auto-promote an ai-only item to a hard
+                  rule (see SKILL.md "Provenance & AI tier"). This prevents an
+                  AI echo chamber where Claude ratifies its own opinions.
 """
-import json, subprocess, sys, argparse
+import json, subprocess, sys, argparse, re
+
+# bot / app identities whose feedback is AI-generated, not a human teammate
+AI_LOGIN = re.compile(r'\[bot\]$|github-actions|claude|^app/', re.I)
+
+
+def origin_of(login: str) -> str:
+    return "ai-review" if login and AI_LOGIN.search(login) else "human"
 
 
 def gh(args):
@@ -32,36 +47,45 @@ def main():
     for p in prs:
         n = p["number"]
         author = (p.get("author") or {}).get("login", "?")
-        # inline code-review comments
-        inline = json.loads(gh(["api", f"repos/{a.repo}/pulls/{n}/comments",
-                                "--paginate"]) or "[]")
-        for c in inline:
+
+        def add(reviewer, **kw):
+            items.append({"pr": n, "pr_title": p["title"], "pr_author": author,
+                          "reviewer": reviewer, "origin": origin_of(reviewer), **kw})
+
+        # 1. inline code-review comments
+        for c in json.loads(gh(["api", f"repos/{a.repo}/pulls/{n}/comments",
+                                "--paginate"]) or "[]"):
             if not c.get("body", "").strip():
                 continue
-            items.append({
-                "pr": n, "pr_title": p["title"], "pr_author": author,
-                "reviewer": c["user"]["login"],
-                "type": "inline",
-                "path": c.get("path"), "line": c.get("line") or c.get("original_line"),
-                "diff_hunk": (c.get("diff_hunk") or "")[-400:],
-                "body": c["body"].strip(),
-                "url": c.get("html_url"),
-            })
-        # top-level review summaries (request-changes / approve with notes)
-        reviews = json.loads(gh(["api", f"repos/{a.repo}/pulls/{n}/reviews"]) or "[]")
-        for r in reviews:
+            add(c["user"]["login"], type="inline",
+                path=c.get("path"), line=c.get("line") or c.get("original_line"),
+                diff_hunk=(c.get("diff_hunk") or "")[-400:],
+                body=c["body"].strip(), url=c.get("html_url"))
+
+        # 2. top-level review summaries (request-changes / approve with notes)
+        for r in json.loads(gh(["api", f"repos/{a.repo}/pulls/{n}/reviews"]) or "[]"):
             if not (r.get("body") or "").strip():
                 continue
-            items.append({
-                "pr": n, "pr_title": p["title"], "pr_author": author,
-                "reviewer": r["user"]["login"],
-                "type": "review", "state": r.get("state"),
-                "body": r["body"].strip(),
-                "url": r.get("html_url"),
-            })
+            add(r["user"]["login"], type="review", state=r.get("state"),
+                body=r["body"].strip(), url=r.get("html_url"))
+
+        # 3. PR-level issue comments — this is where the claude-code-review
+        #    workflow posts (via `gh pr comment`), and where many human
+        #    discussion notes live. Tagged via origin (human vs ai-review).
+        for c in json.loads(gh(["api", f"repos/{a.repo}/issues/{n}/comments",
+                                "--paginate"]) or "[]"):
+            if not (c.get("body") or "").strip():
+                continue
+            add((c.get("user") or {}).get("login", "?"), type="issue_comment",
+                body=c["body"].strip(), url=c.get("html_url"))
+
+    by_origin = {}
+    for it in items:
+        by_origin[it["origin"]] = by_origin.get(it["origin"], 0) + 1
 
     json.dump({"repo": a.repo, "prs_scanned": len(prs),
-               "feedback_count": len(items), "items": items},
+               "feedback_count": len(items), "by_origin": by_origin,
+               "items": items},
               sys.stdout, indent=2, ensure_ascii=False)
 
 

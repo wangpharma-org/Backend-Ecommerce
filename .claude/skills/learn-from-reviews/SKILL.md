@@ -58,12 +58,31 @@ For each feedback item in `/tmp/lfr.json`, assign exactly one **kind**:
 Be conservative: when unsure between `convention` and `preference`, choose
 `preference`. Noise destroys trust in this system.
 
+### 2b. Provenance & AI tier (read before classifying)
+Every item has `origin`: `human` or `ai-review` (automated Claude/bot review,
+e.g. the `claude-code-review` workflow). Treat them differently — feeding
+AI-generated opinions back as hard rules that Claude then reviews against is an
+echo chamber with no human ground truth.
+
+- **human** — full-tier. Classify and promote normally.
+- **ai-review** — SECONDARY signal. Cap it at **`quarantine`** (or at most a
+  `convention` with `confidence: low`). It may **never** be classified as
+  `rule`, `domain`, or `architecture` on its own. An ai-review item can leave
+  quarantine only when **a human comment corroborates the same point**, or the
+  same pattern recurs across ≥2 PRs *and* a human later flags it. Carry
+  `origin` into the proposal and into `ledger.json` for every item so the
+  CODEOWNER sees whether they are ratifying human or AI judgement — never let
+  an AI-only item be rubber-stamped into a rule.
+
 ### 3. Promote (use the ledger as evidence)
 Before writing, check `.ai/ledger.json` for prior occurrences of the same idea:
 - a `preference` seen in ≥2 distinct PRs by ≥2 reviewers → propose promotion to
   `convention`.
 - a `convention` violated again after being recorded → propose promotion to
   `rule` **and** suggest a concrete lint/CI check.
+- promotion evidence must include ≥1 `human`-origin occurrence. An item whose
+  evidence is entirely `ai-review` cannot be promoted past `convention`
+  (low confidence) regardless of how many times it recurs.
 Record promotions explicitly in the proposal.
 
 ### 4. Propose (DO NOT modify `.ai/` canonical files yet)
@@ -83,9 +102,11 @@ For each item the human approves:
 - append the entry to its destination `.ai/` file (id, statement, why, example,
   `source: PR#… @reviewer`, `added: <date>`)
 - append a record to `.ai/ledger.json` items[] with
-  `{id, kind, status, source_prs, reviewers, confidence, first_seen, last_seen,
-  approved_by, approved_at}`. New items start `status:"proposed"` (or
-  `"quarantined"` for preferences) with `approved_by:null`.
+  `{id, kind, status, origin, source_prs, reviewers, confidence, first_seen,
+  last_seen, approved_by, approved_at}`. `origin` is `human`, `ai-review`, or
+  `mixed` (both contributed). New items start `status:"proposed"` (or
+  `"quarantined"` for preferences / any ai-review-only item) with
+  `approved_by:null`.
 - set `ledger.json.last_run` to today
 
 **Approval is CODEOWNERS-gated, not operator-gated.** `.github/CODEOWNERS`
