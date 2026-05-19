@@ -18,6 +18,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
+import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 
 interface CountSale {
   pro_code: string;
@@ -50,6 +51,7 @@ export class ShoppingOrderService {
     private readonly promotionTierRepo: Repository<PromotionTierEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
+    private readonly happyHourService: HappyHourService,
   ) {}
 
   private async isL16Member(
@@ -613,6 +615,37 @@ export class ShoppingOrderService {
           const currentGroupTotal =
             totalsummaryfromCart.items[groupIndex]?.grandTotalItems || 0;
 
+          // Happy Hour: คำนวณและบันทึก reward / excess discount
+          let happyHourDiscount = 0;
+          const happyReward =
+            await this.happyHourService.calcHappyHourReward(currentGroupTotal);
+
+          if (happyReward) {
+            submitLogContext.push({
+              happyHour: {
+                numCards: happyReward.numCards,
+                excessDiscount: happyReward.excessDiscount,
+                slotId: happyReward.slot.id,
+              },
+              forOrder: running,
+            });
+
+            if (happyReward.numCards > 0 && happyReward.slot.reward_pro_code) {
+              const happyRewardItem = manager.create(ShoppingOrderEntity, {
+                orderHeader: { soh_running: running },
+                pro_code: happyReward.slot.reward_pro_code,
+                spo_unit: happyReward.slot.reward_unit ?? 'ใบ',
+                spo_qty: happyReward.numCards * happyReward.slot.reward_amount,
+                spo_price_unit: 0,
+                spo_total_decimal: 0,
+                is_reward: true,
+              });
+              await manager.save(ShoppingOrderEntity, happyRewardItem);
+            }
+
+            happyHourDiscount = happyReward.excessDiscount;
+          }
+
           await manager.update(
             ShoppingHeadEntity,
             { soh_id: NewHead.soh_id },
@@ -626,6 +659,7 @@ export class ShoppingOrderService {
                   ? 0
                   : currentGroupTotal * 0.01 - pointAfterUse,
               emp_code: data.emp_code?.trim() ?? null,
+              discount: happyHourDiscount,
             },
           );
         }
