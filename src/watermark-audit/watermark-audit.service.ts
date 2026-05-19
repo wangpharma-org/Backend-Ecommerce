@@ -195,8 +195,11 @@ export class WatermarkAuditService {
             created_at: row.created_at,
           }),
         );
-        await this.archiveRepo.save(archived);
-        await this.auditRepo.delete(batch.map((row) => row.id));
+        const batchIds = batch.map((row) => row.id);
+        await this.auditRepo.manager.transaction(async (tx) => {
+          await tx.save(WatermarkAuditArchiveEntity, archived);
+          await tx.delete(WatermarkAuditEntity, batchIds);
+        });
 
         totalArchived += batch.length;
         if (batch.length < ARCHIVE_BATCH_SIZE) {
