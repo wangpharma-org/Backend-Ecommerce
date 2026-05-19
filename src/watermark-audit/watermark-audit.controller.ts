@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Query,
@@ -44,7 +45,13 @@ export class WatermarkAuditController {
   // Admin: resolve a leaked watermark token -> who/when/which page.
   @UseGuards(JwtAuthGuard)
   @Get('watermark/lookup')
-  lookup(@Query('token') token: string) {
+  lookup(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('token') token: string,
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
     if (!token) {
       throw new BadRequestException('token จำเป็นต้องระบุ');
     }
