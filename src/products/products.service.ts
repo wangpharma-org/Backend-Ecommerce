@@ -587,10 +587,49 @@ export class ProductsService {
     }
   }
 
-  async createProduct(product: ProductEntity) {
+  async createProduct(
+    product: ProductEntity & {
+      pro_unit1?: string;
+      pro_unit2?: string;
+      pro_unit3?: string;
+      pro_ratio1?: number;
+      pro_ratio2?: number;
+      pro_ratio3?: number;
+    },
+  ) {
     try {
-      const newProduct = this.productRepo.create(product);
+      const {
+        pro_unit1, pro_unit2, pro_unit3,
+        pro_ratio1, pro_ratio2, pro_ratio3,
+        ...productData
+      } = product;
+
+      const newProduct = this.productRepo.create({
+        ...productData,
+        pro_keysearch: Array.isArray(productData.pro_keysearch)
+          ? (productData.pro_keysearch as string[]).join(',')
+          : productData.pro_keysearch,
+      });
       await this.productRepo.save(newProduct);
+
+      const unitsToSave = [
+        { level: 1, unit_name: pro_unit1, ratio: pro_ratio1 ?? 1 },
+        { level: 2, unit_name: pro_unit2, ratio: pro_ratio2 ?? 1 },
+        { level: 3, unit_name: pro_unit3, ratio: pro_ratio3 ?? 1 },
+      ].filter((u) => u.unit_name);
+
+      if (unitsToSave.length > 0) {
+        await this.productUnitRepo.save(
+          unitsToSave.map((u) =>
+            this.productUnitRepo.create({
+              pro_code: product.pro_code,
+              unit_name: u.unit_name!,
+              ratio: u.ratio,
+              level: u.level,
+            }),
+          ),
+        );
+      }
     } catch (error) {
       this.logger.error('Error creating product:', error);
       throw new Error('Error creating product');
@@ -618,9 +657,76 @@ export class ProductsService {
     }
   }
 
-  async updateProduct(product: ProductEntity) {
+  async updateProduct(
+    product: ProductEntity & {
+      pro_unit1?: string;
+      pro_unit2?: string;
+      pro_unit3?: string;
+      pro_ratio1?: number;
+      pro_ratio2?: number;
+      pro_ratio3?: number;
+    },
+  ) {
     try {
-      await this.productRepo.update({ pro_code: product.pro_code }, product);
+      const {
+        pro_unit1, pro_unit2, pro_unit3,
+        pro_ratio1, pro_ratio2, pro_ratio3,
+        ...productData
+      } = product;
+
+      await this.productRepo.update(
+        { pro_code: product.pro_code },
+        {
+          ...productData,
+          pro_keysearch: Array.isArray(productData.pro_keysearch)
+            ? (productData.pro_keysearch as string[]).join(',')
+            : productData.pro_keysearch,
+        },
+      );
+
+      const hasUnitData =
+        pro_unit1 !== undefined || pro_unit2 !== undefined ||
+        pro_unit3 !== undefined || pro_ratio1 !== undefined ||
+        pro_ratio2 !== undefined || pro_ratio3 !== undefined;
+
+      if (hasUnitData) {
+        const existingUnits = await this.productUnitRepo.find({
+          where: { pro_code: product.pro_code },
+        });
+
+        const processUnit = async (
+          level: number,
+          unitName?: string,
+          ratio?: number,
+        ) => {
+          if (unitName === undefined && ratio === undefined) return;
+          const existing = existingUnits.find((u) => u.level === level);
+          if (existing) {
+            await this.productUnitRepo.update(
+              { id: existing.id },
+              {
+                ...(unitName !== undefined && { unit_name: unitName }),
+                ...(ratio !== undefined && { ratio }),
+              },
+            );
+          } else if (unitName) {
+            await this.productUnitRepo.save(
+              this.productUnitRepo.create({
+                pro_code: product.pro_code,
+                unit_name: unitName,
+                ratio: ratio ?? 1,
+                level,
+              }),
+            );
+          }
+        };
+
+        await Promise.all([
+          processUnit(1, pro_unit1, pro_ratio1),
+          processUnit(2, pro_unit2, pro_ratio2),
+          processUnit(3, pro_unit3, pro_ratio3),
+        ]);
+      }
     } catch (error) {
       this.logger.error('Error updating product:', error);
     }

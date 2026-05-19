@@ -885,9 +885,10 @@ export class ShoppingOrderService {
               (u) => u.level === Number(cart.spc_unit_enum),
             );
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { spc_unit_enum, ...cartWithoutEnum } = cart as typeof cart & {
-              spc_unit_enum: string;
-            };
+            const { spc_unit_enum, ...cartWithoutEnum } =
+              cart as typeof cart & {
+                spc_unit_enum: string;
+              };
             return { ...cartWithoutEnum, spc_unit: found?.unit_name ?? '' };
           });
 

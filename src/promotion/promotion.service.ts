@@ -488,6 +488,29 @@ export class PromotionService {
 
       const reward = await rewardQuery.getMany();
 
+      const rewardProCodes = reward
+        .map((r) => r.giftProduct?.pro_code)
+        .filter((c): c is string => !!c);
+
+      const rewardUnits = rewardProCodes.length
+        ? await this.productRepo.manager.getRepository(ProductUnitEntity).find({
+            where: { pro_code: In(rewardProCodes) },
+          })
+        : [];
+
+      const rewardUnitsMap: Record<
+        string,
+        { level: number; unit_name: string; ratio: number }[]
+      > = {};
+      for (const u of rewardUnits) {
+        if (!rewardUnitsMap[u.pro_code]) rewardUnitsMap[u.pro_code] = [];
+        rewardUnitsMap[u.pro_code].push({
+          level: u.level,
+          unit_name: u.unit_name,
+          ratio: u.ratio,
+        });
+      }
+
       const limitedReward = Object.values(
         reward.reduce(
           (
@@ -497,9 +520,16 @@ export class PromotionService {
             const id = item.tier.tier_id;
             if (!acc[id]) acc[id] = [];
             if (acc[id].length < 3) {
+              const productUnits = item.giftProduct?.pro_code
+                ? rewardUnitsMap[item.giftProduct.pro_code]
+                : undefined;
               acc[id].push({
                 ...item,
-                giftProduct: this.transformProductData(item.giftProduct),
+                unit: this.convertEnumToUnitName(item.unit, productUnits),
+                giftProduct: this.transformProductData({
+                  ...item.giftProduct,
+                  units: productUnits,
+                }),
               } as PromotionRewardWithTransformedProduct);
             }
             return acc;

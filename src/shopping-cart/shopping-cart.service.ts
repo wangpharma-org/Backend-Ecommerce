@@ -318,20 +318,6 @@ export class ShoppingCartService {
     }
   }
 
-  private getRatioFromUnits(
-    unitEnum: 1 | 2 | 3 | string,
-    productUnits?: { level: number; ratio: number; unit_name: string }[],
-  ): number {
-    if (!productUnits || productUnits.length === 0) {
-      return 1;
-    }
-
-    const targetLevel = Number(unitEnum);
-    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
-
-    return foundUnit?.ratio || 1;
-  }
-
   private async transformProductWithUnits<T extends { pro_code: string }>(
     product: T,
   ): Promise<
@@ -705,11 +691,21 @@ export class ShoppingCartService {
       const key = `${pro_code}|${unit}|${promo_id}`;
       const existing = rewardCartMap.get(key);
       if (!existing) {
+        const rewardProduct = await this.productRepo.findOne({
+          where: { pro_code },
+          relations: ['units'],
+        });
+        const foundUnit = rewardProduct?.units?.find(
+          (u) => u.unit_name === unit || String(u.level) === String(unit),
+        );
+        const unitLevel = foundUnit?.level ?? 1;
+        const validatedLevel = [1, 2, 3].includes(unitLevel) ? unitLevel : 1;
+
         ops.push(
           this.shoppingCartRepo.save({
             pro_code,
             mem_code,
-            spc_unit: unit,
+            spc_unit_enum: String(validatedLevel) as '1' | '2' | '3',
             spc_amount: qty,
             spc_price: 0,
             is_reward: true,
@@ -2381,7 +2377,7 @@ export class ShoppingCartService {
 
             if (!mainProduct) {
               return {
-                pro1_unit: item.spc_unit_enum,
+                pro1_unit: (item.spc_unit_enum as string) || '',
                 pro1_amount: item.spc_amount.toString(),
               };
             }
