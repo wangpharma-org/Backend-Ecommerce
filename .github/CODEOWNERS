@@ -1,0 +1,6 @@
+# Team knowledge base — any change requires sign-off from the knowledge owner.
+# This IS the "learn-from-reviews" approval gate. Enable branch protection
+# (require review from Code Owners) so .ai/ cannot change without approval.
+# Team lead @62theories ratifies; add a backup handle here if he's unavailable.
+/.ai/        @62theories
+/CLAUDE.md   @62theories

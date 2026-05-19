@@ -1,0 +1,78 @@
+name: learn-from-reviews
+
+# Trigger: whenever a PR is merged. Also weekly as a safety net, and manual.
+on:
+  pull_request:
+    types: [closed]        # event-driven: react to each merge
+  workflow_dispatch:        # manual
+  # weekly cadence is handled by the scheduled remote agent
+  # (routine "learn-from-reviews-backend-ecommerce"), not here,
+  # so the two mechanisms don't open duplicate PRs.
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: learn-from-reviews
+  cancel-in-progress: false
+
+jobs:
+  distill:
+    # only on a real merge (not a closed-without-merge), or schedule/manual
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch new review feedback since last run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SINCE=$(python3 -c "import json;print(json.load(open('.ai/ledger.json')).get('last_run') or '')")
+          ARGS="${{ github.repository }} --limit 80"
+          [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
+          python3 .claude/skills/learn-from-reviews/fetch_reviews.py $ARGS > /tmp/lfr.json
+          COUNT=$(python3 -c "import json;print(json.load(open('/tmp/lfr.json'))['feedback_count'])")
+          echo "feedback_count=$COUNT" >> "$GITHUB_OUTPUT"
+        id: fetch
+
+      - name: Distill into .ai/ proposals (propose-only)
+        if: steps.fetch.outputs.feedback_count != '0'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: >-
+            Run the project skill at .claude/skills/learn-from-reviews/SKILL.md
+            using the feedback in /tmp/lfr.json. Classify, promote per the
+            ledger, and APPLY approved-kind entries to the .ai/ files and
+            ledger.json exactly as the skill specifies. Do NOT commit, push,
+            merge, or open a PR. Leave changes in the working tree only.
+
+      - name: Open / update a DRAFT proposal PR (never auto-merged)
+        if: steps.fetch.outputs.feedback_count != '0'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: bot/learn-from-reviews
+          base: ${{ github.event.pull_request.base.ref || 'develop' }}
+          draft: true
+          commit-message: "chore(ai): distill review feedback into .ai/ knowledge"
+          title: "🧠 learn-from-reviews: proposed knowledge updates"
+          body: |
+            Auto-distilled from recently merged PR review feedback.
+            **Propose-only.** Items are `status:proposed` in `ledger.json`.
+            A CODEOWNER (`/.ai/` owners) must review and approve — that approval
+            is the team agreement. On merge, flip approved items to
+            `status:"agreed"` and set `approved_by`.
+          add-paths: |
+            .ai/**
+            CLAUDE.md
