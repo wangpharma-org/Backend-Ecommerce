@@ -3,6 +3,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -84,6 +85,7 @@ export type GetAllTiersResult = {
 
 @Injectable()
 export class PromotionService {
+  private readonly logger = new Logger(PromotionService.name);
   private s3: AWS.S3;
   constructor(
     @InjectRepository(PromotionEntity)
@@ -168,20 +170,14 @@ export class PromotionService {
   ) {
     if (!product) return product;
 
-    const pro_unit1 = this.convertEnumToUnitName(1, product.units);
-    const pro_unit2 = this.convertEnumToUnitName(2, product.units);
-    const pro_unit3 = this.convertEnumToUnitName(3, product.units);
-    const pro_ratio1 = this.getRatioFromUnits(1, product.units);
-    const pro_ratio2 = this.getRatioFromUnits(2, product.units);
-    const pro_ratio3 = this.getRatioFromUnits(3, product.units);
     return {
       ...product,
-      pro_unit1: isNaN(Number(pro_unit1)) ? pro_unit1 : '',
-      pro_unit2: isNaN(Number(pro_unit2)) ? pro_unit2 : '',
-      pro_unit3: isNaN(Number(pro_unit3)) ? pro_unit3 : '',
-      pro_ratio1,
-      pro_ratio2,
-      pro_ratio3,
+      pro_unit1: this.convertEnumToUnitName(1, product.units),
+      pro_unit2: this.convertEnumToUnitName(2, product.units),
+      pro_unit3: this.convertEnumToUnitName(3, product.units),
+      pro_ratio1: this.getRatioFromUnits(1, product.units),
+      pro_ratio2: this.getRatioFromUnits(2, product.units),
+      pro_ratio3: this.getRatioFromUnits(3, product.units),
     };
   }
 
@@ -196,14 +192,11 @@ export class PromotionService {
   ) {
     if (!product) return product;
 
-    const pro_unit1 = this.convertEnumToUnitName(1, product.units);
-    const pro_unit2 = this.convertEnumToUnitName(2, product.units);
-    const pro_unit3 = this.convertEnumToUnitName(3, product.units);
     return {
       ...product,
-      pro_unit1: isNaN(Number(pro_unit1)) ? pro_unit1 : '',
-      pro_unit2: isNaN(Number(pro_unit2)) ? pro_unit2 : '',
-      pro_unit3: isNaN(Number(pro_unit3)) ? pro_unit3 : '',
+      pro_unit1: this.convertEnumToUnitName(1, product.units),
+      pro_unit2: this.convertEnumToUnitName(2, product.units),
+      pro_unit3: this.convertEnumToUnitName(3, product.units),
     };
   }
 
@@ -260,7 +253,7 @@ export class PromotionService {
       await this.codeRepo.save(newCode);
       return code_text;
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to generate promotion code');
     }
   }
@@ -296,7 +289,7 @@ export class PromotionService {
       );
       await this.shoppingCartService.markCartAsChanged(mem_code);
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to check reward in cart');
     }
   }
@@ -453,7 +446,7 @@ export class PromotionService {
       });
 
       if (!poster.length) {
-        console.log('No active promotions found');
+        this.logger.log("No active promotions found");
         return { poster: [], reward: [] };
       }
 
@@ -461,7 +454,7 @@ export class PromotionService {
         .map((p) => p.tier_id)
         .filter((id): id is number => id !== undefined && id !== null);
       if (!tierIds.length) {
-        console.log('No tier IDs found for active promotions');
+        this.logger.log("No tier IDs found for active promotions");
         return { poster, reward: [] };
       }
 
@@ -540,7 +533,7 @@ export class PromotionService {
 
       return { poster, reward: limitedReward };
     } catch (error) {
-      console.error('Error in getAllTiers:', error);
+      this.logger.error("Error in getAllTiers:", error);
       throw new Error(`Failed to get tiers: ${error}`);
     }
   }
@@ -600,7 +593,7 @@ export class PromotionService {
     status: boolean;
   }) {
     try {
-      // console.log(data);
+      
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
         creditor: data.creditor_code
@@ -612,7 +605,7 @@ export class PromotionService {
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error(`Failed to add promotion`);
     }
   }
@@ -660,7 +653,7 @@ export class PromotionService {
     file: Express.Multer.File;
     is_unit_based?: boolean;
   }) {
-    // console.log(data);
+    
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id: data.promo_id },
@@ -694,7 +687,7 @@ export class PromotionService {
       });
       await this.promotionTierRepo.save(newTier);
     } catch {
-      // console.log(error);
+      // this.logger.error(error);
       throw new Error(`Failed to add tier to promotion`);
     }
   }
@@ -778,7 +771,7 @@ export class PromotionService {
       } as DeepPartial<PromotionConditionEntity>);
       await this.promotionConditionRepo.save(newCondition);
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException(
         error instanceof Error ? error.message : `Failed to create condition`,
@@ -810,7 +803,7 @@ export class PromotionService {
       });
       return 'Reward updated successfully';
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to update reward');
     }
   }
@@ -908,7 +901,7 @@ export class PromotionService {
         };
       }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error(`Failed to get rewards by tier`);
     }
   }
@@ -948,7 +941,7 @@ export class PromotionService {
       });
       return 'Promotion updated successfully';
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to update promotion');
     }
   }
@@ -968,7 +961,7 @@ export class PromotionService {
       });
       return 'Tier updated successfully';
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to update tier');
     }
   }
@@ -977,7 +970,7 @@ export class PromotionService {
     promotions: PromotionEntityWithTransformedData[];
   }> {
     try {
-      console.log('Fetching active promotions with all relations');
+      this.logger.log("Fetching active promotions with all relations");
 
       // ดึงข้อมูลพร้อม relations ทั้งหมดในครั้งเดียว
       const promotions = await this.promotionRepo.find({
@@ -1056,7 +1049,7 @@ export class PromotionService {
         })) as PromotionEntityWithTransformedData[],
       };
     } catch (error) {
-      console.error('Error fetching promotions:', error);
+      this.logger.error("Error fetching promotions:", error);
       throw new Error('Failed to get active promotions');
     }
   }
@@ -1093,7 +1086,7 @@ export class PromotionService {
         return 'Tier set to specific products successfully';
       }
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to set all products for the tier');
     }
   }
@@ -1238,7 +1231,7 @@ export class PromotionService {
         },
       })) as TierConditionWithTransformedTier[];
     } catch (error) {
-      console.error('Error in getTierWithProCode:', error);
+      this.logger.error("Error in getTierWithProCode:", error);
       throw new Error('Failed to get tier with product code');
     }
   }
@@ -1345,7 +1338,7 @@ export class PromotionService {
         };
       }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error(`Failed to get reward by tier id`);
     }
   }
@@ -1417,7 +1410,7 @@ export class PromotionService {
         url: imgData.Location,
       };
     } catch (error) {
-      console.error('Error updating tier poster:', error);
+      this.logger.error("Error updating tier poster:", error);
       throw new Error(`Failed to update tier poster`);
     }
   }
@@ -1447,16 +1440,15 @@ export class PromotionService {
         (t) => t.tier_id === tier_id,
       )?.min_amount;
 
-      console.log('data : ', data);
+      this.logger.debug("editReward data:", data);
 
-      console.log(
-        `Min amount for promotion ${promotion_id} and tier ${tier_id}:`,
-        minAmount,
+      this.logger.debug(
+        `Min amount for promotion ${promotion_id} and tier ${tier_id}: ${minAmount}`,
       );
 
       return { minAmount: minAmount };
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error(`Failed to get tier price`);
     }
   }

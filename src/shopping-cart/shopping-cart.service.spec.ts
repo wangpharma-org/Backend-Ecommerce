@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ShoppingCartService } from './shopping-cart.service';
 import { ShoppingCartEntity } from './shopping-cart.entity';
-import { DeleteCartEntity } from './delete-cart.enity';
+import { DeleteCartEntity } from './delete-cart.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { PromotionEntity } from 'src/promotion/promotion.entity';

@@ -367,27 +367,7 @@ export class ProductsService {
         throw new Error('Product not found');
       }
 
-      // แปลง enum เป็น string unit name เสมอ
-      const transformed = await this.transformProductWithUnits(dataProduct);
-      // ถ้า pro_unit1/2/3 เป็นตัวเลข (enum) ให้แปลงเป็นชื่อหน่วย
-      const units = await this.productUnitRepo.find({
-        where: { product: { pro_code } },
-        select: ['level', 'unit_name', 'ratio'],
-      });
-      const getUnitName = (val: string | number | undefined) => {
-        if (!val) return '';
-        const found = units.find((u) => String(u.level) === String(val));
-        return found ? found.unit_name : String(val);
-      };
-      return {
-        ...transformed,
-        pro_unit1: getUnitName(transformed.pro_unit1),
-        pro_unit2: getUnitName(transformed.pro_unit2),
-        pro_unit3: getUnitName(transformed.pro_unit3),
-        pro_ratio1: transformed.pro_ratio1,
-        pro_ratio2: transformed.pro_ratio2,
-        pro_ratio3: transformed.pro_ratio3,
-      };
+      return await this.transformProductWithUnits(dataProduct);
     } catch {
       throw new Error('Something Error in getProductOne');
     }

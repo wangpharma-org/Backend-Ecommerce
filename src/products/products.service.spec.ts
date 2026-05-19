@@ -7,7 +7,7 @@ import { ProductUnitEntity } from './product-unit.entity';
 import { CreditorEntity } from './creditor.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
-import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.enity';
+import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';

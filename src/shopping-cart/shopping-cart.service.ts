@@ -838,7 +838,7 @@ export class ShoppingCartService {
         await this.checkPromotionReward(member.mem_code, member.mem_price);
       }
     } catch (error) {
-      console.error('Error in Check Cart Promotion:', error);
+      this.logger.error('Error in Check Cart Promotion:', error);
       throw new Error('Error in Check Cart Promotion');
     }
   }
@@ -991,16 +991,36 @@ export class ShoppingCartService {
 
       const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
 
-      await this.shoppingCartRepo.save({
-        pro_code: data.pro_code,
-        mem_code: data.mem_code,
-        spc_unit_enum: unitEnum,
-        spc_amount: data.amount,
-        spc_price: 0,
-        hotdeal_free: true,
-        hotdeal_promain: data.hotdeal_promain,
-        spc_datetime: new Date(),
+      const existingFreebie = await this.shoppingCartRepo.findOne({
+        where: {
+          mem_code: data.mem_code,
+          pro_code: data.pro_code,
+          hotdeal_promain: data.hotdeal_promain,
+          hotdeal_free: true,
+        },
       });
+
+      if (existingFreebie) {
+        await this.shoppingCartRepo.update(
+          { spc_id: existingFreebie.spc_id },
+          {
+            spc_unit_enum: unitEnum,
+            spc_amount: data.amount,
+            spc_datetime: new Date(),
+          },
+        );
+      } else {
+        await this.shoppingCartRepo.save({
+          pro_code: data.pro_code,
+          mem_code: data.mem_code,
+          spc_unit_enum: unitEnum,
+          spc_amount: data.amount,
+          spc_price: 0,
+          hotdeal_free: true,
+          hotdeal_promain: data.hotdeal_promain,
+          spc_datetime: new Date(),
+        });
+      }
       const cart = await this.getProductCart(data.mem_code);
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
@@ -1805,7 +1825,9 @@ export class ShoppingCartService {
           );
 
           if (!displayUnit) {
-            await this.shoppingCartRepo.delete({ spc_id: row.spc_id });
+            this.logger.warn(
+              `[getProductCart] spc_unit_enum is null/empty for spc_id=${row.spc_id} pro_code=${row.pro_code}, skipping row`,
+            );
           } else {
             grouped[key].shopping_cart.push({
               spc_id: row.spc_id,
@@ -2659,7 +2681,7 @@ export class ShoppingCartService {
       if (!item) return;
       await this.deleteCartRepo.softDelete(item.id);
     } catch (error) {
-      console.error('Error soft deleting cart item:', error);
+      this.logger.error('Error soft deleting cart item:', error);
     }
   }
 
@@ -2681,7 +2703,7 @@ export class ShoppingCartService {
         },
       });
     } catch (error) {
-      console.error('Error getting delete cart items:', error);
+      this.logger.error('Error getting delete cart items:', error);
       return [];
     }
   }
