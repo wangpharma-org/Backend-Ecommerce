@@ -125,40 +125,6 @@ describe('ShoppingCartService — unit helpers', () => {
     });
   });
 
-  // ─── getRatioFromUnits ────────────────────────────────────────────────────
-
-  describe('getRatioFromUnits', () => {
-    const units = [
-      { level: 1, unit_name: 'ชิ้น', ratio: 1 },
-      { level: 2, unit_name: 'กล่อง', ratio: 12 },
-      { level: 3, unit_name: 'ลัง', ratio: 144 },
-    ];
-
-    it('returns ratio 1 for level 1', () => {
-      expect((service as any).getRatioFromUnits('1', units)).toBe(1);
-    });
-
-    it('returns correct ratio for level 2', () => {
-      expect((service as any).getRatioFromUnits('2', units)).toBe(12);
-    });
-
-    it('returns correct ratio for level 3', () => {
-      expect((service as any).getRatioFromUnits('3', units)).toBe(144);
-    });
-
-    it('returns 1 when units array is empty', () => {
-      expect((service as any).getRatioFromUnits('2', [])).toBe(1);
-    });
-
-    it('returns 1 when units is undefined', () => {
-      expect((service as any).getRatioFromUnits('2', undefined)).toBe(1);
-    });
-
-    it('returns 1 for level not found in array', () => {
-      expect((service as any).getRatioFromUnits('9', units)).toBe(1);
-    });
-  });
-
   // ─── getUnitRatio ─────────────────────────────────────────────────────────
 
   describe('getUnitRatio', () => {

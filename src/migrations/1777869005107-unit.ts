@@ -8,10 +8,8 @@ export class Unit1777869005107 implements MigrationInterface {
       `ALTER TABLE \`shopping_cart\` ADD \`spc_unit_enum\` enum ('1', '2', '3') NULL`,
     );
 
-    await queryRunner.query(`DROP TABLE IF EXISTS \`product_unit\``);
-
     await queryRunner.query(
-      `CREATE TABLE \`product_unit\` (\`id\` int NOT NULL AUTO_INCREMENT, \`pro_code\` varchar(20) NOT NULL, \`unit_name\` varchar(30) NOT NULL, \`ratio\` int NOT NULL DEFAULT '1', \`level\` int NOT NULL, PRIMARY KEY (\`id\`)) ENGINE=InnoDB`,
+      `CREATE TABLE \`product_unit\` (\`id\` int NOT NULL AUTO_INCREMENT, \`pro_code\` varchar(20) NOT NULL, \`unit_name\` varchar(30) NOT NULL, \`ratio\` int NOT NULL DEFAULT '1', \`level\` int NOT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`uk_product_unit\` (\`pro_code\`, \`level\`)) ENGINE=InnoDB`,
     );
 
     await queryRunner.query(
@@ -63,11 +61,29 @@ export class Unit1777869005107 implements MigrationInterface {
       `ALTER TABLE \`product\` DROP COLUMN \`pro_unit3\``,
     );
 
+    // Pre-flight: log rows ที่ spc_unit ไม่ match unit_name ใด — จะถูก set เป็น NULL
+    const [{ orphanCount }] = await queryRunner.query(`
+      SELECT COUNT(*) AS orphanCount
+      FROM shopping_cart sc
+      LEFT JOIN product_unit pu
+        ON TRIM(sc.pro_code) COLLATE utf8mb4_unicode_ci = TRIM(pu.pro_code) COLLATE utf8mb4_unicode_ci
+        AND TRIM(sc.spc_unit) COLLATE utf8mb4_unicode_ci = TRIM(pu.unit_name) COLLATE utf8mb4_unicode_ci
+      WHERE pu.level IS NULL
+        AND sc.spc_unit IS NOT NULL
+        AND TRIM(sc.spc_unit) != ''
+    `);
+    if (Number(orphanCount) > 0) {
+      console.warn(
+        `[Migration] WARNING: ${orphanCount} shopping_cart row(s) have spc_unit that does not match any product_unit.unit_name — spc_unit_enum will be NULL for these rows. Review data before proceeding.`,
+      );
+    }
+
     await queryRunner.query(`
       UPDATE shopping_cart sc
-      LEFT JOIN product_unit pu ON sc.pro_code COLLATE utf8mb4_unicode_ci = pu.pro_code COLLATE utf8mb4_unicode_ci
-        AND sc.spc_unit COLLATE utf8mb4_unicode_ci = pu.unit_name COLLATE utf8mb4_unicode_ci
-      SET sc.spc_unit_enum = IFNULL(CAST(pu.level AS CHAR), 1)
+      LEFT JOIN product_unit pu
+        ON TRIM(sc.pro_code) COLLATE utf8mb4_unicode_ci = TRIM(pu.pro_code) COLLATE utf8mb4_unicode_ci
+        AND TRIM(sc.spc_unit) COLLATE utf8mb4_unicode_ci = TRIM(pu.unit_name) COLLATE utf8mb4_unicode_ci
+      SET sc.spc_unit_enum = CAST(pu.level AS CHAR)
     `);
 
     await queryRunner.query(

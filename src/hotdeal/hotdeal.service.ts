@@ -128,6 +128,8 @@ export class HotdealService {
 
       const amountSmallestHotdeal = minSmallestAmount;
 
+      if (amountSmallestHotdeal <= 0) return;
+
       const targetProCode2 = bestHotdeal?.product2?.pro_code || pro_code2;
       const targetProAmount2 = bestHotdeal ? Number(bestHotdeal.pro2_amount) : 1;
 
