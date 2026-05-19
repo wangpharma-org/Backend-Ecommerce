@@ -85,7 +85,6 @@ export class PromotionService {
 
       await Promise.all(
         promo.map(async (p) => {
-          await this.promotionRepo.update(p.promo_id, { status: false });
           await this.cartRepo.update(
             {
               use_code: false,
@@ -96,6 +95,7 @@ export class PromotionService {
               reward_expire: tomorrow,
             },
           );
+          await this.promotionRepo.softDelete({ promo_id: p.promo_id });
         }),
       );
     } catch {
@@ -1122,5 +1122,104 @@ export class PromotionService {
     } else {
       return;
     }
+  }
+
+  async getPromotionsForDuplicate() {
+    try {
+      return await this.promotionRepo.find({
+        withDeleted: true,
+        relations: {
+          creditor: true,
+        },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          start_date: true,
+          end_date: true,
+          status: true,
+          deleted_at: true,
+          creditor: {
+            creditor_code: true,
+            creditor_name: true,
+          },
+        },
+        order: {
+          promo_id: 'DESC',
+        },
+      });
+    } catch {
+      throw new Error(`Failed to get promotions for duplicate`);
+    }
+  }
+
+  async duplicatePromotion(data: {
+    promo_id: number;
+    start_date: Date;
+    end_date: Date;
+  }) {
+    const source = await this.promotionRepo.findOne({
+      withDeleted: true,
+      where: { promo_id: data.promo_id },
+      relations: {
+        creditor: true,
+        tiers: {
+          conditions: { product: true },
+          rewards: { giftProduct: true },
+        },
+      },
+    });
+
+    if (!source) {
+      throw new NotFoundException(
+        `Promotion with id ${data.promo_id} not found`,
+      );
+    }
+
+    const newPromotion = this.promotionRepo.create({
+      promo_name: source.promo_name,
+      creditor: source.creditor ?? undefined,
+      start_date: data.start_date,
+      end_date: data.end_date,
+      status: false,
+    });
+    const savedPromotion = await this.promotionRepo.save(newPromotion);
+
+    for (const tier of source.tiers ?? []) {
+      const newTier = this.promotionTierRepo.create({
+        tier_name: tier.tier_name,
+        min_amount: tier.min_amount,
+        description: tier.description,
+        detail: tier.detail,
+        tier_postter: tier.tier_postter,
+        all_products: tier.all_products,
+        is_unit: tier.is_unit,
+        promotion: savedPromotion,
+      });
+      const savedTier = await this.promotionTierRepo.save(newTier);
+
+      if (tier.conditions?.length) {
+        const newConditions = tier.conditions.map((c) =>
+          this.promotionConditionRepo.create({
+            tier: savedTier,
+            product: { pro_code: c.product.pro_code },
+          } as DeepPartial<PromotionConditionEntity>),
+        );
+        await this.promotionConditionRepo.save(newConditions);
+      }
+
+      if (tier.rewards?.length) {
+        const newRewards = tier.rewards.map((r) =>
+          this.promotionRewardRepo.create({
+            tier: savedTier,
+            giftProduct: { pro_code: r.giftProduct.pro_code },
+            qty: r.qty,
+            unit: r.unit,
+          } as DeepPartial<PromotionRewardEntity>),
+        );
+        await this.promotionRewardRepo.save(newRewards);
+      }
+    }
+
+    return { promo_id: savedPromotion.promo_id };
   }
 }
