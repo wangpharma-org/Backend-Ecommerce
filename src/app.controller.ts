@@ -1,8 +1,10 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
+  BadGatewayException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -4206,7 +4208,7 @@ export class AppController {
     if (permission === true) {
       return await this.productsService.searchLotusCards();
     } else {
-      throw new Error('You not have Permission to Accesss');
+      throw new ForbiddenException('You not have Permission to Accesss');
     }
   }
 }
