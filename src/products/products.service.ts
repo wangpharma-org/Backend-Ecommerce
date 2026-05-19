@@ -1,12 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, IsNull, MoreThan, Not, Repository } from 'typeorm';
+import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendService } from 'src/backend/backend.service';
+import { UserEntity } from 'src/users/users.entity';
+import axios from 'axios';
+import { UpdateProductImageDto } from './update-product-image.dto';
+import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
+import {
+  ProductEasyAcc,
+  UpdateProductImageEcommercePayload,
+} from './product.listener';
+import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 
 interface OrderItem {
   pro_code: string;
@@ -30,8 +47,27 @@ interface OrderItem {
 //   supplier: string;
 // }
 
+interface ApiResponse {
+  status: string;
+  row_data?: number;
+  data: {
+    pro_code: string;
+    pro_name: string;
+    pro_priceA: number;
+    pro_priceB: number;
+    pro_priceC: number;
+    pro_imgmain: string;
+    pro_genericname: string;
+    pro_unit1: string;
+    pro_nameSale: string;
+    pro_nameEN: string;
+    pro_keysearch: string;
+  }[];
+}
+
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
@@ -39,15 +75,48 @@ export class ProductsService {
     private readonly creditorRepo: Repository<CreditorEntity>,
     @InjectRepository(ProductPharmaEntity)
     private readonly productPharmaEntity: Repository<ProductPharmaEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly backendService: BackendService,
+    private readonly elasticsearchService: ElasticsearchService,
+    @InjectRepository(ShoppingCartEntity)
+    private readonly shoppingCartRepo: Repository<ShoppingCartEntity>,
+    @InjectRepository(DeleteCartEntity)
+    private readonly deleteCartRepo: Repository<DeleteCartEntity>,
+    @Inject(forwardRef(() => ShoppingCartService))
+    private readonly shoppingCartService: ShoppingCartService,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: { mem_route: true },
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private applyL16Filter(
+    qb: { andWhere: (sql: string, params?: Record<string, unknown>) => void },
+    alias: string,
+  ) {
+    qb.andWhere(`(${alias}.pro_l16_only = 0 OR ${alias}.pro_l16_only IS NULL)`);
+  }
 
   async addCreditor(data: { creditor_code: string; creditor_name: string }) {
     try {
       const newCreditor = this.creditorRepo.create(data);
       await this.creditorRepo.save(newCreditor);
     } catch (error) {
-      console.error('Error creating creditor:', error);
+      this.logger.error('Error creating creditor:', error);
       throw new Error('Error creating creditor');
     }
   }
@@ -77,7 +146,7 @@ export class ProductsService {
 
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -103,7 +172,7 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -132,7 +201,7 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -163,7 +232,7 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
@@ -193,14 +262,13 @@ export class ProductsService {
         .getMany();
       return data;
     } catch (error) {
-      console.error('Error in getProductByCreditor', error);
+      this.logger.error('Error in getProductByCreditor', error);
       throw error;
     }
   }
 
   async getProductOne(pro_code: string) {
     try {
-      // console.log('getProductOne', pro_code);
       const dataProduct = await this.productRepo.findOne({
         relations: {
           flashsale: {
@@ -211,7 +279,6 @@ export class ProductsService {
           pro_code: pro_code,
         },
       });
-      // console.log(dataProduct);
       return dataProduct;
     } catch {
       throw new Error('Something Error in getProductOne');
@@ -235,9 +302,8 @@ export class ProductsService {
           is_detect_amount: false,
         },
       );
-      console.log('Reset FlashSale Success');
     } catch (error) {
-      console.log(error);
+      this.logger.error('Error Reset FlashSale', error);
       throw new Error('Error Reset FlashSale');
     }
   }
@@ -254,15 +320,15 @@ export class ProductsService {
       });
       return data;
     } catch (error) {
-      throw new Error('Error in listProcodeFlashSale: ', error);
+      throw new Error('Error in listProcodeFlashSale: ' + String(error));
     }
   }
 
-  async getFlashSale(limit: number, mem_code: string) {
+  async getFlashSale(limit: number, mem_code: string, mem_route?: string) {
     try {
-      console.log(limit, mem_code);
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const numberOfMonth = new Date().getMonth() + 1;
-      const data = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
           'product.inCarts',
@@ -270,7 +336,15 @@ export class ProductsService {
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
         .setParameter('memCode', mem_code)
-        .where('product.pro_promotion_month = :month', { month: numberOfMonth })
+        .where('product.pro_promotion_month = :month', {
+          month: numberOfMonth,
+        });
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const data = await qb
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -294,7 +368,7 @@ export class ProductsService {
 
       return data;
     } catch (error) {
-      console.error('Error in getFlashSale:', error);
+      this.logger.error('Error in getFlashSale:', error);
       throw new Error('Error in getFlashSale');
     }
   }
@@ -334,13 +408,12 @@ export class ProductsService {
       });
       return responseData;
     } catch (error) {
-      console.error('Error uploading product flash sale:', error);
+      this.logger.error('Error uploading product flash sale:', error);
       throw new Error('Error uploading product flash sale');
     }
   }
 
   async uploadPO(data: { pro_code: string; month: number }[]) {
-    // console.log(data);
     try {
       await this.productRepo.update(
         { pro_promotion_month: Not(IsNull()) },
@@ -363,10 +436,9 @@ export class ProductsService {
           );
         }),
       );
-      console.log('Product Promotion Month Update Success');
       return 'Product Promotion Month Update Success (PO File)';
     } catch (error) {
-      console.log(error);
+      this.logger.error('Error updating product promotion month', error);
       throw new Error('Error updating product promotion month');
     }
   }
@@ -376,7 +448,7 @@ export class ProductsService {
       const newProduct = this.productRepo.create(product);
       await this.productRepo.save(newProduct);
     } catch (error) {
-      console.error('Error creating product:', error);
+      this.logger.error('Error creating product:', error);
       throw new Error('Error creating product');
     }
   }
@@ -386,7 +458,7 @@ export class ProductsService {
       const newDetail = this.productPharmaEntity.create(detail);
       await this.productPharmaEntity.save(newDetail);
     } catch (error) {
-      console.error('Error creating product detail:', error);
+      this.logger.error('Error creating product detail:', error);
       throw new Error('Error creating product detail');
     }
   }
@@ -397,32 +469,42 @@ export class ProductsService {
         { product: { pro_code: product.product.pro_code } },
         product,
       );
-      console.log('Product Detail Update Sucesss');
     } catch (error) {
-      console.error('Error updating product detail:', error);
+      this.logger.error('Error updating product detail:', error);
     }
   }
 
   async updateProduct(product: ProductEntity) {
     try {
       await this.productRepo.update({ pro_code: product.pro_code }, product);
-      console.log('Product Update Sucesss');
     } catch (error) {
-      console.error('Error updating product:', error);
+      this.logger.error('Error updating product:', error);
     }
   }
 
   async getProductDetail(data: {
     pro_code: string;
     mem_code: string;
+    mem_route?: string;
   }): Promise<ProductEntity> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+      const replaceCondition = isL16
+        ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
+        : undefined;
+      const recommendCondition = isL16
+        ? 'products.pro_stock > 0 AND (products.pro_l16_only = 0 OR products.pro_l16_only IS NULL)'
+        : 'products.pro_stock > 0';
+      const replaceInRecommendCondition = isL16
+        ? 'replaceInRecommend.pro_l16_only = 0 OR replaceInRecommend.pro_l16_only IS NULL'
+        : undefined;
+
       await this.productRepo.increment(
         { pro_code: data.pro_code },
         'viwers',
         1,
       );
-      const product = await this.productRepo
+      const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect('product.pharmaDetails', 'pharma')
         .leftJoinAndSelect(
@@ -433,14 +515,14 @@ export class ProductsService {
         )
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .leftJoinAndSelect('product.replace', 'replace')
+        .leftJoinAndSelect('product.replace', 'replace', replaceCondition)
         .leftJoinAndSelect('product.recommend', 'recommend')
+        .leftJoinAndSelect('recommend.products', 'products', recommendCondition)
         .leftJoinAndSelect(
-          'recommend.products',
-          'products',
-          'products.pro_stock > 0',
+          'products.replace',
+          'replaceInRecommend',
+          replaceInRecommendCondition,
         )
-        .leftJoinAndSelect('products.replace', 'replaceInRecommend')
         .leftJoinAndSelect(
           'replace.inCarts',
           'inCartsInReplace',
@@ -541,15 +623,20 @@ export class ProductsService {
           'fs_products.time_end',
           'fs_products.date',
         ])
-        .where('product.pro_code = :pro_code', { pro_code: data.pro_code })
-        .getOne();
+        .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const product = await qb.getOne();
       if (product) {
         return product;
       } else {
         throw new Error('Not found Product');
       }
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Something Error in Product Detail');
     }
   }
@@ -557,8 +644,11 @@ export class ProductsService {
   async productForYou(data: {
     keyword: string;
     pro_code: string;
+    mem_code: string;
+    mem_route?: string;
   }): Promise<ProductEntity[]> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const qb = this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_priceA != 0')
@@ -605,6 +695,10 @@ export class ProductsService {
           }),
         );
 
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       const products = await qb
         .take(6)
         .select([
@@ -623,7 +717,7 @@ export class ProductsService {
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
@@ -633,10 +727,12 @@ export class ProductsService {
     category: number;
     offset: number;
     mem_code: string;
+    mem_route?: string;
     sort_by?: number;
     limit: number;
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
     try {
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
       const now = new Date();
       const monthNumber = now.getMonth() + 1;
       const currentDate = now.toISOString().split('T')[0];
@@ -745,6 +841,10 @@ export class ProductsService {
           );
       }
 
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
       if (data.sort_by && data.category === 8) {
         switch (data.sort_by) {
           case 1:
@@ -826,19 +926,449 @@ export class ProductsService {
 
       return { products, totalCount };
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
 
-  async searchProducts(data: {
+  // async searchProducts(data: {
+  //   keyword: string;
+  //   offset: number;
+  //   mem_code: string;
+  //   mem_route?: string;
+  //   sort_by?: number;
+  //   limit: number;
+  // }): Promise<{ products: ProductEntity[]; totalCount: number }> {
+  //   try {
+  //     const keyword = data.keyword.trim();
+  //     const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+  //     const qb = this.productRepo
+  //       .createQueryBuilder('product')
+  //       .leftJoinAndSelect(
+  //         'product.inCarts',
+  //         'cart',
+  //         'cart.mem_code = :memCode AND cart.is_reward = false',
+  //       )
+  //       .setParameter('memCode', data.mem_code)
+  //       .leftJoinAndSelect('product.flashsale', 'fsp')
+  //       .leftJoinAndSelect('fsp.flashsale', 'fs')
+  //       .where('product.pro_priceA != 0')
+  //       .andWhere(
+  //         new Brackets((qb) => {
+  //           qb.where('product.pro_name LIKE :keyword', {
+  //             keyword: `%${keyword}%`,
+  //           })
+  //             .orWhere('product.pro_keysearch LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_nameEN LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_barcode1 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_barcode2 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_barcode3 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_code LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_nameMain LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain2 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain3 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_drugmain4 LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             })
+  //             .orWhere('product.pro_nameTH LIKE :keyword', {
+  //               keyword: `%${keyword}%`,
+  //             });
+  //         }),
+  //       )
+  //       .andWhere(
+  //         new Brackets((qb) => {
+  //           qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+  //             .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+  //             .andWhere('product.invisible_id IS NULL')
+  //             .andWhere('product.pro_name NOT LIKE :prefix3', {
+  //               prefix3: 'ส่งเสริม%',
+  //             })
+  //             .andWhere('product.pro_name NOT LIKE :prefix4', {
+  //               prefix4: 'รีเบท%',
+  //             })
+  //             .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+  //             .andWhere('product.pro_name NOT LIKE :prefix6', {
+  //               prefix6: '/%',
+  //             })
+  //             .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+  //             .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+  //             .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+  //             .andWhere('product.pro_name NOT LIKE :prefix7', {
+  //               prefix7: 'ค่า%',
+  //             })
+  //             .andWhere('product.pro_code NOT LIKE :prefix8', {
+  //               prefix8: '@M%',
+  //             });
+  //         }),
+  //       );
+
+  //     if (isL16) {
+  //       this.applyL16Filter(qb, 'product');
+  //     }
+
+  //     if (data.sort_by) {
+  //       switch (data.sort_by) {
+  //         case 1:
+  //           qb.orderBy('product.pro_stock', 'DESC');
+  //           break;
+  //         case 2:
+  //           qb.orderBy('product.pro_stock', 'ASC');
+  //           break;
+  //         case 3:
+  //           qb.orderBy('product.pro_priceA', 'DESC');
+  //           break;
+  //         case 4:
+  //           qb.orderBy('product.pro_priceA', 'ASC');
+  //           break;
+  //         case 5:
+  //           qb.orderBy('product.pro_sale_amount', 'DESC');
+  //           break;
+  //         default:
+  //           qb.orderBy('product.pro_name', 'ASC');
+  //       }
+  //     } else {
+  //       qb.orderBy('product.pro_name', 'ASC');
+  //     }
+
+  //     const totalCount = await qb.getCount();
+  //     const products = await qb
+  //       .take(data.limit)
+  //       .skip(data.offset)
+  //       .select([
+  //         'product.pro_code',
+  //         'product.pro_name',
+  //         'product.pro_priceA',
+  //         'product.pro_priceB',
+  //         'product.pro_priceC',
+  //         'product.pro_imgmain',
+  //         'product.pro_unit1',
+  //         'product.pro_unit2',
+  //         'product.pro_unit3',
+  //         'product.pro_sale_amount',
+  //         'product.pro_stock',
+  //         'product.pro_lowest_stock',
+  //         'product.order_quantity',
+  //         'product.viwers',
+  //         'cart.spc_id',
+  //         'cart.spc_amount',
+  //         'cart.spc_unit',
+  //         'cart.mem_code',
+  //         'fsp.limit',
+  //         'fsp.id',
+  //         'fs.promotion_id',
+  //         'fs.time_start',
+  //         'fs.time_end',
+  //         'fs.date',
+  //       ])
+  //       .getMany();
+  //     return { products, totalCount };
+  //   } catch (error) {
+  //     console.error('Error searching products:', error);
+  //     throw new Error('Error searching products');
+  //   }
+  // }
+
+  async searchProductsElastic(data: {
     keyword: string;
     offset: number;
     mem_code: string;
+    mem_route?: string;
     sort_by?: number;
     limit: number;
+    creditor_codes?: string[];
   }): Promise<{ products: ProductEntity[]; totalCount: number }> {
+    interface EsProductSource {
+      pro_code: string;
+      pro_name: string;
+      pro_nameSale: string;
+      pro_keysearch: string;
+    }
+
+    let proCodes: string[] = [];
+    let totalCount = 0;
+
     try {
+      const keyword = data.keyword?.trim();
+
+      if (!keyword && !data.creditor_codes?.length) {
+        return { products: [], totalCount: 0 };
+      }
+
+      const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+
+      try {
+        const esResult =
+          await this.elasticsearchService.search<EsProductSource>({
+            from: data.offset,
+            size: data.limit,
+            track_total_hits: true,
+            sort: keyword
+              ? [{ _score: { order: 'desc' } }]
+              : [{ 'pro_code.keyword': { order: 'asc' } }],
+            _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
+            query: {
+              bool: {
+                filter: [
+                  { range: { pro_priceA: { gt: 0 } } },
+                  { range: { pro_priceB: { gt: 0 } } },
+                  { range: { pro_priceC: { gt: 0 } } },
+                  ...(data.creditor_codes?.length
+                    ? [
+                        {
+                          terms: {
+                            'creditor_code.keyword': data.creditor_codes,
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+                must_not: [
+                  { prefix: { 'pro_code.keyword': '@MESSAGE' } },
+                  { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
+                  { prefix: { 'pro_code.keyword': '@M' } },
+                  { prefix: { 'pro_name.keyword': 'ฟรี' } },
+                  { prefix: { 'pro_name.keyword': '@' } },
+                  { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
+                  { prefix: { 'pro_name.keyword': 'รีเบท' } },
+                  { prefix: { 'pro_name.keyword': '-' } },
+                  { prefix: { 'pro_name.keyword': '/' } },
+                  { prefix: { 'pro_name.keyword': 'ค่า' } },
+                  { exists: { field: 'invisible_id' } },
+                  ...(isL16
+                    ? []
+                    : [
+                        {
+                          term: {
+                            pro_l16_only: 1,
+                          },
+                        },
+                      ]),
+                ],
+                ...(keyword
+                  ? {
+                      should: [
+                        {
+                          term: {
+                            'pro_code.keyword': {
+                              value: keyword,
+                              boost: 200,
+                            },
+                          },
+                        },
+                        {
+                          term: {
+                            'pro_barcode1.keyword': {
+                              value: keyword,
+                              boost: 180,
+                            },
+                          },
+                        },
+                        {
+                          term: {
+                            'pro_barcode2.keyword': {
+                              value: keyword,
+                              boost: 160,
+                            },
+                          },
+                        },
+                        {
+                          term: {
+                            'pro_barcode3.keyword': {
+                              value: keyword,
+                              boost: 160,
+                            },
+                          },
+                        },
+                        {
+                          term: {
+                            'pro_keysearch.keyword': {
+                              value: keyword,
+                              boost: 100,
+                            },
+                          },
+                        },
+                        {
+                          match_phrase: {
+                            pro_keysearch: {
+                              query: keyword,
+                              boost: 80,
+                            },
+                          },
+                        },
+                        {
+                          match_phrase: {
+                            pro_name: {
+                              query: keyword,
+                              boost: 70,
+                            },
+                          },
+                        },
+                        {
+                          match_phrase: {
+                            pro_nameSale: {
+                              query: keyword,
+                              boost: 70,
+                            },
+                          },
+                        },
+                        {
+                          match: {
+                            pro_keysearch: {
+                              query: keyword,
+                              operator: 'and',
+                              fuzziness: 'AUTO',
+                              boost: 50,
+                            },
+                          },
+                        },
+                        {
+                          multi_match: {
+                            query: keyword,
+                            fields: [
+                              'pro_keysearch^20',
+                              'pro_name^10',
+                              'pro_nameSale^10',
+                              'pro_nameEN^5',
+                              'pro_nameMain^5',
+                              'pro_nameTH^5',
+                              'pro_genericname^5',
+                              'pro_drugmain^3',
+                              'pro_drugmain2^3',
+                              'pro_drugmain3^3',
+                              'pro_drugmain4^3',
+                            ],
+                            type: 'best_fields',
+                            operator: 'and',
+                            // fuzziness: 'AUTO',
+                            boost: 30,
+                          },
+                        },
+                        {
+                          wildcard: {
+                            'pro_keysearch.keyword': {
+                              value: `*${keyword}*`,
+                              case_insensitive: true,
+                              boost: 70,
+                            },
+                          },
+                        },
+                        {
+                          wildcard: {
+                            'pro_name.keyword': {
+                              value: `*${keyword}*`,
+                              case_insensitive: true,
+                              boost: 40,
+                            },
+                          },
+                        },
+                        {
+                          wildcard: {
+                            'pro_nameSale.keyword': {
+                              value: `*${keyword}*`,
+                              case_insensitive: true,
+                              boost: 40,
+                            },
+                          },
+                        },
+                        {
+                          regexp: {
+                            'pro_keysearch.keyword': {
+                              value: `.*${keyword.split('').join('.*')}.*`,
+                              case_insensitive: true,
+                              boost: 20,
+                            },
+                          },
+                        },
+                      ],
+                      minimum_should_match: 1,
+                    }
+                  : {}),
+              },
+            },
+          });
+
+        const hits = esResult?.hits?.hits;
+        totalCount =
+          typeof esResult.hits.total === 'number'
+            ? esResult.hits.total
+            : (esResult.hits.total?.value ?? 0);
+
+        proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
+      } catch {
+        this.logger.warn(
+          'Elasticsearch search failed, falling back to DB search',
+        );
+      }
+
+      const fetchExternalAndEnter = async () => {
+        const [external, enter] = await Promise.all([
+          this.searchExternalProducts(data.keyword),
+          this.searchEnterProducts(data.keyword),
+        ]);
+        return { external, enter };
+      };
+
+      let additionalProCodes: string[] = [];
+
+      if (totalCount === 0) {
+        try {
+          const result = await fetchExternalAndEnter();
+          const externalCodes = result.external.map((p) => p.pro_code);
+          additionalProCodes = [...externalCodes, ...result.enter];
+        } catch {
+          this.logger.warn('Search external/enter products failed');
+        }
+      }
+
+      if (additionalProCodes.length > 0) {
+        const uniqueNewCodes = Array.from(new Set(additionalProCodes)).filter(
+          (code) => !proCodes.includes(code),
+        );
+
+        const esTotalCount = totalCount;
+        totalCount += uniqueNewCodes.length;
+
+        const localOffset = Math.max(0, data.offset - esTotalCount);
+        const esConsumed = Math.max(
+          0,
+          Math.min(data.limit, esTotalCount - data.offset),
+        );
+        const neededFromNewCodes = data.limit - esConsumed;
+
+        if (neededFromNewCodes > 0) {
+          const paginatedNewCodes = uniqueNewCodes.slice(
+            localOffset,
+            localOffset + neededFromNewCodes,
+          );
+          proCodes.push(...paginatedNewCodes);
+        }
+      }
+
+      if (proCodes.length === 0) {
+        return { products: [], totalCount };
+      }
+
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -849,105 +1379,7 @@ export class ProductsService {
         .setParameter('memCode', data.mem_code)
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
-        .where('product.pro_priceA != 0')
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name LIKE :keyword', {
-              keyword: `%${data.keyword}%`,
-            })
-              .orWhere('product.pro_keysearch LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_nameEN LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode1 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_barcode3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_code LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_nameMain LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain2 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain3 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_drugmain4 LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              })
-              .orWhere('product.pro_nameTH LIKE :keyword', {
-                keyword: `%${data.keyword}%`,
-              });
-          }),
-        )
-        .andWhere(
-          new Brackets((qb) => {
-            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
-              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
-              .andWhere('product.invisible_id IS NULL')
-              .andWhere('product.pro_name NOT LIKE :prefix3', {
-                prefix3: 'ส่งเสริม%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix4', {
-                prefix4: 'รีเบท%',
-              })
-              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
-              .andWhere('product.pro_name NOT LIKE :prefix6', {
-                prefix6: '/%',
-              })
-              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
-              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
-              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
-              .andWhere('product.pro_name NOT LIKE :prefix7', {
-                prefix7: 'ค่า%',
-              })
-              .andWhere('product.pro_code NOT LIKE :prefix8', {
-                prefix8: '@M%',
-              });
-          }),
-        );
-
-      if (data.sort_by) {
-        switch (data.sort_by) {
-          case 1:
-            qb.orderBy('product.pro_stock', 'DESC');
-            break;
-          case 2:
-            qb.orderBy('product.pro_stock', 'ASC');
-            break;
-          case 3:
-            qb.orderBy('product.pro_priceA', 'DESC');
-            break;
-          case 4:
-            qb.orderBy('product.pro_priceA', 'ASC');
-            break;
-          case 5:
-            qb.orderBy('product.pro_sale_amount', 'DESC');
-            break;
-          default:
-            qb.orderBy('product.pro_name', 'ASC');
-        }
-      } else {
-        qb.orderBy('product.pro_name', 'ASC');
-      }
-
-      const totalCount = await qb.getCount();
-      const products = await qb
-        .take(data.limit)
-        .skip(data.offset)
+        .where('product.pro_code IN (:...proCodes)', { proCodes })
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -973,17 +1405,27 @@ export class ProductsService {
           'fs.time_start',
           'fs.time_end',
           'fs.date',
-        ])
-        .getMany();
-      return { products, totalCount };
+        ]);
+
+      const products = await qb.getMany();
+
+      const productMap = new Map(products.map((p) => [p.pro_code, p]));
+
+      const sortedProducts = proCodes
+        .map((code) => productMap.get(code))
+        .filter(Boolean) as ProductEntity[];
+
+      return {
+        products: sortedProducts,
+        totalCount,
+      };
     } catch (error) {
-      console.error('Error searching products:', error);
-      throw new Error('Error searching products');
+      console.error('Error searching products with Elasticsearch:', error);
+      throw new Error('Error searching products with Elasticsearch');
     }
   }
 
-  async listFree(sort_by?: string) {
-    // console.log('sort_by', sort_by);
+  async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
     try {
       let order: Record<string, 'ASC' | 'DESC'>;
 
@@ -1007,11 +1449,17 @@ export class ProductsService {
           order = { pro_name: 'ASC' };
       }
 
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const data = await this.productRepo.find({
         where: {
           pro_free: true,
           pro_stock: MoreThan(0),
           pro_point: MoreThan(0),
+          ...(isL16
+            ? {
+                pro_l16_only: In([0, null]),
+              }
+            : {}),
         },
         select: {
           pro_code: true,
@@ -1027,7 +1475,7 @@ export class ProductsService {
 
       return data;
     } catch (error) {
-      console.error('Error free products:', error);
+      this.logger.error('Error free products:', error);
       throw new Error('Error free products');
     }
   }
@@ -1049,7 +1497,7 @@ export class ProductsService {
       .getMany();
 
     // แปลงข้อมูลให้อยู่ในรูปแบบ units array
-    return products.map((product: any) => ({
+    return products.map((product: ProductEntity) => ({
       ...product,
       units: [
         { unit: product.pro_unit1, ratio: product.pro_ratio1 },
@@ -1068,77 +1516,30 @@ export class ProductsService {
 
         const productsWithUnits = await this.getProductsWithUnits(pro_code);
 
-        const product = productsWithUnits.find((p) => p.pro_code === pro_code);
+        const product:
+          | {
+              pro_code: string;
+              units: { unit: string; ratio: number }[];
+            }
+          | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
 
         const unitData = product.units.find((u) => u.unit === unit);
         if (unitData) {
-          const totalForItem = quantity * unitData.ratio; // คำนวณหน่วยที่เล็กที่สุดสำหรับแต่ละ orderItem
+          const totalForItem = quantity * unitData.ratio;
 
-          total += totalForItem; // บวกผลลัพธ์เข้ากับ total รวม
-
-          // console.log(`pro_code: ${pro_code}, Unit: ${unit}, Quantity: ${quantity}, Total for ${pro_code}: ${totalForItem}`);
+          total += totalForItem;
         }
       }
 
       return total; // ส่งผลลัพธ์ที่เป็นตัวเลข
     } catch (error) {
-      console.error('Error calculating smallest unit:', error);
+      this.logger.error('Error calculating smallest unit:', error);
       throw new Error('Error calculating smallest unit');
     }
   }
-
-  // async ShowUnitProduct(pro_code: string): Promise<ProductEntityUnit> {
-  //   try {
-  //     const product = await this.productRepo
-  //       .createQueryBuilder('product')
-  //       .where('product.pro_code = :pro_code', { pro_code })
-  //       .select([
-  //         'product.pro_code',
-  //         'product.pro_name',
-  //         'product.pro_unit1',
-  //         'product.pro_ratio1',
-  //         'product.pro_unit2',
-  //         'product.pro_ratio2',
-  //         'product.pro_unit3',
-  //         'product.pro_ratio3'
-  //       ])
-  //       .getOne();
-
-  //     console.log('Product:', product);
-
-  //     if (!product) {
-  //       throw new Error('Product not found');
-  //     }
-
-  //     const formattedResult = {
-  //       pro_code: product.pro_code,
-  //       pro_name: product.pro_name,
-  //       Unit1: {
-  //         unit: product.pro_unit1,
-  //         ratio: product.pro_ratio1
-  //       },
-  //       Unit2: {
-  //         unit: product.pro_unit2,
-  //         ratio: product.pro_ratio2
-  //       },
-  //       Unit3: {
-  //         unit: product.pro_unit3,
-  //         ratio: product.pro_ratio3
-  //       }
-  //     };
-  //     console.log("formattedResult", formattedResult);
-
-  //     return formattedResult;
-  //   } catch (error) {
-  //     console.error('Error calculating unit:', error);
-  //     throw new Error('Error calculating unit');
-  //   }
-  // }
-
-  // ตรวจสอบแล้ว
 
   async searchByCodeOrSupplier(keyword: string): Promise<ProductEntity[]> {
     try {
@@ -1179,7 +1580,7 @@ export class ProductsService {
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching by code or supplier:', error);
+      this.logger.error('Error searching by code or supplier:', error);
       throw new Error('Error searching by code or supplier');
     }
   }
@@ -1191,7 +1592,7 @@ export class ProductsService {
       });
       return products;
     } catch (error) {
-      console.error('Error fetching all products:', error);
+      this.logger.error('Error fetching all products:', error);
       throw new Error('Error fetching all products');
     }
   }
@@ -1300,11 +1701,10 @@ export class ProductsService {
         },
       );
       await queryRunner.commitTransaction();
-      console.log(`Products updated/inserted successfully.`);
       return `Products updated/inserted successfully.`;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      console.error(`Error updating/inserting products:`, error);
+      this.logger.error(`Error updating/inserting products:`, error);
       throw new Error(`Error updating/inserting products`);
     } finally {
       await queryRunner.release();
@@ -1328,15 +1728,292 @@ export class ProductsService {
       );
       return 'Stock updated successfully';
     } catch (error) {
-      console.error('Error updating stock:', error);
+      this.logger.error('Error updating stock:', error);
       throw new Error('Error updating stock');
     }
   }
 
-  async keySearchProducts() {
+  async updateProductL16OnlyFromUpload(body: {
+    data: { pro_code: string; status: number | string }[];
+    filename: string;
+  }): Promise<{ message: string; total: number }> {
+    const rows = (body.data || [])
+      .map((row) => {
+        const code = String(row.pro_code ?? '').trim();
+        const status = Number(row.status ?? 0) === 1 ? 1 : 0;
+        return { code, status };
+      })
+      .filter((row) => row.code.length > 0);
+
+    if (rows.length === 0) {
+      throw new BadRequestException('ไม่พบรหัสสินค้าในไฟล์');
+    }
+
+    const uniqueCodes = Array.from(new Set(rows.map((row) => row.code)));
+    const existingCodes = new Set<string>();
+    const chunkSize = 1000;
+
+    for (let i = 0; i < uniqueCodes.length; i += chunkSize) {
+      const chunk = uniqueCodes.slice(i, i + chunkSize);
+      const found = await this.productRepo.find({
+        where: { pro_code: In(chunk) },
+        select: { pro_code: true },
+      });
+      for (const product of found) {
+        existingCodes.add(product.pro_code);
+      }
+    }
+
+    const missingCodes = uniqueCodes.filter((code) => !existingCodes.has(code));
+    if (missingCodes.length > 0) {
+      throw new BadRequestException({
+        message: 'พบรหัสสินค้าที่ไม่อยู่ในระบบ',
+        missingCodes,
+        totalMissing: missingCodes.length,
+      });
+    }
+
+    const codesToEnable = Array.from(
+      new Set(rows.filter((row) => row.status === 1).map((row) => row.code)),
+    );
+
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update(ProductEntity)
+        .set({ pro_l16_only: 0 })
+        .execute();
+
+      if (codesToEnable.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 1 })
+          .where('pro_code IN (:...codes)', { codes: codesToEnable })
+          .execute();
+      }
+
+      const feature = 'upload-product-l16';
+      const existingLog = await queryRunner.manager.findOne(LogFileEntity, {
+        where: { feature },
+      });
+
+      if (existingLog) {
+        existingLog.filename = body.filename;
+        existingLog.uploadedAt = new Date();
+        await queryRunner.manager.save(existingLog);
+      } else {
+        const newLog = queryRunner.manager.create(LogFileEntity, {
+          feature,
+          filename: body.filename,
+          uploadedAt: new Date(),
+        });
+        await queryRunner.manager.save(newLog);
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        message: 'L16 visibility updated',
+        total: rows.length,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error updating L16 visibility:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new Error('Error updating L16 visibility');
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async getProductL16Status(): Promise<
+    { pro_code: string; pro_name: string; pro_l16_only: number }[]
+  > {
+    return this.productRepo
+      .createQueryBuilder('product')
+      .select(['product.pro_code', 'product.pro_name', 'product.pro_l16_only'])
+      .where('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
+      .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
+      .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+      .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+      .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+      .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+      .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+      .andWhere('product.pro_code NOT LIKE :p8', { p8: '@%' })
+      .andWhere('product.pro_priceA > 0')
+      .andWhere('product.pro_priceB > 0')
+      .andWhere('product.pro_priceC > 0')
+      .getMany();
+  }
+
+  async keySearchProducts(mem_code?: string, mem_route?: string) {
+    try {
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+      const qb = this.productRepo
+        .createQueryBuilder('product')
+        .where('product.pro_priceA != 0')
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('product.pro_name NOT LIKE :prefix1', { prefix1: 'ฟรี%' })
+              .andWhere('product.pro_code NOT LIKE :code', { code: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix2', { prefix2: '@%' })
+              .andWhere('product.pro_name NOT LIKE :prefix3', {
+                prefix3: 'ส่งเสริม%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix4', {
+                prefix4: 'รีเบท%',
+              })
+              .andWhere('product.pro_name NOT LIKE :prefix5', { prefix5: '-%' })
+              .andWhere('product.pro_name NOT LIKE :prefix6', {
+                prefix6: '/%',
+              })
+              .andWhere('product.pro_priceA > :zero1', { zero1: 0 })
+              .andWhere('product.pro_priceB > :zero2', { zero2: 0 })
+              .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
+              .andWhere('product.invisible_id IS NULL')
+              .andWhere('product.pro_name NOT LIKE :prefix7', {
+                prefix7: 'ค่า%',
+              })
+              .andWhere('product.pro_code NOT LIKE :prefix8', {
+                prefix8: '@M%',
+              });
+          }),
+        );
+
+      if (isL16) {
+        this.applyL16Filter(qb, 'product');
+      }
+
+      const products = await qb
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_nameSale',
+          'product.pro_nameEN',
+          'product.pro_keysearch',
+        ])
+        .getMany();
+      return products;
+    } catch (error) {
+      this.logger.error('Error searching products:', error);
+      throw new Error('Error searching products');
+    }
+  }
+
+  async findProductFree(): Promise<
+    { pro_code: string; pro_name: string; pro_point: number }[]
+  > {
+    try {
+      const products = await this.productRepo.find({
+        where: { pro_free: true },
+      });
+      return products.map((product) => ({
+        pro_code: product.pro_code,
+        pro_name: product.pro_name,
+        pro_point: product.pro_point,
+      }));
+    } catch (error) {
+      this.logger.error('Error finding free products:', error);
+      throw new Error('Error finding free products');
+    }
+  }
+
+  async findProductPromotion(): Promise<
+    {
+      pro_code: string;
+      pro_promotion_month: number;
+      pro_promotion_amount: number;
+    }[]
+  > {
+    try {
+      const products = await this.productRepo.find({
+        where: { pro_promotion_month: MoreThan(0) },
+        select: {
+          pro_code: true,
+          pro_promotion_month: true,
+          pro_promotion_amount: true,
+        },
+      });
+      return products.map((product) => ({
+        pro_code: product.pro_code,
+        pro_promotion_month: product.pro_promotion_month || 0,
+        pro_promotion_amount: product.pro_promotion_amount || 0,
+      }));
+    } catch (error) {
+      this.logger.error('Error finding promotion products:', error);
+      throw new Error('Error finding promotion products');
+    }
+  }
+  async updateSaleDayly(data: { pro_code: string; amount: number }[]) {
+    try {
+      await this.productRepo.update(
+        { pro_code: Not(IsNull()) },
+        { sale_amount_day: null },
+      );
+
+      for (const item of data) {
+        await this.productRepo.update(
+          { pro_code: item.pro_code },
+          { sale_amount_day: item.amount },
+        );
+      }
+    } catch (error) {
+      this.logger.error('Error updating sale amount day:', error);
+      throw new Error('Error updating sale amount day');
+    }
+  }
+
+  async getDataCreditor(keyword?: string): Promise<CreditorEntity[] | []> {
+    try {
+      const creditors = await this.creditorRepo
+        .createQueryBuilder('creditor')
+        .where(
+          'creditor.creditor_code LIKE :kw OR creditor.creditor_name LIKE :kw',
+          { kw: `%${keyword}%` },
+        )
+        .take(10)
+        .getMany();
+      return creditors;
+    } catch (error) {
+      this.logger.error('Error fetching creditor data:', error);
+      throw new Error('Error fetching creditor data');
+    }
+  }
+
+  async saveAddress(creditor: string, address?: string): Promise<void> {
+    try {
+      const findCreditor = await this.creditorRepo.findOne({
+        where: { creditor_code: creditor, creditor_address: address },
+      });
+      if (address && !findCreditor) {
+        await this.creditorRepo.update(
+          { creditor_code: creditor },
+          { creditor_address: address },
+        );
+      }
+    } catch (error) {
+      this.logger.error('Error saving address:', error);
+      throw new Error('Error saving address');
+    }
+  }
+
+  async searchProductsBanner() {
     try {
       const qb = this.productRepo
         .createQueryBuilder('product')
+        .leftJoin('product.creditor', 'creditor')
         .where('product.pro_priceA != 0')
         .andWhere(
           new Brackets((qb) => {
@@ -1379,107 +2056,375 @@ export class ProductsService {
           'product.pro_nameSale',
           'product.pro_nameEN',
           'product.pro_keysearch',
+          'creditor.creditor_code',
         ])
         .getMany();
       return products;
     } catch (error) {
-      console.error('Error searching products:', error);
+      this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
     }
   }
 
-  async findProductFree(): Promise<
-    { pro_code: string; pro_name: string; pro_point: number }[]
-  > {
+  async getCreditors(): Promise<CreditorEntity[]> {
     try {
-      const products = await this.productRepo.find({
-        where: { pro_free: true },
+      const creditors = await this.creditorRepo.find({
+        order: { creditor_code: 'ASC' },
       });
-      return products.map((product) => ({
-        pro_code: product.pro_code,
-        pro_name: product.pro_name,
-        pro_point: product.pro_point,
-      }));
-    } catch (error) {
-      console.error('Error finding free products:', error);
-      throw new Error('Error finding free products');
-    }
-  }
-
-  async findProductPromotion(): Promise<
-    {
-      pro_code: string;
-      pro_promotion_month: number;
-      pro_promotion_amount: number;
-    }[]
-  > {
-    try {
-      const products = await this.productRepo.find({
-        where: { pro_promotion_month: MoreThan(0) },
-        select: ['pro_code', 'pro_promotion_month', 'pro_promotion_amount'],
-      });
-      return products.map((product) => ({
-        pro_code: product.pro_code,
-        pro_promotion_month: product.pro_promotion_month || 0,
-        pro_promotion_amount: product.pro_promotion_amount || 0,
-      }));
-    } catch (error) {
-      console.error('Error finding promotion products:', error);
-      throw new Error('Error finding promotion products');
-    }
-  }
-  async updateSaleDayly(data: { pro_code: string; amount: number }[]) {
-    try {
-      await this.productRepo.update(
-        { pro_code: Not(IsNull()) },
-        { sale_amount_day: null },
-      );
-
-      for (const item of data) {
-        await this.productRepo.update(
-          { pro_code: item.pro_code },
-          { sale_amount_day: item.amount },
-        );
-      }
-    } catch (error) {
-      console.error('Error updating sale amount day:', error);
-      throw new Error('Error updating sale amount day');
-    }
-  }
-
-  async getDataCreditor(keyword?: string): Promise<CreditorEntity[] | []> {
-    try {
-      console.log('Keyword for creditor search:', keyword);
-      const creditors = await this.creditorRepo
-        .createQueryBuilder('creditor')
-        .where(
-          'creditor.creditor_code LIKE :kw OR creditor.creditor_name LIKE :kw',
-          { kw: `%${keyword}%` },
-        )
-        .take(10)
-        .getMany();
-      console.log('Found creditors:', creditors);
       return creditors;
     } catch (error) {
-      console.error('Error fetching creditor data:', error);
-      throw new Error('Error fetching creditor data');
+      this.logger.error('Error fetching creditors:', error);
+      throw new Error('Error fetching creditors');
     }
   }
 
-  async saveAddress(creditor: string, address?: string): Promise<void> {
+  async getProductImageByCode(pro_code: string): Promise<ProductEntity | null> {
     try {
-      const findCreditor = await this.creditorRepo.findOne({
-        where: { creditor_code: creditor, creditor_address: address },
+      const product = await this.productRepo.findOne({
+        where: { pro_code },
+        select: {
+          pro_imgmain: true,
+          pro_code: true,
+          pro_img2: true,
+          pro_img3: true,
+          pro_img4: true,
+          pro_img5: true,
+        },
       });
-      if (address && !findCreditor) {
-        await this.creditorRepo.update(
-          { creditor_code: creditor },
-          { creditor_address: address },
-        );
+      return product;
+    } catch (error) {
+      this.logger.error('Error fetching product image:', error);
+      throw new Error('Error fetching product image');
+    }
+  }
+
+  async handleProductImageUpdate(data: UpdateProductImageDto): Promise<void> {
+    try {
+      const updateData: Partial<ProductEntity> = {
+        pro_imgmain: data.img_main,
+        pro_img2: data.image_other[0] ?? null,
+        pro_img3: data.image_other[1] ?? null,
+        pro_img4: data.image_other[2] ?? null,
+        pro_img5: data.image_other[3] ?? null,
+      };
+
+      await this.productRepo.update({ pro_code: data.pro_code }, updateData);
+    } catch (error) {
+      this.logger.error(
+        `Error updating product images for ${data.pro_code}:`,
+        error,
+      );
+      throw new Error(`Error updating product images for ${data.pro_code}`);
+    }
+  }
+
+  async deleteProductImage(image: string[]): Promise<void> {
+    try {
+      for (const img of image) {
+        const product = await this.productRepo.findOne({
+          where: [
+            { pro_imgmain: img },
+            { pro_img2: img },
+            { pro_img3: img },
+            { pro_img4: img },
+            { pro_img5: img },
+          ],
+          select: {
+            pro_code: true,
+            pro_imgmain: true,
+            pro_img2: true,
+            pro_img3: true,
+            pro_img4: true,
+            pro_img5: true,
+          },
+        });
+        if (!product) continue;
+
+        const updateData: Partial<ProductEntity> = {};
+        if (product.pro_imgmain === img) updateData.pro_imgmain = '';
+        if (product.pro_img2 === img) updateData.pro_img2 = '';
+        if (product.pro_img3 === img) updateData.pro_img3 = '';
+        if (product.pro_img4 === img) updateData.pro_img4 = '';
+        if (product.pro_img5 === img) updateData.pro_img5 = '';
+
+        if (Object.keys(updateData).length > 0) {
+          await this.productRepo.update(
+            { pro_code: product.pro_code },
+            updateData,
+          );
+        }
       }
     } catch (error) {
-      console.error('Error saving address:', error);
-      throw new Error('Error saving address');
+      this.logger.error('Error deleting product images:', error);
     }
+  }
+
+  async searchExternalProducts(search: string): Promise<ProductEntity[]> {
+    try {
+      const response = await axios.get<ApiResponse>(
+        `${process.env.OLD_WEBSITE_URL}/API/appV3/search_auto.php`,
+        {
+          params: { search },
+        },
+      );
+
+      if (!response.data) {
+        return [];
+      }
+
+      const datafromAPI = response.data;
+
+      if (
+        datafromAPI?.status !== 'success' ||
+        !Array.isArray(datafromAPI?.data)
+      ) {
+        return [];
+      }
+
+      const proCodes = datafromAPI?.data
+        .map((item) => item.pro_code)
+        .filter(Boolean);
+
+      if (!proCodes.length) {
+        return [];
+      }
+
+      const product = await this.productRepo
+        .createQueryBuilder('product')
+        .where('product.pro_code IN (:...proCodes)', { proCodes })
+        .select([
+          'product.pro_code',
+          'product.pro_name',
+          'product.pro_priceA',
+          'product.pro_priceB',
+          'product.pro_priceC',
+          'product.pro_imgmain',
+          'product.pro_genericname',
+          'product.pro_unit1',
+          'product.pro_nameSale',
+          'product.pro_nameEN',
+          'product.pro_keysearch',
+          'creditor.creditor_code',
+        ])
+        .leftJoin('product.creditor', 'creditor')
+        .getMany();
+
+      return product;
+    } catch (error) {
+      this.logger.error('Error searching external products:', error);
+      return [];
+    }
+  }
+
+  async searchEnterProducts(search: string): Promise<string[]> {
+    try {
+      if (!search) {
+        return [];
+      }
+
+      const response = await axios.get<ApiResponse>(
+        `${process.env.OLD_WEBSITE_URL}/API/appV3/search_enter.php`,
+        {
+          params: { search },
+        },
+      );
+
+      if (
+        response.data?.status !== 'success' ||
+        !Array.isArray(response.data.data)
+      ) {
+        return [];
+      }
+
+      const proCodes = response.data.data
+        .map((item) => item.pro_code)
+        .filter(Boolean);
+
+      return proCodes;
+    } catch (error) {
+      this.logger.error('Error searching enter products:', error);
+      return [];
+    }
+  }
+
+  async updateProductFromEasyAcc(data: ProductEasyAcc) {
+    try {
+      if (data.product_name) {
+        const cartItem = await this.checkCartByProcode(data.product_code);
+        if (cartItem && cartItem.length > 0) {
+          for (const item of cartItem) {
+            console.log('Item', item);
+            await this.createDeleteCartByProcode(
+              item.product.pro_code,
+              item.product.pro_imgmain,
+              item.product.pro_name,
+              item.spc_unit,
+              item.mem_code,
+            );
+          }
+        }
+      }
+
+      const updateData: Partial<ProductEntity> = {};
+
+      if (data.product_name !== undefined)
+        updateData.pro_name = data.product_name;
+      if (data.product_nameEN !== undefined)
+        updateData.pro_nameEN = data.product_nameEN as string;
+      if (data.product_nameSale !== undefined)
+        updateData.pro_nameSale = data.product_nameSale as string;
+      if (data.product_genericname !== undefined)
+        updateData.pro_genericname = data.product_genericname as string;
+      if (data.product_barcode !== undefined)
+        updateData.pro_barcode1 = data.product_barcode as string;
+      if (data.product_barcode2 !== undefined)
+        updateData.pro_barcode2 = data.product_barcode2 as string;
+      if (data.product_barcode3 !== undefined)
+        updateData.pro_barcode3 = data.product_barcode3 as string;
+      if (data.product_keysearch !== undefined)
+        updateData.pro_keysearch = data.product_keysearch as string;
+      if (data.product_stock !== undefined)
+        updateData.pro_stock = data.product_stock as number;
+      if (data.product_lowest_stock !== undefined)
+        updateData.pro_lowest_stock = data.product_lowest_stock as number;
+      if (data.creditor_code !== undefined)
+        updateData.creditor = data.creditor_code
+          ? ({ creditor_code: data.creditor_code } as CreditorEntity)
+          : null;
+      if (data.product_unit1 !== undefined)
+        updateData.pro_unit1 = data.product_unit1 as string;
+      if (data.product_unit2 !== undefined)
+        updateData.pro_unit2 = data.product_unit2 as string;
+      if (data.product_unit3 !== undefined)
+        updateData.pro_unit3 = data.product_unit3 as string;
+      if (data.product_price_a !== undefined)
+        updateData.pro_priceA = data.product_price_a as number;
+      if (data.product_price_b !== undefined)
+        updateData.pro_priceB = data.product_price_b as number;
+      if (data.product_price_c !== undefined)
+        updateData.pro_priceC = data.product_price_c as number;
+      if (data.product_ratio_1 !== undefined)
+        updateData.pro_ratio1 = data.product_ratio_1 as number;
+      if (data.product_ratio_2 !== undefined)
+        updateData.pro_ratio2 = data.product_ratio_2 as number;
+      if (data.product_ratio_3 !== undefined)
+        updateData.pro_ratio3 = data.product_ratio_3 as number;
+      if (data.pro_category !== undefined)
+        updateData.pro_category = data.pro_category as number;
+
+      if (Object.keys(updateData).length === 0) return;
+
+      await this.productRepo.update(
+        { pro_code: data.product_code },
+        updateData,
+      );
+    } catch (error) {
+      console.error('Error updating product from EasyAcc:', error);
+    }
+  }
+
+  async updateProductImageFromCentral(
+    data: UpdateProductImageEcommercePayload,
+  ): Promise<void> {
+    try {
+      const updateData: Record<string, string | null> = {};
+      if (data.pro_imgmain !== undefined)
+        updateData.pro_imgmain = data.pro_imgmain;
+      if (data.pro_img2 !== undefined) updateData.pro_img2 = data.pro_img2;
+      if (data.pro_img3 !== undefined) updateData.pro_img3 = data.pro_img3;
+      if (data.pro_img4 !== undefined) updateData.pro_img4 = data.pro_img4;
+      if (data.pro_img5 !== undefined) updateData.pro_img5 = data.pro_img5;
+
+      if (Object.keys(updateData).length === 0) return;
+
+      await this.productRepo.update(
+        { pro_code: data.product_code },
+        updateData,
+      );
+    } catch (error) {
+      this.logger.error('Error updating product image from central:', error);
+    }
+  }
+
+  async createDeleteCartByProcode(
+    pro_code: string,
+    pro_imgmain: string,
+    pro_name: string,
+    pro_unit: string,
+    mem_code: string,
+  ) {
+    try {
+      const cartItem = this.deleteCartRepo.create({
+        mem_code: mem_code,
+        product: { pro_code },
+        data: {
+          pro_imgmain,
+          pro_name,
+          pro_unit,
+        },
+      });
+      await this.deleteCartRepo.save(cartItem);
+      await this.shoppingCartRepo.delete({ pro_code });
+      const member = await this.userRepo.findOne({ where: { mem_code } });
+      await this.shoppingCartService.checkPromotionReward(
+        mem_code,
+        member?.mem_price ?? 'C',
+      );
+      await this.shoppingCartService.checkHotdealByProCode(mem_code, pro_code);
+    } catch (error) {
+      console.log(error);
+      throw new Error('Error in createDeleteCartByProcode');
+    }
+  }
+
+  async checkCartByProcode(pro_code: string) {
+    try {
+      const cartItems = await this.shoppingCartRepo.find({
+        where: { pro_code },
+        relations: {
+          product: true,
+        },
+        select: {
+          spc_unit: true,
+          spc_amount: true,
+          mem_code: true,
+          product: {
+            pro_code: true,
+            pro_imgmain: true,
+            pro_name: true,
+          },
+        },
+      });
+      return cartItems;
+    } catch {
+      throw new Error('Error in checkCartByProcode');
+    }
+  }
+
+  async getProductImageUrls(pro_code: string): Promise<{
+    pro_imgmain: string | null;
+    pro_img2: string | null;
+    pro_img3: string | null;
+    pro_img4: string | null;
+    pro_img5: string | null;
+  } | null> {
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: {
+        pro_imgmain: true,
+        pro_img2: true,
+        pro_img3: true,
+        pro_img4: true,
+        pro_img5: true,
+      },
+    });
+    if (!product) return null;
+    return {
+      pro_imgmain: product.pro_imgmain ?? null,
+      pro_img2: product.pro_img2 ?? null,
+      pro_img3: product.pro_img3 ?? null,
+      pro_img4: product.pro_img4 ?? null,
+      pro_img5: product.pro_img5 ?? null,
+    };
   }
 }

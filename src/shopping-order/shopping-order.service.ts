@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
@@ -10,10 +10,14 @@ import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
-import { submitOrder } from 'src/logger/submitOrder.logger';
+import { Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
+import { UserEntity } from 'src/users/users.entity';
+import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
+import { PromotionService } from 'src/promotion/promotion.service';
+import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 
 interface CountSale {
   pro_code: string;
@@ -23,6 +27,7 @@ interface CountSale {
 @Injectable()
 export class ShoppingOrderService {
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
+  private readonly logger = new Logger(ShoppingOrderService.name);
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadEntity: Repository<ShoppingHeadEntity>,
@@ -39,7 +44,30 @@ export class ShoppingOrderService {
     private readonly saleLogEntity: Repository<SaleLogEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardEntity: Repository<PromotionRewardEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(PromotionTierEntity)
+    private readonly promotionTierRepo: Repository<PromotionTierEntity>,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    private readonly promotionService: PromotionService,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   async countSaleAmount() {
@@ -116,6 +144,7 @@ export class ShoppingOrderService {
     data: {
       emp_code?: string;
       mem_code: string;
+      mem_route?: string;
       listFree:
         | [
             {
@@ -133,6 +162,7 @@ export class ShoppingOrderService {
     },
     ip?: string,
   ): Promise<string[] | undefined> {
+    const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
     const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
@@ -154,7 +184,55 @@ export class ShoppingOrderService {
       totalPrice: totalsummaryfromCart.total,
       item: null,
     };
+    let basketSnapshot: {
+      item_count: number;
+      total_qty: number;
+      items: Array<{
+        spc_id: number;
+        pro_code: string;
+        amount: number;
+        unit: string | null;
+        is_reward: boolean;
+        hotdeal_free: boolean;
+      }>;
+    } | null = null;
+    let basketSnapshotError: string | null = null;
+    let runningNumbers: string[] = [];
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
+    try {
+      const cartSnapshot = await this.shoppingCartService.handleGetCartToOrder(
+        data.mem_code,
+      );
+      const items = (cartSnapshot ?? []).map((item) => ({
+        spc_id: item.spc_id,
+        pro_code: item.pro_code,
+        amount: Number(item.spc_amount),
+        unit: item.spc_unit ?? null,
+        is_reward: item.is_reward,
+        hotdeal_free: item.hotdeal_free,
+        promotion_id: item.promo_id,
+        tier_id: item.tier_id,
+      }));
+      basketSnapshot = {
+        item_count: items.length,
+        total_qty: items.reduce((sum, item) => sum + Number(item.amount), 0),
+        items,
+      };
+    } catch (error) {
+      basketSnapshotError =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.logger.log('submit_order_attempt', {
+      event: 'submit_order_attempt',
+      status: 'attempt',
+      mem_code: data.mem_code,
+      priceOption: data.priceOption,
+      paymentOptions: data.paymentOptions,
+      shippingOptions: data.shippingOptions,
+      total_price: totalsummaryfromCart.total,
+      basket_snapshot: basketSnapshot,
+      basket_snapshot_error: basketSnapshotError,
+    });
     try {
       submitLogContext.push({
         mem_code: data.mem_code,
@@ -162,7 +240,7 @@ export class ShoppingOrderService {
       });
       console.log('submitOrder data:', data);
       const numberOfMonth = new Date().getMonth() + 1;
-      const runningNumbers: string[] = [];
+      runningNumbers = [];
       const allIdCartForDelete: number[] = [];
       let totalSumPrice = 0;
       let totalSumPoint = 0;
@@ -181,6 +259,20 @@ export class ShoppingOrderService {
             item: null,
           };
           throw new Error('Cart is empty');
+        }
+
+        if (isL16) {
+          const restrictedItems = cart.filter(
+            (item) => item.product?.pro_l16_only === 1,
+          );
+          if (restrictedItems.length > 0) {
+            const codes = restrictedItems
+              .map((item) => item.pro_code)
+              .join(', ');
+            throw new BadRequestException(
+              `สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้: ${codes}`,
+            );
+          }
         }
 
         const checkFreebies =
@@ -285,13 +377,13 @@ export class ShoppingOrderService {
 
             const isFreebie = Boolean(
               item.hotdeal_free === true &&
-                Array.isArray(checkFreebies) &&
-                checkFreebies.some(
-                  (f) =>
-                    f &&
-                    String(f.spc_unit) === String(item.spc_unit) &&
-                    String(f.pro_code) === String(item.pro_code),
-                ),
+              Array.isArray(checkFreebies) &&
+              checkFreebies.some(
+                (f) =>
+                  f &&
+                  String(f.spc_unit) === String(item.spc_unit) &&
+                  String(f.pro_code) === String(item.pro_code),
+              ),
             );
 
             console.log('Freebie check:', { isFreebie, item, checkFreebies });
@@ -312,6 +404,9 @@ export class ShoppingOrderService {
               spo_price_unit: price / item.spc_amount,
               spo_total_decimal: price,
               pro_code: item.pro_code,
+              promotion_id: item.promo_id,
+              tier_id: item.tier_id,
+              is_reward: item.is_reward,
             });
           });
 
@@ -393,6 +488,9 @@ export class ShoppingOrderService {
               spo_qty: item.spc_amount,
               spo_price_unit: 0,
               spo_total_decimal: 0,
+              is_reward: true,
+              promotion_id: item.promo_id,
+              tier_id: item.tier_id,
             });
 
             orderRewards.push(orderItem);
@@ -580,7 +678,20 @@ export class ShoppingOrderService {
       for (const id of allIdCartForDelete) {
         await this.shoppingCartService.clearCheckoutCart(id);
       }
-      submitOrder.info('data ', { submitLogContext });
+      this.logger.log('submit_order_trace', {
+        event: 'submit_order_trace',
+        mem_code: data.mem_code,
+        submitLogContext,
+      });
+      this.logger.log('submit_order_result', {
+        event: 'submit_order_result',
+        status: 'success',
+        mem_code: data.mem_code,
+        running_numbers: runningNumbers,
+        total_price: totalsummaryfromCart.total,
+        basket_snapshot: basketSnapshot,
+        basket_snapshot_error: basketSnapshotError,
+      });
       if (data.emp_code) {
         const raw = this.saleLogEntity.create({
           sh_running: runningNumbers.join(', '),
@@ -594,13 +705,18 @@ export class ShoppingOrderService {
       }
       return runningNumbers;
     } catch (error) {
-      submitOrder.error('Error submitting order', {
+      this.logger.error('Error submitting order', {
+        event: 'submit_order_result',
+        status: 'error',
         error: error instanceof Error ? error.message : String(error),
         member: orderContext?.memberCode || data.mem_code,
         totalPrice: totalsummaryfromCart.total,
         priceOption: orderContext?.priceOption || data.priceOption,
         orderContext,
         data,
+        running_numbers: runningNumbers,
+        basket_snapshot: basketSnapshot,
+        basket_snapshot_error: basketSnapshotError,
       });
       console.error('Error: ', error);
       const payload = {
@@ -627,7 +743,8 @@ export class ShoppingOrderService {
     memCode: string,
   ): Promise<ShoppingOrderEntity[]> {
     try {
-      const orders = await this.shoppingOrderRepo
+      const isL16 = await this.isL16Member(memCode);
+      const query = this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
         .leftJoinAndSelect(
@@ -642,7 +759,15 @@ export class ShoppingOrderService {
         .where('header.mem_code = :memCode', { memCode })
         .andWhere(
           '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)',
-        )
+        );
+
+      if (isL16) {
+        query.andWhere(
+          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        );
+      }
+
+      const orders = await query
         .orderBy('header.soh_datetime', 'DESC')
         .take(20)
         .select([
@@ -687,6 +812,163 @@ export class ShoppingOrderService {
     } catch (error) {
       console.log(error);
       throw new Error('Failed to fetch order data.');
+    }
+  }
+
+  async sendPurchaseEventToAnalytics(mem_code: string): Promise<void> {
+    try {
+      const cart = await this.shoppingCartService.handleGetCartToOrder(mem_code);
+      if (!cart?.length) return;
+
+      const taggedTierIds = Array.from(
+        new Set(
+          cart
+            .filter(
+              (item) =>
+                !item.is_reward &&
+                item.promo_id != null &&
+                item.tier_id != null,
+            )
+            .map((item) => item.tier_id as number),
+        ),
+      );
+      if (taggedTierIds.length === 0) return;
+
+      const tiers = await this.promotionTierRepo.find({
+        where: { tier_id: In(taggedTierIds) },
+        relations: { promotion: true },
+      });
+      if (!tiers.length) return;
+
+      tiers.sort((a, b) => {
+        const minAmountDiff = Number(b.min_amount || 0) - Number(a.min_amount || 0);
+        if (minAmountDiff !== 0) return minAmountDiff;
+        const promoIdA = a.promotion?.promo_id ?? 0;
+        const promoIdB = b.promotion?.promo_id ?? 0;
+        if (promoIdA !== promoIdB) return promoIdA - promoIdB;
+        return a.tier_id - b.tier_id;
+      });
+
+      const selectedTier = tiers[0];
+      const promoId = selectedTier.promotion?.promo_id;
+      if (!promoId) return;
+
+      const promoName =
+        selectedTier.promotion?.promo_name?.trim() ||
+        `Company Day - ${selectedTier.tier_name}`;
+      const tier = selectedTier.tier_name?.trim();
+      if (!promoName || !tier) return;
+
+      void this.companyDayAnalyticService.emitEvent('purchase', mem_code, {
+        promo_id: promoId,
+        promo_name: promoName,
+        tier,
+        source: 'Checkout',
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to emit company day purchase event: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  async checkOrderTurnBackReward(sh_running: string, pro_code: string) {
+    try {
+      const dataOrder = await this.shoppingOrderRepo.findOne({
+        where: {
+          orderHeader: { soh_running: sh_running },
+          pro_code,
+          is_reward: false,
+        },
+        relations: {
+          orderHeader: true,
+        },
+        select: {
+          spo_id: true,
+          pro_code: true,
+          tier_id: true,
+          promotion_id: true,
+        },
+      });
+
+      if (!dataOrder) {
+        console.log(
+          `No order found for sh_running: ${sh_running} and pro_code: ${pro_code}`,
+        );
+        return { status: true };
+      }
+
+      if (!dataOrder.promotion_id || !dataOrder.tier_id) {
+        console.log(
+          `Order ${dataOrder.spo_id} does not have promotion_id or tier_id, skipping reward check.`,
+        );
+        return { status: true };
+      }
+
+      const findPromotion =
+        await this.promotionService.findPromotionTypeUnitBased(pro_code);
+
+      if (findPromotion) {
+        return { status: false, pro_code_in_promotion: findPromotion };
+      }
+
+      const minAmount = await this.promotionService.getTierPrice(
+        dataOrder?.promotion_id,
+        dataOrder?.tier_id,
+      );
+
+      const totalAmount = await this.shoppingOrderRepo.sum(
+        'spo_total_decimal',
+        {
+          orderHeader: { soh_running: sh_running },
+          is_reward: false,
+          promotion_id: dataOrder.promotion_id,
+          tier_id: dataOrder.tier_id,
+          pro_code: Not(pro_code),
+        },
+      );
+
+      const RewardProCodeInPromotion = await this.shoppingOrderRepo.find({
+        where: {
+          orderHeader: { soh_running: sh_running },
+          promotion_id: dataOrder.promotion_id,
+          tier_id: dataOrder.tier_id,
+          is_reward: true,
+        },
+        select: { pro_code: true },
+      });
+
+      if (totalAmount === null) {
+        return {
+          status: false,
+          pro_code_in_promotion: RewardProCodeInPromotion?.map(
+            (item) => item.pro_code,
+          ),
+        };
+      }
+
+      if (
+        totalAmount &&
+        minAmount &&
+        totalAmount < Number(minAmount.minAmount)
+      ) {
+        return {
+          status: false,
+          pro_code_in_promotion: RewardProCodeInPromotion?.map(
+            (item) => item.pro_code,
+          ),
+        };
+      }
+      console.log(
+        `Order ${dataOrder.spo_id} with promotion_id ${dataOrder.promotion_id} and tier_id ${dataOrder.tier_id} meets the minimum amount requirement. Total: ${totalAmount}, Min: ${minAmount?.minAmount}`,
+      );
+      console.log(typeof totalAmount, typeof minAmount?.minAmount);
+      return { status: true };
+    } catch (error) {
+      console.log(error);
+      throw new Error('Failed to check order turn back reward. ' + error);
     }
   }
 }

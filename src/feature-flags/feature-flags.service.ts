@@ -51,4 +51,17 @@ export class FeatureFlagsService {
       throw new Error('Something Error in updateFlag');
     }
   }
+
+  async getAllFlags() {
+    try {
+      const flags = await this.flagRepo.find({
+        order: {
+          feature_key: 'ASC',
+        },
+      });
+      return flags;
+    } catch {
+      throw new Error('Something Error in getAllFlags');
+    }
+  }
 }

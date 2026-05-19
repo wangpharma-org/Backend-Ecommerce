@@ -4,11 +4,13 @@ import { HotdealEntity } from './hotdeal.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductsModule } from 'src/products/products.module';
 import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
+import { UserEntity } from 'src/users/users.entity';
+import { BannerHotdealEntity } from './hotdeal-banner.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([HotdealEntity]),
-    ProductsModule,
+    TypeOrmModule.forFeature([HotdealEntity, UserEntity, BannerHotdealEntity]),
+    forwardRef(() => ProductsModule),
     forwardRef(() => ShoppingCartModule),
   ],
   exports: [HotdealService],

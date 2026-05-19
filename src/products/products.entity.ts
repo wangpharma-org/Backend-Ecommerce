@@ -24,6 +24,8 @@ import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 import { RecommendEntity } from 'src/recommend/recommend.entity';
 import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
+import { integer } from 'aws-sdk/clients/cloudfront';
+import { text } from 'aws-sdk/clients/customerprofiles';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
@@ -128,6 +130,9 @@ export class ProductEntity {
 
   @Column({ nullable: true, default: 1, type: 'smallint' })
   pro_promotion_amount: number | null;
+
+  @Column({ type: 'tinyint', default: 0 })
+  pro_l16_only: number;
 
   @Column({ default: false })
   is_detect_amount: boolean;
@@ -240,4 +245,10 @@ export class ProductEntity {
 
   @OneToMany(() => ProductEntity, (product) => product.replace)
   replacedBy: ProductEntity[];
+
+  @Column({ nullable: true, type: 'text' })
+  replace_note!: string | null;
+
+  @Column({ nullable: true, type: 'date' })
+  replace_date_exp!: Date | null;
 }

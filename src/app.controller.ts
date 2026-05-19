@@ -8,13 +8,17 @@ import {
   HttpStatus,
   Ip,
   Param,
+  Patch,
   Post,
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
+import axios from 'axios';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -26,7 +30,7 @@ import { ShoppingOrderService } from './shopping-order/shopping-order.service';
 import { AllOrderByMemberRes } from './shopping-head/types/AllOrderByMemberRes.type';
 import { FavoriteService } from './favorite/favorite.service';
 import { FlashsaleService } from './flashsale/flashsale.service';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
@@ -71,9 +75,20 @@ import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignRowEntity } from './campaigns/campaigns-row.entity';
 import { ProductEntity } from './products/products.entity';
 import { CampaignEntity } from './campaigns/campaigns.entity';
-import { AppVersionService } from './app-version/app-version.service';
+import { ProductReturnService } from './product-return/product-return.service';
+import {
+  ReturnStatus,
+  ReturnReason,
+  ResolutionType,
+  InitiatorType,
+} from './product-return/return-enums';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
+import { TrackOrderService } from './track-order/track-order.service';
+import { NotifyRtService } from './notifyapp/notifyapp.service';
+import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 
-interface JwtPayload {
+export interface JwtPayload {
   username: string;
   name: string;
   mem_code: string;
@@ -86,11 +101,13 @@ interface JwtPayload {
   mem_province?: string;
   mem_post?: string;
   mem_phone?: string;
+  mem_route?: string;
   permission?: boolean;
 }
 
 @Controller()
 export class AppController {
+  private readonly logger = new Logger(AppController.name);
   // Add simple lock to prevent race condition
   private isHashingInProgress = false;
 
@@ -126,18 +143,39 @@ export class AppController {
     private readonly contractLogService: ContractLogService,
     private readonly imagedebugService: ImagedebugService,
     private readonly campaignsService: CampaignsService,
-    private readonly appVersion: AppVersionService,
-  ) { }
+    private readonly productReturnService: ProductReturnService,
+    private readonly behaviorTrackingService: BehaviorTrackingService,
+    private readonly notifyRtService: NotifyRtService,
+    private readonly trackOrderService: TrackOrderService,
+    private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+  ) {}
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-banner')
-  async getImageUrl() {
-    return this.bannerService.GetImageUrl();
+  async getImageUrl(
+    @Query('location')
+    location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar',
+  ) {
+    return this.bannerService.GetImageUrl(location);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/banner/:id')
+  async deleteBanner(@Param('id') id: string) {
+    return this.bannerService.deleteBannerById(Number(id));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/ecom/banner/:id')
+  async updateBanner(
+    @Param('id') id: string,
+    @Body() data: Partial<BannerEntity>,
+  ) {
+    return this.bannerService.updateBanner(Number(id), data);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -149,7 +187,6 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/user-data/update')
   async updateUserData(@Body() data: UserEntity) {
-    //console.log(data);
     return this.authService.updateUserData(data);
   }
 
@@ -158,14 +195,56 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadBanner(
     @UploadedFile() file: Express.Multer.File,
-    @Body() data: { date_start: Date; date_end: Date },
+    @Body()
+    data: {
+      date_start: Date;
+      date_end: Date;
+      banner_name?: string;
+      banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      link_url?: string;
+      display_type?: 'image_only' | 'text_only' | 'image_with_text';
+      title?: string;
+      subtitle?: string;
+      description?: string;
+      cta_text?: string;
+      cta_url?: string;
+      cta_secondary_text?: string;
+      cta_secondary_url?: string;
+      text_color?: 'light' | 'dark';
+      text_position?: 'left' | 'center' | 'right';
+      bg_gradient?: string;
+      is_drug?: boolean;
+      advertise_code?: string;
+      creditor?: string;
+      product_list?: string;
+    },
   ) {
-    const uploadUrl = await this.bannerService.UploadImage(
-      file,
-      data.date_start,
-      data.date_end,
-    );
-    return uploadUrl?.Location;
+    this.logger.log('=== Controller uploadBanner ===');
+    this.logger.log('File:', file ? file.originalname : 'No file');
+    this.logger.log('Data:', JSON.stringify(data, null, 2));
+    const result = await this.bannerService.UploadImage(file, data);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/banner/from-url')
+  async createBannerFromUrl(
+    @Body()
+    body: {
+      img_url: string;
+      banner_name?: string;
+      banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      date_start: Date;
+      date_end: Date;
+    },
+  ) {
+    const banner = await this.bannerService.createBannerFromUrl(body.img_url, {
+      date_start: body.date_start,
+      date_end: body.date_end,
+      banner_name: body.banner_name,
+      banner_location: body.banner_location,
+    });
+    return { success: true, data: banner };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -175,7 +254,6 @@ export class AppController {
     @UploadedFile() file: Express.Multer.File,
     @Body() data: { mem_code: string; type: string; old_url: string },
   ) {
-    //console.log(data);
     return await this.authService.UploadImage(
       file,
       data.type,
@@ -187,6 +265,12 @@ export class AppController {
   @Get('/ecom/feature-flag/:flag')
   async checkFlag(@Param('flag') flag: string) {
     return this.featureFlagsService.getFlag(flag);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/feature-flags')
+  async getAllFlags() {
+    return this.featureFlagsService.getAllFlags();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -202,7 +286,6 @@ export class AppController {
     @Body() data: { pro_code: string; month: number }[],
   ) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadPO(data);
     } else {
@@ -217,9 +300,37 @@ export class AppController {
     @Body() data: { productCode: string; quantity: number }[],
   ) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
     if (permission === true) {
       return await this.productsService.uploadProductFlashSale(data);
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/product-l16/upload')
+  async uploadProductL16Only(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    body: {
+      data: { pro_code: string; status: number | string }[];
+      filename: string;
+    },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.updateProductL16OnlyFromUpload(body);
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/product-l16/export')
+  async exportProductL16Status(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.getProductL16Status();
     } else {
       throw new Error('You not have Permission to Accesss');
     }
@@ -229,8 +340,6 @@ export class AppController {
   @Get('/ecom/products/flashsale-procode')
   async listProcodeFlashSale(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
-    //console.log(req.user);
     if (permission === true) {
       return await this.productsService.listProcodeFlashSale();
     } else {
@@ -241,18 +350,29 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/favorite/:mem_code')
   async getListFavorite(
+    @Req() req: Request & { user: JwtPayload },
     @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
-    //console.log('get data favorite');
-    return await this.favoriteService.getListFavorite(mem_code, sort_by);
+    const memberCode = req.user.mem_code;
+    return await this.favoriteService.getListFavorite(
+      memberCode,
+      sort_by,
+      req.user.mem_route,
+    );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/flashsale/get-list')
-  async getDataFlashSale(@Body() data: { limit: number; mem_code: string }) {
+  async getDataFlashSale(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { limit: number; mem_code: string },
+  ) {
+    const mem_code = req.user.mem_code;
     const func = await this.productsService.getFlashSale(
       data.limit,
-      data.mem_code,
+      mem_code,
+      req.user.mem_route,
     );
     for (const funcItem of func) {
       await this.imagedebugService.UpsercetImg({
@@ -266,30 +386,38 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/add')
   async addToFavorite(@Body() data: { mem_code: string; pro_code: string }) {
-    //console.log(data);
     return await this.favoriteService.addToFavorite(data);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/favorite/delete')
   async deleteFavorite(
+    @Req() req: Request & { user: JwtPayload },
     @Body() data: { fav_id: number; mem_code: string; sort_by?: number },
   ) {
-    //console.log(data);
-    return await this.favoriteService.deleteFavorite(data);
+    return await this.favoriteService.deleteFavorite({
+      ...data,
+      mem_code: req.user.mem_code,
+      mem_route: req.user.mem_route,
+    });
   }
 
   @Post('/ecom/login')
   async signin(
     @Body() data: { username: string; password: string },
+    @Req() req: Request,
   ): Promise<SigninResponse> {
-    //console.log('data in controller:', data);
-    return await this.authService.signin(data);
+    const xClient = req.headers['x-client'] as string;
+    return await this.authService.signin({
+      ...data,
+      source: xClient,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/search-products')
   async searchProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       keyword: string;
@@ -297,10 +425,15 @@ export class AppController {
       mem_code: string;
       sort_by?: number;
       limit: number;
+      creditor_codes?: string[];
     },
   ) {
-    //console.log('data in controller:', data);
-    const result = await this.productsService.searchProducts(data);
+    const mem_code = req.user.mem_code;
+    const result = await this.productsService.searchProductsElastic({
+      ...data,
+      mem_code,
+      mem_route: req.user.mem_route,
+    });
     for (const resultItem of result.products) {
       await this.imagedebugService.UpsercetImg({
         pro_code: resultItem.pro_code,
@@ -313,6 +446,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/category-products')
   async searchCategoryProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       keyword: string;
@@ -323,43 +457,69 @@ export class AppController {
       limit: number;
     },
   ) {
-    //console.log('data in controller:', data);
-    return await this.productsService.searchCategoryProducts(data);
+    const mem_code = req.user.mem_code;
+    return await this.productsService.searchCategoryProducts({
+      ...data,
+      mem_code,
+      mem_route: req.user.mem_route,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-for-u')
-  async productForYou(@Body() data: { keyword: string; pro_code: string }) {
-    //console.log('data in controller:', data);
-    return await this.productsService.productForYou(data);
+  async productForYou(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { keyword: string; pro_code: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.productsService.productForYou({
+      ...data,
+      mem_code,
+      mem_route: req.user.mem_route,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/submit-order')
   async submitOrder(
     @Ip() ip: string,
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       emp_code?: string;
       mem_code: string;
       total_price: number;
       listFree:
-      | [
-        {
-          pro_code: string;
-          amount: number;
-          pro_unit1: string;
-          pro_point: number;
-        },
-      ]
-      | null;
+        | [
+            {
+              pro_code: string;
+              amount: number;
+              pro_unit1: string;
+              pro_point: number;
+            },
+          ]
+        | null;
       priceOption: string;
       paymentOptions: string;
       shippingOptions: string;
       addressed: string;
     },
   ) {
-    return await this.shoppingOrderService.submitOrder(data, ip);
+    const mem_code = req.user.mem_code;
+    try {
+      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to send purchase event to analytics for mem_code ${mem_code}: ${message}`,
+      );
+    }
+
+    const result = await this.shoppingOrderService.submitOrder(
+      { ...data, mem_code, mem_route: req.user.mem_route },
+      ip,
+    );
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -370,9 +530,17 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-detail')
-  async GetProductDetail(@Body() data: { pro_code: string; mem_code: string }) {
-    console.log('data in controller:', data);
-    const result = await this.productsService.getProductDetail(data);
+  async GetProductDetail(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_code: string; mem_code: string },
+  ) {
+    this.logger.log('data in controller:', data);
+    const mem_code = req.user.mem_code;
+    const result = await this.productsService.getProductDetail({
+      ...data,
+      mem_code,
+      mem_route: req.user.mem_route,
+    });
     await this.imagedebugService.UpsercetImg({
       pro_code: result.pro_code,
       imageUrl: result.pro_imgmain,
@@ -382,8 +550,16 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-coin/:sortBy')
-  async productCoin(@Param('sortBy') sort_by: string) {
-    const result = await this.productsService.listFree(sort_by);
+  async productCoin(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('sortBy') sort_by: string,
+  ) {
+    const mem_code = req.user.mem_code;
+    const result = await this.productsService.listFree(
+      sort_by,
+      mem_code,
+      req.user.mem_route,
+    );
     for (const resultItem of result) {
       await this.imagedebugService.UpsercetImg({
         pro_code: resultItem.pro_code,
@@ -400,7 +576,6 @@ export class AppController {
   //   @Body() data: { productCode: string; quantity: number }[],
   // ) {
   //   const permission = req.user.permission;
-  //   //console.log('permission', permission);
   //   if (permission === true) {
   //     return await this.productsService.uploadProductFlashSale(data);
   //   } else {
@@ -420,10 +595,11 @@ export class AppController {
       amount: number;
       // pro_freebie: number;
       flashsale_end: string;
+      cartVersion?: string | number;
       clientVersion?: string;
+      company_day_source?: string;
     },
   ) {
-    console.log('Add to cart data:', data);
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -431,15 +607,23 @@ export class AppController {
       pro_unit: string;
       amount: number;
       priceCondition: string;
+      mem_route?: string;
       // is_reward: boolean;
       flashsale_end: string;
       // hotdeal_free: boolean;
-      clientVersion?: string;
+      clientVersion?: string | number;
+      company_day_source?: string;
     } = {
-      ...data,
+      mem_code: data.mem_code,
+      pro_code: data.pro_code,
+      pro_unit: data.pro_unit,
+      amount: data.amount,
       priceCondition,
+      mem_route: req.user.mem_route,
+      flashsale_end: data.flashsale_end,
+      clientVersion: data.clientVersion ?? data.cartVersion,
+      company_day_source: data.company_day_source,
     };
-    console.log(payload);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -451,6 +635,23 @@ export class AppController {
       cartVersion,
       cartSyncedAt,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/company-day/view')
+  trackCompanyDayView(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      promo_id: number;
+      promo_name: string;
+      tier: string;
+      source: string;
+    },
+  ) {
+    const mem_code = req.user.mem_code;
+    void this.companyDayAnalyticService.emitEvent('view', mem_code, data);
+    return { success: true };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -471,7 +672,7 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    console.log('Check all cart data:', data);
+    this.logger.log('Check all cart data:', data);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCartAll(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -503,7 +704,6 @@ export class AppController {
       priceOption: string;
       clientVersion?: string;
     } = { ...data, priceOption };
-    //console.log('Delete', data);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.handleDeleteCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -529,16 +729,16 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
-    //console.log(data);
-    console.log('Check cart data:', data);
+    this.logger.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
       pro_code: string;
       type: string;
       priceOption: string;
+      mem_route?: string;
       clientVersion?: string;
-    } = { ...data, priceOption };
+    } = { ...data, priceOption, mem_route: req.user.mem_route };
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.checkedProductCart(payload);
     const summaryCart = await this.shoppingCartService.summaryCart(
@@ -554,10 +754,16 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(@Param('mem_code') mem_code: string) {
+  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
+    const memberCode = req.user.mem_code;
     const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.getCartSnapshot(mem_code);
-    const summaryCart = await this.shoppingCartService.summaryCart(mem_code);
+      await this.shoppingCartService.getCartSnapshot(
+        memberCode,
+        req.user.mem_route,
+      );
+    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
+    const dataDeleteCart =
+      await this.shoppingCartService.getDeleteCartItem(memberCode);
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -569,7 +775,20 @@ export class AppController {
       summaryCart: summaryCart.total,
       cartVersion,
       cartSyncedAt,
+      deleteCartItems: dataDeleteCart,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/delete-cart-item/:pro_code')
+  async softDeleteCartItem(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('pro_code') pro_code: string,
+  ) {
+    await this.shoppingCartService.softDeleteCartItem(
+      req.user.mem_code,
+      pro_code,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -665,6 +884,7 @@ export class AppController {
       min_amount: number;
       description?: string;
       detail?: string;
+      is_unit_based?: string;
     },
   ) {
     return this.promotionService.addTierToPromotion({
@@ -674,6 +894,7 @@ export class AppController {
       description: data.description,
       detail: data.detail,
       file,
+      is_unit_based: data.is_unit_based === 'true' ? true : false,
     });
   }
 
@@ -737,8 +958,15 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/reward/list/:tier_id')
-  async listPromotionRewards(@Param('tier_id') tier_id: string) {
-    return this.promotionService.getRewardsByTier(Number(tier_id));
+  async listPromotionRewards(
+    @Param('tier_id') tier_id: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.promotionService.getRewardsByTier(
+      Number(tier_id),
+      req.user.mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -813,8 +1041,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/get-tier-for-customer')
-  async getTierAll() {
-    return this.promotionService.getAllTiers();
+  async getTierAll(@Req() req: Request & { user: JwtPayload }) {
+    return this.promotionService.getAllTiers(
+      req.user.mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -870,7 +1101,7 @@ export class AppController {
     try {
       // แปลง key ภาษาไทยเป็น key ที่ entity ใช้
       const rows = (body.data || []).map((item) => {
-        // console.log('Mapping item:', item);
+        // this.logger.log('Mapping item:', item);
         const row = item as {
           วันที่?: number | string;
           เลขที่ใบกำกับ?: string;
@@ -905,7 +1136,7 @@ export class AppController {
       );
       return 'Successful' + imported.length;
     } catch (error) {
-      console.error('Error importing wangday data:', error);
+      this.logger.error('Error importing wangday data:', error);
       throw error;
     }
   }
@@ -938,13 +1169,18 @@ export class AppController {
     @Body()
     body: {
       data: HotdealInput;
-      pro_code?: string;
       id?: number;
       order?: number;
+      special_deal?: boolean;
     },
   ) {
-    console.log('Saving Hotdeal:', body);
-    return this.hotdealService.saveHotdeal(body.data, body.id, body.order);
+    this.logger.log('Saving Hotdeal:', body);
+    return this.hotdealService.saveHotdeal(
+      body.data,
+      body.id,
+      body.order,
+      body.special_deal,
+    );
   }
 
   @Get('/ecom/admin/hotdeal/all-hotdeals')
@@ -958,16 +1194,19 @@ export class AppController {
     return this.hotdealService.deleteHotdeal(data.id, data.pro_code);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/simple-list')
   async getAllHotdealsSimple(
+    @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('mem_code') mem_code?: string,
   ) {
+    const memberCode = req.user.mem_code;
     return this.hotdealService.getAllHotdealsWithProductDetail(
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
-      mem_code,
+      memberCode,
+      req.user.mem_route,
     );
   }
 
@@ -995,7 +1234,7 @@ export class AppController {
       // flatten array
       return allResults.flat().filter(Boolean);
     } catch (error) {
-      console.error('Error in checkHotdealMatch:', error);
+      this.logger.error('Error in checkHotdealMatch:', error);
       throw new Error('Error checking hotdeal match');
     }
   }
@@ -1022,7 +1261,6 @@ export class AppController {
     @Body() data: { mem_code: string },
   ) {
     const permission = req.user.permission;
-    //console.log('permission', permission);
     if (permission !== true) {
       throw new Error('You not have Permission to Accesss');
     }
@@ -1058,16 +1296,12 @@ export class AppController {
     },
   ) {
     try {
-      // //console.log('Received body:', {
-      //   group: body.group,
-      // });
-      //console.log(body.filename);
       return this.productsService.updateProductFromBackOffice({
         group: body.group,
         filename: body.filename,
       });
     } catch (error) {
-      console.error('Error updating product from back office:', error);
+      this.logger.error('Error updating product from back office:', error);
       throw new Error('Error updating product from back office');
     }
   }
@@ -1086,7 +1320,6 @@ export class AppController {
       emp_id_ref?: string;
     }[],
   ) {
-    //console.log(data);
     return this.authService.upsertUser(data);
   }
 
@@ -1104,10 +1337,9 @@ export class AppController {
     },
   ) {
     try {
-      //console.log('Received body for stock update:', body);
       return await this.productsService.updateStock(body);
     } catch (error) {
-      console.error('Error updating stock from back office:', error);
+      this.logger.error('Error updating stock from back office:', error);
       throw new Error('Error updating stock from back office');
     }
   }
@@ -1133,8 +1365,12 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product/keysearch-all')
-  async getKeySearch() {
-    return await this.productsService.keySearchProducts();
+  async getKeySearch(@Req() req: Request & { user: JwtPayload }) {
+    const mem_code = req.user.mem_code;
+    return await this.productsService.keySearchProducts(
+      mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1148,7 +1384,6 @@ export class AppController {
       pro_code: string;
     }[],
   ) {
-    //console.log(data);
     return this.lotService.addLots(data);
   }
 
@@ -1164,7 +1399,6 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    //console.log(data);
     return await this.flashsaleService.addFlashSale(data);
   }
 
@@ -1178,7 +1412,6 @@ export class AppController {
       limit: number;
     },
   ) {
-    //console.log(data);
     return await this.flashsaleService.addProductToFlashSale(data);
   }
 
@@ -1212,8 +1445,16 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/get-flashsale')
-  async getFlashsaleByDate(@Body() data: { limit: number; mem_code: string }) {
-    return await this.flashsaleService.getFlashSale(data.limit, data.mem_code);
+  async getFlashsaleByDate(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { limit: number; mem_code: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.flashsaleService.getFlashSale(
+      data.limit,
+      mem_code,
+      req.user.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1221,7 +1462,6 @@ export class AppController {
   async changeStatusDailyFlashsale(
     @Body() data: { id: number; is_active: boolean },
   ) {
-    //console.log(data);
     return await this.flashsaleService.changeStatus({
       promotion_id: data.id,
       is_active: data.is_active,
@@ -1261,7 +1501,6 @@ export class AppController {
       is_active: boolean;
     },
   ) {
-    //console.log(data);
     return await this.flashsaleService.EditFlashSale(data);
   }
 
@@ -1275,7 +1514,6 @@ export class AppController {
       creditor_code: string;
     },
   ) {
-    //console.log(data);
     return await this.invisibleService.addInvisibleTopic(data);
   }
 
@@ -1308,7 +1546,6 @@ export class AppController {
       pro_code: string;
     },
   ) {
-    //console.log(data);
     return await this.invisibleService.updateProductInvisible(data);
   }
 
@@ -1329,7 +1566,6 @@ export class AppController {
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/edit-address/:addressId')
   async editAddress(@Param('addressId') addressId: number) {
-    //console.log(addressId);
     return this.editAddressService.getAddressById(addressId);
   }
 
@@ -1354,14 +1590,12 @@ export class AppController {
       mem_code: string;
     },
   ) {
-    //console.log(addressData);
     return this.editAddressService.createAddress(addressData);
   }
 
   // @UseGuards(JwtAuthGuard)
   @Put('/ecom/address/update-address/:id')
   async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
-    //console.log(address);
     return this.editAddressService.updateAddress(id, address);
   }
 
@@ -1380,7 +1614,6 @@ export class AppController {
       show: boolean;
     },
   ) {
-    //console.log(body);
     return this.modalContentService.SaveModalContent(body);
   }
 
@@ -1423,8 +1656,11 @@ export class AppController {
   // }
 
   @Post('/ecom/refresh_token')
-  async refreshToken(@Body() body: { token: string }) {
-    return this.authService.refreshToken(body.token);
+  async refreshToken(@Body() body: { token: string }, @Req() req: Request) {
+    return this.authService.refreshToken(
+      body.token,
+      req.headers['x-client'] as string,
+    );
   }
 
   // Session Management APIs
@@ -1565,7 +1801,6 @@ export class AppController {
       otp: string;
     },
   ): Promise<{ success: boolean; message: string }> {
-    //console.log(body);
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
@@ -1578,39 +1813,27 @@ export class AppController {
       MFG: string;
       EXP: string;
       createdAt: Date;
+      amount: number;
+      unit: string;
     }[],
   ) {
-    type N = {
-      product: { pro_code: string };
-      LOT: string;
-      MFG: string;
-      EXP: string;
-      createdAt: Date;
-    };
     try {
-      const results: N[] = [];
-      console.log('Received body for new arrivals:', data);
-      for (const item of data) {
-        const result = await this.newArrivalsService.addNewArrival(
-          item.pro_code,
-          item.LOT,
-          item.MFG,
-          item.EXP,
-          item.createdAt,
-        );
-        results.push(result);
-      }
-      return results;
+      await this.newArrivalsService.addNewArrival(data);
+      return { message: 'New arrivals added successfully' };
     } catch (error) {
-      console.error('Error adding new arrivals:', error);
+      this.logger.error('Error adding new arrivals:', error);
       throw new Error('Error adding new arrivals');
     }
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
-  async getNewArrivalsLimit30(@Param('mem_code') mem_code: string) {
-    return this.newArrivalsService.getNewArrivalsLimit30(mem_code);
+  async getNewArrivalsLimit30(@Req() req: Request & { user: JwtPayload }) {
+    const memberCode = req.user.mem_code;
+    return this.newArrivalsService.getNewArrivalsLimit30(
+      memberCode,
+      req.user.mem_route,
+    );
   }
 
   @Get('/ecom/hotdeal/find/:pro_code')
@@ -1707,15 +1930,13 @@ export class AppController {
     @Body()
     data: ImportDataRequestInvoice[],
   ): Promise<{ message: string }> {
-    //console.log('Received data for reduction invoice import:', data);
     try {
       const importedInvoices = await this.debtorService.importDataInvoice(data);
-      // //console.log('Imported invoice:', importedInvoices);
       return {
         message: `Successfully imported ${importedInvoices?.length} invoices`,
       };
     } catch (error) {
-      console.error('Error importing reduction invoice data22:', error);
+      this.logger.error('Error importing reduction invoice data22:', error);
       return { message: 'Error importing reduction invoice data' };
     }
   }
@@ -1726,15 +1947,13 @@ export class AppController {
     @Body()
     data: ImportDataRequestRT[],
   ): Promise<{ message: string }> {
-    //console.log('Received data for reduction RT import:', data);
     try {
       const importedRTs = await this.debtorService.importDataRT(data);
-      // //console.log('Imported RT:', importedRTs);
       return {
         message: `Successfully imported ${importedRTs?.length} RT entries`,
       };
     } catch (error) {
-      console.error('Error importing reduction RT data:', error);
+      this.logger.error('Error importing reduction RT data:', error);
       return { message: 'Error importing reduction RT data' };
     }
   }
@@ -1750,7 +1969,7 @@ export class AppController {
       const result = await this.debtorService.findDebtor(mem_code, invoice);
       return result;
     } catch (error) {
-      console.error('Error finding reduction invoices:', error);
+      this.logger.error('Error finding reduction invoices:', error);
       return 'Error finding reduction invoices';
     }
   }
@@ -1762,13 +1981,11 @@ export class AppController {
     @Param('rt') rt: string,
   ): Promise<ReductionRT | string> {
     try {
-      //console.log('Searching for RT:', rt);
       const mem_code = req.user.mem_code;
-      //console.log('Member code from token:', mem_code);
       const result = await this.debtorService.findReductionRT(mem_code, rt);
       return result;
     } catch (error) {
-      console.error('Error finding reduction RTs:', error);
+      this.logger.error('Error finding reduction RTs:', error);
       return 'Error finding reduction RTs';
     }
   }
@@ -1822,14 +2039,14 @@ export class AppController {
     },
   ): Promise<{ message: string; data: EmployeeEntity } | { message: string }> {
     try {
-      console.log('Update employee request:', requestData);
+      this.logger.log('Update employee request:', requestData);
       const upsertEmployee = await this.employeesService.UpsertEmployee(
         requestData.emp_code,
         requestData.data,
       );
       return upsertEmployee;
     } catch (error) {
-      console.error('Error updating employee:', error);
+      this.logger.error('Error updating employee:', error);
       return {
         message: 'Error updating employee',
       };
@@ -1925,7 +2142,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/updateRank')
   async updateRecommendRank(@Body() data: { pro_code: string; rank: number }) {
-    console.log(data);
+    this.logger.log(data);
     return await this.recommendService.UpdateRank(data.pro_code, data.rank);
   }
 
@@ -1950,6 +2167,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/recommend-products')
   async getRecommendProducts(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       pro_code: string[];
@@ -1957,9 +2175,11 @@ export class AppController {
       mem_code: string;
     },
   ) {
+    const mem_code = req.user.mem_code;
     return await this.recommendService.GetProductRecommendByCode(
       data.recommend_id,
-      data.mem_code,
+      mem_code,
+      req.user.mem_route,
     );
   }
 
@@ -2003,8 +2223,15 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
-  async getPromotionTierListReward(@Param('tier_id') tier_id: number) {
-    return await this.promotionService.getRewardByTierId(tier_id);
+  async getPromotionTierListReward(
+    @Param('tier_id') tier_id: number,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return await this.promotionService.getRewardByTierId(
+      tier_id,
+      req.user?.mem_code,
+      req.user?.mem_route,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2026,7 +2253,7 @@ export class AppController {
     bannerName?: string;
     urlBanner?: string;
   }> {
-    console.log('data:', data.urlPath);
+    this.logger.log('data:', data.urlPath);
     const result = await this.contractLogService.uploadFile({
       urlPath: file,
       bannerName: data.bannerName,
@@ -2050,7 +2277,7 @@ export class AppController {
   async selectDataDropdown(
     @Body() data: { group: string; type: string },
   ): Promise<{ type: string; data: ContractLogPerson[] }> {
-    console.log(data);
+    this.logger.log(data);
     const result = await this.contractLogService.selectDataDropdown(
       data.group,
       data.type,
@@ -2077,7 +2304,7 @@ export class AppController {
       address?: string;
     },
   ): Promise<ContractLogBanner> {
-    console.log(data);
+    this.logger.log(data);
 
     const result = await this.contractLogService.createContractLog(data);
     return result;
@@ -2104,9 +2331,9 @@ export class AppController {
     },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ bannerName?: string; img_banner?: number }> {
-    console.log('contractId:', data.contractId);
-    console.log('urlPath:', file);
-    console.log('name:', data.name);
+    this.logger.log('contractId:', data.contractId);
+    this.logger.log('urlPath:', file);
+    this.logger.log('name:', data.name);
     return await this.contractLogService.updateContractLogBanner({
       bannerId: data.contractId,
       urlPath: file,
@@ -2123,8 +2350,8 @@ export class AppController {
     @Body() data: { contractId: number; name?: string },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ urlContract: string }> {
-    console.log('contractId:', data.contractId);
-    console.log('urlPath:', file);
+    this.logger.log('contractId:', data.contractId);
+    this.logger.log('urlPath:', file);
     return await this.contractLogService.uploadSignedContract({
       bannerId: data.contractId,
       urlPath: file,
@@ -2136,7 +2363,7 @@ export class AppController {
   async getContractCompanyDays(
     @Body() body: { companyDayId?: number | 'all' },
   ): Promise<ContractLogCompanyDay[] | ContractLogCompanyDay | null> {
-    console.log(body);
+    this.logger.log(body);
     return await this.contractLogService.getContractCompanyDays(
       body.companyDayId,
     );
@@ -2162,11 +2389,20 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/replace-product')
   async ReplaceProduct(
-    @Body() data: { pro_code: string; replace_pro_code: string },
+    @Body()
+    data: {
+      pro_code: string;
+      replace_pro_code: string;
+      note?: string;
+      date_end?: Date;
+    },
   ) {
+    this.logger.log('data:', data);
     return await this.recommendService.AddReplaceProduct(
       data.pro_code,
       data.replace_pro_code,
+      data?.note,
+      data?.date_end,
     );
   }
 
@@ -2198,7 +2434,7 @@ export class AppController {
       productsToOrder?: string;
     },
   ): Promise<ContractLogCompanyDay> {
-    console.log(data);
+    this.logger.log(data);
     return await this.contractLogService.createContractLogCompanyDay(data);
   }
 
@@ -2219,7 +2455,7 @@ export class AppController {
     name?: string;
     image?: string;
   }> {
-    console.log(data);
+    this.logger.log(data);
     return await this.contractLogService.updateContractLogCompanyDay({
       companyId: data.contractId,
       urlPath: file,
@@ -2235,8 +2471,8 @@ export class AppController {
     @Body() data: { contractId: number },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ urlContract: string }> {
-    console.log('contractId:', data.contractId);
-    console.log('urlPath:', file);
+    this.logger.log('contractId:', data.contractId);
+    this.logger.log('urlPath:', file);
     return await this.contractLogService.uploadSignedContractCompanyDays({
       companyId: data.contractId,
       urlPath: file,
@@ -2258,7 +2494,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/policy/option-catagory')
   async findOptionCatagoryPolicy(@Body('name') name?: string) {
-    console.log('Policy category name:', name);
+    this.logger.log('Policy category name:', name);
     return await this.policyDocService.findOptionCatagoryPolicy(name);
   }
 
@@ -2267,7 +2503,7 @@ export class AppController {
   async savePolicyDoc(
     @Body() data: { content: string; category: number; type: number },
   ) {
-    console.log('Received policy document data:', data);
+    this.logger.log('Received policy document data:', data);
 
     if (!data) {
       throw new Error('Missing form data. Please send category and type.');
@@ -2281,7 +2517,6 @@ export class AppController {
   @Get('/ecom/policy/check-policy')
   async ensureUserHasPolicyMember(@Req() req: Request & { user: JwtPayload }) {
     const mem_code = req.user.mem_code;
-    console.log('Checking policy for member code:', mem_code);
     return await this.policyDocService.checkAndGetCorrectPolicy(mem_code);
   }
 
@@ -2292,10 +2527,27 @@ export class AppController {
     @Body() body: { policyID: number },
   ): Promise<PolicyDocMember | void | { message: string }> {
     const mem_code = req.user.mem_code;
-    console.log('Member code agreeing to policy:', mem_code);
-    console.log('Policy document ID:', body);
+    this.logger.log('Member code agreeing to policy:', mem_code);
+    this.logger.log('Policy document ID:', body);
     return await this.policyDocService.agreePolicyDoc(mem_code, body.policyID);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/policy/all-policies')
+  async getAllPolicies(): Promise<
+    {
+      policyID: number;
+      category: {
+        policyCatagoryId: number;
+        nameCatagory: string;
+      };
+      content: string;
+      latestVersion: string;
+    }[]
+  > {
+    return await this.policyDocService.getAllPolicies();
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns')
   async getAllCampaigns() {
@@ -2510,7 +2762,7 @@ export class AppController {
     @Body() body: { pro_code: string },
   ) {
     try {
-      console.log('Adding product to row:', {
+      this.logger.log('Adding product to row:', {
         campaignId,
         rowId,
         pro_code: body.pro_code,
@@ -2540,7 +2792,7 @@ export class AppController {
     @Body() body: { pro_code: string },
   ) {
     try {
-      console.log('Removing product from row:', {
+      this.logger.log('Removing product from row:', {
         campaignId,
         rowId,
         pro_code: body.pro_code,
@@ -2609,7 +2861,7 @@ export class AppController {
     },
   ) {
     try {
-      console.log('Updating promo reward:', {
+      this.logger.log('Updating promo reward:', {
         campaignId,
         rowId,
         rewardId,
@@ -2678,16 +2930,135 @@ export class AppController {
     }
   }
 
-  @Post('/app-version/version/get')
-  async getVersion(@Body() data: { version: string; os: string }) {
-    console.log('Get version request data:', data);
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/upload-reward-image')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadRewardImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { reward_id: string },
+  ) {
     try {
-      return this.appVersion.getLatestVersion(data.version, data.os);
+      const url = await this.campaignsService.uploadRewardImage(
+        file,
+        body.reward_id,
+      );
+      return { success: true, data: { url } };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPLOAD_REWARD_IMAGE_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/upload-image')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadCampaignImage(@UploadedFile() file: Express.Multer.File) {
+    try {
+      const url = await this.campaignsService.uploadImage(file);
+      return { success: true, data: { url } };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPLOAD_IMAGE_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/purchase-products')
+  async getPurchaseProducts(@Param('campaignId') campaignId: string) {
+    try {
+      const items = await this.campaignsService.getPurchaseProducts(campaignId);
+      return { success: true, data: items };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'GET_PURCHASE_PRODUCTS_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/purchase-products')
+  async createPurchaseProduct(
+    @Param('campaignId') campaignId: string,
+    @Body() body: { name: string },
+  ) {
+    try {
+      const item = await this.campaignsService.createPurchaseProduct(
+        campaignId,
+        body.name,
+      );
+      return { success: true, data: item };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'CREATE_PURCHASE_PRODUCT_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/campaigns/:campaignId/purchase-products/:productId')
+  async updatePurchaseProduct(
+    @Param('campaignId') campaignId: string,
+    @Param('productId') productId: string,
+    @Body() body: { name?: string; img_url?: string },
+  ) {
+    try {
+      await this.campaignsService.updatePurchaseProduct(
+        campaignId,
+        productId,
+        body,
+      );
+      return { success: true };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'UPDATE_PURCHASE_PRODUCT_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/purchase-products/:productId')
+  async deletePurchaseProduct(
+    @Param('campaignId') campaignId: string,
+    @Param('productId') productId: string,
+  ) {
+    try {
+      await this.campaignsService.deletePurchaseProduct(campaignId, productId);
+      return { success: true };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'DELETE_PURCHASE_PRODUCT_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/purchase-products/:productId/upload-image')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadPurchaseProductImage(
+    @Param('campaignId') campaignId: string,
+    @Param('productId') productId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    try {
+      const url = await this.campaignsService.uploadPurchaseProductImage(
+        campaignId,
+        productId,
+        file,
+      );
+      return { success: true, data: { url } };
     } catch {
       throw new HttpException(
         {
           success: false,
-          error: { code: 'GET_VERSION_FAILED' },
+          error: { code: 'UPLOAD_PURCHASE_PRODUCT_IMAGE_FAILED' },
         },
         HttpStatus.BAD_REQUEST,
       );
@@ -2695,29 +3066,1136 @@ export class AppController {
   }
 
   // @UseGuards(JwtAuthGuard)
-  @Post('/app-version/version/update')
-  async postVersion(
+  @Post('/campaigns/generate-poster')
+  async generatePoster(
     @Body()
-    data: {
-      latestVersionAndroid: string;
-      latestVersionIOS: string;
-      forceUpdateAndroid: boolean;
-      forceUpdateIOS: boolean;
-      androidStoreUrl?: string;
-      iosStoreUrl?: string;
-      note?: string;
+    body: {
+      prompt: string;
+      aspectRatio: string;
+      imageItems: {
+        url: string;
+        name: string;
+        quantity: number;
+        unit: string;
+      }[];
+      session_cookies: string;
     },
   ) {
+    return await this.campaignsService.generatePoster(
+      body.prompt,
+      body.aspectRatio,
+      body.imageItems ?? [],
+      body.session_cookies,
+    );
+  }
+
+  @Post('/campaigns/get-response-id/:requestId')
+  async getResponseId(
+    @Param('requestId') requestId: string,
+    @Body() body: { session_cookies?: string },
+  ) {
+    return await this.campaignsService.getAllResults(
+      requestId,
+      body.session_cookies,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/columns')
+  async getRewardColumns(@Param('campaignId') campaignId: string) {
+    const columns = await this.campaignsService.getRewardColumns(campaignId);
+    return { success: true, data: columns };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/campaigns/:campaignId/columns/:columnId')
+  async updateRewardColumnValuePerUnit(
+    @Param('campaignId') campaignId: string,
+    @Param('columnId') columnId: string,
+    @Body() body: { value_per_unit: number },
+  ) {
+    await this.campaignsService.updateRewardColumnValuePerUnit(
+      campaignId,
+      columnId,
+      body.value_per_unit,
+    );
+    return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/poster-history')
+  async savePosterHistory(
+    @Param('rowId') rowId: string,
+    @Body() body: { img_url: string },
+  ) {
     try {
-      return this.appVersion.insertLastestVersion(data);
+      const result = await this.campaignsService.savePosterHistory(
+        rowId,
+        body.img_url,
+      );
+      return { success: true, data: result };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'SAVE_POSTER_HISTORY_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links')
+  async addBannerLink(
+    @Param('historyId') historyId: string,
+    @Body()
+    body: {
+      img_url: string;
+      banner_name?: string;
+      banner_location: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
+      date_start: Date;
+      date_end: Date;
+    },
+  ) {
+    const banner = await this.bannerService.createBannerFromUrl(body.img_url, {
+      date_start: body.date_start,
+      date_end: body.date_end,
+      banner_name: body.banner_name,
+      banner_location: body.banner_location,
+    });
+    try {
+      const link = await this.campaignsService.addBannerLink(
+        historyId,
+        banner.banner_id,
+        body.banner_location,
+      );
+      return { success: true, data: link };
+    } catch {
+      // rollback: ลบ banner ที่สร้างไปแล้วถ้า link สร้างไม่สำเร็จ
+      await this.bannerService.deleteBannerById(banner.banner_id);
+      throw new HttpException(
+        { success: false, error: { code: 'ADD_BANNER_LINK_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId')
+  async removeBannerLink(@Param('linkId') linkId: string) {
+    try {
+      const bannerId = await this.campaignsService.removeBannerLink(linkId);
+      // ลบแค่ record ใน DB — ไม่ลบไฟล์ใน DO Spaces เพราะ URL เดียวกับ poster history
+      await this.bannerService.deleteBannerRecordOnly(bannerId);
+      return { success: true };
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, error: { code: 'REMOVE_BANNER_LINK_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/campaigns/:campaignId/data/:rowId/poster-history')
+  async getPosterHistory(@Param('rowId') rowId: string) {
+    try {
+      const items = await this.campaignsService.getPosterHistory(rowId);
+      return { success: true, data: items };
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'GET_POSTER_HISTORY_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('/campaigns/proxy-image')
+  async proxyImage(@Query('url') url: string, @Res() res: Response) {
+    if (!url || !url.startsWith('https://ideogram.ai/')) {
+      res.status(400).json({ error: 'Invalid URL' });
+      return;
+    }
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+    });
+    const ext = url.includes('.png') ? 'png' : 'jpg';
+    res.setHeader(
+      'Content-Type',
+      (response.headers['content-type'] as string) ?? 'image/jpeg',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="poster.${ext}"`,
+    );
+    res.send(Buffer.from(response.data));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/products-banner')
+  async searchProductsBanner(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.searchProductsBanner();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/data/get-creditor')
+  async getCreditors(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.productsService.getCreditors();
+  }
+
+  @Get('/ecom/track-order/:sh_running')
+  async trackOrder(@Param('sh_running') sh_running: string) {
+    try {
+      return this.trackOrderService.getOrderLocation(sh_running);
     } catch {
       throw new HttpException(
         {
           success: false,
-          error: { code: 'POST_VERSION_FAILED' },
+          error: { code: 'TRACK_ORDER_FAILED' },
         },
         HttpStatus.BAD_REQUEST,
       );
     }
   }
+
+  // ========== Product Return APIs ==========
+
+  // Customer: Get eligible orders for return
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/eligible-orders/:mem_code')
+  async getEligibleOrders(@Param('mem_code') mem_code: string) {
+    try {
+      return await this.productReturnService.getEligibleOrders(mem_code);
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Get order items for return selection
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/order-items/:soh_running')
+  async getOrderItemsForReturn(
+    @Param('soh_running') soh_running: string,
+    @Req() req: { user: JwtPayload },
+  ) {
+    try {
+      return await this.productReturnService.getOrderItems(
+        soh_running,
+        req.user.mem_code,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Create return request
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/returns/create')
+  async createReturn(
+    @Body()
+    data: {
+      soh_id: number;
+      mem_code: string;
+      reason: ReturnReason;
+      reason_detail?: string;
+      resolution_type: ResolutionType;
+      items: {
+        pro_code: string;
+        qty: number;
+        unit: string;
+        price_per_unit: number;
+        item_reason?: string;
+        expiry_date?: string;
+      }[];
+      notes?: string;
+    },
+  ) {
+    try {
+      return await this.productReturnService.createReturn({
+        ...data,
+        initiator_type: InitiatorType.CUSTOMER,
+      });
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Upload evidence images
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/returns/:return_id/images')
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'files', maxCount: 5 }]))
+  async uploadReturnImages(
+    @Param('return_id') return_id: string,
+    @UploadedFile() files: Express.Multer.File[],
+    @Body('description') description?: string,
+  ) {
+    try {
+      return await this.productReturnService.uploadImages(
+        parseInt(return_id),
+        files || [],
+        description,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Submit return request
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/returns/:return_id/submit')
+  async submitReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+  ) {
+    try {
+      return await this.productReturnService.submitReturn(
+        parseInt(return_id),
+        req.user.mem_code,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Get my returns
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/my-returns/:mem_code')
+  async getMyReturns(
+    @Param('mem_code') mem_code: string,
+    @Query('status') status?: ReturnStatus,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      return await this.productReturnService.getMyReturns(mem_code, {
+        status,
+        limit: limit ? parseInt(limit) : undefined,
+        offset: offset ? parseInt(offset) : undefined,
+      });
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Get return detail
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/returns/:return_id')
+  async getReturnDetail(@Param('return_id') return_id: string) {
+    try {
+      return await this.productReturnService.getReturnDetail(
+        parseInt(return_id),
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Customer: Delete draft return
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/returns/:return_id')
+  async deleteDraftReturn(
+    @Param('return_id') return_id: string,
+    @Req() req: { user: JwtPayload },
+  ) {
+    try {
+      return await this.productReturnService.deleteDraftReturn(
+        parseInt(return_id),
+        req.user.mem_code,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // ========== Behavior Tracking APIs ==========
+  // Track single event
+  // @Post('/ecom/tracking/event')
+  // async trackEvent(
+  //   @Body() data: TrackEventDto,
+  //   @Ip() ip: string,
+  //   @Req() req: Request & { user: JwtPayload },
+  // ) {
+  //   try {
+  //     data.ip_address = ip;
+  //     data.user_agent = req.headers['user-agent'];
+  //     return await this.behaviorTrackingService.trackEvent(data);
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
+
+  // // Track batch events
+  // @Post('/ecom/tracking/batch')
+  // async trackBatch(
+  //   @Body() data: BatchTrackDto,
+  //   @Ip() ip: string,
+  //   @Req() req: Request & { user: JwtPayload },
+  // ) {
+  //   try {
+  //     // Add IP and user agent to all events
+  //     const userAgent = req.headers['user-agent'];
+  //     data.events = data.events.map((e) => ({
+  //       ...e,
+  //       ip_address: ip,
+  //       user_agent: userAgent,
+  //     }));
+  //     return await this.behaviorTrackingService.trackBatch(data);
+  //   } catch (error: unknown) {
+  //     throw new HttpException(
+  //       {
+  //         success: false,
+  //         message:
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'An unknown error occurred',
+  //       },
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
+  // }
+
+  // Get user behavior (for personalization)
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/tracking/user/:mem_code')
+  async getUserBehavior(
+    @Param('mem_code') mem_code: string,
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    try {
+      return await this.behaviorTrackingService.getUserBehavior(
+        mem_code,
+        from_date,
+        to_date,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get product analytics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/product/:pro_code')
+  async getProductAnalytics(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('pro_code') pro_code: string,
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getProductAnalytics(
+        pro_code,
+        from_date,
+        to_date,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get search analytics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/searches')
+  async getSearchAnalytics(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getSearchAnalytics(
+        from_date,
+        to_date,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get dashboard stats
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/dashboard')
+  async getTrackingDashboard(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getDashboardStats(
+        from_date,
+        to_date,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get daily trend
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/daily-trend')
+  async getDailyTrend(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getDailyTrend(
+        from_date,
+        to_date,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get top products
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/top-products')
+  async getTopProducts(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getTopProducts(
+        from_date,
+        to_date,
+        limit ? parseInt(limit) : 10,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get recent activity feed
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/recent-activity')
+  async getRecentActivity(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getRecentActivity(
+        limit ? parseInt(limit) : 50,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get user journeys
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/user-journeys')
+  async getUserJourneys(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getUserJourneys(
+        limit ? parseInt(limit) : 20,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get zero result searches
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/zero-result-searches')
+  async getZeroResultSearches(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date?: string,
+    @Query('to_date') to_date?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getZeroResultSearches(
+        from_date,
+        to_date,
+        limit ? parseInt(limit) : 30,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get stock alerts based on demand
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/stock-alerts')
+  async getStockAlerts(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getStockAlerts(
+        days ? parseInt(days) : 7,
+        limit ? parseInt(limit) : 20,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get cart conversion analytics
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/cart-analytics')
+  async getCartConversionAnalytics(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getCartConversionAnalytics(
+        days ? parseInt(days) : 30,
+        limit ? parseInt(limit) : 20,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get customer segments
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/customer-segments')
+  async getCustomerSegments(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getCustomerSegments(
+        days ? parseInt(days) : 90,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get retention analysis
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/retention')
+  async getRetentionAnalysis(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('weeks') weeks?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getRetentionAnalysis(
+        weeks ? parseInt(weeks) : 8,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get repeat purchase patterns
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/repeat-purchases')
+  async getRepeatPurchasePatterns(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getRepeatPurchasePatterns(
+        days ? parseInt(days) : 180,
+      );
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get purchase interval box plot data
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/purchase-intervals-boxplot')
+  async getPurchaseIntervalBoxPlot(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('days') days?: string,
+    @Query('group_by') groupBy?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    try {
+      return await this.behaviorTrackingService.getPurchaseIntervalBoxPlot(
+        days ? parseInt(days) : 180,
+        (groupBy as 'overall' | 'product' | 'segment' | 'month') || 'overall',
+      );
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unknown error occurred',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // Admin: Get user journey sankey
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/tracking/user-journey-sankey')
+  async getUserJourneySankey(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('from_date') from_date: string,
+    @Query('to_date') to_date: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.behaviorTrackingService.getUserJourneySankey(
+      from_date,
+      to_date,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/change-role/:mem_code')
+  async changeUserRole(
+    @Param('mem_code') mem_code: string,
+    @Body('newRole') newRole: 'User' | 'Admin' | 'Sales',
+  ) {
+    this.logger.log('Changing user role for mem_code:', mem_code);
+    return await this.usersService.changeUserRole(mem_code, newRole);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/get-notification-rt/:mem_code')
+  async getRTNotifications(@Param('mem_code') mem_code: string) {
+    return await this.notifyRtService.getRTOrdersInTheLast3Days(mem_code);
+  }
+
+  @Post('/ecom/update-notification-rt')
+  async updateRTNotification(
+    @Body() data: { soh_running: string; pro_code: string },
+  ) {
+    this.logger.log('Updating RT notification with data:', data);
+    return await this.notifyRtService.updateRTStatus(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/qc/add-token-for-notification')
+  async addTokenForNotification(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { token: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.notifyRtService.addTokenForNotification({
+      mem_code,
+      token: body.token,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/qc/remove-token-for-notification')
+  async removeTokenForNotification(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { token: string },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.notifyRtService.removeTokenForNotification({
+      mem_code,
+      token: body.token,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/hotdeal/upload-banner')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadHotdealBanner(
+    @Body() body: { id: number },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.hotdealService.uploadBannerHotdeal(file, body.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/hotdeal/get-banner')
+  async getHotdealBanner() {
+    return await this.hotdealService.getAllHotdealsWithBanners();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/ecom/admin/hotdeal/delete-banner/:id')
+  async deleteHotdealBanner(@Param('id') id: number) {
+    return await this.hotdealService.deleteBannerHotdeal(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/replace-product')
+  async getReplacementProduct(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return await this.recommendService.getAllReplaceProducts(page, limit);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('ecom/promotion/update-tier-poster')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateTierPoster(
+    @Body('tier_id') tier_id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.promotionService.updateTierPoster(Number(tier_id), file);
+  }
+
+  @Post('/ecom/get-tier-price')
+  async getTierPrice(@Body() body: { sh_running: string; pro_code: string }) {
+    return await this.shoppingOrderService.checkOrderTurnBackReward(
+      body.sh_running,
+      body.pro_code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/hotdeal/:pro_code')
+  async getHotdealByProCode(
+    @Param('pro_code') pro_code: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    return await this.hotdealService.getHotdealFromproCode(pro_code, mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/hotdeal/add-other-product')
+  async createHotdeal(
+    @Body()
+    body: {
+      freebies: {
+        pro_code: string;
+        unit: string;
+        amount: number;
+        pro_code1: string;
+      }[];
+    },
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const mem_code = req.user.mem_code;
+    this.logger.log('Creating hotdeal with data:', {
+      mem_code,
+      freebies: body.freebies,
+    });
+    const results = await this.shoppingCartService.addHotdealToCart(
+      mem_code,
+      body.freebies,
+    );
+    return results;
+  }
+
+  @Get('/ecom/get-product-image/:pro_code')
+  async getProductImage(@Param('pro_code') pro_code: string) {
+    try {
+      const product =
+        await this.productsService.getProductImageByCode(pro_code);
+      if (!product) {
+        throw new HttpException(
+          {
+            success: false,
+            error: { code: 'PRODUCT_NOT_FOUND' },
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      return product;
+    } catch {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: 'GET_PRODUCT_IMAGE_FAILED' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/trigger/check-promotion-company-day')
+  async triggerCheckPromotionCompanyDay() {
+    await this.shoppingCartService.callCheckCartPromotion();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/product-search-autocomplete')
+  async productSearchAutoComplete(@Query('search') search: string) {
+    try {
+      return await this.productsService.searchExternalProducts(search);
+    } catch {
+      throw new HttpException(
+        { success: false, error: { code: 'PRODUCT_SEARCH_FAILED' } },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
 }

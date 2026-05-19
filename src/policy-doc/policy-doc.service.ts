@@ -182,10 +182,16 @@ export class PolicyDocService {
     for (const category of policyCategories) {
       // วนลูปผ่านแต่ละหัวข้อของนโยบาย
       console.log('category:', category);
+
+      // ถ้า category ยังไม่มี lastPolicy ให้ข้ามไป
+      if (!category.lastPolicy) {
+        continue;
+      }
+
       const hasAgreed = latestPolicies.some(
         (policyMember) =>
           policyMember.policyCategoryId === category.policyCatagoryId &&
-          policyMember.policyDoc.version === category.lastPolicy.version,
+          policyMember.policyDoc?.version === category.lastPolicy.version,
       ); // ตรวจสอบว่าผู้ใช้ได้ยอมรับนโยบายล่าสุดหรือไม่ เที่ยบกับ ตาราง PolicyDocMember(นโยบายที่ลูกค้าเคยอ่าน) และ PolicyDocCatagory(นโยบายล่าสุด)
       console.log(
         'hasAgreed status for category',
@@ -205,14 +211,59 @@ export class PolicyDocService {
           latestVersion: category.lastPolicy.version,
         });
       } else {
-        // ถ้าผู้ใช้ได้ยอมรับนโยบายล่าสุดแล้ว
-        console.log(
-          `User has agreed to latest policy for category ${category.nameCatagory}:`,
-          hasAgreed,
-        );
+        // ถ้าผู้ใช้ได้ยอมรับนโยบายล่าสุดแล้
       }
     }
     // ส่งกลับผลลัพธ์ที่ประกอบด้วยนโยบายที่ผู้ใช้ยังไม่ได้ยอมรับ
+    return finalResult;
+  }
+
+  async getAllPolicies(): Promise<
+    {
+      policyID: number;
+      category: {
+        policyCatagoryId: number;
+        nameCatagory: string;
+      };
+      content: string;
+      latestVersion: string;
+    }[]
+  > {
+    console.log('Getting all policies');
+
+    const policyCategories = await this.policyDocCatagoryRepository.find({
+      relations: ['lastPolicy'],
+      select: ['policyCatagoryId', 'nameCatagory'],
+    });
+
+    const finalResult: {
+      policyID: number;
+      category: {
+        policyCatagoryId: number;
+        nameCatagory: string;
+      };
+      content: string;
+      latestVersion: string;
+    }[] = [];
+
+    for (const category of policyCategories) {
+      console.log('category:', category);
+
+      if (!category.lastPolicy) {
+        console.log(`
+          Skipping category ${category.nameCatagory} - no lastPolicy`);
+        continue;
+      }
+      finalResult.push({
+        policyID: category.lastPolicy.policyId,
+        category: {
+          policyCatagoryId: category.policyCatagoryId,
+          nameCatagory: category.nameCatagory,
+        },
+        content: category.lastPolicy.content,
+        latestVersion: category.lastPolicy.version,
+      });
+    }
     return finalResult;
   }
 }

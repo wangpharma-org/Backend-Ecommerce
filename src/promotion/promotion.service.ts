@@ -1,5 +1,5 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
 import {
@@ -8,7 +8,6 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
-  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -19,6 +18,7 @@ import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
 import { AuthService } from 'src/auth/auth.service';
 import { ProductEntity } from 'src/products/products.entity';
+import { UserEntity } from 'src/users/users.entity';
 
 @Injectable()
 export class PromotionService {
@@ -40,12 +40,31 @@ export class PromotionService {
     private readonly authService: AuthService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
       accessKeyId: process.env.DO_SPACES_KEY,
       secretAccessKey: process.env.DO_SPACES_SECRET,
     });
+  }
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
   }
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
@@ -176,6 +195,8 @@ export class PromotionService {
           'tier.description',
           'tier.tier_postter',
           'tier.detail',
+          'promotion.promo_id',
+          'promotion.promo_name',
 
           'condition.cond_id',
 
@@ -232,11 +253,13 @@ export class PromotionService {
     }
   }
 
-  async getAllTiers() {
-    const Today = new Date();
-    const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+  async getAllTiers(mem_code?: string, mem_route?: string) {
     try {
+      const Today = new Date();
+      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
@@ -245,28 +268,58 @@ export class PromotionService {
             end_date: MoreThanOrEqual(endOfDay),
           },
         },
-      });
-      const reward = await this.promotionRewardRepo.find({
-        where: {
-          tier: {
-            tier_id: In(poster.map((p) => p.tier_id)),
-          },
-        },
         relations: {
-          tier: true,
-          giftProduct: true,
+          promotion: true,
         },
         select: {
-          tier: {
-            tier_id: true,
-          },
-          giftProduct: {
-            pro_code: true,
-            pro_name: true,
-            pro_imgmain: true,
+          tier_id: true,
+          tier_name: true,
+          tier_postter: true,
+          min_amount: true,
+          description: true,
+          all_products: true,
+          promotion: {
+            promo_id: true,
+            promo_name: true,
           },
         },
       });
+
+      if (!poster.length) {
+        console.log('No active promotions found');
+        return { poster: [], reward: [] };
+      }
+
+      const tierIds = poster
+        .map((p) => p.tier_id)
+        .filter((id): id is number => id !== undefined && id !== null);
+      if (!tierIds.length) {
+        console.log('No tier IDs found for active promotions');
+        return { poster, reward: [] };
+      }
+
+      const rewardQuery = this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoinAndSelect('reward.tier', 'tier')
+        .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+        .where('tier.tier_id IN (:...tierIds)', {
+          tierIds,
+        })
+        .select([
+          'reward',
+          'tier.tier_id',
+          'giftProduct.pro_code',
+          'giftProduct.pro_name',
+          'giftProduct.pro_imgmain',
+        ]);
+
+      if (isL16) {
+        rewardQuery.andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+      }
+
+      const reward = await rewardQuery.getMany();
 
       const limitedReward = Object.values(
         reward.reduce(
@@ -281,8 +334,9 @@ export class PromotionService {
       ).flat();
 
       return { poster, reward: limitedReward };
-    } catch {
-      throw new Error(`Failed to get tiers`);
+    } catch (error) {
+      console.error('Error in getAllTiers:', error);
+      throw new Error(`Failed to get tiers: ${error}`);
     }
   }
 
@@ -399,6 +453,7 @@ export class PromotionService {
     description?: string;
     detail?: string;
     file: Express.Multer.File;
+    is_unit_based?: boolean;
   }) {
     // console.log(data);
     try {
@@ -430,6 +485,7 @@ export class PromotionService {
         promotion: promotion,
         tier_postter: imgData.Location,
         detail: data.detail,
+        is_unit: data.is_unit_based,
       });
       await this.promotionTierRepo.save(newTier);
     } catch {
@@ -453,9 +509,9 @@ export class PromotionService {
     }
   }
 
-  deleteTier(tier_id: number) {
+  async deleteTier(tier_id: number) {
     try {
-      return this.promotionTierRepo.delete({ tier_id });
+      return await this.promotionTierRepo.softDelete({ tier_id });
     } catch {
       throw new Error(`Failed to delete tier`);
     }
@@ -469,7 +525,7 @@ export class PromotionService {
       if (!promotion) {
         throw new Error(`Promotion with id ${promo_id} not found`);
       }
-      await this.promotionRepo.remove(promotion);
+      await this.promotionRepo.softDelete({ promo_id });
     } catch {
       throw new Error(`Failed to delete promotion`);
     }
@@ -477,13 +533,51 @@ export class PromotionService {
 
   async createCondition(data: { tier_id: number; product_gcode: string }) {
     try {
+      const tireIsUnit = await this.promotionConditionRepo
+        .createQueryBuilder('condition')
+        .leftJoin('condition.tier', 'tier')
+        .leftJoin('condition.product', 'product')
+        .where('product.pro_code = :pro_code', {
+          pro_code: data.product_gcode,
+        })
+        .andWhere('tier.is_unit = :is_unit', { is_unit: true })
+        .getMany();
+
+      if (tireIsUnit.length > 0)
+        throw new NotFoundException(
+          'Some promotion tire is unit based, cannot add product condition to this tire',
+        );
+
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        relations: ['promotion'],
+      });
+
+      const findTierisProduct = await this.promotionTierRepo
+        .createQueryBuilder('tier')
+        .leftJoin('tier.promotion', 'promotion')
+        .where('tier.all_products = true')
+        .andWhere('tier.promotion.promo_id = :promo_id', {
+          promo_id: tier?.promotion?.promo_id,
+        })
+        .getMany();
+
+      if (findTierisProduct.length > 0)
+        throw new NotFoundException(
+          'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
+        );
+
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
         product: { pro_code: data.product_gcode },
       } as DeepPartial<PromotionConditionEntity>);
       await this.promotionConditionRepo.save(newCondition);
-    } catch {
-      throw new Error(`Failed to create condition`);
+    } catch (error) {
+      console.error(error);
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : `Failed to create condition`,
+      );
     }
   }
 
@@ -535,28 +629,40 @@ export class PromotionService {
     }
   }
 
-  async getRewardsByTier(tier_id: number) {
+  async getRewardsByTier(
+    tier_id: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
     try {
-      return await this.promotionRewardRepo.find({
-        where: { tier: { tier_id } },
-        relations: { giftProduct: true },
-        select: {
-          reward_id: true,
-          qty: true,
-          unit: true,
-          giftProduct: {
-            pro_code: true,
-            pro_name: true,
-            pro_genericname: true,
-            pro_imgmain: true,
-            pro_unit1: true,
-            pro_unit2: true,
-            pro_unit3: true,
-            free_product_count: true,
-            free_product_limit: true,
-          },
-        },
-      });
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+
+      const query = this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+        .where('reward.tier_id = :tier_id', { tier_id })
+        .select([
+          'reward.reward_id',
+          'reward.qty',
+          'reward.unit',
+          'giftProduct.pro_code',
+          'giftProduct.pro_name',
+          'giftProduct.pro_genericname',
+          'giftProduct.pro_imgmain',
+          'giftProduct.pro_unit1',
+          'giftProduct.pro_unit2',
+          'giftProduct.pro_unit3',
+          'giftProduct.free_product_count',
+          'giftProduct.free_product_limit',
+        ]);
+
+      if (isL16) {
+        query.andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+      }
+
+      return await query.getMany();
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get rewards by tier`);
@@ -702,6 +808,23 @@ export class PromotionService {
 
   async setAllProducts(tier_id: number, status: boolean) {
     try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+        relations: ['promotion'],
+      });
+
+      const findTierisNotProduct = await this.promotionTierRepo
+        .createQueryBuilder('tier')
+        .leftJoin('tier.promotion', 'promotion')
+        .where('tier.all_products = false')
+        .andWhere('tier.promotion.promo_id = :promo_id', {
+          promo_id: tier?.promotion?.promo_id,
+        })
+        .getMany();
+
+      if (findTierisNotProduct.length > 1)
+        return 'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active';
+
       if (status === true) {
         await this.promotionConditionRepo.delete({ tier: { tier_id } });
         await this.promotionTierRepo.update(tier_id, {
@@ -748,11 +871,14 @@ export class PromotionService {
         .andWhere('promotion.end_date >= :startOfDay', { startOfDay })
         .select([
           'condition.cond_id',
+          'promotion.promo_id',
+          'promotion.promo_name',
           'tier.tier_id',
           'tier.tier_name',
           'tier.min_amount',
           'tier.description',
           'tier.tier_postter',
+          'tier.is_unit',
 
           // เงื่อนไขใน tier
           'tier_conditions.cond_id',
@@ -814,29 +940,56 @@ export class PromotionService {
             end_date: MoreThanOrEqual(endOfDay),
           },
         },
+        relations: {
+          promotion: true,
+        },
+        select: {
+          tier_id: true,
+          tier_name: true,
+          tier_postter: true,
+          min_amount: true,
+          description: true,
+          all_products: true,
+          promotion: {
+            promo_id: true,
+            promo_name: true,
+          },
+        },
       });
     } catch {
       throw new Error(`Failed to get tier with all products`);
     }
   }
 
-  async getRewardByTierId(tier_id: number) {
+  async getRewardByTierId(
+    tier_id: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
     try {
-      return await this.promotionRewardRepo.find({
-        where: { tier: { tier_id } },
-        relations: { giftProduct: true },
-        select: {
-          reward_id: true,
-          qty: true,
-          unit: true,
-          giftProduct: {
-            pro_code: true,
-            pro_name: true,
-            pro_genericname: true,
-            pro_imgmain: true,
-          },
-        },
-      });
+      const isL16 = await this.isL16Member(mem_code, mem_route);
+
+      const rewardQuery = this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
+        .where('reward.tier.tier_id = :tier_id', { tier_id })
+        .select([
+          'reward.reward_id',
+          'reward.qty',
+          'reward.unit',
+          'giftProduct.pro_code',
+          'giftProduct.pro_name',
+          'giftProduct.pro_genericname',
+          'giftProduct.pro_imgmain',
+        ]);
+
+      if (isL16) {
+        rewardQuery.andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+      }
+
+      return await rewardQuery.getMany();
     } catch (error) {
       console.error(error);
       throw new Error(`Failed to get reward by tier id`);
@@ -866,6 +1019,108 @@ export class PromotionService {
       );
     } catch {
       throw new Error(`Failed to update reward limit`);
+    }
+  }
+
+  async updateTierPoster(tier_id: number, file: Express.Multer.File) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+      });
+
+      if (!tier) {
+        throw new Error(`Tier with id ${tier_id} not found`);
+      }
+
+      if (!file) {
+        throw new Error('No file provided for updating tier poster');
+      }
+
+      if (tier.tier_postter) {
+        const deleteParams = {
+          Bucket: 'wang-storage',
+          Key: tier.tier_postter.split('/').slice(-1)[0],
+        };
+        await this.s3.deleteObject(deleteParams).promise();
+      }
+
+      const uploadParams = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read',
+      };
+
+      const imgData = await this.s3.upload(uploadParams).promise();
+
+      await this.promotionTierRepo.update(tier_id, {
+        tier_postter: imgData.Location,
+      });
+
+      return {
+        message: 'Tier poster updated successfully',
+        url: imgData.Location,
+      };
+    } catch (error) {
+      console.error('Error updating tier poster:', error);
+      throw new Error(`Failed to update tier poster`);
+    }
+  }
+
+  async getTierPrice(promotion_id: number, tier_id: number) {
+    try {
+      const data = await this.promotionRepo.findOne({
+        withDeleted: true,
+        where: {
+          promo_id: promotion_id,
+          tiers: {
+            tier_id: tier_id,
+          },
+        },
+        relations: {
+          tiers: true,
+        },
+        select: {
+          tiers: {
+            tier_id: true,
+            min_amount: true,
+          },
+        },
+      });
+
+      const minAmount = data?.tiers.find(
+        (t) => t.tier_id === tier_id,
+      )?.min_amount;
+
+      console.log('data : ', data);
+
+      console.log(
+        `Min amount for promotion ${promotion_id} and tier ${tier_id}:`,
+        minAmount,
+      );
+
+      return { minAmount: minAmount };
+    } catch (error) {
+      console.error(error);
+      throw new Error(`Failed to get tier price`);
+    }
+  }
+
+  async findPromotionTypeUnitBased(pro_code: string) {
+    const findCondition = await this.promotionConditionRepo
+      .createQueryBuilder('condition')
+      .leftJoin('condition.product', 'product')
+      .leftJoin('condition.tier', 'tier')
+      .where('product.pro_code = :pro_code', { pro_code })
+      .andWhere('tier.is_unit = :is_unit', { is_unit: true })
+      .select('product.pro_code')
+      .getMany();
+
+    if (findCondition) {
+      return findCondition;
+    } else {
+      return;
     }
   }
 }

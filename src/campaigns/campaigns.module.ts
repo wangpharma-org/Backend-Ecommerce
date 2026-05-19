@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
+import { IdeogramBrowserService } from './ideogram-browser.service';
 import { CampaignEntity } from './campaigns.entity';
 import { CampaignRowEntity } from './campaigns-row.entity';
 import { CampaignRewardEntity } from './campaigns-reward.entity';
 import { CampaignsPromoRewardEntity } from './campaigns-promo-reward.entity';
 import { PromoProductEntity } from './campaigns-product.entity';
+import { CampaignPurchaseProductEntity } from './campaigns-purchase-product.entity';
+import { CampaignPosterHistoryEntity } from './campaigns-poster-history.entity';
+import { CampaignPosterBannerLinkEntity } from './campaigns-poster-banner-link.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductEntity } from 'src/products/products.entity';
 
@@ -16,10 +20,13 @@ import { ProductEntity } from 'src/products/products.entity';
       CampaignRewardEntity,
       CampaignsPromoRewardEntity,
       PromoProductEntity,
+      CampaignPurchaseProductEntity,
+      CampaignPosterHistoryEntity,
+      CampaignPosterBannerLinkEntity,
       ProductEntity,
     ]),
   ],
-  providers: [CampaignsService],
+  providers: [CampaignsService, IdeogramBrowserService],
   exports: [CampaignsService],
 })
 export class CampaignsModule {}

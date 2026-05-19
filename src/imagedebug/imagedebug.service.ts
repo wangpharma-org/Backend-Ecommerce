@@ -59,6 +59,11 @@ export class ImagedebugService {
 
   @Cron('0 1 * * *', { timeZone: 'Asia/Bangkok' }) // ทุกตี 1
   async summaryItem(): Promise<Imagedebug[]> {
+    // Skip in dev mode
+    if (process.env.DISABLE_EXTERNAL_API === 'true') {
+      console.log('[DEV] summaryItem cron job skipped');
+      return [];
+    }
     try {
       const findAllItem = await this.imagedebugRepository.find({
         relations: { relatedImage: true },

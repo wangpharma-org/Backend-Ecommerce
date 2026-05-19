@@ -9,6 +9,11 @@ import { HttpModule } from '@nestjs/axios';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { SaleLogEntity } from './salelog-order.entity';
+import { UserEntity } from 'src/users/users.entity';
+import { LoggerModule } from '../logger/logger.module';
+import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
+import { PromotionModule } from 'src/promotion/promotion.module';
+import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 
 @Module({
   imports: [
@@ -19,9 +24,14 @@ import { SaleLogEntity } from './salelog-order.entity';
       ProductEntity,
       SaleLogEntity,
       PromotionRewardEntity,
+      UserEntity,
+      PromotionTierEntity,
     ]),
     ShoppingCartModule,
     HttpModule,
+    LoggerModule,
+    CompanyDayAnalyticModule,
+    PromotionModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],

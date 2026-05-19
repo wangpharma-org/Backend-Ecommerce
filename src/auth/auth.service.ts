@@ -147,6 +147,11 @@ export class AuthService {
   }
 
   async updateDataToOldSystem(data: UserEntity) {
+    // Skip external API call in dev mode
+    if (process.env.DISABLE_EXTERNAL_API === 'true') {
+      console.log('[DEV] External API call to wangpharma.com skipped');
+      return;
+    }
     try {
       const response = await lastValueFrom(
         this.httpService.post(
@@ -242,6 +247,7 @@ export class AuthService {
   async signin(data: {
     username: string;
     password: string;
+    source?: string;
   }): Promise<SigninResponse> {
     const user = await this.userService.findOne(data.username);
     if (!user) {
@@ -264,7 +270,9 @@ export class AuthService {
       mem_province: user.mem_province ?? '',
       mem_post: user.mem_post ?? '',
       mem_phone: user.mem_phone ?? '',
+      mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
+      role: user.role,
     };
 
     const payload_reflesh = {
@@ -275,9 +283,10 @@ export class AuthService {
     const access_token = await this.jwtService.signAsync(payload, {
       expiresIn: '15m',
     });
+    const refreshTokenExpiresIn = data.source === 'mobile_app' ? '7d' : '18h';
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
       secret: process.env.ACCESS_TOKEN_SECRET,
-      expiresIn: '18h',
+      expiresIn: refreshTokenExpiresIn,
     });
 
     await this.refreshTokenRepo.save({
@@ -287,7 +296,118 @@ export class AuthService {
     return { token: access_token, refresh_token: refresh_token };
   }
 
-  async refreshToken(refresh_token: string) {
+  async signinWithLineUserId(lineUserId: string): Promise<SigninResponse> {
+    const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
+
+    let memCode: string;
+    try {
+      const res = await lastValueFrom(
+        this.httpService.post<{ mem_code: string }>(
+          `${notificationUrl}/api/notifications/line/verify-user-id`,
+          { lineUserId },
+        ),
+      );
+      memCode = res.data.mem_code;
+    } catch {
+      throw new UnauthorizedException('ไม่พบบัญชีที่ผูกกับ LINE นี้');
+    }
+
+    const user = await this.userRepo.findOne({ where: { mem_code: memCode } });
+    if (!user) {
+      throw new UnauthorizedException('ไม่พบข้อมูลสมาชิก');
+    }
+
+    const payload = {
+      username: user.mem_username,
+      name: user.mem_nameSite ?? '',
+      mem_code: user.mem_code ?? '',
+      price_option: user.mem_price ?? '',
+      mem_address: user.mem_address ?? '',
+      mem_village: user.mem_village ?? '',
+      mem_alley: user.mem_alley ?? '',
+      mem_tumbon: user.mem_tumbon ?? '',
+      mem_amphur: user.mem_amphur ?? '',
+      mem_province: user.mem_province ?? '',
+      mem_post: user.mem_post ?? '',
+      mem_phone: user.mem_phone ?? '',
+      mem_route: user.mem_route ?? '',
+      permission: user.permision_admin,
+      role: user.role,
+    };
+    const payload_reflesh = {
+      username: user.mem_username,
+      name: user.mem_nameSite ?? '',
+      mem_code: user.mem_code ?? '',
+    };
+
+    const access_token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
+      secret: process.env.ACCESS_TOKEN_SECRET,
+      expiresIn: '18h',
+    });
+
+    await this.refreshTokenRepo.save({ mem_code: user.mem_code, refresh_token });
+    return { token: access_token, refresh_token };
+  }
+
+  async signinWithLine(lineAccessToken: string): Promise<SigninResponse> {
+    const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
+
+    let memCode: string;
+    try {
+      const res = await lastValueFrom(
+        this.httpService.post<{ mem_code: string }>(
+          `${notificationUrl}/api/notifications/line/verify-token`,
+          { lineAccessToken },
+        ),
+      );
+      memCode = res.data.mem_code;
+    } catch {
+      throw new UnauthorizedException('LINE token ไม่ถูกต้องหรือยังไม่ได้ผูกบัญชี');
+    }
+
+    const user = await this.userRepo.findOne({ where: { mem_code: memCode } });
+    if (!user) {
+      throw new UnauthorizedException('ไม่พบข้อมูลสมาชิก');
+    }
+
+    const payload = {
+      username: user.mem_username,
+      name: user.mem_nameSite ?? '',
+      mem_code: user.mem_code ?? '',
+      price_option: user.mem_price ?? '',
+      mem_address: user.mem_address ?? '',
+      mem_village: user.mem_village ?? '',
+      mem_alley: user.mem_alley ?? '',
+      mem_tumbon: user.mem_tumbon ?? '',
+      mem_amphur: user.mem_amphur ?? '',
+      mem_province: user.mem_province ?? '',
+      mem_post: user.mem_post ?? '',
+      mem_phone: user.mem_phone ?? '',
+      mem_route: user.mem_route ?? '',
+      permission: user.permision_admin,
+      role: user.role,
+    };
+    const payload_reflesh = {
+      username: user.mem_username,
+      name: user.mem_nameSite ?? '',
+      mem_code: user.mem_code ?? '',
+    };
+
+    const access_token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
+      secret: process.env.ACCESS_TOKEN_SECRET,
+      expiresIn: '18h',
+    });
+
+    await this.refreshTokenRepo.save({ mem_code: user.mem_code, refresh_token });
+    return { token: access_token, refresh_token };
+  }
+
+  async refreshToken(
+    refresh_token: string,
+    source: string,
+  ): Promise<SigninResponse> {
     try {
       console.log(refresh_token);
       const existingToken = await this.refreshTokenRepo.findOne({
@@ -325,7 +445,9 @@ export class AuthService {
           mem_province: user.mem_province ?? '',
           mem_post: user.mem_post ?? '',
           mem_phone: user.mem_phone ?? '',
+          mem_route: user.mem_route ?? '',
           permission: user.permision_admin,
+          role: user.role,
         };
 
         const payload_reflesh = {
@@ -336,9 +458,10 @@ export class AuthService {
         const access_token = await this.jwtService.signAsync(payload, {
           expiresIn: '15m',
         });
+        const refreshTokenExpiresIn = source === 'mobile_app' ? '7d' : '18h';
         const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
           secret: process.env.ACCESS_TOKEN_SECRET,
-          expiresIn: '18h',
+          expiresIn: refreshTokenExpiresIn,
         });
 
         await this.refreshTokenRepo.save({

@@ -37,6 +37,21 @@ import { ImagedebugModule } from './imagedebug/imagedebug.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { PolicyDocModule } from './policy-doc/policy-doc.module';
 import { AppVersionModule } from './app-version/app-version.module';
+import { LandingModule } from './landing/landing.module';
+import { TrackOrderModule } from './track-order/track-order.module';
+import { ProductReturnModule } from './product-return/product-return.module';
+import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
+import { NotifyRtModule } from './notifyapp/notifyapp.module';
+import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
+import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
+import { envValidationSchema } from './env.validation';
+import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
+
+import { MailerModule } from '@nestjs-modules/mailer';
+import { RatingModule } from './rating/rating.module';
+import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
+import { ReviewRequestModule } from './review-request/review-request.module';
+import { ProductRequestModule } from './product-request/product-request.module';
 
 @Module({
   imports: [
@@ -45,6 +60,7 @@ import { AppVersionModule } from './app-version/app-version.module';
     UsersModule,
     ConfigModule.forRoot({
       isGlobal: true,
+      validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -93,6 +109,43 @@ import { AppVersionModule } from './app-version/app-version.module';
     CampaignsModule,
     PolicyDocModule,
     AppVersionModule,
+    LandingModule,
+    TrackOrderModule,
+    ProductReturnModule,
+    BehaviorTrackingModule,
+    NotifyRtModule,
+    CompanyDayAnalyticModule,
+    LineOaMonitorModule,
+    ElasticsearchModule,
+    MailerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        transport: {
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          auth: {
+            user: configService.get<string>('EMAIL_USER'),
+            pass: configService.get<string>('EMAIL_PASS'),
+          },
+        },
+        defaults: {
+          from:
+            '"Wang System" <' + configService.get<string>('EMAIL_USER') + '>',
+        },
+        template: {
+          dir: __dirname + '/templates',
+          options: {
+            strict: true,
+          },
+        },
+      }),
+    }),
+    RatingModule,
+    LineRegisterMeetingModule,
+    ReviewRequestModule,
+    ProductRequestModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecommendEntity } from './recommend.entity';
-import { Repository, In, Not, MoreThan } from 'typeorm';
+import { Repository, Not, IsNull } from 'typeorm';
 import { ProductEntity } from 'src/products/products.entity';
+import { UserEntity } from 'src/users/users.entity';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class RecommendService {
@@ -11,7 +13,26 @@ export class RecommendService {
     private readonly recommendEntity: Repository<RecommendEntity>,
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  private async isL16Member(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<boolean> {
+    if (mem_route !== undefined && mem_route !== null) {
+      return mem_route.toUpperCase() === 'L16';
+    }
+    if (!mem_code) {
+      return false;
+    }
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_route'],
+    });
+    return member?.mem_route?.toUpperCase() === 'L16';
+  }
 
   async insertTag(tag: string) {
     try {
@@ -114,8 +135,13 @@ export class RecommendService {
     }
   }
 
-  async GetProductRecommendByCode(recommend_id: number[], mem_code: string) {
+  async GetProductRecommendByCode(
+    recommend_id: number[],
+    mem_code: string,
+    mem_route?: string,
+  ) {
     try {
+      const isL16 = await this.isL16Member(mem_code, mem_route);
       const replacedProducts: Array<{
         pro_code: string;
         pro_name: string;
@@ -152,6 +178,11 @@ export class RecommendService {
         .leftJoinAndSelect('product_flashsale.flashsale', 'flashsale')
         .where('cart.spc_id IS NOT NULL')
         .andWhere('mainProduct.pro_stock > 0')
+        .andWhere(
+          isL16
+            ? '(mainProduct.pro_l16_only = 0 OR mainProduct.pro_l16_only IS NULL)'
+            : '1=1',
+        )
         .setParameter('memCode', mem_code)
         .select([
           'mainProduct.pro_code AS pro_code',
@@ -218,6 +249,11 @@ export class RecommendService {
         .where('recommend.id IN (:...recommend_id)', { recommend_id })
         .andWhere('product.pro_stock > 0')
         .andWhere('product.recommend_rank IS NOT NULL')
+        .andWhere(
+          isL16
+            ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
+            : '1=1',
+        )
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',
@@ -252,12 +288,19 @@ export class RecommendService {
     }
   }
 
-  async AddReplaceProduct(pro_code: string, replace_pro_code: string) {
+  async AddReplaceProduct(
+    pro_code: string,
+    replace_pro_code: string,
+    note?: string,
+    date_end?: Date,
+  ) {
     try {
       await this.productEntity.update(
         { pro_code },
         {
           replace: { pro_code: replace_pro_code },
+          replace_note: note || null,
+          replace_date_exp: date_end || null,
         },
       );
     } catch (error) {
@@ -295,6 +338,66 @@ export class RecommendService {
       await this.productEntity.update({ pro_code }, { replace: null });
     } catch (error) {
       throw new Error(`Failed to remove replace product: ${error}`);
+    }
+  }
+
+  async getAllReplaceProducts(page: number, limit: number) {
+    try {
+      const [productsWithReplace, total] =
+        await this.productEntity.findAndCount({
+          where: {
+            replace: Not(IsNull()),
+          },
+          relations: {
+            replace: true,
+          },
+          select: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+            pro_imgmain: true,
+            replace_note: true,
+            replace_date_exp: true,
+            replace: {
+              pro_code: true,
+              pro_name: true,
+              pro_genericname: true,
+              pro_imgmain: true,
+            },
+          },
+          skip: (page - 1) * limit,
+          take: limit,
+        });
+      console.log('Products with replace:', productsWithReplace);
+      console.log('Total:', total);
+      return {
+        productsWithReplace,
+        pagination: {
+          total: total,
+          page: page,
+          limit: limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get all replace products: ${error}`);
+    }
+  }
+
+  @Cron('0 0 * * *', {
+    timeZone: 'Asia/Bangkok',
+  })
+  async clearExpiredReplacements() {
+    try {
+      const now = new Date();
+      await this.productEntity
+        .createQueryBuilder()
+        .update(ProductEntity)
+        .set({ replace: null, replace_note: null, replace_date_exp: null })
+        .where('replace_date_exp < :now', { now })
+        .execute();
+    } catch (error) {
+      console.error(`Failed to clear expired replacements: ${error}`);
     }
   }
 }

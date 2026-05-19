@@ -34,6 +34,21 @@ export class ShoppingOrderEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_total_decimal: number;
 
+  @Column({ type: 'boolean', default: false, nullable: true })
+  is_rt: boolean;
+
+  @Column({ type: 'date', nullable: true, default: null })
+  rt_date: Date;
+
+  @Column({ type: 'int', nullable: true })
+  promotion_id: number;
+
+  @Column({ type: 'int', nullable: true })
+  tier_id: number;
+
+  @Column({ type: 'boolean', default: false })
+  is_reward: boolean;
+
   @ManyToOne(() => ShoppingHeadEntity, (header) => header.details)
   @JoinColumn({ name: 'soh_running', referencedColumnName: 'soh_running' })
   orderHeader: ShoppingHeadEntity;

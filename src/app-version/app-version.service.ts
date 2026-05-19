@@ -1,7 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AppVersionEntity } from './app-version.entity';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
+import { CheckAppVersionDto } from './dto/check-app-version.dto';
+import { CreateAppVersionDto } from './dto/create-app-version.dto';
+import { UpdateAppVersionDto } from './dto/update-app-version.dto';
+
+export const DEFAULT_APP_VERSION_MESSAGE =
+  'เวอร์ชันนี้ไม่รองรับ กรุณาอัปเดตแอป';
 
 @Injectable()
 export class AppVersionService {
@@ -10,48 +20,115 @@ export class AppVersionService {
     private readonly appVersionRepository: Repository<AppVersionEntity>,
   ) {}
 
-  async getLatestVersion(version: string, os: string) {
-    const data = await this.appVersionRepository.findOne({
-      where: {},
-      order: { createdAt: 'DESC' },
+  async checkVersion(data: CheckAppVersionDto) {
+    const matchedRule = await this.appVersionRepository.findOne({
+      where: {
+        platform: data.os,
+        version: data.version.trim(),
+        isActive: true,
+      },
     });
 
-    if (
-      (version === data?.latestVersionAndroid && os === 'android') ||
-      (version === data?.latestVersionIOS && os === 'ios')
-    ) {
-      return { isLastest: true };
-    } else {
-      if (os === 'android') {
-        return {
-          isLastest: false,
-          latestVersion: data?.latestVersionAndroid,
-          forceUpdate: data?.forceUpdateAndroid,
-          storeUrl: data?.androidStoreUrl,
-          note: data?.note,
-        };
-      } else {
-        return {
-          isLastest: false,
-          latestVersion: data?.latestVersionIOS,
-          forceUpdate: data?.forceUpdateIOS,
-          storeUrl: data?.iosStoreUrl,
-          note: data?.note,
-        };
-      }
+    if (!matchedRule) {
+      return {
+        allowed: true,
+        forceUpdate: false,
+        message: null,
+        storeUrl: null,
+      };
+    }
+
+    return {
+      allowed: false,
+      forceUpdate: true,
+      message: matchedRule.message || DEFAULT_APP_VERSION_MESSAGE,
+      storeUrl: matchedRule.storeUrl,
+    };
+  }
+
+  async findAll() {
+    return this.appVersionRepository.find({
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
+  async create(data: CreateAppVersionDto) {
+    try {
+      const entity = this.appVersionRepository.create({
+        platform: data.platform,
+        version: data.version.trim(),
+        message: this.normalizeMessage(data.message),
+        storeUrl: data.storeUrl.trim(),
+        isActive: data.isActive ?? true,
+      });
+
+      return await this.appVersionRepository.save(entity);
+    } catch (error) {
+      this.handleDuplicate(error, data.version);
+      throw error;
     }
   }
 
-  async insertLastestVersion(data: {
-    latestVersionAndroid: string;
-    latestVersionIOS: string;
-    forceUpdateAndroid: boolean;
-    forceUpdateIOS: boolean;
-    androidStoreUrl?: string;
-    iosStoreUrl?: string;
-    note?: string;
-  }) {
-    const newVersion = this.appVersionRepository.create(data);
-    return this.appVersionRepository.save(newVersion);
+  async update(id: number, data: UpdateAppVersionDto) {
+    const existing = await this.appVersionRepository.findOne({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('App version rule not found');
+    }
+
+    try {
+      if (data.platform !== undefined) {
+        existing.platform = data.platform;
+      }
+      if (data.version !== undefined) {
+        existing.version = data.version.trim();
+      }
+      if (data.message !== undefined) {
+        existing.message = this.normalizeMessage(data.message);
+      }
+      if (data.storeUrl !== undefined) {
+        existing.storeUrl = data.storeUrl.trim();
+      }
+      if (data.isActive !== undefined) {
+        existing.isActive = data.isActive;
+      }
+
+      return await this.appVersionRepository.save(existing);
+    } catch (error) {
+      this.handleDuplicate(error, data.version ?? existing.version);
+      throw error;
+    }
+  }
+
+  async remove(id: number) {
+    const existing = await this.appVersionRepository.findOne({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('App version rule not found');
+    }
+
+    await this.appVersionRepository.remove(existing);
+    return { message: 'App version rule deleted' };
+  }
+
+  private normalizeMessage(message?: string | null) {
+    const normalized = message?.trim();
+    return normalized || DEFAULT_APP_VERSION_MESSAGE;
+  }
+
+  private handleDuplicate(error: unknown, version: string): never | void {
+    if (
+      error instanceof QueryFailedError &&
+      (error as QueryFailedError & { driverError?: { code?: string } })
+        .driverError?.code === 'ER_DUP_ENTRY'
+    ) {
+      throw new ConflictException(
+        `App version rule already exists for version ${version.trim()}`,
+      );
+    }
   }
 }
