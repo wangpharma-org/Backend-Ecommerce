@@ -1,8 +1,10 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
+  BadGatewayException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -103,6 +105,7 @@ export interface JwtPayload {
   mem_phone?: string;
   mem_route?: string;
   permission?: boolean;
+  role?: string;
 }
 
 @Controller()
@@ -1607,7 +1610,7 @@ export class AppController {
   }
 
   @Post('/ecom/admin/modal-content/save')
-  async SaveModalContent(
+  async saveModalContent(
     @Body()
     body: {
       id: number;
@@ -1616,12 +1619,12 @@ export class AppController {
       show: boolean;
     },
   ) {
-    return this.modalContentService.SaveModalContent(body);
+    return this.modalContentService.saveModalContent(body);
   }
 
   @Get('/ecom/admin/modal-content/get')
-  async GetModalContent() {
-    return this.modalContentService.GetModalContent();
+  async getModalContent() {
+    return this.modalContentService.getModalContent();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -4157,6 +4160,7 @@ export class AppController {
 
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
+    this.logger.log('Fetching product image for pro_code:', pro_code);
     try {
       const product =
         await this.productsService.getProductImageByCode(pro_code);
@@ -4197,6 +4201,17 @@ export class AppController {
         { success: false, error: { code: 'PRODUCT_SEARCH_FAILED' } },
         HttpStatus.BAD_REQUEST,
       );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/products/lotus-cards')
+  async searchLotusCards(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.searchLotusCards();
+    } else {
+      throw new ForbiddenException('You not have Permission to Accesss');
     }
   }
 }

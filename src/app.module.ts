@@ -50,7 +50,10 @@ import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { RatingModule } from './rating/rating.module';
 import { LineRegisterMeetingModule } from './line-register-meeting/line-register-meeting.module';
+import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
+import { HappyHourModule } from './happy-hour/happy-hour.module';
+import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 
 @Module({
   imports: [
@@ -116,6 +119,7 @@ import { ProductRequestModule } from './product-request/product-request.module';
     CompanyDayAnalyticModule,
     LineOaMonitorModule,
     ElasticsearchModule,
+    HappyHourModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -143,7 +147,9 @@ import { ProductRequestModule } from './product-request/product-request.module';
     }),
     RatingModule,
     LineRegisterMeetingModule,
+    ReviewRequestModule,
     ProductRequestModule,
+    WatermarkAuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

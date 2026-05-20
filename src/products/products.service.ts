@@ -396,6 +396,17 @@ export class ProductsService {
     }
   }
 
+  async searchLotusCards(): Promise<
+    { pro_code: string; pro_name: string; pro_unit1: string }[]
+  > {
+    return this.productRepo
+      .createQueryBuilder('product')
+      .where('product.pro_name LIKE :name', { name: 'บัตรโลตั%' })
+      .select(['product.pro_code', 'product.pro_name', 'product.pro_unit1'])
+      .orderBy('product.pro_name', 'ASC')
+      .getMany();
+  }
+
   async listProcodeFlashSale() {
     try {
       const data = await this.productRepo.find({

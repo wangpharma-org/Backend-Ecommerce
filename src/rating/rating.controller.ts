@@ -20,6 +20,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   RatingService,
   CreateRatingDto,
+  BatchRatingItemDto,
   CreateQuestionnaireAnswerDto,
   CreateSelectConfigDto,
   UpdateSelectConfigDto,
@@ -56,6 +57,12 @@ export class RatingController {
   @Post('rating')
   submitRating(@Body() data: CreateRatingDto) {
     return this.ratingService.submitRating(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('rating/batch')
+  submitBatchRating(@Body() items: BatchRatingItemDto[]) {
+    return this.ratingService.submitBatchRating(items);
   }
 
   @UseGuards(JwtAuthGuard)

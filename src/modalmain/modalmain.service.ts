@@ -9,7 +9,7 @@ export class ModalContentService {
     @InjectRepository(Modalmain)
     private readonly modalmainRepository: Repository<Modalmain>,
   ) {}
-  async SaveModalContent(
+  async saveModalContent(
     @Body()
     body: {
       id: number;
@@ -29,7 +29,7 @@ export class ModalContentService {
     return { message: 'Modal content saved successfully' };
   }
 
-  async GetModalContent(): Promise<{ data: Modalmain | null }> {
+  async getModalContent(): Promise<{ data: Modalmain | null }> {
     const modalContents = await this.modalmainRepository.find();
     return {
       data: modalContents.length > 0 ? modalContents[0] : null,
