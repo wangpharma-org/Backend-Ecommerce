@@ -58,7 +58,7 @@ export interface ShoppingProductCart {
   recommended_id?: number;
   recommend_rank?: number;
   is_reward: boolean;
-  hotdeal: HotdealEntity[] | undefined;
+  hotdeal: HotdealEntity | undefined;
   pointHotdeal?: number | null;
   hotdealPointsInfo?: number;
   totalSmallestUnit?: number;
@@ -1563,7 +1563,7 @@ export class ShoppingCartService {
         const usedHotdealPoints = usedPointsMap.get(row.pro_code) || 0;
         const hotdealPointsInfo = hotdealPointsInfoMap.get(row.pro_code);
 
-        const hotdeal = allHotdeals?.filter(
+        const hotdeal = allHotdeals?.find(
           (hd) => hd.product.pro_code === row.pro_code,
         );
         if (!grouped[key]) {

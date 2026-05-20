@@ -14,7 +14,7 @@ export class HotdealEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => ProductEntity, (product) => product.inHotdeals)
+  @OneToOne(() => ProductEntity, (product) => product.hotdeal)
   @JoinColumn({ name: 'pro_code1' })
   product!: ProductEntity;
 
@@ -24,7 +24,7 @@ export class HotdealEntity {
   @Column({ length: 20, nullable: false })
   pro1_unit!: string;
 
-  @ManyToOne(() => ProductEntity, (product) => product.inHotdeals)
+  @ManyToOne(() => ProductEntity)
   @JoinColumn({ name: 'pro_code2' })
   product2!: ProductEntity;
 
