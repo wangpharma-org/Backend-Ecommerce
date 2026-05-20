@@ -37,6 +37,16 @@ export class NotifyRtController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('sms-credit')
+  async getSmsCreditBalance(@Req() req: AuthenticatedRequest) {
+    if (req.user?.permission !== true) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    return this.notifyRtService.getSmsCreditBalance();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('send')
   @UsePipes(
     new ValidationPipe({

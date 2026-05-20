@@ -1,10 +1,15 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+} from '@nestjs/common';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 import { NotificationTokenEntity } from './notification-token.entity';
 import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
+import axios from 'axios';
 import {
   AdminNotificationChannel,
   AdminNotificationFilterDto,
@@ -16,9 +21,19 @@ type NotificationTokenEventType = 'upsert' | 'remove';
 
 const NOTIFICATION_BATCH_SIZE = 500;
 
+export interface SmsCreditBalanceResponse {
+  standard: number;
+  corporate: number;
+  total: number;
+}
+
 @Injectable()
 export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
   private producer: Producer;
+  private readonly notificationServiceUrl =
+    process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3005';
+  private readonly notificationInternalToken =
+    process.env.NOTIFICATION_INTERNAL_TOKEN?.trim();
 
   constructor(
     @InjectRepository(ShoppingOrderEntity)
@@ -336,6 +351,35 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
         .map((item) => item.province?.trim())
         .filter((province): province is string => Boolean(province)),
     };
+  }
+
+  async getSmsCreditBalance(): Promise<SmsCreditBalanceResponse> {
+    try {
+      const response = await axios.get<SmsCreditBalanceResponse>(
+        `${this.notificationServiceUrl}/api/notifications/admin/sms-credit`,
+        {
+          headers: this.notificationInternalToken
+            ? {
+                'x-internal-token': this.notificationInternalToken,
+              }
+            : undefined,
+        },
+      );
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message =
+          error.response?.data?.message ||
+          error.message ||
+          'Unable to fetch SMS credit balance';
+        throw new BadGatewayException(
+          Array.isArray(message) ? message.join(', ') : String(message),
+        );
+      }
+
+      throw new BadGatewayException('Unable to fetch SMS credit balance');
+    }
   }
 
   private getDefaultChannels(
