@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
 
-@Entity({ name: 'happy_hour_config', database: 'e-commerce-database-other' })
+@Entity({ name: 'happy_hour_config' })
 export class HappyHourConfigEntity {
   @PrimaryColumn({ type: 'int' })
   id!: number;
