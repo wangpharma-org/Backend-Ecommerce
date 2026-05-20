@@ -176,6 +176,7 @@ export class HotdealService {
             product: { pro_code: datainput.pro1_code },
           },
         });
+        console.log('Existing hotdeal:', existingHotdeal);
 
         if (existingHotdeal) {
           await this.shoppingCartService.removeAllCarthotdeal(
