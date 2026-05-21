@@ -6,9 +6,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
+import * as dayjs from 'dayjs';
+import * as utc from 'dayjs/plugin/utc';
+import * as timezone from 'dayjs/plugin/timezone';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
 import { CreateSlotDto } from './dto/create-slot.dto';
@@ -86,11 +86,15 @@ export class HappyHourService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const count = await this.slotRepo.count();
-    if (count === 0) {
-      await this.slotRepo.save(
-        DEFAULT_SLOTS.map((s) => this.slotRepo.create(s)),
-      );
+    try {
+      const count = await this.slotRepo.count();
+      if (count === 0) {
+        await this.slotRepo.save(
+          DEFAULT_SLOTS.map((s) => this.slotRepo.create(s)),
+        );
+      }
+    } catch {
+      // table ยังไม่มีใน DB — ข้ามไปก่อน feature จะทำงานหลัง migrate
     }
   }
 
@@ -160,38 +164,43 @@ export class HappyHourService implements OnModuleInit {
     totalCardValue: number;
     totalReward: number;
   } | null> {
-    const config = await this.getConfig();
-    if (!config.is_enabled) return null;
+    try {
+      const config = await this.getConfig();
+      if (!config.is_enabled) return null;
 
-    const now = dayjs().tz('Asia/Bangkok');
-    const orderTimeSql = now.format('HH:mm:00');
+      const now = dayjs().tz('Asia/Bangkok');
+      const orderTimeSql = now.format('HH:mm:00');
 
-    const slot = await this.slotRepo
-      .createQueryBuilder('slot')
-      .where('slot.is_active = true')
-      .andWhere('slot.start_time <= :t', { t: orderTimeSql })
-      .andWhere('slot.end_time > :t', { t: orderTimeSql })
-      .getOne();
+      const slot = await this.slotRepo
+        .createQueryBuilder('slot')
+        .where('slot.is_active = true')
+        .andWhere('slot.start_time <= :t', { t: orderTimeSql })
+        .andWhere('slot.end_time > :t', { t: orderTimeSql })
+        .getOne();
 
-    if (!slot) return null;
+      if (!slot) return null;
 
-    // Greedy: maximize cards first, then maximize discount steps from remainder
-    const minOrder = Number(slot.min_order_amount);
-    const numCards = Math.floor(orderAmount / minOrder);
-    if (numCards === 0) return null;
+      const minOrder = Number(slot.min_order_amount);
+      const numCards = Math.floor(orderAmount / minOrder);
+      if (numCards === 0) return null;
 
-    const excess = orderAmount - numCards * minOrder;
-    const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
-    const excessDiscount = excessSteps * Number(slot.discount_per_step);
+      const excess = orderAmount - numCards * minOrder;
+      const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
+      const excessDiscount = excessSteps * Number(slot.discount_per_step);
 
-    const totalCardValue = numCards * Number(slot.card_value);
-    return {
-      slot,
-      numCards,
-      excessDiscount,
-      totalCardValue,
-      totalReward: totalCardValue + excessDiscount,
-    };
+      const totalCardValue = numCards * Number(slot.card_value);
+      return {
+        slot,
+        numCards,
+        excessDiscount,
+        totalCardValue,
+        totalReward: totalCardValue + excessDiscount,
+      };
+    } catch (error) {
+      // log error แล้ว return null เพื่อไม่ให้กระทบ flow การสั่งซื้อ
+      console.error('Error calculating happy hour reward:', error);
+      return null;
+    }
   }
 
   async simulate(dto: SimulateDto) {
