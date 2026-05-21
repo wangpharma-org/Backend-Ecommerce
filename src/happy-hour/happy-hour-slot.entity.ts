@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity({ name: 'happy_hour_slot', database: 'e-commerce-database-other' })
+@Entity({ name: 'happy_hour_slot' })
 export class HappyHourSlotEntity {
   @PrimaryGeneratedColumn()
   id!: number;

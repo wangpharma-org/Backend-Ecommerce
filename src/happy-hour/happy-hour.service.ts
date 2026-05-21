@@ -78,11 +78,15 @@ export class HappyHourService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const count = await this.slotRepo.count();
-    if (count === 0) {
-      await this.slotRepo.save(
-        DEFAULT_SLOTS.map((s) => this.slotRepo.create(s)),
-      );
+    try {
+      const count = await this.slotRepo.count();
+      if (count === 0) {
+        await this.slotRepo.save(
+          DEFAULT_SLOTS.map((s) => this.slotRepo.create(s)),
+        );
+      }
+    } catch {
+      // table ยังไม่มีใน DB — ข้ามไปก่อน feature จะทำงานหลัง migrate
     }
   }
 
@@ -151,38 +155,42 @@ export class HappyHourService implements OnModuleInit {
     excessDiscount: number;
     totalCardValue: number;
   } | null> {
-    const config = await this.getConfig();
-    if (!config.is_enabled) return null;
+    try {
+      const config = await this.getConfig();
+      if (!config.is_enabled) return null;
 
-    const now = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }),
-    );
-    const orderTimeSql = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+      const now = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }),
+      );
+      const orderTimeSql = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
 
-    const slot = await this.slotRepo
-      .createQueryBuilder('slot')
-      .where('slot.is_active = true')
-      .andWhere('slot.start_time <= :t', { t: orderTimeSql })
-      .andWhere('slot.end_time > :t', { t: orderTimeSql })
-      .getOne();
+      const slot = await this.slotRepo
+        .createQueryBuilder('slot')
+        .where('slot.is_active = true')
+        .andWhere('slot.start_time <= :t', { t: orderTimeSql })
+        .andWhere('slot.end_time > :t', { t: orderTimeSql })
+        .getOne();
 
-    if (!slot) return null;
+      if (!slot) return null;
 
-    // Greedy: maximize cards first, then maximize discount steps from remainder
-    const minOrder = Number(slot.min_order_amount);
-    const numCards = Math.floor(orderAmount / minOrder);
-    if (numCards === 0) return null;
+      const minOrder = Number(slot.min_order_amount);
+      const numCards = Math.floor(orderAmount / minOrder);
+      if (numCards === 0) return null;
 
-    const excess = orderAmount - numCards * minOrder;
-    const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
-    const excessDiscount = excessSteps * Number(slot.discount_per_step);
+      const excess = orderAmount - numCards * minOrder;
+      const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
+      const excessDiscount = excessSteps * Number(slot.discount_per_step);
 
-    return {
-      slot,
-      numCards,
-      excessDiscount,
-      totalCardValue: numCards * Number(slot.card_value),
-    };
+      return {
+        slot,
+        numCards,
+        excessDiscount,
+        totalCardValue: numCards * Number(slot.card_value),
+      };
+    } catch {
+      // table ยังไม่มีใน DB — คืน null แทนการ crash
+      return null;
+    }
   }
 
   async simulate(dto: SimulateDto) {

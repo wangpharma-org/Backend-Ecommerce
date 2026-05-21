@@ -9,6 +9,7 @@ import { UserEntity } from 'src/users/users.entity';
 import * as AWS from 'aws-sdk';
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 
 export interface HotdealInput {
@@ -219,11 +220,20 @@ export class HotdealService {
           await this.hotdealRepo.delete({ id: duplicate.id });
         }
 
+        // แปลง unit name → enum level ก่อน save
+        const unitRepo = this.hotdealRepo.manager.getRepository(ProductUnitEntity);
+        const [unit1, unit2] = await Promise.all([
+          unitRepo.findOne({ where: { pro_code: datainput.pro1_code, unit_name: datainput.pro1_unit } }),
+          unitRepo.findOne({ where: { pro_code: datainput.pro2_code, unit_name: datainput.pro2_unit } }),
+        ]);
+        const pro1_unit = unit1 ? String(unit1.level) : datainput.pro1_unit;
+        const pro2_unit = unit2 ? String(unit2.level) : datainput.pro2_unit;
+
         const hotdeal = this.hotdealRepo.create({
           pro1_amount: datainput.pro1_amount,
-          pro1_unit: datainput.pro1_unit,
+          pro1_unit,
           pro2_amount: datainput.pro2_amount,
-          pro2_unit: datainput.pro2_unit,
+          pro2_unit,
           product: { pro_code: datainput.pro1_code },
           product2: { pro_code: datainput.pro2_code },
         });
@@ -231,10 +241,10 @@ export class HotdealService {
         await this.hotdealRepo.save(hotdeal);
         await this.checkAndAddProductToHotdeal(
           datainput.pro1_code,
-          datainput.pro1_unit,
+          pro1_unit,
           Number(datainput.pro1_amount),
           datainput.pro2_code,
-          datainput.pro2_unit,
+          pro2_unit,
         );
       }
       return 'add hotdeal successfully';

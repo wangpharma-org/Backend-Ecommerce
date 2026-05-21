@@ -399,12 +399,29 @@ export class ProductsService {
   async searchLotusCards(): Promise<
     { pro_code: string; pro_name: string; pro_unit1: string }[]
   > {
-    return this.productRepo
+    const products = await this.productRepo
       .createQueryBuilder('product')
+      .leftJoinAndSelect('product.units', 'units')
       .where('product.pro_name LIKE :name', { name: 'บัตรโลตั%' })
-      .select(['product.pro_code', 'product.pro_name', 'product.pro_unit1'])
+      .select([
+        'product.pro_code',
+        'product.pro_name',
+        'units.level',
+        'units.unit_name',
+      ])
       .orderBy('product.pro_name', 'ASC')
       .getMany();
+
+    return products.map((p) => {
+      const units = p.units as
+        | { level: number; unit_name: string }[]
+        | undefined;
+      return {
+        pro_code: p.pro_code,
+        pro_name: p.pro_name,
+        pro_unit1: units?.find((u) => u.level === 1)?.unit_name ?? '',
+      };
+    });
   }
 
   async listProcodeFlashSale() {
@@ -614,7 +631,7 @@ export class ProductsService {
           unitsToSave.map((u) =>
             this.productUnitRepo.create({
               pro_code: product.pro_code,
-              unit_name: u.unit_name!,
+              unit_name: u.unit_name,
               ratio: u.ratio,
               level: u.level,
             }),

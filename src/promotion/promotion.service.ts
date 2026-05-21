@@ -797,9 +797,25 @@ export class PromotionService {
 
   async editReward(data: { reward_id: number; qty: number; unit: string }) {
     try {
+      // หา pro_code ของ reward ก่อน เพื่อ lookup enum level
+      const reward = await this.promotionRewardRepo.findOne({
+        where: { reward_id: data.reward_id },
+        relations: ['giftProduct'],
+        select: { reward_id: true, giftProduct: { pro_code: true } },
+      });
+
+      let unitEnum = data.unit;
+      const proCode = reward?.giftProduct?.pro_code;
+      if (proCode) {
+        const unitEntity = await this.productRepo.manager
+          .getRepository(ProductUnitEntity)
+          .findOne({ where: { pro_code: proCode, unit_name: data.unit } });
+        if (unitEntity) unitEnum = String(unitEntity.level);
+      }
+
       await this.promotionRewardRepo.update(data.reward_id, {
         qty: data.qty,
-        unit: data.unit,
+        unit: unitEnum,
       });
       return 'Reward updated successfully';
     } catch (error) {
@@ -815,11 +831,20 @@ export class PromotionService {
     unit: string;
   }) {
     try {
+      // แปลง unit name → enum level ก่อน save
+      let unitEnum = data.unit;
+      const unitEntity = await this.productRepo.manager
+        .getRepository(ProductUnitEntity)
+        .findOne({
+          where: { pro_code: data.product_gcode, unit_name: data.unit },
+        });
+      if (unitEntity) unitEnum = String(unitEntity.level);
+
       const newReward = this.promotionRewardRepo.create({
         tier: { tier_id: data.tier_id },
         giftProduct: { pro_code: data.product_gcode },
         qty: data.qty,
-        unit: data.unit,
+        unit: unitEnum,
       } as DeepPartial<PromotionRewardEntity>);
       await this.promotionRewardRepo.save(newReward);
     } catch {
