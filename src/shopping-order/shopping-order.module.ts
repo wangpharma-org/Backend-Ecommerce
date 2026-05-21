@@ -14,6 +14,7 @@ import { LoggerModule } from '../logger/logger.module';
 import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
 import { PromotionModule } from 'src/promotion/promotion.module';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
+import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
     LoggerModule,
     CompanyDayAnalyticModule,
     PromotionModule,
+    HappyHourModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],

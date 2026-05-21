@@ -56,4 +56,7 @@ export class ShoppingOrderEntity {
   @ManyToOne(() => ProductEntity, (product) => product.inOrders)
   @JoinColumn({ name: 'pro_code' })
   product: ProductEntity;
+
+  @Column({ type: 'boolean', default: false })
+  is_happy_hour?: boolean;
 }
