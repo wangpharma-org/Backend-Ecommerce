@@ -2,7 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  OnModuleInit,
+  // OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -19,63 +19,64 @@ import { ProductEntity } from 'src/products/products.entity';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const DEFAULT_SLOTS: Omit<
-  HappyHourSlotEntity,
-  'id' | 'created_at' | 'updated_at'
->[] = [
-  {
-    start_time: '22:00',
-    // MySQL TIME ยอมรับ 24:00:00 เป็น special case — ใช้เพื่อครอบคลุม slot จนถึงก่อนเที่ยงคืน
-    end_time: '24:00',
-    min_order_amount: 9999,
-    card_value: 100,
-    excess_threshold: 1334,
-    discount_per_step: 10,
-    is_active: true,
-    reward_pro_code: '92020405',
-    reward_unit: null,
-    reward_amount: 1,
-  },
-  {
-    start_time: '00:00',
-    end_time: '02:00',
-    min_order_amount: 9999,
-    card_value: 100,
-    excess_threshold: 1000,
-    discount_per_step: 10,
-    is_active: true,
-    reward_pro_code: '92020405',
-    reward_unit: null,
-    reward_amount: 1,
-  },
-  {
-    start_time: '02:00',
-    end_time: '06:00',
-    min_order_amount: 9999,
-    card_value: 100,
-    excess_threshold: 667,
-    discount_per_step: 10,
-    is_active: true,
-    reward_pro_code: '92020405',
-    reward_unit: null,
-    reward_amount: 1,
-  },
-  {
-    start_time: '06:00',
-    end_time: '08:00',
-    min_order_amount: 9999,
-    card_value: 100,
-    excess_threshold: 1334,
-    discount_per_step: 10,
-    is_active: true,
-    reward_pro_code: '92020405',
-    reward_unit: null,
-    reward_amount: 1,
-  },
-];
+// const DEFAULT_SLOTS: Omit<
+//   HappyHourSlotEntity,
+//   'id' | 'created_at' | 'updated_at'
+// >[] = [
+//   {
+//     start_time: '22:00',
+//     // MySQL TIME ยอมรับ 24:00:00 เป็น special case — ใช้เพื่อครอบคลุม slot จนถึงก่อนเที่ยงคืน
+//     end_time: '24:00',
+//     min_order_amount: 9999,
+//     card_value: 100,
+//     excess_threshold: 1334,
+//     discount_per_step: 10,
+//     is_active: true,
+//     reward_pro_code: '92020405',
+//     reward_unit: null,
+//     reward_amount: 1,
+//   },
+//   {
+//     start_time: '00:00',
+//     end_time: '02:00',
+//     min_order_amount: 9999,
+//     card_value: 100,
+//     excess_threshold: 1000,
+//     discount_per_step: 10,
+//     is_active: true,
+//     reward_pro_code: '92020405',
+//     reward_unit: null,
+//     reward_amount: 1,
+//   },
+//   {
+//     start_time: '02:00',
+//     end_time: '06:00',
+//     min_order_amount: 9999,
+//     card_value: 100,
+//     excess_threshold: 667,
+//     discount_per_step: 10,
+//     is_active: true,
+//     reward_pro_code: '92020405',
+//     reward_unit: null,
+//     reward_amount: 1,
+//   },
+//   {
+//     start_time: '06:00',
+//     end_time: '08:00',
+//     min_order_amount: 9999,
+//     card_value: 100,
+//     excess_threshold: 1334,
+//     discount_per_step: 10,
+//     is_active: true,
+//     reward_pro_code: '92020405',
+//     reward_unit: null,
+//     reward_amount: 1,
+//   },
+// ];
 
 @Injectable()
-export class HappyHourService implements OnModuleInit {
+// export class HappyHourService implements OnModuleInit {
+export class HappyHourService {
   constructor(
     @InjectRepository(HappyHourConfigEntity)
     private readonly configRepo: Repository<HappyHourConfigEntity>,
@@ -85,18 +86,18 @@ export class HappyHourService implements OnModuleInit {
     private readonly productRepo: Repository<ProductEntity>,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
-      const count = await this.slotRepo.count();
-      if (count === 0) {
-        await this.slotRepo.save(
-          DEFAULT_SLOTS.map((s) => this.slotRepo.create(s)),
-        );
-      }
-    } catch {
-      // table ยังไม่มีใน DB — ข้ามไปก่อน feature จะทำงานหลัง migrate
-    }
-  }
+  // async onModuleInit(): Promise<void> {
+  //   try {
+  //     const count = await this.slotRepo.count();
+  //     if (count === 0) {
+  //       await this.slotRepo.save(
+  //         DEFAULT_SLOTS.map((s) => this.slotRepo.create(s) ),
+  //       );
+  //     }
+  //   } catch {
+  //     // table ยังไม่มีใน DB — ข้ามไปก่อน feature จะทำงานหลัง migrate
+  //   }
+  // }
 
   async getConfig(): Promise<HappyHourConfigEntity> {
     let config = await this.configRepo.findOneBy({ id: 1 });
