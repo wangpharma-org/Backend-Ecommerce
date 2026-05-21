@@ -409,7 +409,6 @@ export class AuthService {
     source: string,
   ): Promise<SigninResponse> {
     try {
-      console.log(refresh_token);
       const existingToken = await this.refreshTokenRepo.findOne({
         where: { refresh_token: refresh_token },
       });
