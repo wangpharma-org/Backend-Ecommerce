@@ -27,7 +27,6 @@ async function bootstrap() {
       'KAFKA_GROUP_ID',
       'consumer-ecommerce',
     );
-    console.log('Connecting to primary Kafka:', primaryBrokers);
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.KAFKA,
       options: {
