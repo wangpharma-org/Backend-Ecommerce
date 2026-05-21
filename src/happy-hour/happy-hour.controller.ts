@@ -17,6 +17,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { HappyHourService } from './happy-hour.service';
 import { CreateSlotDto } from './dto/create-slot.dto';
+import { UpdateSlotDto } from './dto/update-slot.dto';
 import { SimulateDto } from './dto/simulate.dto';
 interface JwtUser {
   username: string;
@@ -67,7 +68,7 @@ export class HappyHourController {
   @Put('slots/:id')
   updateSlot(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: Partial<CreateSlotDto>,
+    @Body() dto: UpdateSlotDto,
   ) {
     return this.happyHourService.updateSlot(id, dto);
   }

@@ -688,7 +688,7 @@ export class ShoppingOrderService {
                 spo_qty: happyReward.numCards * happyReward.slot.reward_amount,
                 spo_price_unit: 0,
                 spo_total_decimal: 0,
-                is_reward: true,
+                is_happy_hour: true,
               });
               await manager.save(ShoppingOrderEntity, happyRewardItem);
             }

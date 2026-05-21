@@ -1780,15 +1780,21 @@ export class AppController {
     body: {
       new_password: string;
       old_password: string;
+      logout_all_devices?: boolean;
     },
   ): Promise<{ success: boolean; message: string }> {
     try {
       const mem_username = req.user.username;
-      return this.changePasswordService.CheckOldPasswordAndUpdatePassword({
-        mem_username: mem_username,
-        new_password: body.new_password,
-        old_password: body.old_password,
-      });
+      const result =
+        await this.changePasswordService.CheckOldPasswordAndUpdatePassword({
+          mem_username: mem_username,
+          new_password: body.new_password,
+          old_password: body.old_password,
+        });
+      if (result.success && body.logout_all_devices) {
+        await this.sessionsService.logoutAllUserSessions(req.user.mem_code);
+      }
+      return result;
     } catch {
       return {
         success: false,

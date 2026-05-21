@@ -5,6 +5,8 @@ export class SimulateDto {
   @Min(0, { message: 'order_amount ต้องไม่ติดลบ' })
   order_amount!: number;
 
-  @Matches(/^\d{2}:\d{2}$/, { message: 'order_time ต้องอยู่ในรูปแบบ HH:mm' })
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'order_time ต้องอยู่ในรูปแบบ HH:mm (00:00–23:59)',
+  })
   order_time!: string;
 }
