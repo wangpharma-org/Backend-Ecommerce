@@ -2328,7 +2328,7 @@ export class ShoppingCartService {
       console.error('Error soft deleting cart item:', error);
     }
   }
- //ss
+
   async getDeleteCartItem(mem_code: string) {
     try {
       return await this.deleteCartRepo.find({
