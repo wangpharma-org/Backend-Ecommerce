@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   // OnModuleInit,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -77,6 +78,7 @@ dayjs.extend(timezone);
 @Injectable()
 // export class HappyHourService implements OnModuleInit {
 export class HappyHourService {
+  private readonly logger = new Logger(HappyHourService.name);
   constructor(
     @InjectRepository(HappyHourConfigEntity)
     private readonly configRepo: Repository<HappyHourConfigEntity>,
@@ -199,7 +201,7 @@ export class HappyHourService {
       };
     } catch (error) {
       // log error แล้ว return null เพื่อไม่ให้กระทบ flow การสั่งซื้อ
-      console.error('Error calculating happy hour reward:', error);
+      this.logger.error('Error calculating happy hour reward:', error);
       return null;
     }
   }
