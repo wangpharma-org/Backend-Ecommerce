@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened]
 
 jobs:
   claude-review:
@@ -23,7 +23,7 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
           prompt: |
             You are a senior staff engineer performing a thorough code review.
             Always respond in Thai language (ภาษาไทย).
