@@ -24,7 +24,7 @@ const buildSlot = (overrides: SlotRow = {}): HappyHourSlotEntity => ({
   excess_threshold: 1334 as unknown as number,
   discount_per_step: 10 as unknown as number,
   is_active: true,
-  reward_pro_code: '92020405',
+  reward_pro_codes: '92020405',
   reward_unit: null,
   reward_amount: 1,
   created_at: new Date('2026-01-01T00:00:00Z'),
@@ -400,7 +400,7 @@ describe('HappyHourService', () => {
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: 'P-X',
+        reward_pro_codes: ['P-X'],
         reward_unit: 'BOX',
         reward_amount: 2,
       });
@@ -437,7 +437,7 @@ describe('HappyHourService', () => {
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: 'MISSING',
+        reward_pro_codes: ['MISSING'],
       });
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
       productRepo.findOne.mockResolvedValueOnce(null);
@@ -451,13 +451,13 @@ describe('HappyHourService', () => {
       expect(result.reward_product.pro_imgmain).toBeNull();
     });
 
-    it('reward_product is null when slot has no reward_pro_code', async () => {
+    it('reward_product is null when slot has no reward_pro_codes', async () => {
       const slot = buildSlot({
         min_order_amount: '1000' as unknown as number,
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: null,
+        reward_pro_codes: null,
       });
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
 
@@ -481,7 +481,7 @@ describe('HappyHourService', () => {
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: null,
+        reward_pro_codes: null,
       });
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
 

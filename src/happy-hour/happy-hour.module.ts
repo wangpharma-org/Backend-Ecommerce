@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
+import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
 import { HappyHourService } from './happy-hour.service';
 import { HappyHourController } from './happy-hour.controller';
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
@@ -13,6 +14,7 @@ import { ProductEntity } from 'src/products/products.entity';
     TypeOrmModule.forFeature([
       HappyHourConfigEntity,
       HappyHourSlotEntity,
+      HappyHourSlotRewardEntity,
       ProductEntity,
     ]),
     FeatureFlagsModule,

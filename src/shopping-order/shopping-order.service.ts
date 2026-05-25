@@ -630,17 +630,23 @@ export class ShoppingOrderService {
               forOrder: running,
             });
 
-            if (happyReward.numCards > 0 && happyReward.slot.reward_pro_code) {
-              const happyRewardItem = manager.create(ShoppingOrderEntity, {
-                orderHeader: { soh_running: running },
-                pro_code: happyReward.slot.reward_pro_code,
-                spo_unit: happyReward.slot.reward_unit ?? 'ใบ',
-                spo_qty: happyReward.numCards * happyReward.slot.reward_amount,
-                spo_price_unit: 0,
-                spo_total_decimal: 0,
-                is_happy_hour: true,
-              });
-              await manager.save(ShoppingOrderEntity, happyRewardItem);
+            const rewardCodes = happyReward.slot.rewards.map((r) => r.pro_code);
+            if (happyReward.numCards > 0 && rewardCodes.length > 0) {
+              const happyRewardItems = rewardCodes.map((proCode) =>
+                manager.create(ShoppingOrderEntity, {
+                  orderHeader: { soh_running: running },
+                  pro_code: proCode,
+                  spo_unit:
+                    happyReward.slot.rewards.find((r) => r.pro_code === proCode)
+                      ?.unit ?? 'ใบ',
+                  spo_qty:
+                    happyReward.numCards * happyReward.slot.reward_amount,
+                  spo_price_unit: 0,
+                  spo_total_decimal: 0,
+                  is_happy_hour: true,
+                }),
+              );
+              await manager.save(ShoppingOrderEntity, happyRewardItems);
             }
 
             happyHourDiscount = happyReward.excessDiscount;
@@ -851,7 +857,8 @@ export class ShoppingOrderService {
 
   async sendPurchaseEventToAnalytics(mem_code: string): Promise<void> {
     try {
-      const cart = await this.shoppingCartService.handleGetCartToOrder(mem_code);
+      const cart =
+        await this.shoppingCartService.handleGetCartToOrder(mem_code);
       if (!cart?.length) return;
 
       const taggedTierIds = Array.from(
@@ -863,7 +870,7 @@ export class ShoppingOrderService {
                 item.promo_id != null &&
                 item.tier_id != null,
             )
-            .map((item) => item.tier_id as number),
+            .map((item) => item.tier_id),
         ),
       );
       if (taggedTierIds.length === 0) return;
@@ -875,7 +882,8 @@ export class ShoppingOrderService {
       if (!tiers.length) return;
 
       tiers.sort((a, b) => {
-        const minAmountDiff = Number(b.min_amount || 0) - Number(a.min_amount || 0);
+        const minAmountDiff =
+          Number(b.min_amount || 0) - Number(a.min_amount || 0);
         if (minAmountDiff !== 0) return minAmountDiff;
         const promoIdA = a.promotion?.promo_id ?? 0;
         const promoIdB = b.promotion?.promo_id ?? 0;
@@ -1004,6 +1012,83 @@ export class ShoppingOrderService {
       console.log(error);
       throw new Error('Failed to check order turn back reward. ' + error);
     }
+  }
+
+  async checkAndAdjustHappyHourReward(sh_running: string): Promise<{
+    adjusted: boolean;
+    removedQty: number;
+    pro_code: string | null;
+  }> {
+    const happyHourItems = await this.shoppingOrderRepo.find({
+      where: {
+        orderHeader: { soh_running: sh_running },
+        is_happy_hour: true,
+      },
+    });
+
+    if (!happyHourItems.length) {
+      return { adjusted: false, removedQty: 0, pro_code: null };
+    }
+
+    const rawTotal = await this.shoppingOrderRepo
+      .createQueryBuilder('o')
+      .innerJoin('o.orderHeader', 'h')
+      .select('SUM(o.spo_total_decimal)', 'total')
+      .where('h.soh_running = :sh_running', { sh_running })
+      .andWhere('o.is_reward = false')
+      .andWhere('o.is_happy_hour = false')
+      .getRawOne<{ total: string }>();
+
+    const total = Number(rawTotal?.total ?? 0);
+
+    const happyProCode = happyHourItems[0].pro_code;
+    const slots = await this.happyHourService.getSlots();
+    const matchedSlot = slots.find((s) =>
+      s?.rewards.some((r) => r.pro_code === happyProCode),
+    );
+    const rewardCodes = matchedSlot?.rewards.map((r) => r.pro_code) ?? [];
+
+    if (!matchedSlot || !rewardCodes.length) {
+      return { adjusted: false, removedQty: 0, pro_code: happyProCode };
+    }
+
+    const numCards = Math.floor(total / Number(matchedSlot.min_order_amount));
+    const eligibleQty = numCards * matchedSlot.reward_amount;
+    const currentQty = happyHourItems.reduce(
+      (sum, item) => sum + Number(item.spo_qty),
+      0,
+    );
+
+    if (currentQty <= eligibleQty) {
+      return { adjusted: false, removedQty: 0, pro_code: happyProCode };
+    }
+
+    const removedQty = currentQty - eligibleQty;
+
+    if (eligibleQty === 0) {
+      await this.shoppingOrderRepo.delete(happyHourItems.map((i) => i.spo_id));
+    } else {
+      await this.shoppingOrderRepo.update(happyHourItems[0].spo_id, {
+        spo_qty: eligibleQty,
+      });
+      if (happyHourItems.length > 1) {
+        await this.shoppingOrderRepo.delete(
+          happyHourItems.slice(1).map((i) => i.spo_id),
+        );
+      }
+    }
+
+    this.logger.log('happy_hour_reward_adjusted', {
+      sh_running,
+      pro_code: happyProCode,
+      previousQty: currentQty,
+      newQty: eligibleQty,
+      removedQty,
+      orderTotal: total,
+      minOrder: matchedSlot.min_order_amount,
+    });
+
+    return { adjusted: true, removedQty, pro_code: happyProCode };
   }
 }
 
