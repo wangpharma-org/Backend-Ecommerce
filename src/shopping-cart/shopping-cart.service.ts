@@ -1678,8 +1678,6 @@ export class ShoppingCartService {
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
 
-      console.log('Raw product cart data:', raw);
-
       const grouped: Record<string, ShoppingProductCart> = {};
 
       const allProCodes = [...new Set(raw.map((r) => r.pro_code))];

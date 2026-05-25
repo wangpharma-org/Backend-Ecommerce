@@ -175,45 +175,63 @@ export class NewArrivalsService {
       ])
       .getMany();
 
+    const seenProCodes = new Set<string>();
     // Return เฉพาะข้อมูล product พร้อมแปลง units → pro_unit1/2/3 และ spc_unit_enum → spc_unit
-    return results.map((item) => {
-      const product = item.product;
-      if (!product) return product;
+    return results
+      .map((item) => {
+        const product = item.product;
+        if (!product) return null;
 
-      const units = (product.units ?? []) as unknown as {
-        level: number;
-        unit_name: string;
-        ratio: number;
-      }[];
+        // กัน pro_code ซ้ำ
+        if (seenProCodes.has(product.pro_code)) {
+          return null;
+        }
 
-      const unit1 = units.find((u) => u.level === 1);
-      const unit2 = units.find((u) => u.level === 2);
-      const unit3 = units.find((u) => u.level === 3);
+        seenProCodes.add(product.pro_code);
 
-      const resolvedCarts = (product.inCarts ?? []).map((cart) => {
-        const found = units.find((u) => u.level === Number(cart.spc_unit_enum));
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { spc_unit_enum, ...cartWithoutEnum } = cart as typeof cart & {
-          spc_unit_enum: string;
+        const units = (product.units ?? []) as unknown as {
+          level: number;
+          unit_name: string;
+          ratio: number;
+        }[];
+
+        const unit1 = units.find((u) => u.level === 1);
+        const unit2 = units.find((u) => u.level === 2);
+        const unit3 = units.find((u) => u.level === 3);
+
+        const resolvedCarts = (product.inCarts ?? []).map((cart) => {
+          const found = units.find(
+            (u) => u.level === Number(cart.spc_unit_enum),
+          );
+
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { spc_unit_enum, ...cartWithoutEnum } = cart as typeof cart & {
+            spc_unit_enum: string;
+          };
+
+          return {
+            ...cartWithoutEnum,
+            spc_unit: found?.unit_name ?? '',
+          };
+        });
+
+        const productWithoutUnits = {
+          ...(product as unknown as Record<string, unknown>),
         };
-        return { ...cartWithoutEnum, spc_unit: found?.unit_name ?? '' };
-      });
 
-      const productWithoutUnits = {
-        ...(product as unknown as Record<string, unknown>),
-      };
-      delete productWithoutUnits['units'];
+        delete productWithoutUnits['units'];
 
-      return {
-        ...productWithoutUnits,
-        pro_unit1: unit1?.unit_name ?? '',
-        pro_unit2: unit2?.unit_name ?? '',
-        pro_unit3: unit3?.unit_name ?? '',
-        pro_ratio1: unit1?.ratio ?? 1,
-        pro_ratio2: unit2?.ratio ?? 1,
-        pro_ratio3: unit3?.ratio ?? 1,
-        inCarts: resolvedCarts,
-      };
-    });
+        return {
+          ...productWithoutUnits,
+          pro_unit1: unit1?.unit_name ?? '',
+          pro_unit2: unit2?.unit_name ?? '',
+          pro_unit3: unit3?.unit_name ?? '',
+          pro_ratio1: unit1?.ratio ?? 1,
+          pro_ratio2: unit2?.ratio ?? 1,
+          pro_ratio3: unit3?.ratio ?? 1,
+          inCarts: resolvedCarts,
+        };
+      })
+      .filter(Boolean);
   }
 }
