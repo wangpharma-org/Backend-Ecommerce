@@ -778,8 +778,8 @@ export class BehaviorTrackingService {
         'pro_stock',
         'pro_lowest_stock',
         'pro_imgmain',
-        'pro_unit1',
       ],
+      relations: ['units'],
     });
 
     // Create stock map
@@ -795,6 +795,8 @@ export class BehaviorTrackingService {
         const uniqueViewers = parseInt(demand.unique_viewers || '0');
         const stock = product.pro_stock || 0;
         const lowestStock = Number(product.pro_lowest_stock) || 0;
+        const pro_unit1 =
+          product.units?.find((u) => u.level === 1)?.unit_name || '';
 
         // Calculate demand score (views per day)
         const demandPerDay = viewCount / days;
@@ -809,8 +811,7 @@ export class BehaviorTrackingService {
             'สินค้าหมด! มีคนดู ' + viewCount + ' ครั้งใน ' + days + ' วัน';
         } else if (stock <= lowestStock) {
           alertLevel = 'critical';
-          message =
-            'สต็อกต่ำกว่าเกณฑ์! คงเหลือ ' + stock + ' ' + product.pro_unit1;
+          message = 'สต็อกต่ำกว่าเกณฑ์! คงเหลือ ' + stock + ' ' + pro_unit1;
         } else if (demandPerDay > 10 && stock < demandPerDay * 7) {
           // High demand but less than 1 week of stock
           alertLevel = 'warning';
@@ -830,7 +831,7 @@ export class BehaviorTrackingService {
           pro_code: product.pro_code,
           pro_name: product.pro_name,
           pro_imgmain: product.pro_imgmain,
-          pro_unit1: product.pro_unit1,
+          pro_unit1: pro_unit1,
           current_stock: stock,
           lowest_stock: lowestStock,
           view_count: viewCount,
@@ -940,13 +941,11 @@ export class BehaviorTrackingService {
     // 5. Get product info
     const products = await this.productRepo.find({
       where: { pro_code: In(proCodes) },
-      select: ['pro_code', 'pro_name', 'pro_imgmain', 'pro_unit1'],
+      select: ['pro_code', 'pro_name', 'pro_imgmain'],
+      relations: ['units'],
     });
 
-    const productMap: Record<
-      string,
-      Pick<ProductEntity, 'pro_code' | 'pro_name' | 'pro_imgmain' | 'pro_unit1'>
-    > = {};
+    const productMap: Record<string, ProductEntity> = {};
     products.forEach((p) => {
       productMap[p.pro_code] = p;
     });
@@ -956,6 +955,9 @@ export class BehaviorTrackingService {
       .map((cart): CartConversionResult | null => {
         const product = productMap[cart.pro_code];
         if (!product) return null;
+
+        const pro_unit1 =
+          product.units?.find((u) => u.level === 1)?.unit_name || '';
 
         const sessions = productSessions[cart.pro_code] || new Set<string>();
         const convertedSessions = Array.from(sessions).filter((s) =>
@@ -991,7 +993,7 @@ export class BehaviorTrackingService {
           pro_code: cart.pro_code,
           pro_name: product.pro_name,
           pro_imgmain: product.pro_imgmain,
-          pro_unit1: product.pro_unit1,
+          pro_unit1: pro_unit1,
           add_count: addCount,
           remove_count: removeCount,
           unique_sessions: parseInt(String(cart.unique_sessions || '0')),
