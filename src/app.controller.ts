@@ -501,6 +501,7 @@ export class AppController {
               amount: number;
               pro_unit1: string;
               pro_point: number;
+              unit_enum: '1' | '2' | '3';
             },
           ]
         | null;
@@ -3154,7 +3155,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links')
+  @Post(
+    '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links',
+  )
   async addBannerLink(
     @Param('historyId') historyId: string,
     @Body()
@@ -3190,7 +3193,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Delete('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId')
+  @Delete(
+    '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId',
+  )
   async removeBannerLink(@Param('linkId') linkId: string) {
     try {
       const bannerId = await this.campaignsService.removeBannerLink(linkId);

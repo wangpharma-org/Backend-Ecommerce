@@ -607,8 +607,12 @@ export class ProductsService {
   ) {
     try {
       const {
-        pro_unit1, pro_unit2, pro_unit3,
-        pro_ratio1, pro_ratio2, pro_ratio3,
+        pro_unit1,
+        pro_unit2,
+        pro_unit3,
+        pro_ratio1,
+        pro_ratio2,
+        pro_ratio3,
         ...productData
       } = product;
 
@@ -677,8 +681,12 @@ export class ProductsService {
   ) {
     try {
       const {
-        pro_unit1, pro_unit2, pro_unit3,
-        pro_ratio1, pro_ratio2, pro_ratio3,
+        pro_unit1,
+        pro_unit2,
+        pro_unit3,
+        pro_ratio1,
+        pro_ratio2,
+        pro_ratio3,
         ...productData
       } = product;
 
@@ -693,9 +701,12 @@ export class ProductsService {
       );
 
       const hasUnitData =
-        pro_unit1 !== undefined || pro_unit2 !== undefined ||
-        pro_unit3 !== undefined || pro_ratio1 !== undefined ||
-        pro_ratio2 !== undefined || pro_ratio3 !== undefined;
+        pro_unit1 !== undefined ||
+        pro_unit2 !== undefined ||
+        pro_unit3 !== undefined ||
+        pro_ratio1 !== undefined ||
+        pro_ratio2 !== undefined ||
+        pro_ratio3 !== undefined;
 
       if (hasUnitData) {
         const existingUnits = await this.productUnitRepo.find({
@@ -2540,64 +2551,94 @@ export class ProductsService {
 
   async updateProductFromEasyAcc(data: ProductEasyAcc) {
     try {
-      if (data.product_name) {
-        const cartItem = await this.checkCartByProcode(data.product_code);
-        if (cartItem && cartItem.length > 0) {
-          for (const item of cartItem) {
-            await this.createDeleteCartByProcode(
-              item.product.pro_code,
-              item.product.pro_imgmain,
-              item.product.pro_name,
-              item.spc_unit_enum,
-              item.mem_code,
-            );
-          }
+      const productData = await this.productRepo.findOne({
+        where: { pro_code: data.product_code },
+      });
+
+      if (!productData) {
+        this.logger.warn(
+          `Product with code ${data.product_code} not found for EasyAcc update`,
+        );
+        return;
+      }
+
+      const productUnitsData = await this.productUnitRepo.find({
+        where: { pro_code: data.product_code },
+      });
+
+      const isDeleting = (name?: string | null) =>
+        name !== undefined && (!name || name.trim() === '');
+
+      const deletedLevels: Array<'1' | '2' | '3'> = [];
+      if (
+        isDeleting(data.product_unit2) &&
+        productUnitsData.some((u) => u.level === 2)
+      )
+        deletedLevels.push('2');
+      if (
+        isDeleting(data.product_unit3) &&
+        productUnitsData.some((u) => u.level === 3)
+      )
+        deletedLevels.push('3');
+
+      if (deletedLevels.length > 0) {
+        const cartItems = await this.checkCartByProcode(data.product_code);
+        const affectedItems = cartItems.filter(
+          (item) =>
+            item.spc_unit_enum !== null &&
+            deletedLevels.includes(item.spc_unit_enum),
+        );
+        for (const item of affectedItems) {
+          await this.createDeleteCartByProcode(
+            item.product.pro_code,
+            item.product.pro_imgmain,
+            item.product.pro_name,
+            item.spc_unit_enum as string,
+            item.mem_code,
+          );
         }
       }
 
-      const updateData: Partial<ProductEntity> = {};
-
       if (data.product_name !== undefined)
-        updateData.pro_name = data.product_name;
+        productData.pro_name = data.product_name;
       if (data.product_nameEN !== undefined)
-        updateData.pro_nameEN = data.product_nameEN as string;
+        productData.pro_nameEN = data.product_nameEN as string;
       if (data.product_nameSale !== undefined)
-        updateData.pro_nameSale = data.product_nameSale as string;
+        productData.pro_nameSale = data.product_nameSale as string;
       if (data.product_genericname !== undefined)
-        updateData.pro_genericname = data.product_genericname as string;
+        productData.pro_genericname = data.product_genericname as string;
       if (data.product_barcode !== undefined)
-        updateData.pro_barcode1 = data.product_barcode as string;
+        productData.pro_barcode1 = data.product_barcode as string;
       if (data.product_barcode2 !== undefined)
-        updateData.pro_barcode2 = data.product_barcode2 as string;
+        productData.pro_barcode2 = data.product_barcode2 as string;
       if (data.product_barcode3 !== undefined)
-        updateData.pro_barcode3 = data.product_barcode3 as string;
+        productData.pro_barcode3 = data.product_barcode3 as string;
       if (data.product_keysearch !== undefined)
-        updateData.pro_keysearch = data.product_keysearch as string;
+        productData.pro_keysearch = data.product_keysearch as string;
       if (data.product_stock !== undefined)
-        updateData.pro_stock = data.product_stock as number;
+        productData.pro_stock = data.product_stock as number;
       if (data.product_lowest_stock !== undefined)
-        updateData.pro_lowest_stock = data.product_lowest_stock as number;
+        productData.pro_lowest_stock = data.product_lowest_stock as number;
       if (data.creditor_code !== undefined)
-        updateData.creditor = data.creditor_code
+        productData.creditor = data.creditor_code
           ? ({ creditor_code: data.creditor_code } as CreditorEntity)
           : null;
       if (data.product_price_a !== undefined)
-        updateData.pro_priceA = data.product_price_a as number;
+        productData.pro_priceA = data.product_price_a as number;
       if (data.product_price_b !== undefined)
-        updateData.pro_priceB = data.product_price_b as number;
+        productData.pro_priceB = data.product_price_b as number;
       if (data.product_price_c !== undefined)
-        updateData.pro_priceC = data.product_price_c as number;
+        productData.pro_priceC = data.product_price_c as number;
       if (data.pro_category !== undefined)
-        updateData.pro_category = data.pro_category as number;
+        productData.pro_category = data.pro_category as number;
 
-      if (Object.keys(updateData).length === 0) return;
+      if (Object.keys(productData).length === 0) return;
 
       await this.productRepo.update(
         { pro_code: data.product_code },
-        updateData,
+        productData,
       );
 
-      // ซิงค์ข้อมูลไปตาราง product_unit
       if (
         data.product_unit1 !== undefined ||
         data.product_unit2 !== undefined ||
@@ -2606,7 +2647,6 @@ export class ProductsService {
         data.product_ratio_2 !== undefined ||
         data.product_ratio_3 !== undefined
       ) {
-        // อัปเดตข้อมูล units ลงตาราง product_unit แบบเจาะจง (Partial Update)
         const existingUnits = await this.productUnitRepo.find({
           where: { pro_code: data.product_code },
         });
@@ -2677,7 +2717,7 @@ export class ProductsService {
     pro_code: string,
     pro_imgmain: string,
     pro_name: string,
-    pro_unit: string,
+    pro_unit_level: string,
     mem_code: string,
   ) {
     try {
@@ -2687,11 +2727,14 @@ export class ProductsService {
         data: {
           pro_imgmain,
           pro_name,
-          pro_unit,
+          pro_unit_level,
         },
       });
       await this.deleteCartRepo.save(cartItem);
-      await this.shoppingCartRepo.delete({ pro_code });
+      await this.shoppingCartRepo.delete({
+        pro_code,
+        spc_unit_enum: pro_unit_level as ShoppingCartEntity['spc_unit_enum'],
+      });
       const member = await this.userRepo.findOne({ where: { mem_code } });
       await this.shoppingCartService.checkPromotionReward(
         mem_code,

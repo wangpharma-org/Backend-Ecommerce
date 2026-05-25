@@ -182,6 +182,7 @@ export class ShoppingOrderService {
               amount: number;
               pro_unit1: string;
               pro_point: number;
+              unit_enum: '1' | '2' | '3';
             },
           ]
         | null;
@@ -447,6 +448,7 @@ export class ShoppingOrderService {
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
               is_reward: item.is_reward,
+              spo_unit_enum: item.spc_unit_enum,
             });
           });
 
@@ -537,6 +539,7 @@ export class ShoppingOrderService {
               is_reward: true,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
+              spo_unit_enum: item.spc_unit_enum,
             });
 
             orderRewards.push(orderItem);
@@ -634,6 +637,7 @@ export class ShoppingOrderService {
                   pro_code: order.pro_code,
                   spo_unit: order.pro_unit1,
                   spo_qty: order.amount,
+                  spo_unit_enum: order.unit_enum,
                 }),
               );
 
@@ -689,6 +693,7 @@ export class ShoppingOrderService {
                 spo_price_unit: 0,
                 spo_total_decimal: 0,
                 is_happy_hour: true,
+                spo_unit_enum: happyReward.slot.reward_unit_enum ?? '1',
               });
               await manager.save(ShoppingOrderEntity, happyRewardItem);
             }

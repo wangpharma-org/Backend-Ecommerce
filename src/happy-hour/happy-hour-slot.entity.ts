@@ -38,6 +38,9 @@ export class HappyHourSlotEntity {
   @Column({ type: 'varchar', length: 30, nullable: true })
   reward_unit!: string | null;
 
+  @Column({ type: 'enum', enum: ['1', '2', '3'], nullable: true, default: null })
+  reward_unit_enum!: '1' | '2' | '3' | null;
+
   @Column({ type: 'int', default: 1 })
   reward_amount!: number;
 
