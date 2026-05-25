@@ -571,6 +571,7 @@ export class ShoppingCartService {
     mem_code: string,
     clientVersion?: string | number,
   ): Promise<void> {
+    console.log(`Ensuring cart version is fresh for mem_code: ${mem_code}, clientVersion: ${clientVersion}`);
     if (clientVersion === undefined || clientVersion === null) {
       return;
     }
@@ -855,6 +856,7 @@ export class ShoppingCartService {
     company_day_source?: string;
   }): Promise<CartMutationResult> {
     try {
+      console.log('Adding product to cart:', data);
       if (data.flashsale_end) {
         await this.handleCheckFlashsale(data.pro_code);
       }
@@ -910,6 +912,13 @@ export class ShoppingCartService {
           }
         }
       } else {
+        console.log('Adding new cart item:', {
+          pro_code: data.pro_code,
+          mem_code: data.mem_code,
+          spc_unit_enum: unitEnum,
+          spc_amount: data.amount,
+          flashsale_end: data.flashsale_end,
+        });
         await this.shoppingCartRepo.save({
           pro_code: data.pro_code,
           mem_code: data.mem_code,
@@ -1678,7 +1687,7 @@ export class ShoppingCartService {
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
 
-      console.log('Raw product cart data:', raw);
+      // console.log('Raw product cart data:', raw);
 
       const grouped: Record<string, ShoppingProductCart> = {};
 
