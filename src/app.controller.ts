@@ -1,8 +1,10 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
+  BadGatewayException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -37,6 +39,7 @@ import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
+import type { PromotionEntityWithTransformedData } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
@@ -59,7 +62,6 @@ import { SessionsService } from './sessions/sessions.service';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
-import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
@@ -103,6 +105,7 @@ export interface JwtPayload {
   mem_phone?: string;
   mem_route?: string;
   permission?: boolean;
+  role?: string;
 }
 
 @Controller()
@@ -351,7 +354,6 @@ export class AppController {
   @Get('/ecom/favorite/:mem_code')
   async getListFavorite(
     @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
     const memberCode = req.user.mem_code;
@@ -374,7 +376,10 @@ export class AppController {
       mem_code,
       req.user.mem_route,
     );
-    for (const funcItem of func) {
+    for (const funcItem of func as unknown as {
+      pro_code: string;
+      pro_imgmain: string;
+    }[]) {
       await this.imagedebugService.UpsercetImg({
         pro_code: funcItem.pro_code,
         imageUrl: funcItem.pro_imgmain,
@@ -496,6 +501,7 @@ export class AppController {
               amount: number;
               pro_unit1: string;
               pro_point: number;
+              unit_enum: '1' | '2' | '3';
             },
           ]
         | null;
@@ -1619,7 +1625,7 @@ export class AppController {
   }
 
   @Post('/ecom/admin/modal-content/save')
-  async SaveModalContent(
+  async saveModalContent(
     @Body()
     body: {
       id: number;
@@ -1628,12 +1634,12 @@ export class AppController {
       show: boolean;
     },
   ) {
-    return this.modalContentService.SaveModalContent(body);
+    return this.modalContentService.saveModalContent(body);
   }
 
   @Get('/ecom/admin/modal-content/get')
-  async GetModalContent() {
-    return this.modalContentService.GetModalContent();
+  async getModalContent() {
+    return this.modalContentService.getModalContent();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1789,15 +1795,21 @@ export class AppController {
     body: {
       new_password: string;
       old_password: string;
+      logout_all_devices?: boolean;
     },
   ): Promise<{ success: boolean; message: string }> {
     try {
       const mem_username = req.user.username;
-      return this.changePasswordService.CheckOldPasswordAndUpdatePassword({
-        mem_username: mem_username,
-        new_password: body.new_password,
-        old_password: body.old_password,
-      });
+      const result =
+        await this.changePasswordService.CheckOldPasswordAndUpdatePassword({
+          mem_username: mem_username,
+          new_password: body.new_password,
+          old_password: body.old_password,
+        });
+      if (result.success && body.logout_all_devices) {
+        await this.sessionsService.logoutAllUserSessions(req.user.mem_code);
+      }
+      return result;
     } catch {
       return {
         success: false,
@@ -1874,7 +1886,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/company-days')
   async getCompanyDays(@Req() req: Request & { user: JwtPayload }): Promise<{
-    promotions: PromotionEntity[];
+    promotions: PromotionEntityWithTransformedData[];
   }> {
     const permission = req.user.permission;
     if (permission !== true) {
@@ -3157,7 +3169,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links')
+  @Post(
+    '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links',
+  )
   async addBannerLink(
     @Param('historyId') historyId: string,
     @Body()
@@ -3193,7 +3207,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Delete('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId')
+  @Delete(
+    '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId',
+  )
   async removeBannerLink(@Param('linkId') linkId: string) {
     try {
       const bannerId = await this.campaignsService.removeBannerLink(linkId);
@@ -4169,6 +4185,7 @@ export class AppController {
 
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
+    this.logger.log('Fetching product image for pro_code:', pro_code);
     try {
       const product =
         await this.productsService.getProductImageByCode(pro_code);
@@ -4212,4 +4229,14 @@ export class AppController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/products/lotus-cards')
+  async searchLotusCards(@Req() req: Request & { user: JwtPayload }) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.searchLotusCards();
+    } else {
+      throw new ForbiddenException('You not have Permission to Accesss');
+    }
+  }
 }

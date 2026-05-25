@@ -1,0 +1,96 @@
+{
+  "repo": "wangpharma-org/Backend-Ecommerce",
+  "last_run": "2026-05-19",
+  "approvers": [
+    "62theories"
+  ],
+  "items": [
+    {
+      "id": "R-001",
+      "kind": "rule",
+      "file": ".ai/rules.md",
+      "status": "proposed",
+      "source_prs": [
+        121,
+        137
+      ],
+      "reviewers": [
+        "MossOcelot"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-05-19",
+      "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null,
+      "promoted_from": "preference"
+    },
+    {
+      "id": "D-001",
+      "kind": "domain",
+      "file": ".ai/domain.md",
+      "status": "proposed",
+      "source_prs": [
+        143
+      ],
+      "reviewers": [
+        "MossOcelot"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-05-19",
+      "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "C-001",
+      "kind": "convention",
+      "file": ".ai/conventions.md",
+      "status": "proposed",
+      "source_prs": [
+        148
+      ],
+      "reviewers": [
+        "MossOcelot"
+      ],
+      "confidence": "medium",
+      "first_seen": "2026-05-19",
+      "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "G-001",
+      "kind": "gotcha",
+      "file": ".ai/gotchas.md",
+      "status": "proposed",
+      "source_prs": [
+        143
+      ],
+      "reviewers": [
+        "MossOcelot"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-05-19",
+      "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "Q-001",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "source_prs": [
+        123
+      ],
+      "reviewers": [
+        "MossOcelot"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-05-19",
+      "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null
+    }
+  ]
+}

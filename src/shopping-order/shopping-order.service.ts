@@ -18,6 +18,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
+import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 
 interface CountSale {
   pro_code: string;
@@ -50,7 +51,36 @@ export class ShoppingOrderService {
     private readonly promotionTierRepo: Repository<PromotionTierEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
+    private readonly happyHourService: HappyHourService,
   ) {}
+
+  private convertEnumToUnitName(
+    unitEnum: 1 | 2 | 3 | string,
+    productUnits?: { level: number; unit_name: string; ratio: number }[],
+  ): string {
+    if (!productUnits || productUnits.length === 0) {
+      return '';
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.unit_name || String(unitEnum);
+  }
+
+  private getRatioFromUnits(
+    unitEnum: 1 | 2 | 3 | string,
+    productUnits?: { level: number; unit_name: string; ratio: number }[],
+  ): number {
+    if (!productUnits || productUnits.length === 0) {
+      return 1;
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.ratio || 1;
+  }
 
   private async isL16Member(
     mem_code?: string,
@@ -152,6 +182,7 @@ export class ShoppingOrderService {
               amount: number;
               pro_unit1: string;
               pro_point: number;
+              unit_enum: '1' | '2' | '3';
             },
           ]
         | null;
@@ -207,7 +238,9 @@ export class ShoppingOrderService {
         spc_id: item.spc_id,
         pro_code: item.pro_code,
         amount: Number(item.spc_amount),
-        unit: item.spc_unit ?? null,
+        unit:
+          this.convertEnumToUnitName(item.spc_unit_enum, item.product?.units) ||
+          null,
         is_reward: item.is_reward,
         hotdeal_free: item.hotdeal_free,
         promotion_id: item.promo_id,
@@ -305,30 +338,36 @@ export class ShoppingOrderService {
           const rewardItems = group.filter((item) => item.is_reward);
 
           const orderSales = normalItems.map((item) => {
-            const unitRatioMap = new Map([
-              [item.product.pro_unit1, item.product.pro_ratio1],
-              [item.product.pro_unit2, item.product.pro_ratio2],
-              [item.product.pro_unit3, item.product.pro_ratio3],
-            ]);
+            // ใช้ dynamic mapping แทน hardcode ratio
+            const ratio = this.getRatioFromUnits(
+              item.spc_unit_enum,
+              item.product.units,
+            );
+
             submitLogContext.push({
-              unitRatioMap: Array.from(unitRatioMap.entries()),
+              unitLevel: item.spc_unit_enum,
+              calculatedRatio: ratio,
+              forProCode: item.pro_code,
             });
 
             const totalAmount = normalItems
               .filter((c) => c.pro_code === item.pro_code)
               .reduce((sum, sc) => {
-                if (!sc.spc_unit) {
+                if (!sc.spc_unit_enum) {
                   throw new Error(
-                    `Invalid unit ${sc.spc_unit} for product ${sc.pro_code}`,
+                    `Missing unit enum for product ${sc.pro_code} in cart item ${sc.spc_id}`,
                   );
                 }
-                const ratio = unitRatioMap.get(sc.spc_unit);
-                if (!ratio) {
+                const itemRatio = this.getRatioFromUnits(
+                  sc.spc_unit_enum,
+                  sc.product.units,
+                );
+                if (!itemRatio) {
                   throw new Error(
-                    `Invalid unit ${sc.spc_unit} for product ${sc.pro_code}`,
+                    `Invalid unit enum ${sc.spc_unit_enum} for product ${sc.pro_code}`,
                   );
                 }
-                return sum + Number(sc.spc_amount) * ratio;
+                return sum + Number(sc.spc_amount) * itemRatio;
               }, 0);
             submitLogContext.push({ totalAmount, forProCode: item.pro_code });
 
@@ -357,17 +396,12 @@ export class ShoppingOrderService {
                     ? Number(item.product.pro_priceC)
                     : 0;
 
-            if (!item.spc_unit) {
+            if (!item.spc_unit_enum) {
               throw new Error(
-                `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
+                `Missing unit enum for product ${item.pro_code} in cart item ${item.spc_id}`,
               );
             }
-            const ratio = unitRatioMap.get(item.spc_unit);
-            if (!ratio) {
-              throw new Error(
-                `Invalid unit ${item.spc_unit} for product ${item.pro_code}`,
-              );
-            }
+
             let price =
               isPromotionActive || isFlashSale
                 ? Number(item.spc_amount) *
@@ -381,7 +415,7 @@ export class ShoppingOrderService {
               checkFreebies.some(
                 (f) =>
                   f &&
-                  String(f.spc_unit) === String(item.spc_unit) &&
+                  String(f.spc_unit_enum) === String(item.spc_unit_enum) &&
                   String(f.pro_code) === String(item.pro_code),
               ),
             );
@@ -397,16 +431,24 @@ export class ShoppingOrderService {
               forProCode: item.pro_code,
             });
             submitLogContext.push({ Success: true, forProCode: item.pro_code });
+
+            // แปลง enum เป็น unit name สำหรับบันทึกลง database
+            const unitName = this.convertEnumToUnitName(
+              item.spc_unit_enum,
+              item.product.units,
+            );
+
             return manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
               spo_qty: item.spc_amount,
-              spo_unit: item.spc_unit,
+              spo_unit: unitName,
               spo_price_unit: price / item.spc_amount,
               spo_total_decimal: price,
               pro_code: item.pro_code,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
               is_reward: item.is_reward,
+              spo_unit_enum: item.spc_unit_enum,
             });
           });
 
@@ -481,16 +523,23 @@ export class ShoppingOrderService {
               });
             }
 
+            // แปลง enum เป็น unit name สำหรับบันทึกลง database
+            const rewardUnitName = this.convertEnumToUnitName(
+              item.spc_unit_enum,
+              item.product?.units,
+            );
+
             const orderItem = manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
               pro_code: item.pro_code,
-              spo_unit: item.spc_unit,
+              spo_unit: rewardUnitName,
               spo_qty: item.spc_amount,
               spo_price_unit: 0,
               spo_total_decimal: 0,
               is_reward: true,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
+              spo_unit_enum: item.spc_unit_enum,
             });
 
             orderRewards.push(orderItem);
@@ -533,7 +582,10 @@ export class ShoppingOrderService {
                     item: cart.map((c) => ({
                       pro_code: c.pro_code,
                       amount: c.spc_amount,
-                      unit: c.spc_unit,
+                      unit: this.convertEnumToUnitName(
+                        c.spc_unit_enum,
+                        c.product.units,
+                      ),
                       is_reward: c.is_reward,
                     })),
                   };
@@ -563,7 +615,10 @@ export class ShoppingOrderService {
                   item: cart.map((c) => ({
                     pro_code: c.pro_code,
                     amount: c.spc_amount,
-                    unit: c.spc_unit,
+                    unit: this.convertEnumToUnitName(
+                      c.spc_unit_enum,
+                      c.product.units,
+                    ),
                     is_reward: c.is_reward,
                   })),
                 };
@@ -582,6 +637,7 @@ export class ShoppingOrderService {
                   pro_code: order.pro_code,
                   spo_unit: order.pro_unit1,
                   spo_qty: order.amount,
+                  spo_unit_enum: order.unit_enum,
                 }),
               );
 
@@ -613,6 +669,38 @@ export class ShoppingOrderService {
           const currentGroupTotal =
             totalsummaryfromCart.items[groupIndex]?.grandTotalItems || 0;
 
+          // Happy Hour: คำนวณและบันทึก reward / excess discount
+          let happyHourDiscount = 0;
+          const happyReward =
+            await this.happyHourService.calcHappyHourReward(currentGroupTotal);
+
+          if (happyReward) {
+            submitLogContext.push({
+              happyHour: {
+                numCards: happyReward.numCards,
+                excessDiscount: happyReward.excessDiscount,
+                slotId: happyReward.slot.id,
+              },
+              forOrder: running,
+            });
+
+            if (happyReward.numCards > 0 && happyReward.slot.reward_pro_code) {
+              const happyRewardItem = manager.create(ShoppingOrderEntity, {
+                orderHeader: { soh_running: running },
+                pro_code: happyReward.slot.reward_pro_code,
+                spo_unit: happyReward.slot.reward_unit ?? 'ใบ',
+                spo_qty: happyReward.numCards * happyReward.slot.reward_amount,
+                spo_price_unit: 0,
+                spo_total_decimal: 0,
+                is_happy_hour: true,
+                spo_unit_enum: happyReward.slot.reward_unit_enum ?? '1',
+              });
+              await manager.save(ShoppingOrderEntity, happyRewardItem);
+            }
+
+            happyHourDiscount = happyReward.excessDiscount;
+          }
+
           await manager.update(
             ShoppingHeadEntity,
             { soh_id: NewHead.soh_id },
@@ -626,6 +714,7 @@ export class ShoppingOrderService {
                   ? 0
                   : currentGroupTotal * 0.01 - pointAfterUse,
               emp_code: data.emp_code?.trim() ?? null,
+              discount: happyHourDiscount,
             },
           );
         }
@@ -642,7 +731,10 @@ export class ShoppingOrderService {
             item: cart.map((c) => ({
               pro_code: c.pro_code,
               amount: c.spc_amount,
-              unit: c.spc_unit,
+              unit: this.convertEnumToUnitName(
+                c.spc_unit_enum,
+                c.product?.units,
+              ),
               is_reward: c.is_reward,
             })),
           };
@@ -660,7 +752,10 @@ export class ShoppingOrderService {
             item: cart.map((c) => ({
               pro_code: c.pro_code,
               amount: c.spc_amount,
-              unit: c.spc_unit,
+              unit: this.convertEnumToUnitName(
+                c.spc_unit_enum,
+                c.product?.units,
+              ),
               is_reward: c.is_reward,
             })),
           };
@@ -739,14 +834,13 @@ export class ShoppingOrderService {
     }
   }
 
-  async getLast6OrdersByMemberCode(
-    memCode: string,
-  ): Promise<ShoppingOrderEntity[]> {
+  async getLast6OrdersByMemberCode(memCode: string): Promise<any[]> {
     try {
       const isL16 = await this.isL16Member(memCode);
       const query = this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
+        .leftJoinAndSelect('product.units', 'units')
         .leftJoinAndSelect(
           'product.inCarts',
           'cart',
@@ -778,9 +872,6 @@ export class ShoppingOrderService {
           'product.pro_priceB',
           'product.pro_priceC',
           'product.pro_imgmain',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_stock',
           'product.pro_lowest_stock',
           'product.order_quantity',
@@ -790,7 +881,7 @@ export class ShoppingOrderService {
           'header.soh_datetime',
           'cart.spc_id',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'cart.mem_code',
           'fsp.limit',
           'fsp.id',
@@ -798,6 +889,10 @@ export class ShoppingOrderService {
           'fs.time_start',
           'fs.time_end',
           'fs.date',
+          'units.id',
+          'units.level',
+          'units.unit_name',
+          'units.ratio',
         ])
         .getMany();
 
@@ -808,7 +903,53 @@ export class ShoppingOrderService {
           uniqueMap.set(code, order);
         }
       }
-      return Array.from(uniqueMap.values()).slice(0, 6); //ส่งไปแค่ 6 อัน
+
+      return Array.from(uniqueMap.values())
+        .slice(0, 6)
+        .map((order) => {
+          const product = order.product;
+          if (!product) return order;
+
+          const units = (product.units ?? []) as unknown as {
+            level: number;
+            unit_name: string;
+            ratio: number;
+          }[];
+          const unit1 = units.find((u) => u.level === 1);
+          const unit2 = units.find((u) => u.level === 2);
+          const unit3 = units.find((u) => u.level === 3);
+
+          const resolvedCarts = (product.inCarts ?? []).map((cart) => {
+            const found = units.find(
+              (u) => u.level === Number(cart.spc_unit_enum),
+            );
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { spc_unit_enum, ...cartWithoutEnum } =
+              cart as typeof cart & {
+                spc_unit_enum: string;
+              };
+            return { ...cartWithoutEnum, spc_unit: found?.unit_name ?? '' };
+          });
+
+          const productWithoutUnits = {
+            ...(product as unknown as Record<string, unknown>),
+          };
+          delete productWithoutUnits['units'];
+
+          return {
+            ...order,
+            product: {
+              ...productWithoutUnits,
+              pro_unit1: unit1?.unit_name ?? '',
+              pro_unit2: unit2?.unit_name ?? '',
+              pro_unit3: unit3?.unit_name ?? '',
+              pro_ratio1: unit1?.ratio ?? 1,
+              pro_ratio2: unit2?.ratio ?? 1,
+              pro_ratio3: unit3?.ratio ?? 1,
+              inCarts: resolvedCarts,
+            },
+          };
+        }); //ส่งไปแค่ 6 อัน
     } catch (error) {
       console.log(error);
       throw new Error('Failed to fetch order data.');
@@ -817,7 +958,8 @@ export class ShoppingOrderService {
 
   async sendPurchaseEventToAnalytics(mem_code: string): Promise<void> {
     try {
-      const cart = await this.shoppingCartService.handleGetCartToOrder(mem_code);
+      const cart =
+        await this.shoppingCartService.handleGetCartToOrder(mem_code);
       if (!cart?.length) return;
 
       const taggedTierIds = Array.from(
@@ -829,7 +971,7 @@ export class ShoppingOrderService {
                 item.promo_id != null &&
                 item.tier_id != null,
             )
-            .map((item) => item.tier_id as number),
+            .map((item) => item.tier_id),
         ),
       );
       if (taggedTierIds.length === 0) return;
@@ -841,7 +983,8 @@ export class ShoppingOrderService {
       if (!tiers.length) return;
 
       tiers.sort((a, b) => {
-        const minAmountDiff = Number(b.min_amount || 0) - Number(a.min_amount || 0);
+        const minAmountDiff =
+          Number(b.min_amount || 0) - Number(a.min_amount || 0);
         if (minAmountDiff !== 0) return minAmountDiff;
         const promoIdA = a.promotion?.promo_id ?? 0;
         const promoIdB = b.promotion?.promo_id ?? 0;

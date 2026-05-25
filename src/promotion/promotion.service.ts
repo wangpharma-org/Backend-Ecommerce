@@ -1,5 +1,11 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
-import { HttpException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
 import {
@@ -9,6 +15,7 @@ import {
   MoreThanOrEqual,
   LessThanOrEqual,
   DataSource,
+  In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -20,9 +27,66 @@ import { CodePromotionEntity } from './code-promotion.entity';
 import { AuthService } from 'src/auth/auth.service';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
+
+// Extended types for transformed product data
+export type ProductWithUnits = ProductEntity & {
+  pro_unit1?: string;
+  pro_unit2?: string;
+  pro_unit3?: string;
+  pro_ratio1?: number;
+  pro_ratio2?: number;
+  pro_ratio3?: number;
+};
+
+export type PromotionConditionWithTransformedProduct = Omit<
+  PromotionConditionEntity,
+  'product'
+> & {
+  product: ProductWithUnits | null;
+};
+
+export type PromotionRewardWithTransformedProduct = Omit<
+  PromotionRewardEntity,
+  'giftProduct'
+> & {
+  giftProduct: ProductWithUnits | null;
+};
+
+export type PromotionTierWithTransformedData = Omit<
+  PromotionTierEntity,
+  'conditions' | 'rewards'
+> & {
+  conditions?: PromotionConditionWithTransformedProduct[];
+  rewards?: PromotionRewardWithTransformedProduct[];
+};
+
+export type PromotionEntityWithTransformedData = Omit<
+  PromotionEntity,
+  'tiers'
+> & {
+  tiers?: PromotionTierWithTransformedData[];
+};
+
+export type PromotionTierWithTransformedConditions = Omit<
+  PromotionTierEntity,
+  'conditions'
+> & {
+  conditions?: PromotionConditionWithTransformedProduct[];
+};
+
+export type TierConditionWithTransformedTier = PromotionConditionEntity & {
+  tier: PromotionTierWithTransformedData;
+};
+
+export type GetAllTiersResult = {
+  poster: PromotionTierEntity[];
+  reward: PromotionRewardWithTransformedProduct[];
+};
 
 @Injectable()
 export class PromotionService {
+  private readonly logger = new Logger(PromotionService.name);
   private s3: AWS.S3;
   constructor(
     @InjectRepository(PromotionEntity)
@@ -67,6 +131,75 @@ export class PromotionService {
       select: ['mem_route'],
     });
     return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  private convertEnumToUnitName(
+    unitEnum: 1 | 2 | 3 | string,
+    productUnits?: { level: number; unit_name: string; ratio: number }[],
+  ): string {
+    if (!productUnits || productUnits.length === 0) {
+      return '';
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.unit_name || String(unitEnum);
+  }
+
+  private getRatioFromUnits(
+    unitEnum: 1 | 2 | 3 | string,
+    productUnits?: { level: number; unit_name: string; ratio: number }[],
+  ): number {
+    if (!productUnits || productUnits.length === 0) {
+      return 1;
+    }
+
+    const targetLevel = Number(unitEnum);
+    const foundUnit = productUnits.find((unit) => unit.level === targetLevel);
+
+    return foundUnit?.ratio || 1;
+  }
+
+  private transformProductData(
+    product:
+      | {
+          units?: { level: number; unit_name: string; ratio: number }[];
+          [key: string]: any;
+        }
+      | null
+      | undefined,
+  ) {
+    if (!product) return product;
+
+    return {
+      ...product,
+      pro_unit1: this.convertEnumToUnitName(1, product.units),
+      pro_unit2: this.convertEnumToUnitName(2, product.units),
+      pro_unit3: this.convertEnumToUnitName(3, product.units),
+      pro_ratio1: this.getRatioFromUnits(1, product.units),
+      pro_ratio2: this.getRatioFromUnits(2, product.units),
+      pro_ratio3: this.getRatioFromUnits(3, product.units),
+    };
+  }
+
+  private transformProductDataUnit(
+    product:
+      | {
+          units?: { level: number; unit_name: string; ratio: number }[];
+          [key: string]: any;
+        }
+      | null
+      | undefined,
+  ) {
+    if (!product) return product;
+
+    return {
+      ...product,
+      pro_unit1: this.convertEnumToUnitName(1, product.units),
+      pro_unit2: this.convertEnumToUnitName(2, product.units),
+      pro_unit3: this.convertEnumToUnitName(3, product.units),
+    };
   }
 
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
@@ -122,7 +255,7 @@ export class PromotionService {
       await this.codeRepo.save(newCode);
       return code_text;
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to generate promotion code');
     }
   }
@@ -158,7 +291,7 @@ export class PromotionService {
       );
       await this.shoppingCartService.markCartAsChanged(mem_code);
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to check reward in cart');
     }
   }
@@ -167,7 +300,7 @@ export class PromotionService {
     tier_id: number;
     mem_code: string;
     sort_by?: number;
-  }) {
+  }): Promise<PromotionTierWithTransformedConditions | null> {
     try {
       const now = new Date();
       const startOfDay = new Date(now);
@@ -208,9 +341,6 @@ export class PromotionService {
           'product.pro_priceB',
           'product.pro_priceC',
           'product.pro_imgmain',
-          'product.pro_unit1',
-          'product.pro_unit2',
-          'product.pro_unit3',
           'product.pro_promotion_amount',
           'product.pro_promotion_month',
           'product.pro_stock',
@@ -221,41 +351,71 @@ export class PromotionService {
 
           'cart.mem_code',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'cart.is_reward',
         ])
         .getOne();
 
       if (!tier) return null;
 
-      if (tier.conditions) {
-        tier.conditions = tier.conditions.sort((a, b) => {
+      // Cast tier เป็น type ที่ถูกต้องก่อน modify
+      const transformedTier = tier as PromotionTierWithTransformedConditions;
+
+      if (transformedTier.conditions) {
+        // Transform product data ก่อน
+        const transformedConditions = transformedTier.conditions.map(
+          (condition) => ({
+            ...condition,
+            product: this.transformProductData(condition.product),
+          }),
+        ) as PromotionConditionWithTransformedProduct[];
+
+        // Sort หลัง transform
+        transformedTier.conditions = transformedConditions.sort((a, b) => {
           if (data.sort_by) {
             switch (data.sort_by) {
               case 1:
-                return b.product.pro_stock - a.product.pro_stock;
+                return (
+                  (b.product?.pro_stock || 0) - (a.product?.pro_stock || 0)
+                );
               case 2:
-                return a.product.pro_stock - b.product.pro_stock;
+                return (
+                  (a.product?.pro_stock || 0) - (b.product?.pro_stock || 0)
+                );
               case 3:
-                return b.product.pro_priceA - a.product.pro_priceA;
+                return (
+                  (b.product?.pro_priceA || 0) - (a.product?.pro_priceA || 0)
+                );
               case 4:
-                return a.product.pro_priceA - b.product.pro_priceA;
+                return (
+                  (a.product?.pro_priceA || 0) - (b.product?.pro_priceA || 0)
+                );
               case 5:
-                return b.product.pro_sale_amount - a.product.pro_sale_amount;
+                return (
+                  (b.product?.pro_sale_amount || 0) -
+                  (a.product?.pro_sale_amount || 0)
+                );
               default:
-                return a.product.pro_name.localeCompare(b.product.pro_name);
+                return (a.product?.pro_name || '').localeCompare(
+                  b.product?.pro_name || '',
+                );
             }
           }
-          return a.product.pro_name.localeCompare(b.product.pro_name);
+          return (a.product?.pro_name || '').localeCompare(
+            b.product?.pro_name || '',
+          );
         });
       }
-      return tier;
+      return transformedTier;
     } catch {
       throw new Error(`Failed to get tier products`);
     }
   }
 
-  async getAllTiers(mem_code?: string, mem_route?: string) {
+  async getAllTiers(
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<GetAllTiersResult> {
     try {
       const Today = new Date();
       const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
@@ -288,7 +448,7 @@ export class PromotionService {
       });
 
       if (!poster.length) {
-        console.log('No active promotions found');
+        this.logger.log("No active promotions found");
         return { poster: [], reward: [] };
       }
 
@@ -296,7 +456,7 @@ export class PromotionService {
         .map((p) => p.tier_id)
         .filter((id): id is number => id !== undefined && id !== null);
       if (!tierIds.length) {
-        console.log('No tier IDs found for active promotions');
+        this.logger.log("No tier IDs found for active promotions");
         return { poster, reward: [] };
       }
 
@@ -323,21 +483,59 @@ export class PromotionService {
 
       const reward = await rewardQuery.getMany();
 
+      const rewardProCodes = reward
+        .map((r) => r.giftProduct?.pro_code)
+        .filter((c): c is string => !!c);
+
+      const rewardUnits = rewardProCodes.length
+        ? await this.productRepo.manager.getRepository(ProductUnitEntity).find({
+            where: { pro_code: In(rewardProCodes) },
+          })
+        : [];
+
+      const rewardUnitsMap: Record<
+        string,
+        { level: number; unit_name: string; ratio: number }[]
+      > = {};
+      for (const u of rewardUnits) {
+        if (!rewardUnitsMap[u.pro_code]) rewardUnitsMap[u.pro_code] = [];
+        rewardUnitsMap[u.pro_code].push({
+          level: u.level,
+          unit_name: u.unit_name,
+          ratio: u.ratio,
+        });
+      }
+
       const limitedReward = Object.values(
         reward.reduce(
-          (acc: Record<number, typeof reward>, item) => {
+          (
+            acc: Record<number, PromotionRewardWithTransformedProduct[]>,
+            item,
+          ) => {
             const id = item.tier.tier_id;
             if (!acc[id]) acc[id] = [];
-            if (acc[id].length < 3) acc[id].push(item);
+            if (acc[id].length < 3) {
+              const productUnits = item.giftProduct?.pro_code
+                ? rewardUnitsMap[item.giftProduct.pro_code]
+                : undefined;
+              acc[id].push({
+                ...item,
+                unit: this.convertEnumToUnitName(item.unit, productUnits),
+                giftProduct: this.transformProductData({
+                  ...item.giftProduct,
+                  units: productUnits,
+                }),
+              } as PromotionRewardWithTransformedProduct);
+            }
             return acc;
           },
-          {} as Record<number, typeof reward>,
+          {} as Record<number, PromotionRewardWithTransformedProduct[]>,
         ),
       ).flat();
 
       return { poster, reward: limitedReward };
     } catch (error) {
-      console.error('Error in getAllTiers:', error);
+      this.logger.error("Error in getAllTiers:", error);
       throw new Error(`Failed to get tiers: ${error}`);
     }
   }
@@ -397,7 +595,7 @@ export class PromotionService {
     status: boolean;
   }) {
     try {
-      // console.log(data);
+      
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
         creditor: data.creditor_code
@@ -409,7 +607,7 @@ export class PromotionService {
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error(`Failed to add promotion`);
     }
   }
@@ -457,7 +655,7 @@ export class PromotionService {
     file: Express.Multer.File;
     is_unit_based?: boolean;
   }) {
-    // console.log(data);
+    
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id: data.promo_id },
@@ -491,7 +689,7 @@ export class PromotionService {
       });
       await this.promotionTierRepo.save(newTier);
     } catch {
-      // console.log(error);
+      // this.logger.error(error);
       throw new Error(`Failed to add tier to promotion`);
     }
   }
@@ -575,7 +773,7 @@ export class PromotionService {
       } as DeepPartial<PromotionConditionEntity>);
       await this.promotionConditionRepo.save(newCondition);
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException(
         error instanceof Error ? error.message : `Failed to create condition`,
@@ -601,13 +799,29 @@ export class PromotionService {
 
   async editReward(data: { reward_id: number; qty: number; unit: string }) {
     try {
+      // หา pro_code ของ reward ก่อน เพื่อ lookup enum level
+      const reward = await this.promotionRewardRepo.findOne({
+        where: { reward_id: data.reward_id },
+        relations: ['giftProduct'],
+        select: { reward_id: true, giftProduct: { pro_code: true } },
+      });
+
+      let unitEnum = data.unit;
+      const proCode = reward?.giftProduct?.pro_code;
+      if (proCode) {
+        const unitEntity = await this.productRepo.manager
+          .getRepository(ProductUnitEntity)
+          .findOne({ where: { pro_code: proCode, unit_name: data.unit } });
+        if (unitEntity) unitEnum = String(unitEntity.level);
+      }
+
       await this.promotionRewardRepo.update(data.reward_id, {
         qty: data.qty,
-        unit: data.unit,
+        unit: unitEnum,
       });
       return 'Reward updated successfully';
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to update reward');
     }
   }
@@ -619,11 +833,20 @@ export class PromotionService {
     unit: string;
   }) {
     try {
+      // แปลง unit name → enum level ก่อน save
+      let unitEnum = data.unit;
+      const unitEntity = await this.productRepo.manager
+        .getRepository(ProductUnitEntity)
+        .findOne({
+          where: { pro_code: data.product_gcode, unit_name: data.unit },
+        });
+      if (unitEntity) unitEnum = String(unitEntity.level);
+
       const newReward = this.promotionRewardRepo.create({
         tier: { tier_id: data.tier_id },
         giftProduct: { pro_code: data.product_gcode },
         qty: data.qty,
-        unit: data.unit,
+        unit: unitEnum,
       } as DeepPartial<PromotionRewardEntity>);
       await this.promotionRewardRepo.save(newReward);
     } catch {
@@ -635,7 +858,7 @@ export class PromotionService {
     tier_id: number,
     mem_code?: string,
     mem_route?: string,
-  ) {
+  ): Promise<PromotionRewardWithTransformedProduct[]> {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
 
@@ -651,9 +874,6 @@ export class PromotionService {
           'giftProduct.pro_name',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
-          'giftProduct.pro_unit1',
-          'giftProduct.pro_unit2',
-          'giftProduct.pro_unit3',
           'giftProduct.free_product_count',
           'giftProduct.free_product_limit',
         ]);
@@ -664,9 +884,51 @@ export class PromotionService {
         );
       }
 
-      return await query.getMany();
+      const reward = await query.getMany();
+
+      // 1. collect all pro_code
+      const proCodes = reward
+        .map((r) => r.giftProduct?.pro_code)
+        .filter((c): c is string => !!c);
+
+      // 2. fetch all units for these products
+      const allUnits = proCodes.length
+        ? await this.productRepo.manager.getRepository(ProductUnitEntity).find({
+            where: { pro_code: In(proCodes) },
+          })
+        : [];
+
+      // 3. group units by pro_code
+      const unitsMap: Record<
+        string,
+        { level: number; unit_name: string; ratio: number }[]
+      > = {};
+      for (const u of allUnits) {
+        // Ensure u is typed correctly (as ProductUnitEntity)
+        const pro_code = (u as { pro_code: string }).pro_code;
+        const level = (u as { level: number }).level;
+        const unit_name = (u as { unit_name: string }).unit_name;
+        const ratio = (u as { ratio: number }).ratio;
+        if (!pro_code) continue;
+        if (!unitsMap[pro_code]) unitsMap[pro_code] = [];
+        unitsMap[pro_code].push({ level, unit_name, ratio });
+      }
+
+      // 4. map reward.unit (level) to unit_name
+      return reward.map((r) => {
+        const pro_code = r.giftProduct?.pro_code;
+        const productUnits = pro_code ? unitsMap[pro_code] : undefined;
+        return {
+          ...r,
+          unit: this.convertEnumToUnitName(r.unit, productUnits),
+          giftProduct: this.transformProductDataUnit({
+            ...r.giftProduct,
+            units: productUnits,
+          }),
+        };
+      }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error(`Failed to get rewards by tier`);
     }
   }
@@ -706,7 +968,7 @@ export class PromotionService {
       });
       return 'Promotion updated successfully';
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to update promotion');
     }
   }
@@ -726,26 +988,30 @@ export class PromotionService {
       });
       return 'Tier updated successfully';
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to update tier');
     }
   }
 
   async getPromotions(): Promise<{
-    promotions: PromotionEntity[];
+    promotions: PromotionEntityWithTransformedData[];
   }> {
     try {
-      console.log('Fetching active promotions with all relations');
+      this.logger.log("Fetching active promotions with all relations");
 
       // ดึงข้อมูลพร้อม relations ทั้งหมดในครั้งเดียว
       const promotions = await this.promotionRepo.find({
         relations: {
           tiers: {
             conditions: {
-              product: true,
+              product: {
+                units: true,
+              },
             },
             rewards: {
-              giftProduct: true,
+              giftProduct: {
+                units: true,
+              },
             },
           },
           creditor: true,
@@ -776,9 +1042,6 @@ export class PromotionService {
                 pro_priceB: true,
                 pro_priceC: true,
                 pro_imgmain: true,
-                pro_unit1: true,
-                pro_unit2: true,
-                pro_unit3: true,
               },
             },
             rewards: {
@@ -790,9 +1053,6 @@ export class PromotionService {
                 pro_name: true,
                 pro_genericname: true,
                 pro_imgmain: true,
-                pro_unit1: true,
-                pro_unit2: true,
-                pro_unit3: true,
               },
             },
           },
@@ -800,10 +1060,23 @@ export class PromotionService {
       });
 
       return {
-        promotions,
+        promotions: promotions.map((promotion) => ({
+          ...promotion,
+          tiers: promotion.tiers?.map((tier) => ({
+            ...tier,
+            conditions: tier.conditions?.map((condition) => ({
+              ...condition,
+              product: this.transformProductData(condition.product),
+            })) as PromotionConditionWithTransformedProduct[] | undefined,
+            rewards: tier.rewards?.map((reward) => ({
+              ...reward,
+              giftProduct: this.transformProductData(reward.giftProduct),
+            })) as PromotionRewardWithTransformedProduct[] | undefined,
+          })) as PromotionTierWithTransformedData[] | undefined,
+        })) as PromotionEntityWithTransformedData[],
       };
     } catch (error) {
-      console.error('Error fetching promotions:', error);
+      this.logger.error("Error fetching promotions:", error);
       throw new Error('Failed to get active promotions');
     }
   }
@@ -840,12 +1113,15 @@ export class PromotionService {
         return 'Tier set to specific products successfully';
       }
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Failed to set all products for the tier');
     }
   }
 
-  async getTierWithProCode(pro_code: string, mem_code: string) {
+  async getTierWithProCode(
+    pro_code: string,
+    mem_code: string,
+  ): Promise<TierConditionWithTransformedTier[]> {
     try {
       const Today = new Date();
       const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
@@ -879,6 +1155,7 @@ export class PromotionService {
           'tier.tier_name',
           'tier.min_amount',
           'tier.description',
+          'tier.detail',
           'tier.tier_postter',
           'tier.is_unit',
 
@@ -892,9 +1169,6 @@ export class PromotionService {
           'tier_product.pro_priceB',
           'tier_product.pro_priceC',
           'tier_product.pro_imgmain',
-          'tier_product.pro_unit1',
-          'tier_product.pro_unit2',
-          'tier_product.pro_unit3',
           'tier_product.viwers',
           'tier_product.pro_promotion_amount',
           'tier_product.pro_promotion_month',
@@ -903,7 +1177,7 @@ export class PromotionService {
           'tier_product.pro_lowest_stock',
           'cart.mem_code',
           'cart.spc_amount',
-          'cart.spc_unit',
+          'cart.spc_unit_enum',
           'product_flashsale.id',
           'product_flashsale.limit',
           'flashsale.promotion_id',
@@ -917,13 +1191,74 @@ export class PromotionService {
           'gift_product.pro_code',
           'gift_product.pro_name',
           'gift_product.pro_imgmain',
-          'gift_product.pro_unit1',
-          'gift_product.pro_unit2',
-          'gift_product.pro_unit3',
         ])
         .getMany();
-      return tierCondition;
-    } catch {
+
+      // 1. Collect all product codes from conditions and rewards
+      const proCodes = new Set<string>();
+      tierCondition.forEach((tc) => {
+        tc.tier.conditions?.forEach((cond) => {
+          if (cond.product?.pro_code) {
+            proCodes.add(cond.product.pro_code);
+          }
+        });
+        tc.tier.rewards?.forEach((reward) => {
+          if (reward.giftProduct?.pro_code) {
+            proCodes.add(reward.giftProduct.pro_code);
+          }
+        });
+      });
+
+      const proCodesArray = Array.from(proCodes);
+
+      // 2. Fetch all units for these products
+      const allUnits = proCodesArray.length
+        ? await this.productRepo.manager.getRepository(ProductUnitEntity).find({
+            where: { pro_code: In(proCodesArray) },
+          })
+        : [];
+
+      // 3. Group units by pro_code
+      const unitsMap: Record<string, ProductUnitEntity[]> = {};
+      for (const u of allUnits) {
+        if (!unitsMap[u.pro_code]) unitsMap[u.pro_code] = [];
+        unitsMap[u.pro_code].push(u);
+      }
+
+      // 4. Map and transform
+      return tierCondition.map((tc) => ({
+        ...tc,
+        tier: {
+          ...tc.tier,
+          conditions: tc.tier.conditions?.map((condition) => ({
+            ...condition.product,
+            ...condition,
+            units: condition.product
+              ? unitsMap[condition.product.pro_code]
+              : [],
+          })) as PromotionConditionWithTransformedProduct[] | undefined,
+          rewards: tc.tier.rewards?.map((reward) => {
+            const rewardUnits = reward.giftProduct
+              ? unitsMap[reward.giftProduct.pro_code] || []
+              : [];
+            const foundUnit = rewardUnits.find(
+              (u) =>
+                u.unit_name === reward.unit ||
+                String(u.level) === String(reward.unit),
+            );
+            return {
+              ...reward,
+              unit: foundUnit?.unit_name || reward.unit,
+              giftProduct: this.transformProductDataUnit({
+                ...reward.giftProduct,
+                units: rewardUnits,
+              }),
+            };
+          }) as PromotionRewardWithTransformedProduct[] | undefined,
+        },
+      })) as TierConditionWithTransformedTier[];
+    } catch (error) {
+      this.logger.error("Error in getTierWithProCode:", error);
       throw new Error('Failed to get tier with product code');
     }
   }
@@ -967,7 +1302,7 @@ export class PromotionService {
     tier_id: number,
     mem_code?: string,
     mem_route?: string,
-  ) {
+  ): Promise<PromotionRewardWithTransformedProduct[]> {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
 
@@ -991,9 +1326,46 @@ export class PromotionService {
         );
       }
 
-      return await rewardQuery.getMany();
+      const result = await rewardQuery.getMany();
+
+      const proCodes = result
+        .map((r) => r.giftProduct?.pro_code)
+        .filter((c): c is string => !!c);
+
+      const allUnits = proCodes.length
+        ? await this.productRepo.manager
+            .getRepository(ProductUnitEntity)
+            .find({ where: { pro_code: In(proCodes) } })
+        : [];
+
+      const unitsMap: Record<
+        string,
+        { level: number; unit_name: string; ratio: number }[]
+      > = {};
+      for (const u of allUnits) {
+        if (!unitsMap[u.pro_code]) unitsMap[u.pro_code] = [];
+        unitsMap[u.pro_code].push({
+          level: u.level,
+          unit_name: u.unit_name,
+          ratio: u.ratio,
+        });
+      }
+
+      return result.map((r) => {
+        const productUnits = r.giftProduct?.pro_code
+          ? unitsMap[r.giftProduct.pro_code]
+          : undefined;
+        return {
+          ...r,
+          unit: this.convertEnumToUnitName(r.unit, productUnits),
+          giftProduct: this.transformProductDataUnit({
+            ...r.giftProduct,
+            units: productUnits,
+          }),
+        };
+      }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error(`Failed to get reward by tier id`);
     }
   }
@@ -1065,7 +1437,7 @@ export class PromotionService {
         url: imgData.Location,
       };
     } catch (error) {
-      console.error('Error updating tier poster:', error);
+      this.logger.error("Error updating tier poster:", error);
       throw new Error(`Failed to update tier poster`);
     }
   }
@@ -1095,16 +1467,15 @@ export class PromotionService {
         (t) => t.tier_id === tier_id,
       )?.min_amount;
 
-      console.log('data : ', data);
+      this.logger.debug("editReward data:", data);
 
-      console.log(
-        `Min amount for promotion ${promotion_id} and tier ${tier_id}:`,
-        minAmount,
+      this.logger.debug(
+        `Min amount for promotion ${promotion_id} and tier ${tier_id}: ${minAmount}`,
       );
 
       return { minAmount: minAmount };
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error(`Failed to get tier price`);
     }
   }
