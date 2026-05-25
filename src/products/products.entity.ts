@@ -24,227 +24,216 @@ import { ReductionRT } from 'src/debtor/reduct-rt.entity';
 import { ReductionRTDetail } from 'src/debtor/reduct-rt-detail.entity';
 import { RecommendEntity } from 'src/recommend/recommend.entity';
 import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
-import { integer } from 'aws-sdk/clients/cloudfront';
-import { text } from 'aws-sdk/clients/customerprofiles';
+// import { integer } from 'aws-sdk/clients/cloudfront';
+// import { text } from 'aws-sdk/clients/customerprofiles';
+import { ProductUnitEntity } from './product-unit.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
   @PrimaryColumn({ unique: true, length: 20 })
-  pro_code: string;
+  pro_code!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_name: string;
+  pro_name!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_nameEN: string;
+  pro_nameEN!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_nameSale: string;
+  pro_nameSale!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_namePacking: string;
+  pro_namePacking!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_genericname: string;
+  pro_genericname!: string;
 
   @Column({ nullable: true, length: 10000 })
-  pro_keysearch: string;
+  pro_keysearch!: string;
+
+  // เอาคอมเมนต์ออกทั้งหมด เพื่อคงคอลัมน์ราคาไว้ใช้กับการ Filter / Search
+  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
+  pro_priceA!: number;
 
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
-  pro_priceA: number;
+  pro_priceB!: number;
 
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
-  pro_priceB: number;
+  pro_priceC!: number;
 
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
-  pro_priceC: number;
-
-  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
-  pro_cost: number;
+  pro_cost!: number;
 
   @Column({ length: 100, nullable: true })
-  pro_supplier: string;
+  pro_supplier!: string;
 
   @Column({ length: 60, nullable: true })
-  pro_barcode1: string;
+  pro_barcode1!: string;
 
   @Column({ length: 60, nullable: true })
-  pro_barcode2: string;
+  pro_barcode2!: string;
 
   @Column({ length: 60, nullable: true })
-  pro_barcode3: string;
+  pro_barcode3!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_imgmain: string;
+  pro_imgmain!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_img2: string;
+  pro_img2!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_img3: string;
+  pro_img3!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_img4: string;
+  pro_img4!: string;
 
   @Column({ length: 255, nullable: true })
-  pro_img5: string;
+  pro_img5!: string;
 
   @Column({ nullable: true })
-  pro_ratio1: number;
-
-  @Column({ nullable: true })
-  pro_ratio2: number;
-
-  @Column({ nullable: true })
-  pro_ratio3: number;
-
-  @Column({ length: 30, nullable: true })
-  pro_unit1: string;
-
-  @Column({ length: 30, nullable: true })
-  pro_unit2: string;
-
-  @Column({ length: 30, nullable: true })
-  pro_unit3: string;
-
-  @Column({ nullable: true })
-  pro_point: number;
+  pro_point!: number;
 
   @Column({ default: false })
-  pro_free: boolean;
+  pro_free!: boolean;
 
   @Column({ length: 120, nullable: true })
-  pro_drugregister: string;
+  pro_drugregister!: string;
 
   @Column({ default: 0 })
-  pro_stock: number;
+  pro_stock!: number;
 
   @Column({ type: 'decimal', precision: 6, scale: 1, nullable: true })
-  pro_utility: number;
+  pro_utility!: number;
 
   @Column({ nullable: true })
-  pro_category: number;
+  pro_category!: number;
 
   @Column({ nullable: true, type: 'tinyint' })
-  pro_promotion_month: number | null;
+  pro_promotion_month!: number | null;
 
   @Column({ nullable: true, default: 1, type: 'smallint' })
-  pro_promotion_amount: number | null;
+  pro_promotion_amount!: number | null;
 
   @Column({ type: 'tinyint', default: 0 })
-  pro_l16_only: number;
+  pro_l16_only!: number;
 
   @Column({ default: false })
-  is_detect_amount: boolean;
+  is_detect_amount!: boolean;
 
   @Column({ type: 'bigint', default: 0 })
-  pro_lowest_stock: number;
+  pro_lowest_stock!: number;
 
   @Column({ default: 0 })
-  pro_sale_amount: number;
+  pro_sale_amount!: number;
 
   @Column({ default: 0 })
-  order_quantity: number;
+  order_quantity!: number;
 
   // เพิ่มมาใหม่
   @Column({ nullable: true })
-  pro_drugmain: string;
+  pro_drugmain!: string;
 
   @Column({ nullable: true })
-  pro_drugmain2: string;
+  pro_drugmain2!: string;
 
   @Column({ nullable: true })
-  pro_drugmain3: string;
+  pro_drugmain3!: string;
 
   @Column({ nullable: true })
-  pro_drugmain4: string;
+  pro_drugmain4!: string;
 
   @Column({ nullable: true, type: 'varchar' })
-  pro_nameTH: string;
+  pro_nameTH!: string;
 
   @Column({ nullable: true, type: 'varchar' })
-  pro_nameMain: string;
+  pro_nameMain!: string;
 
   @Column({ nullable: true, type: 'int' })
-  sale_amount_day: number | null;
+  sale_amount_day!: number | null;
 
   @Column({ nullable: true, type: 'int' })
-  viwers: number | null;
+  viwers!: number | null;
 
   @Column({ type: 'int', nullable: true, default: null })
-  free_product_limit: number;
+  free_product_limit!: number;
 
   @Column({ type: 'int', nullable: true, default: 0 })
-  free_product_count: number;
+  free_product_count!: number;
 
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.product, {
     nullable: true,
     onDelete: 'SET NULL',
   })
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
-  creditor: CreditorEntity | null;
+  creditor!: CreditorEntity | null;
+
+  @OneToMany(() => ProductUnitEntity, (unit) => unit.product, {
+    cascade: ['insert', 'update'],
+  })
+  units!: ProductUnitEntity[];
 
   @OneToOne(() => ProductPharmaEntity, (pharma) => pharma.product)
-  pharmaDetails: ProductPharmaEntity;
+  pharmaDetails!: ProductPharmaEntity;
 
   @OneToMany(() => ShoppingCartEntity, (cart) => cart.product)
-  inCarts: ShoppingCartEntity[];
+  inCarts!: ShoppingCartEntity[];
 
   @OneToMany(() => LotEntity, (lot) => lot.product)
-  lot: LotEntity[];
+  lot!: LotEntity[];
 
   @OneToMany(() => FlashSaleProductsEntity, (flashsale) => flashsale.product)
-  flashsale: FlashSaleProductsEntity[];
+  flashsale!: FlashSaleProductsEntity[];
 
   @OneToMany(() => FavoriteEntity, (favorite) => favorite.product)
-  inFavorite: FavoriteEntity[];
+  inFavorite!: FavoriteEntity[];
 
   @OneToMany(() => ShoppingOrderEntity, (orderDetail) => orderDetail.product)
-  inOrders: ShoppingOrderEntity[];
+  inOrders!: ShoppingOrderEntity[];
 
   @OneToMany(() => PromotionConditionEntity, (cond) => cond.product)
-  promotionConditions: PromotionConditionEntity[];
+  promotionConditions!: PromotionConditionEntity[];
 
   @OneToMany(() => PromotionRewardEntity, (reward) => reward.giftProduct)
-  promotionRewardsAsGift: PromotionRewardEntity[];
+  promotionRewardsAsGift!: PromotionRewardEntity[];
 
   @OneToMany(() => HotdealEntity, (hotdeal) => hotdeal.product)
-  inHotdeals: HotdealEntity[];
+  inHotdeals!: HotdealEntity[];
 
   @ManyToOne(() => InvisibleEntity, (invisible) => invisible.products)
   @JoinColumn({ name: 'invisible_id' })
-  invisibleProduct: InvisibleEntity;
+  invisibleProduct!: InvisibleEntity;
 
   @OneToMany(() => NewArrival, (newArrival) => newArrival.product)
-  newArrivals: NewArrival[];
+  newArrivals!: NewArrival[];
 
   @OneToMany(
     () => ReductionRTDetail,
     (reductionRTDetail) => reductionRTDetail.product,
   )
-  reductionRTDetails: ReductionRTDetail[];
+  reductionRTDetails!: ReductionRTDetail[];
 
   @ManyToMany(() => ReductionRT, (reductionRT) => reductionRT.products)
-  reductionRTs: ReductionRT[];
+  reductionRTs!: ReductionRT[];
 
   @ManyToOne(() => RecommendEntity, (recommend) => recommend.products)
   @JoinColumn({ name: 'recommend_id' })
-  recommend: RecommendEntity;
+  recommend!: RecommendEntity;
 
   @Column({ nullable: true, type: 'int' })
-  recommend_rank: number | null;
+  recommend_rank!: number | null;
 
   @OneToOne(() => Imagedebug, (image) => image.relatedImage)
-  imagedebug: Imagedebug;
+  imagedebug!: Imagedebug;
   @ManyToOne(() => ProductEntity, (product) => product.replacedBy, {
     nullable: true,
     onDelete: 'SET NULL',
   })
   @JoinColumn({ name: 'replace_code', referencedColumnName: 'pro_code' })
-  replace: ProductEntity | null;
+  replace!: ProductEntity | null;
 
   @OneToMany(() => ProductEntity, (product) => product.replace)
-  replacedBy: ProductEntity[];
+  replacedBy!: ProductEntity[];
 
   @Column({ nullable: true, type: 'text' })
   replace_note!: string | null;
