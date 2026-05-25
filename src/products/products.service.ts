@@ -2631,6 +2631,8 @@ export class ProductsService {
         productData.pro_priceC = data.product_price_c as number;
       if (data.pro_category !== undefined)
         productData.pro_category = data.pro_category as number;
+      if (data.drugregister !== undefined)
+        productData.pro_drugregister = data.drugregister as string;
 
       if (Object.keys(productData).length === 0) return;
 
