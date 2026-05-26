@@ -17,6 +17,8 @@ export interface HotdealInput {
   pro2_code: string;
   pro2_amount: string;
   pro2_unit: string;
+  promo_title?: string;
+  promo_body?: string;
 }
 
 @Injectable()
@@ -158,7 +160,7 @@ export class HotdealService {
     id?: number,
     order?: number,
     special_deal?: boolean,
-  ): Promise<string> {
+  ): Promise<{ id?: number; message: string; special_deal?: boolean }> {
     try {
       if (id) {
         const existingHotdeal = await this.hotdealRepo.findOne({
@@ -169,6 +171,11 @@ export class HotdealService {
             { id: existingHotdeal.id },
             { order: order, special_deal: special_deal },
           );
+          return {
+            id: existingHotdeal.id,
+            message: 'update hotdeal successfully',
+            special_deal: special_deal ?? existingHotdeal.special_deal,
+          };
         }
       } else {
         const existingHotdeal = await this.hotdealRepo.findOne({
@@ -182,36 +189,61 @@ export class HotdealService {
           await this.shoppingCartService.removeAllCarthotdeal(
             datainput.pro1_code,
           );
-          await this.hotdealRepo.save({
+          const savedHotdeal = await this.hotdealRepo.save({
             id: existingHotdeal.id,
             pro1_amount: datainput.pro1_amount,
             pro1_unit: datainput.pro1_unit,
             pro2_amount: datainput.pro2_amount,
             pro2_unit: datainput.pro2_unit,
+            special_deal: special_deal ?? existingHotdeal.special_deal ?? false,
+            promo_title: datainput.promo_title || null,
+            promo_body: datainput.promo_body || null,
             product: { pro_code: datainput.pro1_code } as ProductEntity,
             product2: { pro_code: datainput.pro2_code } as ProductEntity,
           });
+          await this.checkAndAddProductToHotdeal(
+            datainput.pro1_code,
+            datainput.pro1_unit,
+            Number(datainput.pro1_amount),
+            datainput.pro2_code,
+            datainput.pro2_unit,
+          );
+
+          return {
+            id: savedHotdeal.id,
+            message: 'add hotdeal successfully',
+            special_deal: savedHotdeal.special_deal,
+          };
         } else {
           const hotdeal = this.hotdealRepo.create({
             pro1_amount: datainput.pro1_amount,
             pro1_unit: datainput.pro1_unit,
             pro2_amount: datainput.pro2_amount,
             pro2_unit: datainput.pro2_unit,
+            special_deal: special_deal ?? false,
+            promo_title: datainput.promo_title || null,
+            promo_body: datainput.promo_body || null,
             product: { pro_code: datainput.pro1_code },
             product2: { pro_code: datainput.pro2_code },
           });
 
-          await this.hotdealRepo.save(hotdeal);
+          const savedHotdeal = await this.hotdealRepo.save(hotdeal);
+          await this.checkAndAddProductToHotdeal(
+            datainput.pro1_code,
+            datainput.pro1_unit,
+            Number(datainput.pro1_amount),
+            datainput.pro2_code,
+            datainput.pro2_unit,
+          );
+
+          return {
+            id: savedHotdeal.id,
+            message: 'add hotdeal successfully',
+            special_deal: savedHotdeal.special_deal,
+          };
         }
-        await this.checkAndAddProductToHotdeal(
-          datainput.pro1_code,
-          datainput.pro1_unit,
-          Number(datainput.pro1_amount),
-          datainput.pro2_code,
-          datainput.pro2_unit,
-        );
       }
-      return 'add hotdeal successfully';
+      return { message: 'hotdeal not found' };
     } catch (error) {
       console.error('Error saving hotdeal:', error);
       throw new Error('Something Error in saveHotdeal');
@@ -237,6 +269,8 @@ export class HotdealService {
       pro2_name: hotdeal.product2?.pro_name || null,
       order: hotdeal.order,
       special_deal: hotdeal.special_deal,
+      promo_title: hotdeal.promo_title,
+      promo_body: hotdeal.promo_body,
       pro1_stock: hotdeal.product?.pro_stock || 0,
       pro2_stock: hotdeal.product2?.pro_stock || 0,
     }));
@@ -372,6 +406,8 @@ export class HotdealService {
           : 'ไม่เจอข้อมูล',
         order: hotdeal.order,
         special_deal: hotdeal.special_deal,
+        promo_title: hotdeal.promo_title,
+        promo_body: hotdeal.promo_body,
       };
     });
     return result;

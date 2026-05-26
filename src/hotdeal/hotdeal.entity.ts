@@ -40,6 +40,12 @@ export class HotdealEntity {
   @Column({ default: false })
   special_deal!: boolean;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  promo_title!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  promo_body!: string | null;
+
   @OneToOne(() => BannerHotdealEntity, (banner) => banner.hotdeal, {
     cascade: true,
   })
