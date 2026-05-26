@@ -4,37 +4,54 @@ export class Unit1777869005107 implements MigrationInterface {
   name = 'Unit1777869005107';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE \`shopping_cart\` ADD \`spc_unit_enum\` enum ('1', '2', '3') NULL`,
+    const [colRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'shopping_cart'
+         AND COLUMN_NAME = 'spc_unit_enum'`,
     );
+    if (Number(colRows.cnt) === 0) {
+      await queryRunner.query(
+        `ALTER TABLE \`shopping_cart\` ADD \`spc_unit_enum\` enum ('1', '2', '3') NULL`,
+      );
+    }
 
     await queryRunner.query(
-      `CREATE TABLE \`product_unit\` (\`id\` int NOT NULL AUTO_INCREMENT, \`pro_code\` varchar(20) NOT NULL, \`unit_name\` varchar(30) NOT NULL, \`ratio\` int NOT NULL DEFAULT '1', \`level\` int NOT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`uk_product_unit\` (\`pro_code\`, \`level\`)) ENGINE=InnoDB`,
+      `CREATE TABLE IF NOT EXISTS \`product_unit\` (\`id\` int NOT NULL AUTO_INCREMENT, \`pro_code\` varchar(20) NOT NULL, \`unit_name\` varchar(30) NOT NULL, \`ratio\` int NOT NULL DEFAULT '1', \`level\` int NOT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`uk_product_unit\` (\`pro_code\`, \`level\`)) ENGINE=InnoDB`,
     );
 
-    await queryRunner.query(
-      `ALTER TABLE \`product_unit\` ADD CONSTRAINT \`FK_86e4bbe0fb61335628ca7601fde\` FOREIGN KEY (\`pro_code\`) REFERENCES \`product\`(\`pro_code\`) ON DELETE CASCADE ON UPDATE NO ACTION`,
+    // เพิ่ม FK เฉพาะกรณีที่ยังไม่มี — ป้องกัน duplicate key error จาก partial DDL
+    const [fkRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+       WHERE CONSTRAINT_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'product_unit'
+         AND CONSTRAINT_NAME = 'FK_86e4bbe0fb61335628ca7601fde'`,
     );
+    if (Number(fkRows.cnt) === 0) {
+      await queryRunner.query(
+        `ALTER TABLE \`product_unit\` ADD CONSTRAINT \`FK_86e4bbe0fb61335628ca7601fde\` FOREIGN KEY (\`pro_code\`) REFERENCES \`product\`(\`pro_code\`) ON DELETE CASCADE ON UPDATE NO ACTION`,
+      );
+    }
 
     await queryRunner.query(
       `INSERT INTO product_unit (pro_code, unit_name, ratio, \`level\`) 
    SELECT pro_code, pro_unit1, pro_ratio1, 1
    FROM product 
-   WHERE pro_unit1 IS NOT NULL AND pro_unit1 != ""`,
+   WHERE pro_unit1 IS NOT NULL AND pro_unit1 != ''`,
     );
 
     await queryRunner.query(
       `INSERT INTO product_unit (pro_code, unit_name, ratio, \`level\`) 
    SELECT pro_code, pro_unit2, pro_ratio2, 2
    FROM product 
-   WHERE pro_unit2 IS NOT NULL AND pro_unit2 != ""`,
+   WHERE pro_unit2 IS NOT NULL AND pro_unit2 != ''`,
     );
 
     await queryRunner.query(
       `INSERT INTO product_unit (pro_code, unit_name, ratio, \`level\`) 
    SELECT pro_code, pro_unit3, pro_ratio3, 3
    FROM product 
-   WHERE pro_unit3 IS NOT NULL AND pro_unit3 != ""`,
+   WHERE pro_unit3 IS NOT NULL AND pro_unit3 != ''`,
     );
 
     await queryRunner.query(
@@ -113,9 +130,35 @@ export class Unit1777869005107 implements MigrationInterface {
         AND pr.unit COLLATE utf8mb4_unicode_ci = pu.unit_name COLLATE utf8mb4_unicode_ci
       SET pr.unit = IFNULL(CAST(pu.level AS CHAR), 1)
     `);
+
+    // เพิ่ม reward_unit_enum ใน happy_hour_slot
+    const [hhColRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'happy_hour_slot'
+         AND COLUMN_NAME = 'reward_unit_enum'`,
+    );
+    if (Number(hhColRows.cnt) === 0) {
+      await queryRunner.query(
+        `ALTER TABLE \`happy_hour_slot\` ADD \`reward_unit_enum\` enum ('1', '2', '3') NULL DEFAULT NULL`,
+      );
+    }
+
+    // populate reward_unit_enum จาก reward_unit ที่มีอยู่แล้ว
+    await queryRunner.query(`
+      UPDATE happy_hour_slot hh
+      LEFT JOIN product_unit pu ON hh.reward_pro_code COLLATE utf8mb4_unicode_ci = pu.pro_code COLLATE utf8mb4_unicode_ci
+        AND hh.reward_unit COLLATE utf8mb4_unicode_ci = pu.unit_name COLLATE utf8mb4_unicode_ci
+      SET hh.reward_unit_enum = CAST(pu.level AS CHAR)
+      WHERE hh.reward_unit IS NOT NULL
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE \`happy_hour_slot\` DROP COLUMN \`reward_unit_enum\``,
+    );
+
     // เพิ่ม columns กลับคืนใน product table ก่อน
     await queryRunner.query(
       `ALTER TABLE \`product\` ADD \`pro_unit1\` varchar(30) NULL`,

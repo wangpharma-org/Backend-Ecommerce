@@ -4168,6 +4168,20 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/check-happy-hour-reward')
+  async checkHappyHourReward(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { sh_running: string },
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('You not have Permission to Access');
+    }
+    return await this.shoppingOrderService.checkAndAdjustHappyHourReward(
+      body.sh_running,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/:pro_code')
   async getHotdealByProCode(
     @Param('pro_code') pro_code: string,
@@ -4255,6 +4269,20 @@ export class AppController {
     const permission = req.user.permission;
     if (permission === true) {
       return await this.productsService.searchLotusCards();
+    } else {
+      throw new ForbiddenException('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('ecom/admin/products/search')
+  async productSearchProductName(
+    @Query('keyword') keyword: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.productSearchProductName(keyword ?? '');
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }

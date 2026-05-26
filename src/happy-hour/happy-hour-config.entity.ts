@@ -8,6 +8,12 @@ export class HappyHourConfigEntity {
   @Column({ default: false })
   is_enabled!: boolean;
 
+  @Column({ type: 'date', nullable: true })
+  start_date!: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  end_date!: string | null;
+
   @Column({ type: 'datetime', nullable: true })
   updated_at!: Date | null;
 

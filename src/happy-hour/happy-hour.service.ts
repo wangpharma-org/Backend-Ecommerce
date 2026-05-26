@@ -2,7 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  // OnModuleInit,
+  OnModuleInit,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -12,94 +12,130 @@ import * as utc from 'dayjs/plugin/utc';
 import * as timezone from 'dayjs/plugin/timezone';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
+import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
+import {
+  HappyHourSlotLogEntity,
+  SlotLogAction,
+} from './happy-hour-slot-log.entity';
+import {
+  HappyHourConfigLogEntity,
+  ConfigLogAction,
+} from './happy-hour-config-log.entity';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { SimulateDto } from './dto/simulate.dto';
+import { SlotLogQueryDto } from './dto/slot-log-query.dto';
+import { ConfigLogQueryDto } from './dto/config-log-query.dto';
 import { ProductEntity } from 'src/products/products.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
 
+// import * as ให้ type เป็น { default: PluginFunc } แต่ runtime CJS value คือ PluginFunc โดยตรง
+// ต้อง import แบบนี้เพื่อให้ type augmentation ของ .tz() / .utc() ทำงาน
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-// const DEFAULT_SLOTS: Omit<
-//   HappyHourSlotEntity,
-//   'id' | 'created_at' | 'updated_at'
-// >[] = [
-//   {
-//     start_time: '22:00',
-//     // MySQL TIME ยอมรับ 24:00:00 เป็น special case — ใช้เพื่อครอบคลุม slot จนถึงก่อนเที่ยงคืน
-//     end_time: '24:00',
-//     min_order_amount: 9999,
-//     card_value: 100,
-//     excess_threshold: 1334,
-//     discount_per_step: 10,
-//     is_active: true,
-//     reward_pro_code: '92020405',
-//     reward_unit: null,
-//     reward_amount: 1,
-//   },
-//   {
-//     start_time: '00:00',
-//     end_time: '02:00',
-//     min_order_amount: 9999,
-//     card_value: 100,
-//     excess_threshold: 1000,
-//     discount_per_step: 10,
-//     is_active: true,
-//     reward_pro_code: '92020405',
-//     reward_unit: null,
-//     reward_amount: 1,
-//   },
-//   {
-//     start_time: '02:00',
-//     end_time: '06:00',
-//     min_order_amount: 9999,
-//     card_value: 100,
-//     excess_threshold: 667,
-//     discount_per_step: 10,
-//     is_active: true,
-//     reward_pro_code: '92020405',
-//     reward_unit: null,
-//     reward_amount: 1,
-//   },
-//   {
-//     start_time: '06:00',
-//     end_time: '08:00',
-//     min_order_amount: 9999,
-//     card_value: 100,
-//     excess_threshold: 1334,
-//     discount_per_step: 10,
-//     is_active: true,
-//     reward_pro_code: '92020405',
-//     reward_unit: null,
-//     reward_amount: 1,
-//   },
-// ];
+interface DefaultSlotSeed {
+  start_time: string;
+  end_time: string;
+  min_order_amount: number;
+  card_value: number;
+  excess_threshold: number;
+  discount_per_step: number;
+  is_active: boolean;
+  reward_amount: number;
+  reward_pro_codes: string[];
+}
+
+const DEFAULT_SLOTS: DefaultSlotSeed[] = [
+  {
+    start_time: '22:00',
+    // MySQL TIME ยอมรับ 24:00:00 เป็น special case — ใช้เพื่อครอบคลุม slot จนถึงก่อนเที่ยงคืน
+    end_time: '24:00',
+    min_order_amount: 9999,
+    card_value: 100,
+    excess_threshold: 1334,
+    discount_per_step: 10,
+    is_active: true,
+    reward_pro_codes: [],
+    reward_amount: 1,
+  },
+  {
+    start_time: '00:00',
+    end_time: '02:00',
+    min_order_amount: 9999,
+    card_value: 100,
+    excess_threshold: 1000,
+    discount_per_step: 10,
+    is_active: true,
+    reward_pro_codes: [],
+    reward_amount: 1,
+  },
+  {
+    start_time: '02:00',
+    end_time: '06:00',
+    min_order_amount: 9999,
+    card_value: 100,
+    excess_threshold: 667,
+    discount_per_step: 10,
+    is_active: true,
+    reward_pro_codes: [],
+    reward_amount: 1,
+  },
+  {
+    start_time: '06:00',
+    end_time: '08:00',
+    min_order_amount: 9999,
+    card_value: 100,
+    excess_threshold: 1334,
+    discount_per_step: 10,
+    is_active: true,
+    reward_pro_codes: [],
+    reward_amount: 1,
+  },
+];
 
 @Injectable()
-// export class HappyHourService implements OnModuleInit {
-export class HappyHourService {
+export class HappyHourService implements OnModuleInit {
   private readonly logger = new Logger(HappyHourService.name);
   constructor(
     @InjectRepository(HappyHourConfigEntity)
     private readonly configRepo: Repository<HappyHourConfigEntity>,
     @InjectRepository(HappyHourSlotEntity)
     private readonly slotRepo: Repository<HappyHourSlotEntity>,
+    @InjectRepository(HappyHourSlotRewardEntity)
+    private readonly rewardRepo: Repository<HappyHourSlotRewardEntity>,
+    @InjectRepository(HappyHourSlotLogEntity)
+    private readonly slotLogRepo: Repository<HappyHourSlotLogEntity>,
+    @InjectRepository(HappyHourConfigLogEntity)
+    private readonly configLogRepo: Repository<HappyHourConfigLogEntity>,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(ProductUnitEntity)
+    private readonly productUnitRepo: Repository<ProductUnitEntity>,
   ) {}
 
-  // async onModuleInit(): Promise<void> {
-  //   try {
-  //     const count = await this.slotRepo.count();
-  //     if (count === 0) {
-  //       await this.slotRepo.save(
-  //         DEFAULT_SLOTS.map((s) => this.slotRepo.create(s) ),
-  //       );
-  //     }
-  //   } catch {
-  //     // table ยังไม่มีใน DB — ข้ามไปก่อน feature จะทำงานหลัง migrate
-  //   }
-  // }
+  async onModuleInit(): Promise<void> {
+    try {
+      const count = await this.slotRepo.count();
+      if (count === 0) {
+        for (const { reward_pro_codes, ...slotData } of DEFAULT_SLOTS) {
+          const slot = await this.slotRepo.save(this.slotRepo.create(slotData));
+          if (reward_pro_codes.length) {
+            await this.rewardRepo.save(
+              reward_pro_codes.map((code) =>
+                this.rewardRepo.create({
+                  pro_code: code,
+                  slot: { id: slot.id },
+                }),
+              ),
+            );
+          }
+        }
+      }
+    } catch {
+      // table ยังไม่มีใน DB — ข้ามไปก่อน feature จะทำงานหลัง migrate
+    }
+  }
 
   async getConfig(): Promise<HappyHourConfigEntity> {
     let config = await this.configRepo.findOneBy({ id: 1 });
@@ -110,33 +146,182 @@ export class HappyHourService {
     return config;
   }
 
+  /**
+   * สำหรับ GET /config endpoint — คืน config พร้อม is_enabled ที่สะท้อนสถานะจริง
+   *
+   * ถ้า start_date / end_date เป็น null ทั้งคู่ → ใช้ is_enabled จาก DB ตรงๆ
+   * ถ้ามีวันที่กำหนด → เช็คว่าวันนี้อยู่ในช่วงหรือไม่
+   *   - อยู่ในช่วง  : ใช้ is_enabled จาก DB
+   *   - นอกช่วง    : override is_enabled เป็น false
+   *
+   * หมายเหตุ: getConfig() (ไม่มี Response) ยังคืน pure entity
+   * เพื่อให้ toggle() / updateConfig() ทำงานถูกต้อง
+   */
+  async getConfigResponse() {
+    const config = await this.getConfig();
+
+    // ไม่มีวันที่กำหนดเลย → ใช้ค่า is_enabled จาก DB ตรงๆ
+    if (!config.start_date && !config.end_date) {
+      return config;
+    }
+
+    // Bangkok UTC+7 — ใช้ native Date เพื่อเลี่ยงปัญหา dayjs typings
+    const bangkokToday = new Date(Date.now() + 7 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10); // YYYY-MM-DD
+
+    const withinRange =
+      (!config.start_date || bangkokToday >= config.start_date) &&
+      (!config.end_date || bangkokToday <= config.end_date);
+
+    return {
+      ...config,
+      is_enabled: withinRange ? config.is_enabled : false,
+    };
+  }
+
   async toggle(username: string): Promise<HappyHourConfigEntity> {
     const config = await this.getConfig();
+    const before = { is_enabled: config.is_enabled };
     config.is_enabled = !config.is_enabled;
     config.updated_at = new Date();
     config.updated_by = username;
-    return this.configRepo.save(config);
+    const saved = await this.configRepo.save(config);
+    void this.saveConfigLog({
+      action: 'TOGGLE',
+      performed_by: username,
+      before,
+      after: { is_enabled: saved.is_enabled },
+    });
+    return saved;
   }
 
-  async getSlots(): Promise<HappyHourSlotEntity[]> {
-    return this.slotRepo.find({ order: { start_time: 'ASC' } });
+  async updateConfig(
+    dto: {
+      is_enabled?: boolean;
+      start_date?: string | null;
+      end_date?: string | null;
+    },
+    username: string,
+  ): Promise<HappyHourConfigEntity> {
+    const config = await this.getConfig();
+    const before = {
+      is_enabled: config.is_enabled,
+      start_date: config.start_date,
+      end_date: config.end_date,
+    };
+    if (dto.is_enabled !== undefined) config.is_enabled = dto.is_enabled;
+    if (Object.prototype.hasOwnProperty.call(dto, 'start_date')) {
+      config.start_date = dto.start_date ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(dto, 'end_date')) {
+      config.end_date = dto.end_date ?? null;
+    }
+    config.updated_at = new Date();
+    config.updated_by = username;
+    const saved = await this.configRepo.save(config);
+    void this.saveConfigLog({
+      action: 'UPDATE',
+      performed_by: username,
+      before,
+      after: {
+        is_enabled: saved.is_enabled,
+        start_date: saved.start_date,
+        end_date: saved.end_date,
+      },
+    });
+    return saved;
   }
 
-  async createSlot(dto: CreateSlotDto): Promise<HappyHourSlotEntity> {
+  async getSlots() {
+    const slots = await this.slotRepo.find({ order: { start_time: 'ASC' } });
+    return Promise.all(slots.map((s) => this.enrichSlotWithProducts(s)));
+  }
+
+  private async enrichSlotWithProducts(slot: HappyHourSlotEntity | null) {
+    if (!slot) return null;
+    const rewardList = slot.rewards ?? [];
+
+    // Batch query: ดึงสินค้าทั้งหมดใน 1 query แทนที่จะ query ทีละ reward (N+1)
+    const productMap = new Map<
+      string,
+      { pro_name: string; pro_imgmain: string }
+    >();
+    if (rewardList.length) {
+      const codes = rewardList.map((r) => r.pro_code);
+      const products = await this.productRepo
+        .createQueryBuilder('p')
+        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .where('p.pro_code IN (:...codes)', { codes })
+        .getMany();
+      products.forEach((p) => productMap.set(p.pro_code, p));
+    }
+
+    const rewards = rewardList.map((r) => ({
+      id: r.id,
+      pro_code: r.pro_code,
+      unit: r.unit ?? null,
+      pro_name: productMap.get(r.pro_code)?.pro_name ?? null,
+      pro_imgmain: productMap.get(r.pro_code)?.pro_imgmain ?? null,
+    }));
+
+    return { ...slot, rewards };
+  }
+
+  async createSlot(dto: CreateSlotDto, performedBy: string) {
     this.validateTimeRange(dto.start_time, dto.end_time);
     await this.validateNoOverlap(dto.start_time, dto.end_time);
 
-    const slot = this.slotRepo.create({
-      ...dto,
-      is_active: dto.is_active ?? true,
+    const rewardCodes = dto.reward_pro_codes ?? [];
+    const hasCardValue = dto.card_value !== undefined && dto.card_value > 0;
+
+    if (hasCardValue && rewardCodes.length > 0) {
+      throw new BadRequestException(
+        'ไม่สามารถตั้งค่า card_value และ reward_pro_codes พร้อมกันได้',
+      );
+    }
+
+    const slot = await this.slotRepo.save(
+      this.slotRepo.create({
+        start_time: dto.start_time,
+        end_time: dto.end_time,
+        min_order_amount: dto.min_order_amount,
+        card_value: rewardCodes.length > 0 ? 0 : (dto.card_value ?? 0),
+        excess_threshold: dto.excess_threshold,
+        discount_per_step: dto.discount_per_step,
+        is_active: dto.is_active ?? true,
+        reward_amount: hasCardValue ? 1 : (dto.reward_amount ?? 1),
+      }),
+    );
+
+    if (rewardCodes.length) {
+      await Promise.all(
+        rewardCodes.map(async (code) => {
+          const unit = await this.findSmallestUnit(code);
+          return this.rewardRepo.save(
+            this.rewardRepo.create({
+              pro_code: code,
+              unit,
+              slot: { id: slot.id },
+            }),
+          );
+        }),
+      );
+    }
+
+    const saved = await this.slotRepo.findOne({ where: { id: slot.id } });
+
+    void this.saveSlotLog({
+      action: 'CREATE',
+      slot_id: slot.id,
+      performed_by: performedBy,
+      changes: dto,
     });
-    return this.slotRepo.save(slot);
+
+    return this.enrichSlotWithProducts(saved);
   }
 
-  async updateSlot(
-    id: number,
-    dto: UpdateSlotDto,
-  ): Promise<HappyHourSlotEntity> {
+  async updateSlot(id: number, dto: UpdateSlotDto, performedBy: string) {
     const slot = await this.slotRepo.findOneBy({ id });
     if (!slot) {
       throw new NotFoundException(`ไม่พบ slot id ${id}`);
@@ -144,20 +329,62 @@ export class HappyHourService {
 
     const newStart = dto.start_time ?? slot.start_time.substring(0, 5);
     const newEnd = dto.end_time ?? slot.end_time.substring(0, 5);
-
     this.validateTimeRange(newStart, newEnd);
     await this.validateNoOverlap(newStart, newEnd, id);
 
-    Object.assign(slot, dto);
-    return this.slotRepo.save(slot);
+    const { reward_pro_codes: codes, ...slotData } = dto;
+
+    if (dto.card_value !== undefined) {
+      // card mode: ล้าง rewards ออก + reset reward_amount
+      Object.assign(slot, slotData, { reward_amount: 1 });
+      await this.slotRepo.save(slot);
+      await this.rewardRepo.delete({ slot: { id } });
+    } else if (codes !== undefined || dto.reward_amount !== undefined) {
+      // reward mode: ล้าง card_value
+      Object.assign(slot, slotData, { card_value: 0 });
+      await this.slotRepo.save(slot);
+      if (codes !== undefined) {
+        await this.rewardRepo.delete({ slot: { id } });
+        if (codes.length) {
+          await Promise.all(
+            codes.map(async (code) => {
+              const unit = await this.findSmallestUnit(code);
+              return this.rewardRepo.save(
+                this.rewardRepo.create({ pro_code: code, unit, slot: { id } }),
+              );
+            }),
+          );
+        }
+      }
+    } else {
+      Object.assign(slot, slotData);
+      await this.slotRepo.save(slot);
+    }
+
+    void this.saveSlotLog({
+      action: 'UPDATE',
+      slot_id: id,
+      performed_by: performedBy,
+      changes: dto,
+    });
+
+    const updated = await this.slotRepo.findOne({ where: { id } });
+    return this.enrichSlotWithProducts(updated);
   }
 
-  async deleteSlot(id: number): Promise<void> {
+  async deleteSlot(id: number, performedBy: string): Promise<void> {
     const slot = await this.slotRepo.findOneBy({ id });
     if (!slot) {
       throw new NotFoundException(`ไม่พบ slot id ${id}`);
     }
     await this.slotRepo.delete(id);
+
+    void this.saveSlotLog({
+      action: 'DELETE',
+      slot_id: id,
+      performed_by: performedBy,
+      changes: null,
+    });
   }
 
   async calcHappyHourReward(orderAmount: number): Promise<{
@@ -172,10 +399,18 @@ export class HappyHourService {
       if (!config.is_enabled) return null;
 
       const now = dayjs().tz('Asia/Bangkok');
+      const today = now.format('YYYY-MM-DD');
+
+      // ตรวจสอบช่วงวันที่โปรโมชันระดับ config
+      if (config.start_date && today < config.start_date) return null;
+      if (config.end_date && today > config.end_date) return null;
+
       const orderTimeSql = now.format('HH:mm:00');
 
+      // date range ถูกเช็คแล้วด้านบน — query เฉพาะ slot ที่ active และตรงเวลา
       const slot = await this.slotRepo
         .createQueryBuilder('slot')
+        .leftJoinAndSelect('slot.rewards', 'reward')
         .where('slot.is_active = true')
         .andWhere('slot.start_time <= :t', { t: orderTimeSql })
         .andWhere('slot.end_time > :t', { t: orderTimeSql })
@@ -214,18 +449,19 @@ export class HappyHourService {
 
     const slot = await this.slotRepo
       .createQueryBuilder('slot')
+      .leftJoinAndSelect('slot.rewards', 'reward')
       .where('slot.is_active = true')
       .andWhere('slot.start_time <= :t', { t: orderTimeSql })
       .andWhere('slot.end_time > :t', { t: orderTimeSql })
       .getOne();
 
     if (!slot) {
-      return { is_happy_hour: false };
+      return { is_happy_hour: false, matched_slot: null };
     }
 
     const num_cards = Math.floor(order_amount / Number(slot.min_order_amount));
     if (num_cards === 0) {
-      return { is_happy_hour: false };
+      return { is_happy_hour: false, matched_slot: null };
     }
 
     const excess = order_amount - num_cards * Number(slot.min_order_amount);
@@ -233,26 +469,34 @@ export class HappyHourService {
     const excess_discount = excess_steps * Number(slot.discount_per_step);
     const total_reward = num_cards * Number(slot.card_value) + excess_discount;
 
-    let reward_product: {
-      pro_code: string;
-      unit: string | null;
-      amount: number;
-      pro_name: string | null;
-      pro_imgmain: string | null;
-    } | null = null;
-    if (num_cards > 0 && slot.reward_pro_code) {
-      const product = await this.productRepo.findOne({
-        where: { pro_code: slot.reward_pro_code },
-        select: ['pro_code', 'pro_name', 'pro_imgmain'],
-      });
-      reward_product = {
-        pro_code: slot.reward_pro_code,
-        unit: slot.reward_unit,
+    // Batch query สินค้า + unit (reuse pattern จาก enrichSlotWithProducts — ไม่ N+1)
+    const rewardList = slot.rewards ?? [];
+    // Batch query สินค้า — unit ใช้จาก r.unit ที่ store ไว้ใน HappyHourSlotRewardEntity แล้ว
+    const productMap = new Map<
+      string,
+      { pro_code: string; pro_name: string; pro_imgmain: string }
+    >();
+
+    if (rewardList.length) {
+      const codes = rewardList.map((r) => r.pro_code);
+      const products = await this.productRepo
+        .createQueryBuilder('p')
+        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .where('p.pro_code IN (:...codes)', { codes })
+        .getMany();
+      products.forEach((p) => productMap.set(p.pro_code, p));
+    }
+
+    const reward_products = rewardList.map((r) => {
+      const product = productMap.get(r.pro_code);
+      return {
+        pro_code: r.pro_code,
+        unit: r.unit ?? null, // ใช้ค่าที่ store ไว้แล้ว ไม่ต้อง query ProductUnitEntity อีก
         amount: num_cards * slot.reward_amount,
         pro_name: product?.pro_name ?? null,
         pro_imgmain: product?.pro_imgmain ?? null,
       };
-    }
+    });
 
     return {
       is_happy_hour: true,
@@ -260,8 +504,128 @@ export class HappyHourService {
       num_cards,
       excess_discount,
       total_reward,
-      reward_product,
+      reward_products,
     };
+  }
+
+  // ─── Slot Activity Log ────────────────────────────────────────────
+
+  /** บันทึก audit log ของการ CRUD slot (fire-and-forget, ไม่ throw) */
+  async saveSlotLog(data: {
+    action: SlotLogAction;
+    slot_id: number;
+    performed_by: string;
+    changes?: object | null;
+  }): Promise<void> {
+    try {
+      await this.slotLogRepo.save(
+        this.slotLogRepo.create({
+          action: data.action,
+          slot_id: data.slot_id,
+          performed_by: data.performed_by,
+          changes: data.changes ? JSON.stringify(data.changes) : null,
+        }),
+      );
+    } catch (error) {
+      this.logger.error('Failed to save slot log', error);
+    }
+  }
+
+  /** ดึง slot activity log พร้อม pagination และ filter */
+  async getSlotLogs(query: SlotLogQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const qb = this.slotLogRepo
+      .createQueryBuilder('log')
+      .orderBy('log.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.action) {
+      qb.andWhere('log.action = :action', { action: query.action });
+    }
+    if (query.slot_id) {
+      qb.andWhere('log.slot_id = :slot_id', { slot_id: query.slot_id });
+    }
+    if (query.performed_by) {
+      qb.andWhere('log.performed_by LIKE :by', {
+        by: `%${query.performed_by}%`,
+      });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return buildPagination(data, total, page, limit);
+  }
+
+  // ─── Config Activity Log ───────────────────────────────────────────
+
+  /** บันทึก audit log ของการเปลี่ยน config (fire-and-forget, ไม่ throw) */
+  async saveConfigLog(data: {
+    action: ConfigLogAction;
+    performed_by: string;
+    before?: object;
+    after?: object;
+  }): Promise<void> {
+    try {
+      await this.configLogRepo.save(
+        this.configLogRepo.create({
+          action: data.action,
+          performed_by: data.performed_by,
+          changes:
+            data.before || data.after
+              ? JSON.stringify({ before: data.before, after: data.after })
+              : null,
+        }),
+      );
+    } catch (error) {
+      this.logger.error('Failed to save config log', error);
+    }
+  }
+
+  /** ดึง config activity log พร้อม pagination และ filter */
+  async getConfigLogs(query: ConfigLogQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const qb = this.configLogRepo
+      .createQueryBuilder('log')
+      .orderBy('log.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.action) {
+      qb.andWhere('log.action = :action', { action: query.action });
+    }
+    if (query.performed_by) {
+      qb.andWhere('log.performed_by LIKE :by', {
+        by: `%${query.performed_by}%`,
+      });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return buildPagination(data, total, page, limit);
+  }
+
+  async getLotusCards(): Promise<{ pro_code: string; pro_name: string }[]> {
+    return this.productRepo
+      .createQueryBuilder('p')
+      .select(['p.pro_code', 'p.pro_name'])
+      .where('p.pro_name LIKE :keyword', { keyword: '%โลตัส%' })
+      .orderBy('p.pro_code', 'ASC')
+      .getMany();
+  }
+
+  private async findSmallestUnit(proCode: string): Promise<string | null> {
+    const product = await this.productUnitRepo.findOne({
+      where: { pro_code: proCode, level: 1 },
+      select: { unit_name: true, level: true },
+      order: { level: 'ASC' },
+    });
+
+    if (!product) return null;
+
+    return product.unit_name;
   }
 
   private validateTimeRange(start: string, end: string): void {
@@ -289,4 +653,26 @@ export class HappyHourService {
       throw new BadRequestException('ช่วงเวลานี้ทับซ้อนกับ slot ที่มีอยู่แล้ว');
     }
   }
+}
+
+// ─── Pagination helper ─────────────────────────────────────────────────────
+
+function buildPagination<T>(
+  data: T[],
+  total: number,
+  page: number,
+  limit: number,
+) {
+  const total_pages = Math.ceil(total / limit);
+  return {
+    data,
+    pagination: {
+      total,
+      page,
+      limit,
+      total_pages,
+      has_prev: page > 1,
+      has_next: page < total_pages,
+    },
+  };
 }
