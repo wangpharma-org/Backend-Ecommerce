@@ -132,6 +132,40 @@ export class HappyHourService implements OnModuleInit {
     return config;
   }
 
+  /**
+   * สำหรับ GET /config endpoint — คืน config พร้อม is_enabled ที่สะท้อนสถานะจริง
+   *
+   * ถ้า start_date / end_date เป็น null ทั้งคู่ → ใช้ is_enabled จาก DB ตรงๆ
+   * ถ้ามีวันที่กำหนด → เช็คว่าวันนี้อยู่ในช่วงหรือไม่
+   *   - อยู่ในช่วง  : ใช้ is_enabled จาก DB
+   *   - นอกช่วง    : override is_enabled เป็น false
+   *
+   * หมายเหตุ: getConfig() (ไม่มี Response) ยังคืน pure entity
+   * เพื่อให้ toggle() / updateConfig() ทำงานถูกต้อง
+   */
+  async getConfigResponse() {
+    const config = await this.getConfig();
+
+    // ไม่มีวันที่กำหนดเลย → ใช้ค่า is_enabled จาก DB ตรงๆ
+    if (!config.start_date && !config.end_date) {
+      return config;
+    }
+
+    // Bangkok UTC+7 — ใช้ native Date เพื่อเลี่ยงปัญหา dayjs typings
+    const bangkokToday = new Date(Date.now() + 7 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10); // YYYY-MM-DD
+
+    const withinRange =
+      (!config.start_date || bangkokToday >= config.start_date) &&
+      (!config.end_date || bangkokToday <= config.end_date);
+
+    return {
+      ...config,
+      is_enabled: withinRange ? config.is_enabled : false,
+    };
+  }
+
   async toggle(username: string): Promise<HappyHourConfigEntity> {
     const config = await this.getConfig();
     config.is_enabled = !config.is_enabled;

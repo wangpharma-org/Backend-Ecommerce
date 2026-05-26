@@ -46,7 +46,7 @@ export class HappyHourController {
 
   @Get('config')
   getConfig() {
-    return this.happyHourService.getConfig();
+    return this.happyHourService.getConfigResponse();
   }
 
   @Patch('config')
