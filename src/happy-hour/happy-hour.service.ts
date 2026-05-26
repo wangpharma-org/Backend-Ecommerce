@@ -46,7 +46,7 @@ const DEFAULT_SLOTS: DefaultSlotSeed[] = [
     excess_threshold: 1334,
     discount_per_step: 10,
     is_active: true,
-    reward_pro_codes: ['92020405'],
+    reward_pro_codes: [],
     reward_amount: 1,
   },
   {
@@ -57,7 +57,7 @@ const DEFAULT_SLOTS: DefaultSlotSeed[] = [
     excess_threshold: 1000,
     discount_per_step: 10,
     is_active: true,
-    reward_pro_codes: ['92020405'],
+    reward_pro_codes: [],
     reward_amount: 1,
   },
   {
@@ -68,7 +68,7 @@ const DEFAULT_SLOTS: DefaultSlotSeed[] = [
     excess_threshold: 667,
     discount_per_step: 10,
     is_active: true,
-    reward_pro_codes: ['92020405'],
+    reward_pro_codes: [],
     reward_amount: 1,
   },
   {
@@ -79,7 +79,7 @@ const DEFAULT_SLOTS: DefaultSlotSeed[] = [
     excess_threshold: 1334,
     discount_per_step: 10,
     is_active: true,
-    reward_pro_codes: ['92020405'],
+    reward_pro_codes: [],
     reward_amount: 1,
   },
 ];
