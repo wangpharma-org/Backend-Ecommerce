@@ -2863,7 +2863,7 @@ export class ProductsService {
     };
   }
 
-  async productSeatchProductName(
+  async productSearchProductName(
     search: string,
   ): Promise<{ pro_code: string; pro_name: string }[]> {
     try {

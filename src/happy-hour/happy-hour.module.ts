@@ -8,6 +8,7 @@ import { HappyHourController } from './happy-hour.controller';
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProductEntity } from 'src/products/products.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ProductEntity } from 'src/products/products.entity';
       HappyHourSlotEntity,
       HappyHourSlotRewardEntity,
       ProductEntity,
+      ProductUnitEntity,
     ]),
     FeatureFlagsModule,
     AuthModule,

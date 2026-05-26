@@ -89,7 +89,6 @@ import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.s
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
-import { HappyHourService } from './happy-hour/happy-hour.service';
 
 export interface JwtPayload {
   username: string;
@@ -152,7 +151,6 @@ export class AppController {
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
-    private readonly happyHourService: HappyHourService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -4135,6 +4133,7 @@ export class AppController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/check-happy-hour-reward')
   async checkHappyHourReward(@Body() body: { sh_running: string }) {
     return await this.shoppingOrderService.checkAndAdjustHappyHourReward(
@@ -4237,13 +4236,13 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('ecom/admin/products/search/:keyword')
-  async productSeatchProductName(
+  async productSearchProductName(
     @Param('keyword') keyword: string,
     @Req() req: Request & { user: JwtPayload },
   ) {
     const permission = req.user.permission;
     if (permission === true) {
-      return await this.productsService.productSeatchProductName(keyword);
+      return await this.productsService.productSearchProductName(keyword);
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }

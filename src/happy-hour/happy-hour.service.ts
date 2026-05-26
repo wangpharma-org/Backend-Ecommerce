@@ -17,6 +17,7 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { SimulateDto } from './dto/simulate.dto';
 import { ProductEntity } from 'src/products/products.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
 
 // import * as ให้ type เป็น { default: PluginFunc } แต่ runtime CJS value คือ PluginFunc โดยตรง
 // ต้อง import แบบนี้เพื่อให้ type augmentation ของ .tz() / .utc() ทำงาน
@@ -95,6 +96,8 @@ export class HappyHourService implements OnModuleInit {
     private readonly rewardRepo: Repository<HappyHourSlotRewardEntity>,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(ProductUnitEntity)
+    private readonly productUnitRepo: Repository<ProductUnitEntity>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -313,9 +316,16 @@ export class HappyHourService implements OnModuleInit {
       const slot = await this.slotRepo
         .createQueryBuilder('slot')
         .leftJoinAndSelect('slot.rewards', 'reward')
+        .leftJoinAndSelect('slot.config', 'config')
         .where('slot.is_active = true')
         .andWhere('slot.start_time <= :t', { t: orderTimeSql })
         .andWhere('slot.end_time > :t', { t: orderTimeSql })
+        .andWhere('config.start_date IS NULL OR config.start_date <= :today', {
+          today,
+        })
+        .andWhere('config.end_date IS NULL OR config.end_date >= :today', {
+          today,
+        })
         .getOne();
 
       if (!slot) return null;
@@ -371,21 +381,42 @@ export class HappyHourService implements OnModuleInit {
     const excess_discount = excess_steps * Number(slot.discount_per_step);
     const total_reward = num_cards * Number(slot.card_value) + excess_discount;
 
-    const reward_products = await Promise.all(
-      slot.rewards.map(async (r) => {
-        const product = await this.productRepo.findOne({
-          where: { pro_code: r.pro_code },
-          select: ['pro_code', 'pro_name', 'pro_imgmain'],
-        });
-        return {
-          pro_code: r.pro_code,
-          unit: r.unit ?? null,
-          amount: num_cards * slot.reward_amount,
-          pro_name: product?.pro_name ?? null,
-          pro_imgmain: product?.pro_imgmain ?? null,
-        };
-      }),
-    );
+    // Batch query สินค้า + unit (reuse pattern จาก enrichSlotWithProducts — ไม่ N+1)
+    const rewardList = slot.rewards ?? [];
+    const productMap = new Map<
+      string,
+      { pro_code: string; pro_name: string; pro_imgmain: string }
+    >();
+    const unitMap = new Map<string, string | null>();
+
+    if (rewardList.length) {
+      const codes = rewardList.map((r) => r.pro_code);
+
+      const products = await this.productRepo
+        .createQueryBuilder('p')
+        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .where('p.pro_code IN (:...codes)', { codes })
+        .getMany();
+      products.forEach((p) => productMap.set(p.pro_code, p));
+
+      // batch fetch smallest unit ทุก reward code พร้อมกัน
+      await Promise.all(
+        codes.map(async (code) => {
+          unitMap.set(code, await this.findSmallestUnit(code));
+        }),
+      );
+    }
+
+    const reward_products = rewardList.map((r) => {
+      const product = productMap.get(r.pro_code);
+      return {
+        pro_code: r.pro_code,
+        unit: unitMap.get(r.pro_code) ?? null,
+        amount: num_cards * slot.reward_amount,
+        pro_name: product?.pro_name ?? null,
+        pro_imgmain: product?.pro_imgmain ?? null,
+      };
+    });
 
     return {
       is_happy_hour: true,
@@ -407,28 +438,15 @@ export class HappyHourService implements OnModuleInit {
   }
 
   private async findSmallestUnit(proCode: string): Promise<string | null> {
-    const product = await this.productRepo.findOne({
-      where: { pro_code: proCode },
-      select: [
-        'pro_unit1',
-        'pro_unit2',
-        'pro_unit3',
-        'pro_ratio1',
-        'pro_ratio2',
-        'pro_ratio3',
-      ],
+    const product = await this.productUnitRepo.findOne({
+      where: { pro_code: proCode, level: 1 },
+      select: { unit_name: true, level: true },
+      order: { level: 'ASC' },
     });
+
     if (!product) return null;
 
-    const candidates = [
-      { unit: product.pro_unit1, ratio: Number(product.pro_ratio1 ?? 0) },
-      { unit: product.pro_unit2, ratio: Number(product.pro_ratio2 ?? 0) },
-      { unit: product.pro_unit3, ratio: Number(product.pro_ratio3 ?? 0) },
-    ].filter((u) => u.unit && u.ratio > 0);
-
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => a.ratio - b.ratio);
-    return candidates[0].unit;
+    return product.unit_name;
   }
 
   private validateTimeRange(start: string, end: string): void {
