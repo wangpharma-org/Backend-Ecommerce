@@ -686,20 +686,22 @@ export class ShoppingOrderService {
 
             const rewardCodes = happyReward.slot.rewards.map((r) => r.pro_code);
             if (happyReward.numCards > 0 && rewardCodes.length > 0) {
-              const happyRewardItems = rewardCodes.map((proCode) =>
-                manager.create(ShoppingOrderEntity, {
+              const happyRewardItems = rewardCodes.map((proCode) => {
+                const rewardEntry = happyReward.slot.rewards.find(
+                  (r) => r.pro_code === proCode,
+                );
+                return manager.create(ShoppingOrderEntity, {
                   orderHeader: { soh_running: running },
                   pro_code: proCode,
-                  spo_unit:
-                    happyReward.slot.rewards.find((r) => r.pro_code === proCode)
-                      ?.unit ?? 'ใบ',
+                  spo_unit: rewardEntry?.unit ?? 'ใบ',
+                  spo_unit_enum: '1', // happy hour reward ใช้ smallest unit เสมอ
                   spo_qty:
                     happyReward.numCards * happyReward.slot.reward_amount,
                   spo_price_unit: 0,
                   spo_total_decimal: 0,
                   is_happy_hour: true,
-                }),
-              );
+                });
+              });
               await manager.save(ShoppingOrderEntity, happyRewardItems);
             }
 
@@ -1159,35 +1161,35 @@ export class ShoppingOrderService {
     }
 
     const numCards = Math.floor(total / Number(matchedSlot.min_order_amount));
+    // eligibleQty = qty ต่อ 1 reward product (ไม่ใช่ผลรวมทั้งหมด)
     const eligibleQty = numCards * matchedSlot.reward_amount;
-    const currentQty = happyHourItems.reduce(
-      (sum, item) => sum + Number(item.spo_qty),
-      0,
-    );
 
-    if (currentQty <= eligibleQty) {
+    // เปรียบเทียบ qty ต่อ item (ทุก item ควรมี qty เท่ากันเมื่อสร้าง)
+    const currentItemQty = Number(happyHourItems[0]?.spo_qty ?? 0);
+
+    if (currentItemQty <= eligibleQty) {
       return { adjusted: false, removedQty: 0, pro_code: happyProCode };
     }
 
-    const removedQty = currentQty - eligibleQty;
+    // qty ที่ลดลง = ส่วนต่างต่อ item × จำนวน items ทั้งหมด
+    const removedQty = (currentItemQty - eligibleQty) * happyHourItems.length;
 
     if (eligibleQty === 0) {
+      // ไม่มีสิทธิ์รับ reward เลย — ลบทุก item
       await this.shoppingOrderRepo.delete(happyHourItems.map((i) => i.spo_id));
     } else {
-      await this.shoppingOrderRepo.update(happyHourItems[0].spo_id, {
-        spo_qty: eligibleQty,
-      });
-      if (happyHourItems.length > 1) {
-        await this.shoppingOrderRepo.delete(
-          happyHourItems.slice(1).map((i) => i.spo_id),
-        );
-      }
+      // อัปเดต qty ทุก reward item แยกกัน — แต่ละ product มี eligibleQty ของตัวเอง
+      await Promise.all(
+        happyHourItems.map((item) =>
+          this.shoppingOrderRepo.update(item.spo_id, { spo_qty: eligibleQty }),
+        ),
+      );
     }
 
     this.logger.log('happy_hour_reward_adjusted', {
       sh_running,
       pro_code: happyProCode,
-      previousQty: currentQty,
+      previousQty: currentItemQty,
       newQty: eligibleQty,
       removedQty,
       orderTotal: total,

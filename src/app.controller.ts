@@ -4135,7 +4135,13 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/check-happy-hour-reward')
-  async checkHappyHourReward(@Body() body: { sh_running: string }) {
+  async checkHappyHourReward(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { sh_running: string },
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('You not have Permission to Access');
+    }
     return await this.shoppingOrderService.checkAndAdjustHappyHourReward(
       body.sh_running,
     );
@@ -4235,14 +4241,14 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('ecom/admin/products/search/:keyword')
+  @Get('ecom/admin/products/search')
   async productSearchProductName(
-    @Param('keyword') keyword: string,
+    @Query('keyword') keyword: string,
     @Req() req: Request & { user: JwtPayload },
   ) {
     const permission = req.user.permission;
     if (permission === true) {
-      return await this.productsService.productSearchProductName(keyword);
+      return await this.productsService.productSearchProductName(keyword ?? '');
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }

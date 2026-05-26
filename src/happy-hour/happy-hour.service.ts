@@ -347,19 +347,13 @@ export class HappyHourService implements OnModuleInit {
 
       const orderTimeSql = now.format('HH:mm:00');
 
+      // date range ถูกเช็คแล้วด้านบน — query เฉพาะ slot ที่ active และตรงเวลา
       const slot = await this.slotRepo
         .createQueryBuilder('slot')
         .leftJoinAndSelect('slot.rewards', 'reward')
-        .leftJoinAndSelect('slot.config', 'config')
         .where('slot.is_active = true')
         .andWhere('slot.start_time <= :t', { t: orderTimeSql })
         .andWhere('slot.end_time > :t', { t: orderTimeSql })
-        .andWhere('config.start_date IS NULL OR config.start_date <= :today', {
-          today,
-        })
-        .andWhere('config.end_date IS NULL OR config.end_date >= :today', {
-          today,
-        })
         .getOne();
 
       if (!slot) return null;
@@ -417,35 +411,27 @@ export class HappyHourService implements OnModuleInit {
 
     // Batch query สินค้า + unit (reuse pattern จาก enrichSlotWithProducts — ไม่ N+1)
     const rewardList = slot.rewards ?? [];
+    // Batch query สินค้า — unit ใช้จาก r.unit ที่ store ไว้ใน HappyHourSlotRewardEntity แล้ว
     const productMap = new Map<
       string,
       { pro_code: string; pro_name: string; pro_imgmain: string }
     >();
-    const unitMap = new Map<string, string | null>();
 
     if (rewardList.length) {
       const codes = rewardList.map((r) => r.pro_code);
-
       const products = await this.productRepo
         .createQueryBuilder('p')
         .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
         .where('p.pro_code IN (:...codes)', { codes })
         .getMany();
       products.forEach((p) => productMap.set(p.pro_code, p));
-
-      // batch fetch smallest unit ทุก reward code พร้อมกัน
-      await Promise.all(
-        codes.map(async (code) => {
-          unitMap.set(code, await this.findSmallestUnit(code));
-        }),
-      );
     }
 
     const reward_products = rewardList.map((r) => {
       const product = productMap.get(r.pro_code);
       return {
         pro_code: r.pro_code,
-        unit: unitMap.get(r.pro_code) ?? null,
+        unit: r.unit ?? null, // ใช้ค่าที่ store ไว้แล้ว ไม่ต้อง query ProductUnitEntity อีก
         amount: num_cards * slot.reward_amount,
         pro_name: product?.pro_name ?? null,
         pro_imgmain: product?.pro_imgmain ?? null,
