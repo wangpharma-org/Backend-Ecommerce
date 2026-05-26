@@ -945,6 +945,20 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/list-for-duplicate')
+  async getPromotionsForDuplicate() {
+    return this.promotionService.getPromotionsForDuplicate();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/duplicate')
+  async duplicatePromotion(
+    @Body() data: { promo_id: number; start_date: Date; end_date: Date },
+  ) {
+    return this.promotionService.duplicatePromotion(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/condition/add')
   async addPromotionCondition(
     @Body()
