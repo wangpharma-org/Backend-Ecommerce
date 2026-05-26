@@ -1203,13 +1203,18 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('special_deal') specialDeal?: string,
   ) {
     const memberCode = req.user.mem_code;
+    const specialDealFilter =
+      specialDeal === undefined ? undefined : specialDeal === 'true';
+
     return this.hotdealService.getAllHotdealsWithProductDetail(
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
       memberCode,
       req.user.mem_route,
+      specialDealFilter,
     );
   }
 

@@ -263,6 +263,7 @@ export class HotdealService {
     offset?: number,
     mem_code?: string,
     mem_route?: string,
+    special_deal?: boolean,
   ) {
     const isL16 = await this.isL16Member(mem_code, mem_route);
     const query = this.hotdealRepo
@@ -270,6 +271,12 @@ export class HotdealService {
       .leftJoinAndSelect('hotdeal.product', 'product')
       .leftJoinAndSelect('hotdeal.product2', 'product2')
       .orderBy('hotdeal.order', 'ASC');
+
+    if (special_deal !== undefined) {
+      query.andWhere('hotdeal.special_deal = :specialDeal', {
+        specialDeal: special_deal,
+      });
+    }
 
     if (mem_code) {
       query
