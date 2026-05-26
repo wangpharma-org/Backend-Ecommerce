@@ -429,7 +429,9 @@ export class PromotionService {
           },
         },
         relations: {
-          promotion: true,
+          promotion: {
+            creditor: true,
+          },
         },
         select: {
           tier_id: true,
@@ -441,6 +443,10 @@ export class PromotionService {
           promotion: {
             promo_id: true,
             promo_name: true,
+            promo_poster: true,
+            creditor: {
+              creditor_code: true,
+            },
           },
         },
       });
@@ -591,9 +597,23 @@ export class PromotionService {
     start_date: Date;
     end_date: Date;
     status: boolean;
+    file?: Express.Multer.File;
   }) {
     try {
-      
+      let promo_poster: string | null = null;
+
+      if (data.file) {
+        const params = {
+          Bucket: 'wang-storage',
+          Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${data.file.originalname}`,
+          Body: data.file.buffer,
+          ContentType: data.file.mimetype,
+          ACL: 'public-read',
+        };
+        const imgData = await this.s3.upload(params).promise();
+        promo_poster = imgData.Location;
+      }
+
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
         creditor: data.creditor_code
@@ -602,11 +622,43 @@ export class PromotionService {
         start_date: data.start_date,
         end_date: data.end_date,
         status: data.status,
+        promo_poster,
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
       this.logger.error(error);
       throw new Error(`Failed to add promotion`);
+    }
+  }
+
+  async updatePromoPoster(data: {
+    promo_id: number;
+    file: Express.Multer.File;
+  }) {
+    try {
+      const promotion = await this.promotionRepo.findOne({
+        where: { promo_id: data.promo_id },
+      });
+      if (!promotion) {
+        throw new Error(`Promotion with id ${data.promo_id} not found`);
+      }
+
+      const params = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${data.file.originalname}`,
+        Body: data.file.buffer,
+        ContentType: data.file.mimetype,
+        ACL: 'public-read',
+      };
+      const imgData = await this.s3.upload(params).promise();
+
+      await this.promotionRepo.update(
+        { promo_id: data.promo_id },
+        { promo_poster: imgData.Location },
+      );
+    } catch (error) {
+      this.logger.error(error);
+      throw new Error(`Failed to update promotion poster`);
     }
   }
 
