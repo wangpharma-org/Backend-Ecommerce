@@ -853,17 +853,37 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/add')
+  @UseInterceptors(FileInterceptor('file'))
   async addPromotion(
+    @UploadedFile() file: Express.Multer.File,
     @Body()
     data: {
       promo_name: string;
       creditor_code: string;
       start_date: Date;
       end_date: Date;
-      status: boolean;
+      status: string;
     },
   ) {
-    return this.promotionService.addPromotion(data);
+    return this.promotionService.addPromotion({
+      ...data,
+      status: data.status === 'true',
+      creditor_code: data.creditor_code || null,
+      file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/update-poster')
+  @UseInterceptors(FileInterceptor('file'))
+  async updatePromoPoster(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() data: { promo_id: string },
+  ) {
+    return this.promotionService.updatePromoPoster({
+      promo_id: Number(data.promo_id),
+      file,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
