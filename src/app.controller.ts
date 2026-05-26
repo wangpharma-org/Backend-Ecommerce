@@ -853,17 +853,37 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/add')
+  @UseInterceptors(FileInterceptor('file'))
   async addPromotion(
+    @UploadedFile() file: Express.Multer.File,
     @Body()
     data: {
       promo_name: string;
       creditor_code: string;
       start_date: Date;
       end_date: Date;
-      status: boolean;
+      status: string;
     },
   ) {
-    return this.promotionService.addPromotion(data);
+    return this.promotionService.addPromotion({
+      ...data,
+      status: data.status === 'true',
+      creditor_code: data.creditor_code || null,
+      file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/update-poster')
+  @UseInterceptors(FileInterceptor('file'))
+  async updatePromoPoster(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() data: { promo_id: string },
+  ) {
+    return this.promotionService.updatePromoPoster({
+      promo_id: Number(data.promo_id),
+      file,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -922,6 +942,20 @@ export class AppController {
   @Post('/ecom/promotion/delete')
   async deletePromotion(@Body() data: { promo_id: number }) {
     return this.promotionService.deletePromotion(data.promo_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/list-for-duplicate')
+  async getPromotionsForDuplicate() {
+    return this.promotionService.getPromotionsForDuplicate();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/duplicate')
+  async duplicatePromotion(
+    @Body() data: { promo_id: number; start_date: Date; end_date: Date },
+  ) {
+    return this.promotionService.duplicatePromotion(data);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -4134,6 +4168,20 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/check-happy-hour-reward')
+  async checkHappyHourReward(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { sh_running: string },
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('You not have Permission to Access');
+    }
+    return await this.shoppingOrderService.checkAndAdjustHappyHourReward(
+      body.sh_running,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/:pro_code')
   async getHotdealByProCode(
     @Param('pro_code') pro_code: string,
@@ -4221,6 +4269,20 @@ export class AppController {
     const permission = req.user.permission;
     if (permission === true) {
       return await this.productsService.searchLotusCards();
+    } else {
+      throw new ForbiddenException('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('ecom/admin/products/search')
+  async productSearchProductName(
+    @Query('keyword') keyword: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.productSearchProductName(keyword ?? '');
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }

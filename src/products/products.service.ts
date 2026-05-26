@@ -220,6 +220,69 @@ export class ProductsService {
     }
   }
 
+  async searchProducts(query: {
+    keyword?: string;
+    in_stock?: boolean;
+    supplier?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const offset = (page - 1) * limit;
+
+    const qb = this.productRepo
+      .createQueryBuilder('product')
+      .select([
+        'product.pro_code',
+        'product.pro_name',
+        'product.pro_imgmain',
+        'product.pro_priceA',
+        'product.pro_priceB',
+        'product.pro_priceC',
+        'product.pro_unit1',
+        'product.pro_unit2',
+        'product.pro_unit3',
+        'product.pro_ratio1',
+        'product.pro_ratio2',
+        'product.pro_ratio3',
+        'product.pro_stock',
+        'product.pro_supplier',
+      ]);
+
+    if (query.keyword?.trim()) {
+      const kw = `%${query.keyword.trim()}%`;
+      qb.andWhere(
+        '(product.pro_name LIKE :kw OR product.pro_code LIKE :kw OR product.pro_keysearch LIKE :kw)',
+        { kw },
+      );
+    }
+
+    if (query.in_stock) {
+      qb.andWhere('product.pro_stock > 0');
+    }
+
+    if (query.supplier?.trim()) {
+      qb.andWhere('product.pro_supplier = :supplier', {
+        supplier: query.supplier.trim(),
+      });
+    }
+
+    const [data, total] = await qb
+      .orderBy('product.pro_name', 'ASC')
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit),
+    };
+  }
+
   async getProductForKeySearch() {
     try {
       const qb = this.productRepo.createQueryBuilder('product');
@@ -2798,5 +2861,40 @@ export class ProductsService {
       pro_img4: product.pro_img4 ?? null,
       pro_img5: product.pro_img5 ?? null,
     };
+  }
+
+  async productSearchProductName(
+    search: string,
+  ): Promise<{ pro_code: string; pro_name: string }[]> {
+    try {
+      search = search.trim();
+      const products = await this.productRepo
+        .createQueryBuilder('product')
+        .where(
+          new Brackets((qb) =>
+            qb
+              .where('product.pro_name LIKE :search', {
+                search: `%${search}%`,
+              })
+              .orWhere('product.pro_code LIKE :search', {
+                search: `%${search}%`,
+              }),
+          ),
+        )
+        .andWhere('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
+        .andWhere('product.pro_code NOT LIKE :p2', { p2: '@%' })
+        .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+        .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+        .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+        .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+        .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+        .select(['product.pro_code', 'product.pro_name'])
+        .take(10)
+        .getMany();
+      return products;
+    } catch (error) {
+      this.logger.error('Error searching product by name:', error);
+      throw new Error('Error searching product by name');
+    }
   }
 }

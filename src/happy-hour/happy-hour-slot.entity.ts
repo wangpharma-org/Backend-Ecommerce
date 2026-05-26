@@ -2,9 +2,11 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
 
 @Entity({ name: 'happy_hour_slot' })
 export class HappyHourSlotEntity {
@@ -20,7 +22,7 @@ export class HappyHourSlotEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   min_order_amount!: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   card_value!: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
@@ -35,14 +37,17 @@ export class HappyHourSlotEntity {
   @Column({ type: 'varchar', length: 20, nullable: true })
   reward_pro_code!: string | null;
 
-  @Column({ type: 'varchar', length: 30, nullable: true })
-  reward_unit!: string | null;
-
   @Column({ type: 'enum', enum: ['1', '2', '3'], nullable: true, default: null })
   reward_unit_enum!: '1' | '2' | '3' | null;
 
   @Column({ type: 'int', default: 1 })
   reward_amount!: number;
+
+  @OneToMany(() => HappyHourSlotRewardEntity, (r) => r.slot, {
+    eager: true,
+    cascade: ['insert', 'update'],
+  })
+  rewards!: HappyHourSlotRewardEntity[];
 
   @CreateDateColumn()
   created_at!: Date;

@@ -14,6 +14,7 @@ import {
   LessThan,
   MoreThanOrEqual,
   LessThanOrEqual,
+  DataSource,
   In,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
@@ -106,6 +107,7 @@ export class PromotionService {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    private readonly dataSource: DataSource,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -218,7 +220,6 @@ export class PromotionService {
 
       await Promise.all(
         promo.map(async (p) => {
-          await this.promotionRepo.update(p.promo_id, { status: false });
           await this.cartRepo.update(
             {
               use_code: false,
@@ -229,6 +230,7 @@ export class PromotionService {
               reward_expire: tomorrow,
             },
           );
+          await this.promotionRepo.softDelete({ promo_id: p.promo_id });
         }),
       );
     } catch {
@@ -429,7 +431,9 @@ export class PromotionService {
           },
         },
         relations: {
-          promotion: true,
+          promotion: {
+            creditor: true,
+          },
         },
         select: {
           tier_id: true,
@@ -441,6 +445,10 @@ export class PromotionService {
           promotion: {
             promo_id: true,
             promo_name: true,
+            promo_poster: true,
+            creditor: {
+              creditor_code: true,
+            },
           },
         },
       });
@@ -591,9 +599,23 @@ export class PromotionService {
     start_date: Date;
     end_date: Date;
     status: boolean;
+    file?: Express.Multer.File;
   }) {
     try {
-      
+      let promo_poster: string | null = null;
+
+      if (data.file) {
+        const params = {
+          Bucket: 'wang-storage',
+          Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${data.file.originalname}`,
+          Body: data.file.buffer,
+          ContentType: data.file.mimetype,
+          ACL: 'public-read',
+        };
+        const imgData = await this.s3.upload(params).promise();
+        promo_poster = imgData.Location;
+      }
+
       const newPromotion = this.promotionRepo.create({
         promo_name: data.promo_name,
         creditor: data.creditor_code
@@ -602,11 +624,43 @@ export class PromotionService {
         start_date: data.start_date,
         end_date: data.end_date,
         status: data.status,
+        promo_poster,
       });
       await this.promotionRepo.save(newPromotion);
     } catch (error) {
       this.logger.error(error);
       throw new Error(`Failed to add promotion`);
+    }
+  }
+
+  async updatePromoPoster(data: {
+    promo_id: number;
+    file: Express.Multer.File;
+  }) {
+    try {
+      const promotion = await this.promotionRepo.findOne({
+        where: { promo_id: data.promo_id },
+      });
+      if (!promotion) {
+        throw new Error(`Promotion with id ${data.promo_id} not found`);
+      }
+
+      const params = {
+        Bucket: 'wang-storage',
+        Key: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${data.file.originalname}`,
+        Body: data.file.buffer,
+        ContentType: data.file.mimetype,
+        ACL: 'public-read',
+      };
+      const imgData = await this.s3.upload(params).promise();
+
+      await this.promotionRepo.update(
+        { promo_id: data.promo_id },
+        { promo_poster: imgData.Location },
+      );
+    } catch (error) {
+      this.logger.error(error);
+      throw new Error(`Failed to update promotion poster`);
     }
   }
 
@@ -619,6 +673,7 @@ export class PromotionService {
         select: {
           promo_id: true,
           promo_name: true,
+          promo_poster: true,
           start_date: true,
           end_date: true,
           status: true,
@@ -1493,5 +1548,110 @@ export class PromotionService {
     } else {
       return;
     }
+  }
+
+  async getPromotionsForDuplicate() {
+    try {
+      return await this.promotionRepo.find({
+        withDeleted: true,
+        relations: {
+          creditor: true,
+        },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          start_date: true,
+          end_date: true,
+          status: true,
+          deleted_at: true,
+          creditor: {
+            creditor_code: true,
+            creditor_name: true,
+          },
+        },
+        order: {
+          promo_id: 'DESC',
+        },
+      });
+    } catch {
+      throw new Error(`Failed to get promotions for duplicate`);
+    }
+  }
+
+  async duplicatePromotion(data: {
+    promo_id: number;
+    start_date: Date;
+    end_date: Date;
+  }) {
+    const source = await this.promotionRepo.findOne({
+      withDeleted: true,
+      where: { promo_id: data.promo_id },
+      relations: {
+        creditor: true,
+        tiers: {
+          conditions: { product: true },
+          rewards: { giftProduct: true },
+        },
+      },
+    });
+
+    if (!source) {
+      throw new NotFoundException(
+        `Promotion with id ${data.promo_id} not found`,
+      );
+    }
+
+    return await this.dataSource.transaction(async (manager) => {
+      const savedPromotion = await manager.save(
+        manager.create(PromotionEntity, {
+          promo_name: source.promo_name,
+          creditor: source.creditor ?? undefined,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          status: false,
+        }),
+      );
+
+      for (const tier of source.tiers ?? []) {
+        const savedTier = await manager.save(
+          manager.create(PromotionTierEntity, {
+            tier_name: tier.tier_name,
+            min_amount: tier.min_amount,
+            description: tier.description,
+            detail: tier.detail,
+            tier_postter: tier.tier_postter,
+            all_products: tier.all_products,
+            is_unit: tier.is_unit,
+            promotion: savedPromotion,
+          }),
+        );
+
+        if (tier.conditions?.length) {
+          await manager.save(
+            tier.conditions.map((c) =>
+              manager.create(PromotionConditionEntity, {
+                tier: savedTier,
+                product: { pro_code: c.product.pro_code },
+              } as DeepPartial<PromotionConditionEntity>),
+            ),
+          );
+        }
+
+        if (tier.rewards?.length) {
+          await manager.save(
+            tier.rewards.map((r) =>
+              manager.create(PromotionRewardEntity, {
+                tier: savedTier,
+                giftProduct: { pro_code: r.giftProduct.pro_code },
+                qty: r.qty,
+                unit: r.unit,
+              } as DeepPartial<PromotionRewardEntity>),
+            ),
+          );
+        }
+      }
+
+      return { promo_id: savedPromotion.promo_id };
+    });
   }
 }
