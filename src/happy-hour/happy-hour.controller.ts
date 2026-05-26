@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
   UsePipes,
@@ -21,6 +22,8 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { UpdateConfigDto } from './dto/update-config.dto';
 import { SimulateDto } from './dto/simulate.dto';
+import { SlotLogQueryDto } from './dto/slot-log-query.dto';
+import { ConfigLogQueryDto } from './dto/config-log-query.dto';
 interface JwtUser {
   username: string;
   name: string;
@@ -83,22 +86,26 @@ export class HappyHourController {
   }
 
   @Post('slots')
-  createSlot(@Body() dto: CreateSlotDto) {
-    return this.happyHourService.createSlot(dto);
+  createSlot(@Body() dto: CreateSlotDto, @Req() req: { user: JwtUser }) {
+    return this.happyHourService.createSlot(dto, req.user.username);
   }
 
   @Put('slots/:id')
   updateSlot(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateSlotDto,
+    @Req() req: { user: JwtUser },
   ) {
-    return this.happyHourService.updateSlot(id, dto);
+    return this.happyHourService.updateSlot(id, dto, req.user.username);
   }
 
   @Delete('slots/:id')
   @HttpCode(204)
-  deleteSlot(@Param('id', ParseIntPipe) id: number) {
-    return this.happyHourService.deleteSlot(id);
+  deleteSlot(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user: JwtUser },
+  ) {
+    return this.happyHourService.deleteSlot(id, req.user.username);
   }
 
   @Post('simulate')
@@ -109,5 +116,36 @@ export class HappyHourController {
   @Get('lotus-cards')
   getLotusCards() {
     return this.happyHourService.getLotusCards();
+  }
+
+  /**
+   * GET /admin/happy-hour/slot-logs
+   * ดึง audit log การ CREATE / UPDATE / DELETE slot พร้อม pagination
+   *
+   * Query params:
+   *   action        — CREATE | UPDATE | DELETE (optional)
+   *   slot_id       — กรองตาม slot id (optional)
+   *   performed_by  — กรองตาม username (บางส่วนก็ได้)
+   *   page          — default 1
+   *   limit         — default 20
+   */
+  @Get('slot-logs')
+  getSlotLogs(@Query() query: SlotLogQueryDto) {
+    return this.happyHourService.getSlotLogs(query);
+  }
+
+  /**
+   * GET /admin/happy-hour/config-logs
+   * ดึง audit log การเปลี่ยน config (UPDATE / TOGGLE) พร้อม pagination
+   *
+   * Query params:
+   *   action        — UPDATE | TOGGLE (optional)
+   *   performed_by  — กรองตาม username (บางส่วนก็ได้)
+   *   page          — default 1
+   *   limit         — default 20
+   */
+  @Get('config-logs')
+  getConfigLogs(@Query() query: ConfigLogQueryDto) {
+    return this.happyHourService.getConfigLogs(query);
   }
 }

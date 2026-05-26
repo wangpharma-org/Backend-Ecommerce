@@ -13,9 +13,19 @@ import * as timezone from 'dayjs/plugin/timezone';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
 import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
+import {
+  HappyHourSlotLogEntity,
+  SlotLogAction,
+} from './happy-hour-slot-log.entity';
+import {
+  HappyHourConfigLogEntity,
+  ConfigLogAction,
+} from './happy-hour-config-log.entity';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { SimulateDto } from './dto/simulate.dto';
+import { SlotLogQueryDto } from './dto/slot-log-query.dto';
+import { ConfigLogQueryDto } from './dto/config-log-query.dto';
 import { ProductEntity } from 'src/products/products.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 
@@ -94,6 +104,10 @@ export class HappyHourService implements OnModuleInit {
     private readonly slotRepo: Repository<HappyHourSlotEntity>,
     @InjectRepository(HappyHourSlotRewardEntity)
     private readonly rewardRepo: Repository<HappyHourSlotRewardEntity>,
+    @InjectRepository(HappyHourSlotLogEntity)
+    private readonly slotLogRepo: Repository<HappyHourSlotLogEntity>,
+    @InjectRepository(HappyHourConfigLogEntity)
+    private readonly configLogRepo: Repository<HappyHourConfigLogEntity>,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(ProductUnitEntity)
@@ -168,10 +182,18 @@ export class HappyHourService implements OnModuleInit {
 
   async toggle(username: string): Promise<HappyHourConfigEntity> {
     const config = await this.getConfig();
+    const before = { is_enabled: config.is_enabled };
     config.is_enabled = !config.is_enabled;
     config.updated_at = new Date();
     config.updated_by = username;
-    return this.configRepo.save(config);
+    const saved = await this.configRepo.save(config);
+    void this.saveConfigLog({
+      action: 'TOGGLE',
+      performed_by: username,
+      before,
+      after: { is_enabled: saved.is_enabled },
+    });
+    return saved;
   }
 
   async updateConfig(
@@ -183,6 +205,11 @@ export class HappyHourService implements OnModuleInit {
     username: string,
   ): Promise<HappyHourConfigEntity> {
     const config = await this.getConfig();
+    const before = {
+      is_enabled: config.is_enabled,
+      start_date: config.start_date,
+      end_date: config.end_date,
+    };
     if (dto.is_enabled !== undefined) config.is_enabled = dto.is_enabled;
     if (Object.prototype.hasOwnProperty.call(dto, 'start_date')) {
       config.start_date = dto.start_date ?? null;
@@ -192,7 +219,18 @@ export class HappyHourService implements OnModuleInit {
     }
     config.updated_at = new Date();
     config.updated_by = username;
-    return this.configRepo.save(config);
+    const saved = await this.configRepo.save(config);
+    void this.saveConfigLog({
+      action: 'UPDATE',
+      performed_by: username,
+      before,
+      after: {
+        is_enabled: saved.is_enabled,
+        start_date: saved.start_date,
+        end_date: saved.end_date,
+      },
+    });
+    return saved;
   }
 
   async getSlots() {
@@ -230,7 +268,7 @@ export class HappyHourService implements OnModuleInit {
     return { ...slot, rewards };
   }
 
-  async createSlot(dto: CreateSlotDto) {
+  async createSlot(dto: CreateSlotDto, performedBy: string) {
     this.validateTimeRange(dto.start_time, dto.end_time);
     await this.validateNoOverlap(dto.start_time, dto.end_time);
 
@@ -272,10 +310,18 @@ export class HappyHourService implements OnModuleInit {
     }
 
     const saved = await this.slotRepo.findOne({ where: { id: slot.id } });
+
+    void this.saveSlotLog({
+      action: 'CREATE',
+      slot_id: slot.id,
+      performed_by: performedBy,
+      changes: dto,
+    });
+
     return this.enrichSlotWithProducts(saved);
   }
 
-  async updateSlot(id: number, dto: UpdateSlotDto) {
+  async updateSlot(id: number, dto: UpdateSlotDto, performedBy: string) {
     const slot = await this.slotRepo.findOneBy({ id });
     if (!slot) {
       throw new NotFoundException(`ไม่พบ slot id ${id}`);
@@ -315,16 +361,30 @@ export class HappyHourService implements OnModuleInit {
       await this.slotRepo.save(slot);
     }
 
+    void this.saveSlotLog({
+      action: 'UPDATE',
+      slot_id: id,
+      performed_by: performedBy,
+      changes: dto,
+    });
+
     const updated = await this.slotRepo.findOne({ where: { id } });
     return this.enrichSlotWithProducts(updated);
   }
 
-  async deleteSlot(id: number): Promise<void> {
+  async deleteSlot(id: number, performedBy: string): Promise<void> {
     const slot = await this.slotRepo.findOneBy({ id });
     if (!slot) {
       throw new NotFoundException(`ไม่พบ slot id ${id}`);
     }
     await this.slotRepo.delete(id);
+
+    void this.saveSlotLog({
+      action: 'DELETE',
+      slot_id: id,
+      performed_by: performedBy,
+      changes: null,
+    });
   }
 
   async calcHappyHourReward(orderAmount: number): Promise<{
@@ -448,6 +508,105 @@ export class HappyHourService implements OnModuleInit {
     };
   }
 
+  // ─── Slot Activity Log ────────────────────────────────────────────
+
+  /** บันทึก audit log ของการ CRUD slot (fire-and-forget, ไม่ throw) */
+  async saveSlotLog(data: {
+    action: SlotLogAction;
+    slot_id: number;
+    performed_by: string;
+    changes?: object | null;
+  }): Promise<void> {
+    try {
+      await this.slotLogRepo.save(
+        this.slotLogRepo.create({
+          action: data.action,
+          slot_id: data.slot_id,
+          performed_by: data.performed_by,
+          changes: data.changes ? JSON.stringify(data.changes) : null,
+        }),
+      );
+    } catch (error) {
+      this.logger.error('Failed to save slot log', error);
+    }
+  }
+
+  /** ดึง slot activity log พร้อม pagination และ filter */
+  async getSlotLogs(query: SlotLogQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const qb = this.slotLogRepo
+      .createQueryBuilder('log')
+      .orderBy('log.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.action) {
+      qb.andWhere('log.action = :action', { action: query.action });
+    }
+    if (query.slot_id) {
+      qb.andWhere('log.slot_id = :slot_id', { slot_id: query.slot_id });
+    }
+    if (query.performed_by) {
+      qb.andWhere('log.performed_by LIKE :by', {
+        by: `%${query.performed_by}%`,
+      });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return buildPagination(data, total, page, limit);
+  }
+
+  // ─── Config Activity Log ───────────────────────────────────────────
+
+  /** บันทึก audit log ของการเปลี่ยน config (fire-and-forget, ไม่ throw) */
+  async saveConfigLog(data: {
+    action: ConfigLogAction;
+    performed_by: string;
+    before?: object;
+    after?: object;
+  }): Promise<void> {
+    try {
+      await this.configLogRepo.save(
+        this.configLogRepo.create({
+          action: data.action,
+          performed_by: data.performed_by,
+          changes:
+            data.before || data.after
+              ? JSON.stringify({ before: data.before, after: data.after })
+              : null,
+        }),
+      );
+    } catch (error) {
+      this.logger.error('Failed to save config log', error);
+    }
+  }
+
+  /** ดึง config activity log พร้อม pagination และ filter */
+  async getConfigLogs(query: ConfigLogQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const qb = this.configLogRepo
+      .createQueryBuilder('log')
+      .orderBy('log.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.action) {
+      qb.andWhere('log.action = :action', { action: query.action });
+    }
+    if (query.performed_by) {
+      qb.andWhere('log.performed_by LIKE :by', {
+        by: `%${query.performed_by}%`,
+      });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return buildPagination(data, total, page, limit);
+  }
+
   async getLotusCards(): Promise<{ pro_code: string; pro_name: string }[]> {
     return this.productRepo
       .createQueryBuilder('p')
@@ -494,4 +653,26 @@ export class HappyHourService implements OnModuleInit {
       throw new BadRequestException('ช่วงเวลานี้ทับซ้อนกับ slot ที่มีอยู่แล้ว');
     }
   }
+}
+
+// ─── Pagination helper ─────────────────────────────────────────────────────
+
+function buildPagination<T>(
+  data: T[],
+  total: number,
+  page: number,
+  limit: number,
+) {
+  const total_pages = Math.ceil(total / limit);
+  return {
+    data,
+    pagination: {
+      total,
+      page,
+      limit,
+      total_pages,
+      has_prev: page > 1,
+      has_next: page < total_pages,
+    },
+  };
 }

@@ -4,7 +4,11 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { HappyHourService } from './happy-hour.service';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
+import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
+import { HappyHourSlotLogEntity } from './happy-hour-slot-log.entity';
+import { HappyHourConfigLogEntity } from './happy-hour-config-log.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
 
 /**
  * HappyHourService unit tests
@@ -46,7 +50,12 @@ describe('HappyHourService', () => {
   let service: HappyHourService;
   let configRepo: any;
   let slotRepo: any;
+  let rewardRepo: any;
+  let adjustLogRepo: any;
+  let slotLogRepo: any;
+  let configLogRepo: any;
   let productRepo: any;
+  let productUnitRepo: any;
 
   beforeEach(async () => {
     configRepo = {
@@ -64,9 +73,32 @@ describe('HappyHourService', () => {
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
       createQueryBuilder: jest.fn(),
     };
+    rewardRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    adjustLogRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      createQueryBuilder: jest.fn(),
+    };
+    slotLogRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      createQueryBuilder: jest.fn(),
+    };
+    configLogRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      createQueryBuilder: jest.fn(),
+    };
     productRepo = {
       findOne: jest.fn(),
       createQueryBuilder: jest.fn(),
+    };
+    productUnitRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -74,7 +106,11 @@ describe('HappyHourService', () => {
         HappyHourService,
         { provide: getRepositoryToken(HappyHourConfigEntity), useValue: configRepo },
         { provide: getRepositoryToken(HappyHourSlotEntity), useValue: slotRepo },
+        { provide: getRepositoryToken(HappyHourSlotRewardEntity), useValue: rewardRepo },
+        { provide: getRepositoryToken(HappyHourSlotLogEntity), useValue: slotLogRepo },
+        { provide: getRepositoryToken(HappyHourConfigLogEntity), useValue: configLogRepo },
         { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
+        { provide: getRepositoryToken(ProductUnitEntity), useValue: productUnitRepo },
       ],
     }).compile();
 
@@ -169,7 +205,7 @@ describe('HappyHourService', () => {
       slotRepo.save.mockResolvedValueOnce(saved);
       slotRepo.findOne.mockResolvedValueOnce(saved);
 
-      const result = await service.createSlot(baseDto as any);
+      const result = await service.createSlot(baseDto as any, 'test-user');
       expect(result?.id).toBe(99);
       expect(slotRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ is_active: true }),
@@ -179,7 +215,7 @@ describe('HappyHourService', () => {
     it('preserves is_active=false from dto', async () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 0));
       slotRepo.save.mockResolvedValueOnce({ id: 1 });
-      await service.createSlot({ ...baseDto, is_active: false } as any);
+      await service.createSlot({ ...baseDto, is_active: false } as any, 'test-user');
       expect(slotRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ is_active: false }),
       );
@@ -187,17 +223,17 @@ describe('HappyHourService', () => {
 
     it('throws BadRequest when start_time >= end_time', async () => {
       await expect(
-        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '12:00' } as any),
+        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '12:00' } as any, 'test-user'),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.createSlot({ ...baseDto, start_time: '13:00', end_time: '10:00' } as any),
+        service.createSlot({ ...baseDto, start_time: '13:00', end_time: '10:00' } as any, 'test-user'),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequest on overlap', async () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 1));
-      await expect(service.createSlot(baseDto as any)).rejects.toThrow(
+      await expect(service.createSlot(baseDto as any, 'test-user')).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -209,7 +245,7 @@ describe('HappyHourService', () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 0));
       slotRepo.save.mockResolvedValueOnce({ id: 2 });
       await expect(
-        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '14:00' } as any),
+        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '14:00' } as any, 'test-user'),
       ).resolves.toBeDefined();
     });
   });
@@ -217,7 +253,7 @@ describe('HappyHourService', () => {
   describe('updateSlot', () => {
     it('throws NotFound when slot id missing', async () => {
       slotRepo.findOneBy.mockResolvedValueOnce(null);
-      await expect(service.updateSlot(404, { is_active: false })).rejects.toThrow(
+      await expect(service.updateSlot(404, { is_active: false }, 'test-user')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -229,7 +265,7 @@ describe('HappyHourService', () => {
       slotRepo.save.mockImplementationOnce(async (s: any) => s);
       slotRepo.findOne.mockResolvedValueOnce({ ...existing, is_active: false, rewards: [] });
 
-      const result = await service.updateSlot(1, { is_active: false });
+      const result = await service.updateSlot(1, { is_active: false }, 'test-user');
       expect(result?.is_active).toBe(false);
     });
 
@@ -238,7 +274,7 @@ describe('HappyHourService', () => {
       slotRepo.findOneBy.mockResolvedValueOnce(existing);
 
       await expect(
-        service.updateSlot(1, { start_time: '12:00' }),
+        service.updateSlot(1, { start_time: '12:00' }, 'test-user'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -249,7 +285,7 @@ describe('HappyHourService', () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(qb);
       slotRepo.save.mockImplementationOnce(async (s: any) => s);
 
-      await service.updateSlot(1, { start_time: '10:30', end_time: '11:30' });
+      await service.updateSlot(1, { start_time: '10:30', end_time: '11:30' }, 'test-user');
       expect(qb.andWhere).toHaveBeenCalledWith(
         expect.stringContaining('slot.id != :excludeId'),
         { excludeId: 1 },
@@ -260,12 +296,12 @@ describe('HappyHourService', () => {
   describe('deleteSlot', () => {
     it('throws NotFound when slot id missing', async () => {
       slotRepo.findOneBy.mockResolvedValueOnce(null);
-      await expect(service.deleteSlot(999)).rejects.toThrow(NotFoundException);
+      await expect(service.deleteSlot(999, 'test-user')).rejects.toThrow(NotFoundException);
     });
 
     it('deletes existing slot', async () => {
       slotRepo.findOneBy.mockResolvedValueOnce(buildSlot({ id: 5 }));
-      await service.deleteSlot(5);
+      await service.deleteSlot(5, 'test-user');
       expect(slotRepo.delete).toHaveBeenCalledWith(5);
     });
   });
