@@ -377,6 +377,36 @@ export class HotdealService {
     return result;
   }
 
+  async getProductProDeals(
+    limit?: number,
+    offset?: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
+    return this.getAllHotdealsWithProductDetail(
+      limit,
+      offset,
+      mem_code,
+      mem_route,
+      true,
+    );
+  }
+
+  async getBuyMoreGetOneDeals(
+    limit?: number,
+    offset?: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
+    return this.getAllHotdealsWithProductDetail(
+      limit,
+      offset,
+      mem_code,
+      mem_route,
+      false,
+    );
+  }
+
   // ตรวจสอบแล้วคิดว่าใช้งานได้
   async checkHotdealMatch(
     pro_code: string,
