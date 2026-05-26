@@ -44,6 +44,16 @@ export class HappyHourController {
 
   constructor(private readonly happyHourService: HappyHourService) {}
 
+  /** ดึงทุกอย่างใน 1 เส้น: config (พร้อม is_enabled computed) + slots ทั้งหมด */
+  @Get('overview')
+  async getOverview() {
+    const [config, slots] = await Promise.all([
+      this.happyHourService.getConfigResponse(),
+      this.happyHourService.getSlots(),
+    ]);
+    return { config, slots };
+  }
+
   @Get('config')
   getConfig() {
     return this.happyHourService.getConfigResponse();
