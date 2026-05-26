@@ -1430,7 +1430,10 @@ export class ShoppingCartService {
     }
   }
 
-  async getProductCart(mem_code: string): Promise<ShoppingProductCart[]> {
+  async getProductCart(
+    mem_code: string,
+    options: { syncHotdeal?: boolean } = {},
+  ): Promise<ShoppingProductCart[]> {
     try {
       await this.removeL16ItemsFromCart(mem_code);
       await this.shoppingCartRepo
@@ -1440,6 +1443,10 @@ export class ShoppingCartService {
         .where('mem_code = :mem_code', { mem_code })
         .andWhere('spc_amount <= 0')
         .execute();
+
+      if (options.syncHotdeal !== false) {
+        await this.syncHotdealFreebiesForCart(mem_code);
+      }
 
       const isL16 = await this.isL16Member(mem_code);
       const replaceCondition = isL16
@@ -1703,6 +1710,24 @@ export class ShoppingCartService {
     }
   }
 
+  private async syncHotdealFreebiesForCart(mem_code: string): Promise<void> {
+    const mainCartRows = await this.shoppingCartRepo.find({
+      where: {
+        mem_code,
+        hotdeal_free: false,
+      },
+      select: {
+        pro_code: true,
+      },
+    });
+
+    const mainProCodes = [...new Set(mainCartRows.map((row) => row.pro_code))];
+
+    for (const proCode of mainProCodes) {
+      await this.checkHotdealByProCode(mem_code, proCode);
+    }
+  }
+
   async removeAllCarthotdeal(pro_code: string): Promise<string> {
     try {
       await this.shoppingCartRepo.delete({
@@ -1748,7 +1773,7 @@ export class ShoppingCartService {
         pro_code,
       ]);
       if (!hotdeals || hotdeals.length === 0) {
-        return await this.getProductCart(mem_code);
+        return await this.getProductCart(mem_code, { syncHotdeal: false });
       }
 
       const mainProductsInCart = await this.shoppingCartRepo.find({
@@ -1772,7 +1797,7 @@ export class ShoppingCartService {
         if (allFreebiesInCart.length > 0) {
           await this.shoppingCartRepo.remove(allFreebiesInCart);
         }
-        return await this.getProductCart(mem_code);
+        return await this.getProductCart(mem_code, { syncHotdeal: false });
       }
 
       const freebiesData: {
@@ -1835,7 +1860,7 @@ export class ShoppingCartService {
         if (allFreebiesInCart.length > 0) {
           await this.shoppingCartRepo.remove(allFreebiesInCart);
         }
-        return await this.getProductCart(mem_code);
+        return await this.getProductCart(mem_code, { syncHotdeal: false });
       }
 
       const freebiesMap = new Map<
@@ -1895,7 +1920,7 @@ export class ShoppingCartService {
         }
       }
 
-      return await this.getProductCart(mem_code);
+      return await this.getProductCart(mem_code, { syncHotdeal: false });
     } catch (error) {
       this.logger.error('Error in checkHotdealByProCode:', error);
       return null;
