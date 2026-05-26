@@ -1,7 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
 import { ProductEntity } from './products.entity';
 
 @Entity({ name: 'product_unit' })
+@Index('uk_product_unit', ['pro_code', 'level'], { unique: true })
 export class ProductUnitEntity {
   @PrimaryGeneratedColumn()
   id!: number;

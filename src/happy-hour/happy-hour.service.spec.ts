@@ -4,7 +4,11 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { HappyHourService } from './happy-hour.service';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
+import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
+import { HappyHourSlotLogEntity } from './happy-hour-slot-log.entity';
+import { HappyHourConfigLogEntity } from './happy-hour-config-log.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { ProductUnitEntity } from 'src/products/product-unit.entity';
 
 /**
  * HappyHourService unit tests
@@ -13,7 +17,8 @@ import { ProductEntity } from 'src/products/products.entity';
  *   ดู BUG_REPORT.md
  */
 
-type SlotRow = Partial<HappyHourSlotEntity>;
+// ใช้ Record<string, unknown> เพื่อให้ override ด้วย field ที่ entity ไม่มีได้ใน test
+type SlotRow = Partial<HappyHourSlotEntity> & Record<string, unknown>;
 
 const buildSlot = (overrides: SlotRow = {}): HappyHourSlotEntity => ({
   id: 1,
@@ -24,8 +29,7 @@ const buildSlot = (overrides: SlotRow = {}): HappyHourSlotEntity => ({
   excess_threshold: 1334 as unknown as number,
   discount_per_step: 10 as unknown as number,
   is_active: true,
-  reward_pro_code: '92020405',
-  reward_unit: null,
+  rewards: [],
   reward_amount: 1,
   created_at: new Date('2026-01-01T00:00:00Z'),
   updated_at: new Date('2026-01-01T00:00:00Z'),
@@ -46,7 +50,12 @@ describe('HappyHourService', () => {
   let service: HappyHourService;
   let configRepo: any;
   let slotRepo: any;
+  let rewardRepo: any;
+  let adjustLogRepo: any;
+  let slotLogRepo: any;
+  let configLogRepo: any;
   let productRepo: any;
+  let productUnitRepo: any;
 
   beforeEach(async () => {
     configRepo = {
@@ -57,14 +66,39 @@ describe('HappyHourService', () => {
     slotRepo = {
       count: jest.fn().mockResolvedValue(4),
       find: jest.fn(),
+      findOne: jest.fn().mockResolvedValue(null),
       findOneBy: jest.fn(),
       create: jest.fn((x) => x),
       save: jest.fn(async (x) => (Array.isArray(x) ? x : { id: 1, ...x })),
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
       createQueryBuilder: jest.fn(),
     };
+    rewardRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    adjustLogRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      createQueryBuilder: jest.fn(),
+    };
+    slotLogRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      createQueryBuilder: jest.fn(),
+    };
+    configLogRepo = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => x),
+      createQueryBuilder: jest.fn(),
+    };
     productRepo = {
       findOne: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    };
+    productUnitRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -72,7 +106,11 @@ describe('HappyHourService', () => {
         HappyHourService,
         { provide: getRepositoryToken(HappyHourConfigEntity), useValue: configRepo },
         { provide: getRepositoryToken(HappyHourSlotEntity), useValue: slotRepo },
+        { provide: getRepositoryToken(HappyHourSlotRewardEntity), useValue: rewardRepo },
+        { provide: getRepositoryToken(HappyHourSlotLogEntity), useValue: slotLogRepo },
+        { provide: getRepositoryToken(HappyHourConfigLogEntity), useValue: configLogRepo },
         { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
+        { provide: getRepositoryToken(ProductUnitEntity), useValue: productUnitRepo },
       ],
     }).compile();
 
@@ -163,10 +201,12 @@ describe('HappyHourService', () => {
 
     it('creates slot when no overlap', async () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 0));
-      slotRepo.save.mockResolvedValueOnce({ id: 99, ...baseDto, is_active: true });
+      const saved = { id: 99, ...baseDto, is_active: true, rewards: [] };
+      slotRepo.save.mockResolvedValueOnce(saved);
+      slotRepo.findOne.mockResolvedValueOnce(saved);
 
-      const result = await service.createSlot(baseDto as any);
-      expect(result.id).toBe(99);
+      const result = await service.createSlot(baseDto as any, 'test-user');
+      expect(result?.id).toBe(99);
       expect(slotRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ is_active: true }),
       );
@@ -175,7 +215,7 @@ describe('HappyHourService', () => {
     it('preserves is_active=false from dto', async () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 0));
       slotRepo.save.mockResolvedValueOnce({ id: 1 });
-      await service.createSlot({ ...baseDto, is_active: false } as any);
+      await service.createSlot({ ...baseDto, is_active: false } as any, 'test-user');
       expect(slotRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ is_active: false }),
       );
@@ -183,17 +223,17 @@ describe('HappyHourService', () => {
 
     it('throws BadRequest when start_time >= end_time', async () => {
       await expect(
-        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '12:00' } as any),
+        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '12:00' } as any, 'test-user'),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.createSlot({ ...baseDto, start_time: '13:00', end_time: '10:00' } as any),
+        service.createSlot({ ...baseDto, start_time: '13:00', end_time: '10:00' } as any, 'test-user'),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequest on overlap', async () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 1));
-      await expect(service.createSlot(baseDto as any)).rejects.toThrow(
+      await expect(service.createSlot(baseDto as any, 'test-user')).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -205,7 +245,7 @@ describe('HappyHourService', () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 0));
       slotRepo.save.mockResolvedValueOnce({ id: 2 });
       await expect(
-        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '14:00' } as any),
+        service.createSlot({ ...baseDto, start_time: '12:00', end_time: '14:00' } as any, 'test-user'),
       ).resolves.toBeDefined();
     });
   });
@@ -213,7 +253,7 @@ describe('HappyHourService', () => {
   describe('updateSlot', () => {
     it('throws NotFound when slot id missing', async () => {
       slotRepo.findOneBy.mockResolvedValueOnce(null);
-      await expect(service.updateSlot(404, { is_active: false })).rejects.toThrow(
+      await expect(service.updateSlot(404, { is_active: false }, 'test-user')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -223,9 +263,10 @@ describe('HappyHourService', () => {
       slotRepo.findOneBy.mockResolvedValueOnce(existing);
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null, 0));
       slotRepo.save.mockImplementationOnce(async (s: any) => s);
+      slotRepo.findOne.mockResolvedValueOnce({ ...existing, is_active: false, rewards: [] });
 
-      const result = await service.updateSlot(1, { is_active: false });
-      expect(result.is_active).toBe(false);
+      const result = await service.updateSlot(1, { is_active: false }, 'test-user');
+      expect(result?.is_active).toBe(false);
     });
 
     it('rejects partial update where new start_time >= existing end_time', async () => {
@@ -233,7 +274,7 @@ describe('HappyHourService', () => {
       slotRepo.findOneBy.mockResolvedValueOnce(existing);
 
       await expect(
-        service.updateSlot(1, { start_time: '12:00' }),
+        service.updateSlot(1, { start_time: '12:00' }, 'test-user'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -244,7 +285,7 @@ describe('HappyHourService', () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(qb);
       slotRepo.save.mockImplementationOnce(async (s: any) => s);
 
-      await service.updateSlot(1, { start_time: '10:30', end_time: '11:30' });
+      await service.updateSlot(1, { start_time: '10:30', end_time: '11:30' }, 'test-user');
       expect(qb.andWhere).toHaveBeenCalledWith(
         expect.stringContaining('slot.id != :excludeId'),
         { excludeId: 1 },
@@ -255,12 +296,12 @@ describe('HappyHourService', () => {
   describe('deleteSlot', () => {
     it('throws NotFound when slot id missing', async () => {
       slotRepo.findOneBy.mockResolvedValueOnce(null);
-      await expect(service.deleteSlot(999)).rejects.toThrow(NotFoundException);
+      await expect(service.deleteSlot(999, 'test-user')).rejects.toThrow(NotFoundException);
     });
 
     it('deletes existing slot', async () => {
       slotRepo.findOneBy.mockResolvedValueOnce(buildSlot({ id: 5 }));
-      await service.deleteSlot(5);
+      await service.deleteSlot(5, 'test-user');
       expect(slotRepo.delete).toHaveBeenCalledWith(5);
     });
   });
@@ -301,12 +342,10 @@ describe('HappyHourService', () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
 
       const result = await service.calcHappyHourReward(3000);
-      expect(result).toEqual({
-        slot,
-        numCards: 3,
-        excessDiscount: 0,
-        totalCardValue: 300,
-      });
+      expect(result).not.toBeNull();
+      expect(result!.numCards).toBe(3);
+      expect(result!.excessDiscount).toBe(0);
+      expect(result!.totalCardValue).toBe(300);
     });
 
     it('computes cards + excess discount steps', async () => {
@@ -321,12 +360,10 @@ describe('HappyHourService', () => {
 
       // 3500 → 3 cards (3000), excess 500 → 1 step → 10 discount
       const result = await service.calcHappyHourReward(3500);
-      expect(result).toEqual({
-        slot,
-        numCards: 3,
-        excessDiscount: 10,
-        totalCardValue: 300,
-      });
+      expect(result).not.toBeNull();
+      expect(result!.numCards).toBe(3);
+      expect(result!.excessDiscount).toBe(10);
+      expect(result!.totalCardValue).toBe(300);
     });
 
     /**
@@ -377,7 +414,7 @@ describe('HappyHourService', () => {
     it('returns is_happy_hour=false when no slot matches', async () => {
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(null));
       const result = await service.simulate(baseDto as any);
-      expect(result).toEqual({ is_happy_hour: false });
+      expect(result).toEqual({ is_happy_hour: false, matched_slot: null });
     });
 
     it('returns is_happy_hour=false when orderAmount yields 0 cards', async () => {
@@ -390,74 +427,83 @@ describe('HappyHourService', () => {
         order_amount: 100,
         order_time: '22:30',
       } as any);
-      expect(result).toEqual({ is_happy_hour: false });
+      expect(result).toEqual({ is_happy_hour: false, matched_slot: null });
     });
 
-    it('returns full reward shape with reward_product (product found)', async () => {
+    it('returns full reward_products array with product data (batch query)', async () => {
       const slot = buildSlot({
         id: 7,
         min_order_amount: '1000' as unknown as number,
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: 'P-X',
-        reward_unit: 'BOX',
+        rewards: [{ id: 1, pro_code: 'P-X', unit: 'BOX' }] as any,
         reward_amount: 2,
       });
-      slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
-      productRepo.findOne.mockResolvedValueOnce({
-        pro_code: 'P-X',
-        pro_name: 'ProductX',
-        pro_imgmain: 'img.png',
-      });
 
-      const result = await service.simulate({
+      // simulate ใช้ createQueryBuilder x2: slot query + product IN query
+      const productQbMock = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          { pro_code: 'P-X', pro_name: 'ProductX', pro_imgmain: 'img.png' },
+        ]),
+      };
+      slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
+      productRepo.createQueryBuilder.mockReturnValueOnce(productQbMock);
+
+      const result: any = await service.simulate({
         order_amount: 3500,
         order_time: '22:30',
       } as any);
 
-      expect(result).toMatchObject({
-        is_happy_hour: true,
-        num_cards: 3,
-        excess_discount: 10,
-        total_reward: 310, // 3*100 + 10
-        reward_product: {
-          pro_code: 'P-X',
-          unit: 'BOX',
-          amount: 6, // 3 cards * reward_amount=2
-          pro_name: 'ProductX',
-          pro_imgmain: 'img.png',
-        },
+      expect(result.is_happy_hour).toBe(true);
+      expect(result.num_cards).toBe(3);
+      expect(result.excess_discount).toBe(10);
+      expect(result.total_reward).toBe(310); // 3*100 + 10
+      expect(result.reward_products).toHaveLength(1);
+      expect(result.reward_products[0]).toMatchObject({
+        pro_code: 'P-X',
+        unit: 'BOX',
+        amount: 6, // 3 cards * reward_amount=2
+        pro_name: 'ProductX',
+        pro_imgmain: 'img.png',
       });
     });
 
-    it('returns null product fields when product not found', async () => {
+    it('returns null product fields when product not found in batch query', async () => {
       const slot = buildSlot({
         min_order_amount: '1000' as unknown as number,
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: 'MISSING',
+        rewards: [{ id: 1, pro_code: 'MISSING', unit: null }] as any,
       });
+
+      const productQbMock = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]), // product ไม่เจอ
+      };
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
-      productRepo.findOne.mockResolvedValueOnce(null);
+      productRepo.createQueryBuilder.mockReturnValueOnce(productQbMock);
 
       const result: any = await service.simulate({
         order_amount: 2000,
         order_time: '22:30',
       } as any);
-      expect(result.reward_product.pro_code).toBe('MISSING');
-      expect(result.reward_product.pro_name).toBeNull();
-      expect(result.reward_product.pro_imgmain).toBeNull();
+      expect(result.reward_products[0].pro_code).toBe('MISSING');
+      expect(result.reward_products[0].pro_name).toBeNull();
+      expect(result.reward_products[0].pro_imgmain).toBeNull();
     });
 
-    it('reward_product is null when slot has no reward_pro_code', async () => {
+    it('returns empty reward_products when slot has no rewards', async () => {
       const slot = buildSlot({
         min_order_amount: '1000' as unknown as number,
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: null,
+        rewards: [],
       });
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
 
@@ -466,8 +512,9 @@ describe('HappyHourService', () => {
         order_time: '22:30',
       } as any);
       expect(result.is_happy_hour).toBe(true);
-      expect(result.reward_product).toBeNull();
-      expect(productRepo.findOne).not.toHaveBeenCalled();
+      expect(result.reward_products).toEqual([]);
+      // ไม่ควรเรียก productRepo เมื่อไม่มี rewards
+      expect(productRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
     /**
@@ -481,7 +528,7 @@ describe('HappyHourService', () => {
         card_value: '100' as unknown as number,
         excess_threshold: '500' as unknown as number,
         discount_per_step: '10' as unknown as number,
-        reward_pro_code: null,
+        rewards: [],
       });
       slotRepo.createQueryBuilder.mockReturnValueOnce(createQbMock(slot));
 
@@ -490,7 +537,7 @@ describe('HappyHourService', () => {
         order_time: '22:30',
       } as any);
       expect(result.is_happy_hour).toBe(true);
-      // ไม่ได้แตะ configRepo.findOneBy เลย — ยืนยันว่าไม่มี guard
+      // ไม่ได้แตะ configRepo.findOneBy เลย — ยืนยันว่า simulate ไม่ check config
       expect(configRepo.findOneBy).not.toHaveBeenCalled();
     });
   });
