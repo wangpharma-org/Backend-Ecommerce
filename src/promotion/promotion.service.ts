@@ -671,6 +671,7 @@ export class PromotionService {
         select: {
           promo_id: true,
           promo_name: true,
+          promo_poster: true,
           start_date: true,
           end_date: true,
           status: true,
