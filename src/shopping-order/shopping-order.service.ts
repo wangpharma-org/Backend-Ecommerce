@@ -705,7 +705,7 @@ export class ShoppingOrderService {
               await manager.save(ShoppingOrderEntity, happyRewardItems);
             }
 
-            happyHourDiscount = happyReward.excessDiscount;
+            happyHourDiscount = happyReward.totalReward;
           }
 
           await manager.update(
