@@ -7,21 +7,18 @@ import {
 } from 'typeorm';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
 
-@Entity({ name: 'happy_hour_slot_reward' })
-export class HappyHourSlotRewardEntity {
+@Entity({ name: 'happy_hour_slot_min_products' })
+export class HappyHourSlotMinProductEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Column({ type: 'varchar', length: 20 })
   pro_code!: string;
 
-  @Column({ type: 'varchar', length: 30, nullable: true })
-  unit!: string | null;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  pro_name!: string | null;
 
-  @Column({ type: 'int', default: 1 })
-  amount!: number;
-
-  @ManyToOne(() => HappyHourSlotEntity, (slot) => slot.rewards, {
+  @ManyToOne(() => HappyHourSlotEntity, (slot) => slot.minOrderProducts, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'slot_id' })
