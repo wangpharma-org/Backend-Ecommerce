@@ -738,7 +738,7 @@ export class ShoppingOrderService {
                   ? 0
                   : currentGroupTotal * 0.01 - pointAfterUse,
               emp_code: data.emp_code?.trim() ?? null,
-              discount: happyHourDiscount,
+              discount: happyHourDiscount || 0,
             },
           );
         }

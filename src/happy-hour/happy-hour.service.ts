@@ -392,7 +392,12 @@ export class HappyHourService implements OnModuleInit {
               const unit = await this.findSmallestUnit(code);
               const amount = dto.reward_amounts?.[i] ?? dto.reward_amount ?? 1;
               return this.rewardRepo.save(
-                this.rewardRepo.create({ pro_code: code, unit, amount, slot: { id } }),
+                this.rewardRepo.create({
+                  pro_code: code,
+                  unit,
+                  amount,
+                  slot: { id },
+                }),
               );
             }),
           );
@@ -481,7 +486,7 @@ export class HappyHourService implements OnModuleInit {
         .where('slot.is_active = true')
         .andWhere(
           '(slot.start_time < slot.end_time AND slot.start_time <= :t AND slot.end_time > :t)' +
-          ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
+            ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
           { t: orderTimeSql },
         )
         .getOne();
@@ -500,7 +505,10 @@ export class HappyHourService implements OnModuleInit {
               .filter((item) => allowedCodes.has(item.pro_code))
               .reduce((sum, item) => sum + item.amount, 0);
           }
-        } else if (slot.min_order_scope === 'vendor' && slot.min_order_vendor_code) {
+        } else if (
+          slot.min_order_scope === 'vendor' &&
+          slot.min_order_vendor_code
+        ) {
           qualifyingAmount = orderItems
             .filter((item) => item.vendor_code === slot.min_order_vendor_code)
             .reduce((sum, item) => sum + item.amount, 0);
@@ -553,7 +561,7 @@ export class HappyHourService implements OnModuleInit {
       .where('slot.is_active = true')
       .andWhere(
         '(slot.start_time < slot.end_time AND slot.start_time <= :t AND slot.end_time > :t)' +
-        ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
+          ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
         { t: orderTimeSql },
       )
       .getOne();
@@ -692,8 +700,10 @@ export class HappyHourService implements OnModuleInit {
 
     const now = dayjs().tz('Asia/Bangkok');
     const today = now.format('YYYY-MM-DD');
-    if (config.start_date && today < config.start_date) return { is_happy_hour: false };
-    if (config.end_date && today > config.end_date) return { is_happy_hour: false };
+    if (config.start_date && today < config.start_date)
+      return { is_happy_hour: false };
+    if (config.end_date && today > config.end_date)
+      return { is_happy_hour: false };
 
     const t = now.format('HH:mm:00');
     const slot = await this.slotRepo
@@ -703,7 +713,7 @@ export class HappyHourService implements OnModuleInit {
       .where('slot.is_active = true')
       .andWhere(
         '(slot.start_time < slot.end_time AND slot.start_time <= :t AND slot.end_time > :t)' +
-        ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
+          ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
         { t },
       )
       .getOne();
@@ -716,27 +726,33 @@ export class HappyHourService implements OnModuleInit {
 
     if (items.length > 0) {
       if (slot.min_order_scope === 'specific') {
-        const allowed = new Set((slot.minOrderProducts ?? []).map((p) => p.pro_code));
+        const allowed = new Set(
+          (slot.minOrderProducts ?? []).map((p) => p.pro_code),
+        );
         if (allowed.size > 0) {
           qualifyingAmount = items
             .filter((i) => allowed.has(i.pro_code))
             .reduce((s, i) => s + i.amount, 0);
         }
-      } else if (slot.min_order_scope === 'vendor' && slot.min_order_vendor_code) {
-        const proCodes = items.map((i) => i.pro_code);
-        const vendorProds = await this.productRepo
-          .createQueryBuilder('p')
-          .select('p.pro_code')
-          .innerJoin('p.creditor', 'c', 'c.creditor_code = :vc', {
-            vc: slot.min_order_vendor_code,
-          })
-          .where('p.pro_code IN (:...codes)', { codes: proCodes })
-          .getMany();
-        const vendorSet = new Set(vendorProds.map((p) => p.pro_code));
-        qualifyingAmount = items
-          .filter((i) => vendorSet.has(i.pro_code))
-          .reduce((s, i) => s + i.amount, 0);
       }
+      //  else if (
+      //   slot.min_order_scope === 'vendor' &&
+      //   slot.min_order_vendor_code
+      // ) {
+      //   const proCodes = items.map((i) => i.pro_code);
+      //   const vendorProds = await this.productRepo
+      //     .createQueryBuilder('p')
+      //     .select('p.pro_code')
+      //     .innerJoin('p.creditor', 'c', 'c.creditor_code = :vc', {
+      //       vc: slot.min_order_vendor_code,
+      //     })
+      //     .where('p.pro_code IN (:...codes)', { codes: proCodes })
+      //     .getMany();
+      //   const vendorSet = new Set(vendorProds.map((p) => p.pro_code));
+      //   qualifyingAmount = items
+      //     .filter((i) => vendorSet.has(i.pro_code))
+      //     .reduce((s, i) => s + i.amount, 0);
+      // }
     }
 
     const minOrder = Number(slot.min_order_amount);
@@ -745,12 +761,16 @@ export class HappyHourService implements OnModuleInit {
 
     const excess = qualifyingAmount - num_cards * minOrder;
     const excess_discount =
-      Math.floor(excess / Number(slot.excess_threshold)) * Number(slot.discount_per_step);
+      Math.floor(excess / Number(slot.excess_threshold)) *
+      Number(slot.discount_per_step);
     const total_reward = num_cards * Number(slot.card_value) + excess_discount;
 
     // ── Reward items ──
     const rewardList = slot.rewards ?? [];
-    const productMap = new Map<string, { pro_name: string; pro_imgmain: string }>();
+    const productMap = new Map<
+      string,
+      { pro_name: string; pro_imgmain: string }
+    >();
     if (rewardList.length) {
       const codes = rewardList.map((r) => r.pro_code);
       const products = await this.productRepo
@@ -769,7 +789,14 @@ export class HappyHourService implements OnModuleInit {
       amount: num_cards * (r.amount ?? 1),
     }));
 
-    return { is_happy_hour: true, num_cards, qualifying_amount: qualifyingAmount, excess_discount, total_reward, reward_items };
+    return {
+      is_happy_hour: true,
+      num_cards,
+      qualifying_amount: qualifyingAmount,
+      excess_discount,
+      total_reward,
+      reward_items,
+    };
   }
 
   async searchVendors(keyword: string) {
@@ -965,8 +992,10 @@ export class HappyHourService implements OnModuleInit {
     b: { start_time: string; end_time: string },
   ): boolean {
     const norm = (t: string) => t.substring(0, 5); // "HH:mm:ss" → "HH:mm"
-    const aS = norm(a.start_time), aE = norm(a.end_time);
-    const bS = norm(b.start_time), bE = norm(b.end_time);
+    const aS = norm(a.start_time),
+      aE = norm(a.end_time);
+    const bS = norm(b.start_time),
+      bE = norm(b.end_time);
     const aWraps = aE < aS;
     const bWraps = bE < bS;
     if (!aWraps && !bWraps) return aS < bE && bS < aE;
