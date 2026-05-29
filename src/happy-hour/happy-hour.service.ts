@@ -28,6 +28,8 @@ import { SlotLogQueryDto } from './dto/slot-log-query.dto';
 import { ConfigLogQueryDto } from './dto/config-log-query.dto';
 import { ProductEntity } from 'src/products/products.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { CreditorEntity } from 'src/products/creditor.entity';
+import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
 
 // import * as ให้ type เป็น { default: PluginFunc } แต่ runtime CJS value คือ PluginFunc โดยตรง
 // ต้อง import แบบนี้เพื่อให้ type augmentation ของ .tz() / .utc() ทำงาน
@@ -112,6 +114,10 @@ export class HappyHourService implements OnModuleInit {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    @InjectRepository(HappyHourSlotMinProductEntity)
+    private readonly minProductRepo: Repository<HappyHourSlotMinProductEntity>,
+    @InjectRepository(CreditorEntity)
+    private readonly creditorRepo: Repository<CreditorEntity>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -261,11 +267,27 @@ export class HappyHourService implements OnModuleInit {
       id: r.id,
       pro_code: r.pro_code,
       unit: r.unit ?? null,
+      amount: r.amount ?? 1,
       pro_name: productMap.get(r.pro_code)?.pro_name ?? null,
       pro_imgmain: productMap.get(r.pro_code)?.pro_imgmain ?? null,
     }));
 
-    return { ...slot, rewards };
+    const min_order_products = (slot.minOrderProducts ?? []).map((p) => ({
+      id: p.id,
+      pro_code: p.pro_code,
+      pro_name: p.pro_name,
+    }));
+
+    let min_order_vendor_name: string | null = null;
+    if (slot.min_order_vendor_code) {
+      const creditor = await this.creditorRepo.findOne({
+        where: { creditor_code: slot.min_order_vendor_code },
+        select: { creditor_name: true },
+      });
+      min_order_vendor_name = creditor?.creditor_name ?? null;
+    }
+
+    return { ...slot, rewards, min_order_products, min_order_vendor_name };
   }
 
   async createSlot(dto: CreateSlotDto, performedBy: string) {
@@ -281,32 +303,47 @@ export class HappyHourService implements OnModuleInit {
       );
     }
 
+    const minOrderScope = dto.min_order_scope ?? 'all';
+
     const slot = await this.slotRepo.save(
       this.slotRepo.create({
         start_time: dto.start_time,
         end_time: dto.end_time,
         min_order_amount: dto.min_order_amount,
         card_value: rewardCodes.length > 0 ? 0 : (dto.card_value ?? 0),
-        excess_threshold: dto.excess_threshold,
-        discount_per_step: dto.discount_per_step,
+        excess_threshold: dto.excess_threshold ?? 0,
+        discount_per_step: dto.discount_per_step ?? 0,
         is_active: dto.is_active ?? true,
         reward_amount: hasCardValue ? 1 : (dto.reward_amount ?? 1),
+        reward_type: dto.reward_type ?? 'card',
+        reward_value: dto.reward_value ?? 0,
+        min_order_scope: minOrderScope,
+        min_order_vendor_code:
+          minOrderScope === 'vendor'
+            ? (dto.min_order_vendor_code ?? null)
+            : null,
       }),
     );
 
     if (rewardCodes.length) {
       await Promise.all(
-        rewardCodes.map(async (code) => {
+        rewardCodes.map(async (code, i) => {
           const unit = await this.findSmallestUnit(code);
+          const amount = dto.reward_amounts?.[i] ?? dto.reward_amount ?? 1;
           return this.rewardRepo.save(
             this.rewardRepo.create({
               pro_code: code,
               unit,
+              amount,
               slot: { id: slot.id },
             }),
           );
         }),
       );
+    }
+
+    if (minOrderScope === 'specific' && dto.min_order_pro_codes?.length) {
+      await this.syncMinOrderProducts(slot.id, dto.min_order_pro_codes);
     }
 
     const saved = await this.slotRepo.findOne({ where: { id: slot.id } });
@@ -332,7 +369,11 @@ export class HappyHourService implements OnModuleInit {
     this.validateTimeRange(newStart, newEnd);
     await this.validateNoOverlap(newStart, newEnd, id);
 
-    const { reward_pro_codes: codes, ...slotData } = dto;
+    const {
+      reward_pro_codes: codes,
+      min_order_pro_codes: minCodes,
+      ...slotData
+    } = dto;
 
     if (dto.card_value !== undefined) {
       // card mode: ล้าง rewards ออก + reset reward_amount
@@ -347,10 +388,16 @@ export class HappyHourService implements OnModuleInit {
         await this.rewardRepo.delete({ slot: { id } });
         if (codes.length) {
           await Promise.all(
-            codes.map(async (code) => {
+            codes.map(async (code, i) => {
               const unit = await this.findSmallestUnit(code);
+              const amount = dto.reward_amounts?.[i] ?? dto.reward_amount ?? 1;
               return this.rewardRepo.save(
-                this.rewardRepo.create({ pro_code: code, unit, slot: { id } }),
+                this.rewardRepo.create({
+                  pro_code: code,
+                  unit,
+                  amount,
+                  slot: { id },
+                }),
               );
             }),
           );
@@ -359,6 +406,29 @@ export class HappyHourService implements OnModuleInit {
     } else {
       Object.assign(slot, slotData);
       await this.slotRepo.save(slot);
+    }
+
+    // sync min_order_products และ vendor_code ตาม scope
+    const newScope = dto.min_order_scope ?? slot.min_order_scope;
+    if (minCodes !== undefined) {
+      await this.syncMinOrderProducts(
+        id,
+        newScope === 'specific' ? minCodes : [],
+      );
+    } else if (dto.min_order_scope && dto.min_order_scope !== 'specific') {
+      await this.minProductRepo.delete({ slot: { id } });
+    }
+
+    // sync vendor_code
+    if (
+      dto.min_order_vendor_code !== undefined ||
+      (dto.min_order_scope && dto.min_order_scope !== 'vendor')
+    ) {
+      const vendorCode =
+        newScope === 'vendor'
+          ? (dto.min_order_vendor_code ?? slot.min_order_vendor_code)
+          : null;
+      await this.slotRepo.update(id, { min_order_vendor_code: vendorCode });
     }
 
     void this.saveSlotLog({
@@ -387,7 +457,10 @@ export class HappyHourService implements OnModuleInit {
     });
   }
 
-  async calcHappyHourReward(orderAmount: number): Promise<{
+  async calcHappyHourReward(
+    orderAmount: number,
+    orderItems?: { pro_code: string; amount: number; vendor_code?: string }[],
+  ): Promise<{
     slot: HappyHourSlotEntity;
     numCards: number;
     excessDiscount: number;
@@ -401,28 +474,62 @@ export class HappyHourService implements OnModuleInit {
       const now = dayjs().tz('Asia/Bangkok');
       const today = now.format('YYYY-MM-DD');
 
-      // ตรวจสอบช่วงวันที่โปรโมชันระดับ config
       if (config.start_date && today < config.start_date) return null;
       if (config.end_date && today > config.end_date) return null;
 
       const orderTimeSql = now.format('HH:mm:00');
 
-      // date range ถูกเช็คแล้วด้านบน — query เฉพาะ slot ที่ active และตรงเวลา
       const slot = await this.slotRepo
         .createQueryBuilder('slot')
         .leftJoinAndSelect('slot.rewards', 'reward')
+        .leftJoinAndSelect('slot.minOrderProducts', 'minProduct')
         .where('slot.is_active = true')
-        .andWhere('slot.start_time <= :t', { t: orderTimeSql })
-        .andWhere('slot.end_time > :t', { t: orderTimeSql })
+        .andWhere(
+          '(slot.start_time < slot.end_time AND slot.start_time <= :t AND slot.end_time > :t)' +
+            ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
+          { t: orderTimeSql },
+        )
         .getOne();
 
       if (!slot) return null;
 
+      // คำนวณ qualifying_amount ตาม min_order_scope
+      let qualifyingAmount = orderAmount;
+      if (orderItems?.length) {
+        if (slot.min_order_scope === 'specific') {
+          const allowedCodes = new Set(
+            (slot.minOrderProducts ?? []).map((p) => p.pro_code),
+          );
+          if (allowedCodes.size > 0) {
+            qualifyingAmount = orderItems
+              .filter((item) => allowedCodes.has(item.pro_code))
+              .reduce((sum, item) => sum + item.amount, 0);
+          }
+        } else if (
+          slot.min_order_scope === 'vendor' &&
+          slot.min_order_vendor_code
+        ) {
+          qualifyingAmount = orderItems
+            .filter((item) => item.vendor_code === slot.min_order_vendor_code)
+            .reduce((sum, item) => sum + item.amount, 0);
+        }
+      }
+
       const minOrder = Number(slot.min_order_amount);
-      const numCards = Math.floor(orderAmount / minOrder);
+      const numCards = Math.floor(qualifyingAmount / minOrder);
+
+      this.logger.log('calcHappyHourReward', {
+        slotId: slot.id,
+        scope: slot.min_order_scope,
+        orderAmount,
+        qualifyingAmount,
+        minOrder,
+        numCards,
+      });
+
       if (numCards === 0) return null;
 
-      const excess = orderAmount - numCards * minOrder;
+      const excess = qualifyingAmount - numCards * minOrder;
       const excessSteps = Math.floor(excess / Number(slot.excess_threshold));
       const excessDiscount = excessSteps * Number(slot.discount_per_step);
 
@@ -442,7 +549,7 @@ export class HappyHourService implements OnModuleInit {
   }
 
   async simulate(dto: SimulateDto) {
-    const { order_amount, order_time } = dto;
+    const { order_amount, order_time, order_items } = dto;
 
     // แปลง "HH:mm" → "HH:mm:ss" สำหรับ MySQL TIME comparison
     const orderTimeSql = `${order_time}:00`;
@@ -450,28 +557,53 @@ export class HappyHourService implements OnModuleInit {
     const slot = await this.slotRepo
       .createQueryBuilder('slot')
       .leftJoinAndSelect('slot.rewards', 'reward')
+      .leftJoinAndSelect('slot.minOrderProducts', 'minProduct')
       .where('slot.is_active = true')
-      .andWhere('slot.start_time <= :t', { t: orderTimeSql })
-      .andWhere('slot.end_time > :t', { t: orderTimeSql })
+      .andWhere(
+        '(slot.start_time < slot.end_time AND slot.start_time <= :t AND slot.end_time > :t)' +
+          ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
+        { t: orderTimeSql },
+      )
       .getOne();
 
     if (!slot) {
       return { is_happy_hour: false, matched_slot: null };
     }
 
-    const num_cards = Math.floor(order_amount / Number(slot.min_order_amount));
+    // คำนวณ qualifying_amount ตาม min_order_scope
+    let qualifying_amount = order_amount;
+    if (slot.min_order_scope === 'specific' && order_items?.length) {
+      const allowedCodes = new Set(
+        (slot.minOrderProducts ?? []).map((p) => p.pro_code),
+      );
+      qualifying_amount = order_items
+        .filter((item) => allowedCodes.has(item.pro_code))
+        .reduce((sum, item) => sum + item.amount, 0);
+    } else if (
+      slot.min_order_scope === 'vendor' &&
+      slot.min_order_vendor_code &&
+      order_items?.length
+    ) {
+      qualifying_amount = order_items
+        .filter((item) => item.vendor_code === slot.min_order_vendor_code)
+        .reduce((sum, item) => sum + item.amount, 0);
+    }
+
+    const num_cards = Math.floor(
+      qualifying_amount / Number(slot.min_order_amount),
+    );
     if (num_cards === 0) {
       return { is_happy_hour: false, matched_slot: null };
     }
 
-    const excess = order_amount - num_cards * Number(slot.min_order_amount);
+    const excess =
+      qualifying_amount - num_cards * Number(slot.min_order_amount);
     const excess_steps = Math.floor(excess / Number(slot.excess_threshold));
     const excess_discount = excess_steps * Number(slot.discount_per_step);
     const total_reward = num_cards * Number(slot.card_value) + excess_discount;
 
-    // Batch query สินค้า + unit (reuse pattern จาก enrichSlotWithProducts — ไม่ N+1)
+    // Batch query สินค้า (reuse pattern จาก enrichSlotWithProducts — ไม่ N+1)
     const rewardList = slot.rewards ?? [];
-    // Batch query สินค้า — unit ใช้จาก r.unit ที่ store ไว้ใน HappyHourSlotRewardEntity แล้ว
     const productMap = new Map<
       string,
       { pro_code: string; pro_name: string; pro_imgmain: string }
@@ -491,21 +623,197 @@ export class HappyHourService implements OnModuleInit {
       const product = productMap.get(r.pro_code);
       return {
         pro_code: r.pro_code,
-        unit: r.unit ?? null, // ใช้ค่าที่ store ไว้แล้ว ไม่ต้อง query ProductUnitEntity อีก
-        amount: num_cards * slot.reward_amount,
+        unit: r.unit ?? null,
+        amount: num_cards * (r.amount ?? slot.reward_amount),
         pro_name: product?.pro_name ?? null,
         pro_imgmain: product?.pro_imgmain ?? null,
       };
     });
 
+    const min_order_products = (slot.minOrderProducts ?? []).map((p) => ({
+      id: p.id,
+      pro_code: p.pro_code,
+      pro_name: p.pro_name,
+    }));
+
+    let min_order_vendor_name: string | null = null;
+    if (slot.min_order_vendor_code) {
+      const creditor = await this.creditorRepo.findOne({
+        where: { creditor_code: slot.min_order_vendor_code },
+        select: { creditor_name: true },
+      });
+      min_order_vendor_name = creditor?.creditor_name ?? null;
+    }
+
     return {
       is_happy_hour: true,
       matched_slot: slot,
       num_cards,
+      qualifying_amount,
       excess_discount,
       total_reward,
+      reward_value: Number(slot.reward_value),
       reward_products,
+      min_order_products,
+      min_order_vendor_code: slot.min_order_vendor_code,
+      min_order_vendor_name,
     };
+  }
+
+  async getVendorProducts(
+    vendorCode: string,
+  ): Promise<{ pro_code: string; pro_name: string }[]> {
+    const products = await this.productRepo
+      .createQueryBuilder('p')
+      .select(['p.pro_code', 'p.pro_name'])
+      .innerJoin('p.creditor', 'c')
+      .where('c.creditor_code = :vendorCode', { vendorCode })
+      .andWhere('p.pro_name IS NOT NULL')
+      .orderBy('p.pro_code', 'ASC')
+      .getMany();
+
+    return products.map((p) => ({
+      pro_code: p.pro_code,
+      pro_name: p.pro_name,
+    }));
+  }
+
+  async getCartPreview(dto: {
+    order_amount: number;
+    cart_items?: { pro_code: string; amount: number }[];
+  }): Promise<{
+    is_happy_hour: boolean;
+    num_cards?: number;
+    qualifying_amount?: number;
+    excess_discount?: number;
+    total_reward?: number;
+    reward_items?: {
+      pro_code: string;
+      pro_name: string | null;
+      pro_imgmain: string | null;
+      unit: string | null;
+      amount: number;
+    }[];
+  }> {
+    const config = await this.getConfig();
+    if (!config.is_enabled) return { is_happy_hour: false };
+
+    const now = dayjs().tz('Asia/Bangkok');
+    const today = now.format('YYYY-MM-DD');
+    if (config.start_date && today < config.start_date)
+      return { is_happy_hour: false };
+    if (config.end_date && today > config.end_date)
+      return { is_happy_hour: false };
+
+    const t = now.format('HH:mm:00');
+    const slot = await this.slotRepo
+      .createQueryBuilder('slot')
+      .leftJoinAndSelect('slot.rewards', 'reward')
+      .leftJoinAndSelect('slot.minOrderProducts', 'minProduct')
+      .where('slot.is_active = true')
+      .andWhere(
+        '(slot.start_time < slot.end_time AND slot.start_time <= :t AND slot.end_time > :t)' +
+          ' OR (slot.start_time > slot.end_time AND (slot.start_time <= :t OR slot.end_time > :t))',
+        { t },
+      )
+      .getOne();
+
+    if (!slot) return { is_happy_hour: false };
+
+    // ── Qualifying amount with scope filtering ──
+    let qualifyingAmount = dto.order_amount;
+    const items = dto.cart_items ?? [];
+
+    if (items.length > 0) {
+      if (slot.min_order_scope === 'specific') {
+        const allowed = new Set(
+          (slot.minOrderProducts ?? []).map((p) => p.pro_code),
+        );
+        if (allowed.size > 0) {
+          qualifyingAmount = items
+            .filter((i) => allowed.has(i.pro_code))
+            .reduce((s, i) => s + i.amount, 0);
+        }
+      }
+      //  else if (
+      //   slot.min_order_scope === 'vendor' &&
+      //   slot.min_order_vendor_code
+      // ) {
+      //   const proCodes = items.map((i) => i.pro_code);
+      //   const vendorProds = await this.productRepo
+      //     .createQueryBuilder('p')
+      //     .select('p.pro_code')
+      //     .innerJoin('p.creditor', 'c', 'c.creditor_code = :vc', {
+      //       vc: slot.min_order_vendor_code,
+      //     })
+      //     .where('p.pro_code IN (:...codes)', { codes: proCodes })
+      //     .getMany();
+      //   const vendorSet = new Set(vendorProds.map((p) => p.pro_code));
+      //   qualifyingAmount = items
+      //     .filter((i) => vendorSet.has(i.pro_code))
+      //     .reduce((s, i) => s + i.amount, 0);
+      // }
+    }
+
+    const minOrder = Number(slot.min_order_amount);
+    const num_cards = Math.floor(qualifyingAmount / minOrder);
+    if (num_cards === 0) return { is_happy_hour: false };
+
+    const excess = qualifyingAmount - num_cards * minOrder;
+    const excess_discount =
+      Math.floor(excess / Number(slot.excess_threshold)) *
+      Number(slot.discount_per_step);
+    const total_reward = num_cards * Number(slot.card_value) + excess_discount;
+
+    // ── Reward items ──
+    const rewardList = slot.rewards ?? [];
+    const productMap = new Map<
+      string,
+      { pro_name: string; pro_imgmain: string }
+    >();
+    if (rewardList.length) {
+      const codes = rewardList.map((r) => r.pro_code);
+      const products = await this.productRepo
+        .createQueryBuilder('p')
+        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .where('p.pro_code IN (:...codes)', { codes })
+        .getMany();
+      products.forEach((p) => productMap.set(p.pro_code, p));
+    }
+
+    const reward_items = rewardList.map((r) => ({
+      pro_code: r.pro_code,
+      pro_name: productMap.get(r.pro_code)?.pro_name ?? null,
+      pro_imgmain: productMap.get(r.pro_code)?.pro_imgmain ?? null,
+      unit: r.unit ?? null,
+      amount: num_cards * (r.amount ?? 1),
+    }));
+
+    return {
+      is_happy_hour: true,
+      num_cards,
+      qualifying_amount: qualifyingAmount,
+      excess_discount,
+      total_reward,
+      reward_items,
+    };
+  }
+
+  async searchVendors(keyword: string) {
+    const creditors = await this.creditorRepo
+      .createQueryBuilder('c')
+      .select(['c.creditor_code', 'c.creditor_name'])
+      .where('c.creditor_code LIKE :kw OR c.creditor_name LIKE :kw', {
+        kw: `%${keyword}%`,
+      })
+      .orderBy('c.creditor_code', 'ASC')
+      .take(20)
+      .getMany();
+
+    return creditors.map((c) => ({
+      vendor_code: c.creditor_code,
+      vendor_name: c.creditor_name,
+    }));
   }
 
   // ─── Slot Activity Log ────────────────────────────────────────────
@@ -616,6 +924,49 @@ export class HappyHourService implements OnModuleInit {
       .getMany();
   }
 
+  /** ล้าง min_order_products เดิมและแทนที่ด้วย list ใหม่ (batch upsert) */
+  private async syncMinOrderProducts(
+    slotId: number,
+    proCodes: string[],
+  ): Promise<void> {
+    await this.minProductRepo.delete({ slot: { id: slotId } });
+    if (!proCodes.length) return;
+
+    const productMap = new Map<string, string | null>();
+    if (proCodes.length) {
+      const products = await this.productRepo
+        .createQueryBuilder('p')
+        .select(['p.pro_code', 'p.pro_name'])
+        .where('p.pro_code IN (:...codes)', { codes: proCodes })
+        .getMany();
+      products.forEach((p) => productMap.set(p.pro_code, p.pro_name));
+    }
+
+    await this.minProductRepo.save(
+      proCodes.map((code) =>
+        this.minProductRepo.create({
+          pro_code: code,
+          pro_name: productMap.get(code) ?? null,
+          slot: { id: slotId },
+        }),
+      ),
+    );
+  }
+
+  async getProductUnits(
+    proCodes: string[],
+  ): Promise<{ pro_code: string; unit: string | null }[]> {
+    if (!proCodes.length) return [];
+    const units = await this.productUnitRepo
+      .createQueryBuilder('u')
+      .select(['u.pro_code', 'u.unit_name'])
+      .where('u.pro_code IN (:...codes)', { codes: proCodes })
+      .andWhere('u.level = 1')
+      .getMany();
+    const map = new Map(units.map((u) => [u.pro_code, u.unit_name]));
+    return proCodes.map((c) => ({ pro_code: c, unit: map.get(c) ?? null }));
+  }
+
   private async findSmallestUnit(proCode: string): Promise<string | null> {
     const product = await this.productUnitRepo.findOne({
       where: { pro_code: proCode, level: 1 },
@@ -629,9 +980,28 @@ export class HappyHourService implements OnModuleInit {
   }
 
   private validateTimeRange(start: string, end: string): void {
-    if (start >= end) {
-      throw new BadRequestException('start_time ต้องน้อยกว่า end_time');
+    if (start === end) {
+      throw new BadRequestException('เวลาเริ่มต้นและสิ้นสุดต้องไม่เท่ากัน');
     }
+    // start > end = ข้ามคืน (cross-midnight) — อนุญาต
+  }
+
+  /** เช็ค overlap บน 24h clock รองรับ cross-midnight (end_time < start_time) */
+  private timeSlotsOverlap(
+    a: { start_time: string; end_time: string },
+    b: { start_time: string; end_time: string },
+  ): boolean {
+    const norm = (t: string) => t.substring(0, 5); // "HH:mm:ss" → "HH:mm"
+    const aS = norm(a.start_time),
+      aE = norm(a.end_time);
+    const bS = norm(b.start_time),
+      bE = norm(b.end_time);
+    const aWraps = aE < aS;
+    const bWraps = bE < bS;
+    if (!aWraps && !bWraps) return aS < bE && bS < aE;
+    if (aWraps && bWraps) return true; // ทั้งคู่ข้ามคืน → ซ้อนกันที่ช่วงกลางคืนเสมอ
+    const [wS, wE, nS, nE] = aWraps ? [aS, aE, bS, bE] : [bS, bE, aS, aE];
+    return nE > wS || nS < wE;
   }
 
   private async validateNoOverlap(
@@ -639,18 +1009,17 @@ export class HappyHourService implements OnModuleInit {
     end: string,
     excludeId?: number,
   ): Promise<void> {
-    const qb = this.slotRepo
-      .createQueryBuilder('slot')
-      .where('slot.start_time < :end', { end: `${end}:00` })
-      .andWhere('slot.end_time > :start', { start: `${start}:00` });
-
+    let qb = this.slotRepo.createQueryBuilder('slot');
     if (excludeId !== undefined) {
-      qb.andWhere('slot.id != :excludeId', { excludeId });
+      qb = qb.where('slot.id != :excludeId', { excludeId });
     }
-
-    const count = await qb.getCount();
-    if (count > 0) {
-      throw new BadRequestException('ช่วงเวลานี้ทับซ้อนกับ slot ที่มีอยู่แล้ว');
+    const existing = await qb.getMany();
+    const newSlot = { start_time: `${start}:00`, end_time: `${end}:00` };
+    const overlap = existing.find((s) => this.timeSlotsOverlap(newSlot, s));
+    if (overlap) {
+      const s = overlap.start_time.substring(0, 5);
+      const e = overlap.end_time.substring(0, 5);
+      throw new BadRequestException(`ช่วงเวลานี้ทับซ้อนกับ slot ${s}–${e}`);
     }
   }
 }
