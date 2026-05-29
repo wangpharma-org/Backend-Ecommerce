@@ -5,6 +5,8 @@ import { HappyHourSlotEntity } from './happy-hour-slot.entity';
 import { HappyHourSlotRewardEntity } from './happy-hour-slot-reward.entity';
 import { HappyHourSlotLogEntity } from './happy-hour-slot-log.entity';
 import { HappyHourConfigLogEntity } from './happy-hour-config-log.entity';
+import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
+import { CreditorEntity } from 'src/products/creditor.entity';
 import { HappyHourService } from './happy-hour.service';
 import { HappyHourController } from './happy-hour.controller';
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
@@ -20,6 +22,8 @@ import { ProductUnitEntity } from 'src/products/product-unit.entity';
       HappyHourSlotRewardEntity,
       HappyHourSlotLogEntity,
       HappyHourConfigLogEntity,
+      HappyHourSlotMinProductEntity,
+      CreditorEntity,
       ProductEntity,
       ProductUnitEntity,
     ]),

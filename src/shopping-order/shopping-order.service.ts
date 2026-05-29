@@ -669,10 +669,27 @@ export class ShoppingOrderService {
           const currentGroupTotal =
             totalsummaryfromCart.items[groupIndex]?.grandTotalItems || 0;
 
+          // สร้าง order items สำหรับ Happy Hour scope filtering
+          const happyHourItems = orderSales.map((os) => ({
+            pro_code: os.pro_code!,
+            amount: Number(os.spo_total_decimal),
+            vendor_code: normalItems
+              .find((n) => n.pro_code === os.pro_code)
+              ?.product?.creditor?.creditor_code ?? undefined,
+          }));
+
+          submitLogContext.push({
+            happyHourItemsForScope: happyHourItems.map((i) => ({
+              pro_code: i.pro_code,
+              amount: i.amount,
+            })),
+            currentGroupTotal,
+          });
+
           // Happy Hour: คำนวณและบันทึก reward / excess discount
           let happyHourDiscount = 0;
           const happyReward =
-            await this.happyHourService.calcHappyHourReward(currentGroupTotal);
+            await this.happyHourService.calcHappyHourReward(currentGroupTotal, happyHourItems);
 
           if (happyReward) {
             submitLogContext.push({
@@ -696,7 +713,7 @@ export class ShoppingOrderService {
                   spo_unit: rewardEntry?.unit ?? 'ใบ',
                   spo_unit_enum: '1', // happy hour reward ใช้ smallest unit เสมอ
                   spo_qty:
-                    happyReward.numCards * happyReward.slot.reward_amount,
+                    happyReward.numCards * (rewardEntry?.amount ?? happyReward.slot.reward_amount),
                   spo_price_unit: 0,
                   spo_total_decimal: 0,
                   is_happy_hour: true,

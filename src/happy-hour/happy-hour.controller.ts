@@ -22,6 +22,7 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { UpdateConfigDto } from './dto/update-config.dto';
 import { SimulateDto } from './dto/simulate.dto';
+import { CartPreviewDto } from './dto/cart-preview.dto';
 import { SlotLogQueryDto } from './dto/slot-log-query.dto';
 import { ConfigLogQueryDto } from './dto/config-log-query.dto';
 interface JwtUser {
@@ -113,6 +114,16 @@ export class HappyHourController {
     return this.happyHourService.simulate(dto);
   }
 
+  /**
+   * POST /admin/happy-hour/cart-preview
+   * คำนวณ Happy Hour สำหรับแสดงผลในตะกร้าสินค้า
+   * Backend คำนวณทุกอย่าง (scope filtering, reward amounts) — frontend display ตรงได้เลย
+   */
+  @Post('cart-preview')
+  cartPreview(@Body() dto: CartPreviewDto) {
+    return this.happyHourService.getCartPreview(dto);
+  }
+
   @Get('lotus-cards')
   getLotusCards() {
     return this.happyHourService.getLotusCards();
@@ -147,5 +158,36 @@ export class HappyHourController {
   @Get('config-logs')
   getConfigLogs(@Query() query: ConfigLogQueryDto) {
     return this.happyHourService.getConfigLogs(query);
+  }
+
+  /**
+   * GET /admin/happy-hour/vendors/search?keyword=xxx
+   * ค้นหา vendor (creditor) สำหรับ min_order_scope = 'vendor'
+   * Response: [{ vendor_code, vendor_name }]
+   */
+  /**
+   * GET /admin/happy-hour/product-units?codes=A001,A002
+   * ดึงหน่วยที่เล็กที่สุดของสินค้าหลายตัวพร้อมกัน
+   * Response: [{ pro_code, unit }]
+   */
+  @Get('product-units')
+  getProductUnits(@Query('codes') codes: string) {
+    const list = codes ? codes.split(',').map((c) => c.trim()).filter(Boolean) : [];
+    return this.happyHourService.getProductUnits(list);
+  }
+
+  @Get('vendors/search')
+  searchVendors(@Query('keyword') keyword: string) {
+    return this.happyHourService.searchVendors(keyword ?? '');
+  }
+
+  /**
+   * GET /admin/happy-hour/vendors/products?vendor_code=xxx
+   * ดึงรายการสินค้าทั้งหมดของเจ้าหนี้ที่ระบุ (ใช้ query param เพราะ vendor_code อาจมี '/')
+   * Response: [{ pro_code, pro_name }]
+   */
+  @Get('vendors/products')
+  getVendorProducts(@Query('vendor_code') vendorCode: string) {
+    return this.happyHourService.getVendorProducts(vendorCode ?? '');
   }
 }
