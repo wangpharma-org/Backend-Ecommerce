@@ -39,6 +39,7 @@ import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
+import type { PromotionEntityWithTransformedData } from './promotion/promotion.service';
 import { UserEntity } from 'src/users/users.entity';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
@@ -61,7 +62,6 @@ import { SessionsService } from './sessions/sessions.service';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
-import { PromotionEntity } from './promotion/promotion.entity';
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
@@ -354,7 +354,6 @@ export class AppController {
   @Get('/ecom/favorite/:mem_code')
   async getListFavorite(
     @Req() req: Request & { user: JwtPayload },
-    @Param('mem_code') mem_code: string,
     @Query('sort_by') sort_by?: string,
   ) {
     const memberCode = req.user.mem_code;
@@ -377,7 +376,10 @@ export class AppController {
       mem_code,
       req.user.mem_route,
     );
-    for (const funcItem of func) {
+    for (const funcItem of func as unknown as {
+      pro_code: string;
+      pro_imgmain: string;
+    }[]) {
       await this.imagedebugService.UpsercetImg({
         pro_code: funcItem.pro_code,
         imageUrl: funcItem.pro_imgmain,
@@ -499,6 +501,7 @@ export class AppController {
               amount: number;
               pro_unit1: string;
               pro_point: number;
+              unit_enum: '1' | '2' | '3';
             },
           ]
         | null;
@@ -850,17 +853,37 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/add')
+  @UseInterceptors(FileInterceptor('file'))
   async addPromotion(
+    @UploadedFile() file: Express.Multer.File,
     @Body()
     data: {
       promo_name: string;
       creditor_code: string;
       start_date: Date;
       end_date: Date;
-      status: boolean;
+      status: string;
     },
   ) {
-    return this.promotionService.addPromotion(data);
+    return this.promotionService.addPromotion({
+      ...data,
+      status: data.status === 'true',
+      creditor_code: data.creditor_code || null,
+      file,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/update-poster')
+  @UseInterceptors(FileInterceptor('file'))
+  async updatePromoPoster(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() data: { promo_id: string },
+  ) {
+    return this.promotionService.updatePromoPoster({
+      promo_id: Number(data.promo_id),
+      file,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -919,6 +942,20 @@ export class AppController {
   @Post('/ecom/promotion/delete')
   async deletePromotion(@Body() data: { promo_id: number }) {
     return this.promotionService.deletePromotion(data.promo_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/list-for-duplicate')
+  async getPromotionsForDuplicate() {
+    return this.promotionService.getPromotionsForDuplicate();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/duplicate')
+  async duplicatePromotion(
+    @Body() data: { promo_id: number; start_date: Date; end_date: Date },
+  ) {
+    return this.promotionService.duplicatePromotion(data);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1813,15 +1850,21 @@ export class AppController {
     body: {
       new_password: string;
       old_password: string;
+      logout_all_devices?: boolean;
     },
   ): Promise<{ success: boolean; message: string }> {
     try {
       const mem_username = req.user.username;
-      return this.changePasswordService.CheckOldPasswordAndUpdatePassword({
-        mem_username: mem_username,
-        new_password: body.new_password,
-        old_password: body.old_password,
-      });
+      const result =
+        await this.changePasswordService.CheckOldPasswordAndUpdatePassword({
+          mem_username: mem_username,
+          new_password: body.new_password,
+          old_password: body.old_password,
+        });
+      if (result.success && body.logout_all_devices) {
+        await this.sessionsService.logoutAllUserSessions(req.user.mem_code);
+      }
+      return result;
     } catch {
       return {
         success: false,
@@ -1898,7 +1941,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/company-days')
   async getCompanyDays(@Req() req: Request & { user: JwtPayload }): Promise<{
-    promotions: PromotionEntity[];
+    promotions: PromotionEntityWithTransformedData[];
   }> {
     const permission = req.user.permission;
     if (permission !== true) {
@@ -3181,7 +3224,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links')
+  @Post(
+    '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links',
+  )
   async addBannerLink(
     @Param('historyId') historyId: string,
     @Body()
@@ -3217,7 +3262,9 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Delete('/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId')
+  @Delete(
+    '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId',
+  )
   async removeBannerLink(@Param('linkId') linkId: string) {
     try {
       const bannerId = await this.campaignsService.removeBannerLink(linkId);
@@ -4156,6 +4203,20 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/check-happy-hour-reward')
+  async checkHappyHourReward(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() body: { sh_running: string },
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('You not have Permission to Access');
+    }
+    return await this.shoppingOrderService.checkAndAdjustHappyHourReward(
+      body.sh_running,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/:pro_code')
   async getHotdealByProCode(
     @Param('pro_code') pro_code: string,
@@ -4243,6 +4304,20 @@ export class AppController {
     const permission = req.user.permission;
     if (permission === true) {
       return await this.productsService.searchLotusCards();
+    } else {
+      throw new ForbiddenException('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('ecom/admin/products/search')
+  async productSearchProductName(
+    @Query('keyword') keyword: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.productSearchProductName(keyword ?? '');
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }

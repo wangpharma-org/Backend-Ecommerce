@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from 'src/users/users.entity';
@@ -8,7 +8,6 @@ import { lastValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
 import { RefreshTokenEntity } from './refresh-token.entity';
-import * as dayjs from 'dayjs';
 import * as bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from '../constants/app.constants'; 
 import { EmployeesService } from 'src/employees/employees.service';
@@ -20,6 +19,7 @@ export interface SigninResponse {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private s3: AWS.S3;
   constructor(
     private readonly userService: UsersService,
@@ -409,12 +409,11 @@ export class AuthService {
     source: string,
   ): Promise<SigninResponse> {
     try {
-      console.log(refresh_token);
       const existingToken = await this.refreshTokenRepo.findOne({
         where: { refresh_token: refresh_token },
       });
       if (!existingToken) {
-        console.log('No existing token found');
+        this.logger.warn('No existing token found');
         throw new UnauthorizedException('Invalid refresh token');
       }
 
@@ -425,14 +424,32 @@ export class AuthService {
         },
       );
 
-      await this.refreshTokenRepo.delete({ refresh_token: refresh_token });
-
-      const user = await this.userRepo.findOne({
-        where: { mem_code: payload.mem_code },
-      });
+      const [user] = await Promise.all([
+        this.userRepo.findOne({
+          where: { mem_code: payload.mem_code },
+          select: {
+            mem_username: true,
+            mem_nameSite: true,
+            mem_code: true,
+            mem_price: true,
+            mem_address: true,
+            mem_village: true,
+            mem_alley: true,
+            mem_tumbon: true,
+            mem_amphur: true,
+            mem_province: true,
+            mem_post: true,
+            mem_phone: true,
+            mem_route: true,
+            permision_admin: true,
+            role: true,
+          },
+        }),
+        this.refreshTokenRepo.delete({ refresh_token: refresh_token }),
+      ]);
 
       if (user) {
-        const payload = {
+        const tokenPayload = {
           username: user.mem_username,
           name: user.mem_nameSite ?? '',
           mem_code: user.mem_code ?? '',
@@ -455,27 +472,27 @@ export class AuthService {
           name: user.mem_nameSite ?? '',
           mem_code: user.mem_code ?? '',
         };
-        const access_token = await this.jwtService.signAsync(payload, {
-          expiresIn: '15m',
-        });
+
         const refreshTokenExpiresIn = source === 'mobile_app' ? '7d' : '18h';
-        const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
-          secret: process.env.ACCESS_TOKEN_SECRET,
-          expiresIn: refreshTokenExpiresIn,
-        });
+        const [access_token, new_refresh_token] = await Promise.all([
+          this.jwtService.signAsync(tokenPayload, { expiresIn: '15m' }),
+          this.jwtService.signAsync(payload_reflesh, {
+            secret: process.env.ACCESS_TOKEN_SECRET,
+            expiresIn: refreshTokenExpiresIn,
+          }),
+        ]);
 
         await this.refreshTokenRepo.save({
           mem_code: user.mem_code,
-          refresh_token: refresh_token,
+          refresh_token: new_refresh_token,
         });
-        return { token: access_token, refresh_token: refresh_token };
+        return { token: access_token, refresh_token: new_refresh_token };
       } else {
         throw new UnauthorizedException('Invalid refresh token');
       }
-    } catch (error) {
-      console.log(error);
+    } catch (error: unknown) {
+      this.logger.error('refreshToken failed', error);
       throw new Error('Refresh token expired');
-      // throw new UnauthorizedException('Invalid refresh token');
     }
   }
 

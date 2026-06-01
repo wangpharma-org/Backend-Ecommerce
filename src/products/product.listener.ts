@@ -46,6 +46,7 @@ export interface ProductEasyAcc {
   product_lowest_stock?: number | null;
   creditor_code?: string | null;
   pro_category?: number | null;
+  drugregister?: string | null;
 }
 
 @Controller()

@@ -19,6 +19,14 @@ export class ShoppingOrderEntity {
   @Column({ length: 20, nullable: true })
   spo_unit: string;
 
+  @Column({
+    type: 'enum',
+    enum: ['1', '2', '3'],
+    nullable: true,
+    default: null,
+  })
+  spo_unit_enum!: '1' | '2' | '3' | null;
+
   // @Column({ name: 'soh_running', length: 20, nullable: true })
   // soh_running: string;
 
@@ -56,4 +64,7 @@ export class ShoppingOrderEntity {
   @ManyToOne(() => ProductEntity, (product) => product.inOrders)
   @JoinColumn({ name: 'pro_code' })
   product: ProductEntity;
+
+  @Column({ type: 'boolean', default: false })
+  is_happy_hour?: boolean;
 }

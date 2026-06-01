@@ -15,16 +15,16 @@ import { PromotionRewardEntity } from './promotion-reward.entity';
 @Entity({ name: 'promotion_tier' })
 export class PromotionTierEntity {
   @PrimaryGeneratedColumn()
-  tier_id: number;
+  tier_id!: number;
 
   @Column({ length: 120 })
-  tier_name: string;
+  tier_name!: string;
 
   @Column({ length: 255, nullable: true })
-  tier_postter: string;
+  tier_postter!: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  min_amount: number;
+  min_amount!: number;
 
   @Column({ length: 255, nullable: true })
   description?: string;
@@ -33,20 +33,20 @@ export class PromotionTierEntity {
   detail?: string;
 
   @Column({ default: false })
-  all_products: boolean;
+  all_products!: boolean;
 
   @DeleteDateColumn({ nullable: true })
-  deleted_at: Date;
+  deleted_at!: Date;
 
   @OneToMany(() => PromotionConditionEntity, (cond) => cond.tier, {
     cascade: true,
   })
-  conditions: PromotionConditionEntity[];
+  conditions!: PromotionConditionEntity[];
 
   @OneToMany(() => PromotionRewardEntity, (reward) => reward.tier, {
     cascade: true,
   })
-  rewards: PromotionRewardEntity[];
+  rewards!: PromotionRewardEntity[];
 
   @Index()
   @ManyToOne(() => PromotionEntity, (promotion) => promotion.tiers, {
@@ -54,7 +54,7 @@ export class PromotionTierEntity {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'promo_id' })
-  promotion: PromotionEntity;
+  promotion!: PromotionEntity;
 
   @Column({ default: 0 })
   is_unit!: boolean;

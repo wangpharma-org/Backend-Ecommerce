@@ -34,6 +34,9 @@ export class PromotionEntity {
   @Column({ default: false })
   status: boolean;
 
+  @Column({ type: 'varchar', nullable: true, default: null, length: 500 })
+  promo_poster: string | null;
+
   @DeleteDateColumn({ nullable: true })
   deleted_at: Date;
 

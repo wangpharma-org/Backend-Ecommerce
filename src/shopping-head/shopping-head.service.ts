@@ -133,6 +133,8 @@ export class ShoppingHeadService {
           'head.soh_datetime',
           'head.soh_coin_recieve',
           'head.soh_payment_type',
+          'head.soh_shipping_type',
+          'head.discount',
           'order', // ดึงทั้งหมดของ order
           // 'order.spo_id',
           'product.pro_code',
