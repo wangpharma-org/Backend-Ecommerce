@@ -930,9 +930,12 @@ export class ShoppingCartService {
         type: 'check',
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
+        syncHotdeal: false,
       });
 
-      const cart = await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code, {
+        syncHotdeal: false,
+      });
       const version = await this.incrementCartVersion(data.mem_code);
       if (Number(data.amount) > 0) {
         const source = data.company_day_source?.trim() || 'Cart';
@@ -1021,7 +1024,9 @@ export class ShoppingCartService {
           spc_datetime: new Date(),
         });
       }
-      const cart = await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code, {
+        syncHotdeal: false,
+      });
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
         : await this.getCartVersionState(data.mem_code);
@@ -1383,6 +1388,7 @@ export class ShoppingCartService {
     priceOption: string;
     mem_route?: string;
     clientVersion?: string | number;
+    syncHotdeal?: boolean;
   }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
@@ -1439,7 +1445,9 @@ export class ShoppingCartService {
         data.priceOption ?? 'C',
       );
 
-      const cart = await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code, {
+        syncHotdeal: data.syncHotdeal,
+      });
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version, companyDayRewardContext };
     } catch (e) {
