@@ -16,5 +16,5 @@ console.log(result)
 private readonly logger = new Logger(ProductsService.name)
 this.logger.error('failed to fetch products', err)
 ```
-**Source:** PR#121 @MossOcelot, PR#137 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/121 , /pull/137
-**Added:** 2026-05-19  **Enforce:** lint (ESLint `no-console: error`)
+**Source:** PR#121 @MossOcelot, PR#137 @MossOcelot, PR#157 @62theories — github.com/wangpharma-org/Backend-Ecommerce/pull/121 , /pull/137 , /pull/157
+**Added:** 2026-05-19  **Last seen:** 2026-06-01  **Enforce:** lint (ESLint `no-console: error`)
