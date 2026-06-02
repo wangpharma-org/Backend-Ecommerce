@@ -16,7 +16,10 @@ import { BackendService } from 'src/backend/backend.service';
 import { UserEntity } from 'src/users/users.entity';
 import axios from 'axios';
 import { UpdateProductImageDto } from './update-product-image.dto';
-import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
+import {
+  ElasticsearchService,
+  EsProductDoc,
+} from 'src/elasticsearch/elasticsearch.service';
 import {
   ProductEasyAcc,
   UpdateProductImageEcommercePayload,
@@ -686,6 +689,37 @@ export class ProductsService {
           : productData.pro_keysearch,
       });
       await this.productRepo.save(newProduct);
+
+      const esDoc: EsProductDoc = {
+        pro_code: newProduct.pro_code,
+        pro_name: newProduct.pro_name ?? null,
+        pro_nameSale: newProduct.pro_nameSale ?? null,
+        pro_nameEN: newProduct.pro_nameEN ?? null,
+        pro_nameMain: newProduct.pro_nameMain ?? null,
+        pro_nameTH: newProduct.pro_nameTH ?? null,
+        pro_genericname: newProduct.pro_genericname ?? null,
+        pro_keysearch: newProduct.pro_keysearch ?? null,
+        pro_barcode1: newProduct.pro_barcode1 ?? null,
+        pro_barcode2: newProduct.pro_barcode2 ?? null,
+        pro_barcode3: newProduct.pro_barcode3 ?? null,
+        pro_drugmain: newProduct.pro_drugmain ?? null,
+        pro_drugmain2: newProduct.pro_drugmain2 ?? null,
+        pro_drugmain3: newProduct.pro_drugmain3 ?? null,
+        pro_drugmain4: newProduct.pro_drugmain4 ?? null,
+        pro_priceA: newProduct.pro_priceA ?? null,
+        pro_priceB: newProduct.pro_priceB ?? null,
+        pro_priceC: newProduct.pro_priceC ?? null,
+        creditor_code: newProduct.creditor?.creditor_code ?? null,
+        pro_l16_only: newProduct.pro_l16_only,
+      };
+      void this.elasticsearchService
+        .indexProduct(esDoc)
+        .catch((err: unknown) =>
+          this.logger.error(
+            `Failed to index new product ${newProduct.pro_code} in ES`,
+            err,
+          ),
+        );
 
       const unitsToSave = [
         { level: 1, unit_name: pro_unit1, ratio: pro_ratio1 ?? 1 },
@@ -2704,6 +2738,31 @@ export class ProductsService {
         productData,
       );
 
+      const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
+      if (data.product_name !== undefined) esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameEN !== undefined) esFields.pro_nameEN = data.product_nameEN ?? null;
+      if (data.product_nameSale !== undefined) esFields.pro_nameSale = data.product_nameSale ?? null;
+      if (data.product_genericname !== undefined) esFields.pro_genericname = data.product_genericname ?? null;
+      if (data.product_keysearch !== undefined) esFields.pro_keysearch = data.product_keysearch ?? null;
+      if (data.product_barcode !== undefined) esFields.pro_barcode1 = data.product_barcode ?? null;
+      if (data.product_barcode2 !== undefined) esFields.pro_barcode2 = data.product_barcode2 ?? null;
+      if (data.product_barcode3 !== undefined) esFields.pro_barcode3 = data.product_barcode3 ?? null;
+      if (data.product_price_a !== undefined) esFields.pro_priceA = data.product_price_a ?? null;
+      if (data.product_price_b !== undefined) esFields.pro_priceB = data.product_price_b ?? null;
+      if (data.product_price_c !== undefined) esFields.pro_priceC = data.product_price_c ?? null;
+      if (data.creditor_code !== undefined) esFields.creditor_code = data.creditor_code ?? null;
+
+      if (Object.keys(esFields).length > 0) {
+        void this.elasticsearchService
+          .updateProductDoc(data.product_code, esFields)
+          .catch((err: unknown) =>
+            this.logger.error(
+              `Failed to sync ES for product ${data.product_code}`,
+              err,
+            ),
+          );
+      }
+
       if (
         data.product_unit1 !== undefined ||
         data.product_unit2 !== undefined ||
@@ -2751,7 +2810,7 @@ export class ProductsService {
         await processUnit(3, data.product_unit3, data.product_ratio_3);
       }
     } catch (error) {
-      console.error('Error updating product from EasyAcc:', error);
+      this.logger.error('Error updating product from EasyAcc:', error);
     }
   }
 
