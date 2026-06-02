@@ -418,17 +418,15 @@ export class PromotionService {
     mem_route?: string,
   ): Promise<GetAllTiersResult> {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       const isL16 = await this.isL16Member(mem_code, mem_route);
 
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(startOfDay),
-            end_date: MoreThanOrEqual(endOfDay),
+            start_date: LessThanOrEqual(endOfDay),
+            end_date: MoreThanOrEqual(startOfDay),
           },
         },
         relations: {
@@ -1174,9 +1172,7 @@ export class PromotionService {
     mem_code: string,
   ): Promise<TierConditionWithTransformedTier[]> {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       const tierCondition = await this.promotionConditionRepo
         .createQueryBuilder('condition')
         .leftJoinAndSelect('condition.product', 'product')
@@ -1316,16 +1312,14 @@ export class PromotionService {
 
   async getTierAllProduct() {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       return await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(startOfDay),
-            end_date: MoreThanOrEqual(endOfDay),
+            start_date: LessThanOrEqual(endOfDay),
+            end_date: MoreThanOrEqual(startOfDay),
           },
         },
         relations: {
