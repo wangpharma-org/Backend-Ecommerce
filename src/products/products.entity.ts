@@ -197,8 +197,8 @@ export class ProductEntity {
   @OneToMany(() => PromotionRewardEntity, (reward) => reward.giftProduct)
   promotionRewardsAsGift!: PromotionRewardEntity[];
 
-  @OneToMany(() => HotdealEntity, (hotdeal) => hotdeal.product)
-  inHotdeals!: HotdealEntity[];
+  @OneToOne(() => HotdealEntity, (hotdeal) => hotdeal.product)
+  hotdeal: HotdealEntity;
 
   @ManyToOne(() => InvisibleEntity, (invisible) => invisible.products)
   @JoinColumn({ name: 'invisible_id' })

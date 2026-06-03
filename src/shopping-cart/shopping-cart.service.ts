@@ -59,7 +59,7 @@ export interface ShoppingProductCart {
   recommended_id?: number;
   recommend_rank?: number;
   is_reward: boolean;
-  hotdeal: HotdealEntity[] | undefined;
+  hotdeal: HotdealEntity | undefined;
   pointHotdeal?: number | null;
   hotdealPointsInfo?: number;
   totalSmallestUnit?: number;
@@ -930,9 +930,12 @@ export class ShoppingCartService {
         type: 'check',
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
+        syncHotdeal: false,
       });
 
-      const cart = await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code, {
+        syncHotdeal: false,
+      });
       const version = await this.incrementCartVersion(data.mem_code);
       if (Number(data.amount) > 0) {
         const source = data.company_day_source?.trim() || 'Cart';
@@ -1021,7 +1024,9 @@ export class ShoppingCartService {
           spc_datetime: new Date(),
         });
       }
-      const cart = await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code, {
+        syncHotdeal: false,
+      });
       const version = touchVersion
         ? await this.incrementCartVersion(data.mem_code)
         : await this.getCartVersionState(data.mem_code);
@@ -1383,6 +1388,7 @@ export class ShoppingCartService {
     priceOption: string;
     mem_route?: string;
     clientVersion?: string | number;
+    syncHotdeal?: boolean;
   }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
@@ -1439,7 +1445,9 @@ export class ShoppingCartService {
         data.priceOption ?? 'C',
       );
 
-      const cart = await this.getProductCart(data.mem_code);
+      const cart = await this.getProductCart(data.mem_code, {
+        syncHotdeal: data.syncHotdeal,
+      });
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version, companyDayRewardContext };
     } catch (e) {
@@ -1589,7 +1597,10 @@ export class ShoppingCartService {
     }
   }
 
-  async getProductCart(mem_code: string): Promise<ShoppingProductCart[]> {
+  async getProductCart(
+    mem_code: string,
+    options: { syncHotdeal?: boolean } = {},
+  ): Promise<ShoppingProductCart[]> {
     try {
       await this.removeL16ItemsFromCart(mem_code);
       await this.shoppingCartRepo
@@ -1599,6 +1610,10 @@ export class ShoppingCartService {
         .where('mem_code = :mem_code', { mem_code })
         .andWhere('spc_amount <= 0')
         .execute();
+
+      if (options.syncHotdeal !== false) {
+        await this.syncHotdealFreebiesForCart(mem_code);
+      }
 
       const isL16 = await this.isL16Member(mem_code);
       const replaceCondition = isL16
@@ -1732,7 +1747,7 @@ export class ShoppingCartService {
           row.pro_code,
         ) as TransformedProductCart;
 
-        const hotdeal = allHotdeals?.filter(
+        const hotdeal = allHotdeals?.find(
           (hd) => hd.product.pro_code === row.pro_code,
         );
         if (!grouped[key]) {
@@ -1915,6 +1930,24 @@ export class ShoppingCartService {
     }
   }
 
+  private async syncHotdealFreebiesForCart(mem_code: string): Promise<void> {
+    const mainCartRows = await this.shoppingCartRepo.find({
+      where: {
+        mem_code,
+        hotdeal_free: false,
+      },
+      select: {
+        pro_code: true,
+      },
+    });
+
+    const mainProCodes = [...new Set(mainCartRows.map((row) => row.pro_code))];
+
+    for (const proCode of mainProCodes) {
+      await this.checkHotdealByProCode(mem_code, proCode);
+    }
+  }
+
   async removeAllCarthotdeal(pro_code: string): Promise<string> {
     try {
       await this.shoppingCartRepo.delete({
@@ -1959,7 +1992,7 @@ export class ShoppingCartService {
       const hotdeals: Hotdeal[] | null =
         await this.hotdealService.getHotdealByProCode([pro_code]);
       if (!hotdeals || hotdeals.length === 0) {
-        return await this.getProductCart(mem_code);
+        return await this.getProductCart(mem_code, { syncHotdeal: false });
       }
 
       const mainProductsInCart = await this.shoppingCartRepo.find({
@@ -1983,7 +2016,7 @@ export class ShoppingCartService {
         if (allFreebiesInCart.length > 0) {
           await this.shoppingCartRepo.remove(allFreebiesInCart);
         }
-        return await this.getProductCart(mem_code);
+        return await this.getProductCart(mem_code, { syncHotdeal: false });
       }
 
       const freebiesData: {
@@ -2048,7 +2081,7 @@ export class ShoppingCartService {
         if (allFreebiesInCart.length > 0) {
           await this.shoppingCartRepo.remove(allFreebiesInCart);
         }
-        return await this.getProductCart(mem_code);
+        return await this.getProductCart(mem_code, { syncHotdeal: false });
       }
 
       const freebiesMap = new Map<
@@ -2114,7 +2147,7 @@ export class ShoppingCartService {
         }
       }
 
-      return await this.getProductCart(mem_code);
+      return await this.getProductCart(mem_code, { syncHotdeal: false });
     } catch (error) {
       this.logger.error('Error in checkHotdealByProCode:', error);
       return null;

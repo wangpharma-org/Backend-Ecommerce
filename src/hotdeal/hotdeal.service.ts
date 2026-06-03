@@ -1,5 +1,11 @@
 /* eslint-disable prettier/prettier */
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  forwardRef,
+  HttpException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
@@ -9,7 +15,6 @@ import { UserEntity } from 'src/users/users.entity';
 import * as AWS from 'aws-sdk';
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
 import { ProductEntity } from 'src/products/products.entity';
-import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 
 export interface HotdealInput {
@@ -19,6 +24,15 @@ export interface HotdealInput {
   pro2_code: string;
   pro2_amount: string;
   pro2_unit: string;
+  promo_title?: string;
+  promo_body?: string;
+}
+
+interface HotdealProductUsage {
+  id: number;
+  proCode: string;
+  role: 'สินค้าซื้อ' | 'สินค้าแถม';
+  requestedRole: 'สินค้าซื้อ' | 'สินค้าแถม';
 }
 
 @Injectable()
@@ -60,12 +74,152 @@ export class HotdealService {
     return member?.mem_route?.toUpperCase() === 'L16';
   }
 
+  private isUnitLevel(unit: string): unit is '1' | '2' | '3' {
+    return unit === '1' || unit === '2' || unit === '3';
+  }
+
+  private buildUnitRatioMap(product: {
+    pro_unit1: string;
+    pro_unit2: string;
+    pro_unit3: string;
+    pro_ratio1: number;
+    pro_ratio2: number;
+    pro_ratio3: number;
+  }): Record<string, number> {
+    const unitRatioMap: Record<string, number> = {};
+    [
+      { level: '1', unitName: product.pro_unit1, ratio: product.pro_ratio1 },
+      { level: '2', unitName: product.pro_unit2, ratio: product.pro_ratio2 },
+      { level: '3', unitName: product.pro_unit3, ratio: product.pro_ratio3 },
+    ].forEach((unit) => {
+      unitRatioMap[unit.level] = unit.ratio || 1;
+      if (unit.unitName) {
+        unitRatioMap[unit.unitName] = unit.ratio || 1;
+      }
+    });
+    return unitRatioMap;
+  }
+
+  private async normalizeHotdealUnit(
+    pro_code: string,
+    unit: string,
+  ): Promise<string> {
+    const normalizedUnit = unit.trim();
+    if (this.isUnitLevel(normalizedUnit)) {
+      return normalizedUnit;
+    }
+
+    const product = await this.productService.transformProductWithUnits({
+      pro_code,
+    });
+    if (normalizedUnit === product.pro_unit1) return '1';
+    if (normalizedUnit === product.pro_unit2) return '2';
+    if (normalizedUnit === product.pro_unit3) return '3';
+
+    return normalizedUnit;
+  }
+
+  private async resolveHotdealUnitName(
+    pro_code: string,
+    unit: string,
+  ): Promise<string> {
+    const normalizedUnit = unit.trim();
+    if (!this.isUnitLevel(normalizedUnit)) {
+      return normalizedUnit;
+    }
+
+    const product = await this.productService.transformProductWithUnits({
+      pro_code,
+    });
+    if (normalizedUnit === '1') return product.pro_unit1;
+    if (normalizedUnit === '2') return product.pro_unit2;
+    return product.pro_unit3;
+  }
+
+  private async findHotdealProductUsage(
+    proCode: string,
+    existingRole: 'สินค้าซื้อ' | 'สินค้าแถม',
+    requestedRole: 'สินค้าซื้อ' | 'สินค้าแถม',
+  ): Promise<HotdealProductUsage | null> {
+    const hotdeal = await this.hotdealRepo.findOne({
+      where:
+        existingRole === 'สินค้าซื้อ'
+          ? { product: { pro_code: proCode } }
+          : { product2: { pro_code: proCode } },
+      relations: ['product', 'product2'],
+      select: {
+        id: true,
+        product: {
+          pro_code: true,
+        },
+        product2: {
+          pro_code: true,
+        },
+      },
+    });
+
+    if (!hotdeal) {
+      return null;
+    }
+
+    return {
+      id: hotdeal.id,
+      proCode,
+      role: existingRole,
+      requestedRole,
+    };
+  }
+
+  private async assertProductsAreAvailableForNewHotdeal(
+    datainput: HotdealInput,
+  ): Promise<void> {
+    if (datainput.pro1_code === datainput.pro2_code) {
+      throw new ConflictException(
+        `รหัสสินค้า ${datainput.pro1_code} ซ้ำกันระหว่างสินค้าซื้อและสินค้าแถม`,
+      );
+    }
+
+    const duplicateUsages = (
+      await Promise.all([
+        this.findHotdealProductUsage(
+          datainput.pro1_code,
+          'สินค้าซื้อ',
+          'สินค้าซื้อ',
+        ),
+        this.findHotdealProductUsage(
+          datainput.pro1_code,
+          'สินค้าแถม',
+          'สินค้าซื้อ',
+        ),
+        this.findHotdealProductUsage(
+          datainput.pro2_code,
+          'สินค้าซื้อ',
+          'สินค้าแถม',
+        ),
+      ])
+    ).filter((usage): usage is HotdealProductUsage => usage !== null);
+
+    if (duplicateUsages.length > 0) {
+      const details = duplicateUsages
+        .map(
+          (usage) =>
+            `${usage.proCode} เคยเป็น${usage.role}ในโปรโมชัน ID ${usage.id} จึงไม่สามารถใช้เป็น${usage.requestedRole}`,
+        )
+        .join(', ');
+
+      throw new ConflictException(
+        `ไม่สามารถเพิ่ม Hot Deal ได้ เพราะสินค้าอยู่ในโปรเดิมแล้ว: ${details}`,
+      );
+    }
+  }
+
   // ตรวจสอบแล้วว่าใช้ได้
   async find(pro_code: string): Promise<HotdealEntity | null> {
     return await this.hotdealRepo.findOne({
       where: { product: { pro_code } },
       relations: ['product', 'product2'],
       select: {
+        id: true,
         product: {
           pro_code: true,
         },
@@ -95,60 +249,26 @@ export class HotdealService {
         throw new Error(`Product not found for pro_code: ${pro_code}`);
       }
 
-      // ใช้ units relationship แทนการเข้าถึง properties โดยตรง
-      const unitRatioMap: Record<string, number> = {};
-      if (productHotdeal.units) {
-        productHotdeal.units.forEach((unit) => {
-          unitRatioMap[String(unit.level)] = unit.ratio || 1;
-        });
-      }
+      const unitRatioMap = this.buildUnitRatioMap(productHotdeal);
 
-      let minSmallestAmount = Infinity;
-      let bestHotdeal: HotdealEntity | null = null;
-
-      // ดึง hotdeals ทั้งหมดของสินค้าหลักนี้เพื่อหาเงื่อนไขที่ใช้แต้มน้อยที่สุดในหน่วยเล็กสุด
-      const hotdeals = await this.hotdealRepo.find({
+      const hotdeal = await this.hotdealRepo.findOne({
         where: { product: { pro_code } },
         relations: ['product', 'product2'],
       });
 
-      for (const hd of hotdeals) {
-        const ratio = unitRatioMap[hd.pro1_unit] ?? 1;
-        const amountInSmallest = Number(hd.pro1_amount) * ratio;
-
-        if (amountInSmallest > 0 && amountInSmallest < minSmallestAmount && hd.product2) {
-          minSmallestAmount = amountInSmallest;
-          bestHotdeal = hd;
-        }
-      }
-
-      // หากไม่พบข้อมูลในฐานข้อมูล (fallback)
-      if (!bestHotdeal) {
-        minSmallestAmount = number_amount * (unitRatioMap[unit_hotdeal] ?? 1);
-      }
-
-      const amountSmallestHotdeal = minSmallestAmount;
-
+      const amountSmallestHotdeal = hotdeal
+        ? Number(hotdeal.pro1_amount) * (unitRatioMap[hotdeal.pro1_unit] ?? 1)
+        : number_amount * (unitRatioMap[unit_hotdeal] ?? 1);
       if (amountSmallestHotdeal <= 0) return;
 
-      const targetProCode2 = bestHotdeal?.product2?.pro_code || pro_code2;
-      const targetProAmount2 = bestHotdeal ? Number(bestHotdeal.pro2_amount) : 1;
+      const targetProCode2 = hotdeal?.product2?.pro_code || pro_code2;
+      const targetProAmount2 = hotdeal ? Number(hotdeal.pro2_amount) : 1;
 
-      // pro2_unit ใน DB เก็บเป็น enum string ("1"/"2"/"3") หลัง migration
-      // ต้องแปลงเป็นชื่อหน่วยจริงก่อนส่งไป addProductCartHotDeal
-      let targetProUnit2 = pro_unit2;
-      const rawUnit2 = bestHotdeal?.pro2_unit ?? pro_unit2;
-      const unitLevel2 = Number(rawUnit2);
-      if ([1, 2, 3].includes(unitLevel2)) {
-        const transformed2 = await this.productService.transformProductWithUnits({
-          pro_code: targetProCode2,
-        });
-        if (unitLevel2 === 1) targetProUnit2 = transformed2.pro_unit1;
-        else if (unitLevel2 === 2) targetProUnit2 = transformed2.pro_unit2;
-        else if (unitLevel2 === 3) targetProUnit2 = transformed2.pro_unit3;
-      } else {
-        targetProUnit2 = rawUnit2;
-      }
+      const rawUnit2 = hotdeal?.pro2_unit ?? pro_unit2;
+      const targetProUnit2 = await this.resolveHotdealUnitName(
+        targetProCode2,
+        rawUnit2,
+      );
 
       const hotdealProductInCart =
         await this.shoppingCartService.find(pro_code);
@@ -195,7 +315,7 @@ export class HotdealService {
     id?: number,
     order?: number,
     special_deal?: boolean,
-  ): Promise<string> {
+  ): Promise<{ id?: number; message: string; special_deal?: boolean }> {
     try {
       if (id) {
         const existingHotdeal = await this.hotdealRepo.findOne({
@@ -206,50 +326,96 @@ export class HotdealService {
             { id: existingHotdeal.id },
             { order: order, special_deal: special_deal },
           );
+          return {
+            id: existingHotdeal.id,
+            message: 'update hotdeal successfully',
+            special_deal: special_deal ?? existingHotdeal.special_deal,
+          };
         }
       } else {
-        const duplicate = await this.hotdealRepo.findOne({
+        const normalizedInput: HotdealInput = {
+          ...datainput,
+          pro1_unit: await this.normalizeHotdealUnit(
+            datainput.pro1_code,
+            datainput.pro1_unit,
+          ),
+          pro2_unit: await this.normalizeHotdealUnit(
+            datainput.pro2_code,
+            datainput.pro2_unit,
+          ),
+        };
+        await this.assertProductsAreAvailableForNewHotdeal(normalizedInput);
+        const existingHotdeal = await this.hotdealRepo.findOne({
           where: {
-            product: { pro_code: datainput.pro1_code },
-            product2: { pro_code: datainput.pro2_code },
+            product: { pro_code: normalizedInput.pro1_code },
           },
-          relations: ['product', 'product2'],
         });
+        console.log('Existing hotdeal:', existingHotdeal);
 
-        if (duplicate) {
-          await this.hotdealRepo.delete({ id: duplicate.id });
+        if (existingHotdeal) {
+          await this.shoppingCartService.removeAllCarthotdeal(
+            normalizedInput.pro1_code,
+          );
+          const savedHotdeal = await this.hotdealRepo.save({
+            id: existingHotdeal.id,
+            pro1_amount: normalizedInput.pro1_amount,
+            pro1_unit: normalizedInput.pro1_unit,
+            pro2_amount: normalizedInput.pro2_amount,
+            pro2_unit: normalizedInput.pro2_unit,
+            special_deal: special_deal ?? existingHotdeal.special_deal ?? false,
+            promo_title: normalizedInput.promo_title || null,
+            promo_body: normalizedInput.promo_body || null,
+            product: { pro_code: normalizedInput.pro1_code } as ProductEntity,
+            product2: { pro_code: normalizedInput.pro2_code } as ProductEntity,
+          });
+          await this.checkAndAddProductToHotdeal(
+            normalizedInput.pro1_code,
+            normalizedInput.pro1_unit,
+            Number(normalizedInput.pro1_amount),
+            normalizedInput.pro2_code,
+            normalizedInput.pro2_unit,
+          );
+
+          return {
+            id: savedHotdeal.id,
+            message: 'add hotdeal successfully',
+            special_deal: savedHotdeal.special_deal,
+          };
+        } else {
+          const hotdeal = this.hotdealRepo.create({
+            pro1_amount: normalizedInput.pro1_amount,
+            pro1_unit: normalizedInput.pro1_unit,
+            pro2_amount: normalizedInput.pro2_amount,
+            pro2_unit: normalizedInput.pro2_unit,
+            special_deal: special_deal ?? false,
+            promo_title: normalizedInput.promo_title || null,
+            promo_body: normalizedInput.promo_body || null,
+            product: { pro_code: normalizedInput.pro1_code },
+            product2: { pro_code: normalizedInput.pro2_code },
+          });
+
+          const savedHotdeal = await this.hotdealRepo.save(hotdeal);
+          await this.checkAndAddProductToHotdeal(
+            normalizedInput.pro1_code,
+            normalizedInput.pro1_unit,
+            Number(normalizedInput.pro1_amount),
+            normalizedInput.pro2_code,
+            normalizedInput.pro2_unit,
+          );
+
+          return {
+            id: savedHotdeal.id,
+            message: 'add hotdeal successfully',
+            special_deal: savedHotdeal.special_deal,
+          };
         }
-
-        // แปลง unit name → enum level ก่อน save
-        const unitRepo = this.hotdealRepo.manager.getRepository(ProductUnitEntity);
-        const [unit1, unit2] = await Promise.all([
-          unitRepo.findOne({ where: { pro_code: datainput.pro1_code, unit_name: datainput.pro1_unit } }),
-          unitRepo.findOne({ where: { pro_code: datainput.pro2_code, unit_name: datainput.pro2_unit } }),
-        ]);
-        const pro1_unit = unit1 ? String(unit1.level) : datainput.pro1_unit;
-        const pro2_unit = unit2 ? String(unit2.level) : datainput.pro2_unit;
-
-        const hotdeal = this.hotdealRepo.create({
-          pro1_amount: datainput.pro1_amount,
-          pro1_unit,
-          pro2_amount: datainput.pro2_amount,
-          pro2_unit,
-          product: { pro_code: datainput.pro1_code },
-          product2: { pro_code: datainput.pro2_code },
-        });
-
-        await this.hotdealRepo.save(hotdeal);
-        await this.checkAndAddProductToHotdeal(
-          datainput.pro1_code,
-          pro1_unit,
-          Number(datainput.pro1_amount),
-          datainput.pro2_code,
-          pro2_unit,
-        );
       }
-      return 'add hotdeal successfully';
+      return { message: 'hotdeal not found' };
     } catch (error) {
       console.error('Error saving hotdeal:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new Error('Something Error in saveHotdeal');
     }
   }
@@ -261,47 +427,35 @@ export class HotdealService {
       order: { order: 'ASC' },
     });
 
-    const hotdealitems = await Promise.all(
-      hotdeals.map(async (hotdeal) => {
-        // ใช้ transformProductWithUnits เหมือนไฟล์อื่นๆ
-        let pro1_unit = hotdeal.pro1_unit;
-        let pro2_unit = hotdeal.pro2_unit;
-
-        if (hotdeal.product) {
-          const transformedProduct = await this.productService.transformProductWithUnits(hotdeal.product);
-          const unitLevel = Number(hotdeal.pro1_unit);
-          if (unitLevel === 1) pro1_unit = transformedProduct.pro_unit1;
-          else if (unitLevel === 2) pro1_unit = transformedProduct.pro_unit2;
-          else if (unitLevel === 3) pro1_unit = transformedProduct.pro_unit3;
-        }
-
-        if (hotdeal.product2) {
-          const transformedProduct2 = await this.productService.transformProductWithUnits(hotdeal.product2);
-          const unitLevel = Number(hotdeal.pro2_unit);
-          if (unitLevel === 1) pro2_unit = transformedProduct2.pro_unit1;
-          else if (unitLevel === 2) pro2_unit = transformedProduct2.pro_unit2;
-          else if (unitLevel === 3) pro2_unit = transformedProduct2.pro_unit3;
-        }
-
-        return {
-          id: hotdeal.id,
-          pro_code: hotdeal.product?.pro_code || null,
-          pro2_code: hotdeal.product2?.pro_code || null,
-          pro1_amount: hotdeal.pro1_amount,
-          pro1_unit,
-          pro2_amount: hotdeal.pro2_amount,
-          pro2_unit,
-          pro_name: hotdeal.product?.pro_name || null,
-          pro2_name: hotdeal.product2?.pro_name || null,
-          order: hotdeal.order,
-          special_deal: hotdeal.special_deal,
-          pro1_stock: hotdeal.product?.pro_stock || 0,
-          pro2_stock: hotdeal.product2?.pro_stock || 0,
-        };
-      })
+    return await Promise.all(
+      hotdeals.map(async (hotdeal) => ({
+        id: hotdeal.id,
+        pro_code: hotdeal.product?.pro_code || null,
+        pro2_code: hotdeal.product2?.pro_code || null,
+        pro1_amount: hotdeal.pro1_amount,
+        pro1_unit: hotdeal.product?.pro_code
+          ? await this.resolveHotdealUnitName(
+              hotdeal.product.pro_code,
+              hotdeal.pro1_unit,
+            )
+          : hotdeal.pro1_unit,
+        pro2_amount: hotdeal.pro2_amount,
+        pro2_unit: hotdeal.product2?.pro_code
+          ? await this.resolveHotdealUnitName(
+              hotdeal.product2.pro_code,
+              hotdeal.pro2_unit,
+            )
+          : hotdeal.pro2_unit,
+        pro_name: hotdeal.product?.pro_name || null,
+        pro2_name: hotdeal.product2?.pro_name || null,
+        order: hotdeal.order,
+        special_deal: hotdeal.special_deal,
+        promo_title: hotdeal.promo_title,
+        promo_body: hotdeal.promo_body,
+        pro1_stock: hotdeal.product?.pro_stock || 0,
+        pro2_stock: hotdeal.product2?.pro_stock || 0,
+      })),
     );
-
-    return hotdealitems;
   }
 
   // Optimize แล้ว
@@ -325,6 +479,7 @@ export class HotdealService {
     offset?: number,
     mem_code?: string,
     mem_route?: string,
+    special_deal?: boolean,
   ) {
     const isL16 = await this.isL16Member(mem_code, mem_route);
     const query = this.hotdealRepo
@@ -334,6 +489,12 @@ export class HotdealService {
       .leftJoinAndSelect('hotdeal.product2', 'product2')
       .leftJoinAndSelect('product2.units', 'units2')
       .orderBy('hotdeal.order', 'ASC');
+
+    if (special_deal !== undefined) {
+      query.andWhere('hotdeal.special_deal = :specialDeal', {
+        specialDeal: special_deal,
+      });
+    }
 
     if (mem_code) {
       query
@@ -445,9 +606,41 @@ export class HotdealService {
           : 'ไม่เจอข้อมูล',
         order: hotdeal.order,
         special_deal: hotdeal.special_deal,
+        promo_title: hotdeal.promo_title,
+        promo_body: hotdeal.promo_body,
       };
     });
     return result;
+  }
+
+  async getProductProDeals(
+    limit?: number,
+    offset?: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
+    return this.getAllHotdealsWithProductDetail(
+      limit,
+      offset,
+      mem_code,
+      mem_route,
+      true,
+    );
+  }
+
+  async getBuyMoreGetOneDeals(
+    limit?: number,
+    offset?: number,
+    mem_code?: string,
+    mem_route?: string,
+  ) {
+    return this.getAllHotdealsWithProductDetail(
+      limit,
+      offset,
+      mem_code,
+      mem_route,
+      false,
+    );
   }
 
   // ตรวจสอบแล้วคิดว่าใช้งานได้
@@ -610,6 +803,7 @@ export class HotdealService {
     return await this.hotdealRepo.find({
       relations: ['product', 'product2'],
       select: {
+        id: true,
         pro1_amount: true,
         pro1_unit: true,
         pro2_amount: true,
@@ -673,10 +867,30 @@ export class HotdealService {
 
   async getAllHotdealsWithBanners() {
     try {
-      return await this.bannerHotdealRepo.find({
+      const banners = await this.bannerHotdealRepo.find({
         relations: ['hotdeal', 'hotdeal.product', 'hotdeal.product2'],
         order: { banner_hotdeal_id: 'ASC' },
       });
+      return await Promise.all(
+        banners.map(async (banner) => ({
+          ...banner,
+          hotdeal: {
+            ...banner.hotdeal,
+            pro1_unit: banner.hotdeal.product?.pro_code
+              ? await this.resolveHotdealUnitName(
+                  banner.hotdeal.product.pro_code,
+                  banner.hotdeal.pro1_unit,
+                )
+              : banner.hotdeal.pro1_unit,
+            pro2_unit: banner.hotdeal.product2?.pro_code
+              ? await this.resolveHotdealUnitName(
+                  banner.hotdeal.product2.pro_code,
+                  banner.hotdeal.pro2_unit,
+                )
+              : banner.hotdeal.pro2_unit,
+          },
+        })),
+      );
     } catch (error) {
       console.error('Error fetching hotdeals with banners:', error);
       throw new Error('Something Error in getAllHotdealsWithBanners');
@@ -725,7 +939,7 @@ export class HotdealService {
     pro_code: string,
     mem_code: string,
   ): Promise<{
-    hotdeal: HotdealEntity[];
+    hotdeal: HotdealEntity;
     totalAmountInSmallestUnit: number;
     eligibleForFreebie: boolean;
     remainingPoints: number;
@@ -737,10 +951,11 @@ export class HotdealService {
       remainingPointsForThis: number;
     }[];
   } | null> {
-    const hotdeal = await this.hotdealRepo.find({
+    const hotdeal = await this.hotdealRepo.findOne({
       where: { product: { pro_code } },
       relations: ['product', 'product2'],
       select: {
+        id: true,
         pro1_amount: true,
         pro1_unit: true,
         pro2_amount: true,
@@ -756,7 +971,7 @@ export class HotdealService {
       },
     });
 
-    if (!hotdeal || hotdeal.length === 0) {
+    if (!hotdeal) {
       return null;
     }
 
@@ -781,34 +996,27 @@ export class HotdealService {
       return foundUnit ? Number(amount) * foundUnit.ratio : 0;
     };
 
-    // แปลงหน่วยใน hotdeal entities
-    const transformedHotdeal = await Promise.all(
-      hotdeal.map(async (hd) => {
-        let pro1_unit = hd.pro1_unit;
-        let pro2_unit = hd.pro2_unit;
+    let pro1_unit = hotdeal.pro1_unit;
+    let pro2_unit = hotdeal.pro2_unit;
 
-        // แปลงหน่วย product 1 (ใช้ product เดียวกัน)
-        const unitLevel1 = Number(hd.pro1_unit);
-        if (unitLevel1 === 1) pro1_unit = transformedProduct.pro_unit1;
-        else if (unitLevel1 === 2) pro1_unit = transformedProduct.pro_unit2;
-        else if (unitLevel1 === 3) pro1_unit = transformedProduct.pro_unit3;
+    const unitLevel1 = Number(hotdeal.pro1_unit);
+    if (unitLevel1 === 1) pro1_unit = transformedProduct.pro_unit1;
+    else if (unitLevel1 === 2) pro1_unit = transformedProduct.pro_unit2;
+    else if (unitLevel1 === 3) pro1_unit = transformedProduct.pro_unit3;
 
-        // แปลงหน่วย product 2
-        if (hd.product2) {
-          const transformedProduct2 = await this.productService.transformProductWithUnits(hd.product2);
-          const unitLevel2 = Number(hd.pro2_unit);
-          if (unitLevel2 === 1) pro2_unit = transformedProduct2.pro_unit1;
-          else if (unitLevel2 === 2) pro2_unit = transformedProduct2.pro_unit2;
-          else if (unitLevel2 === 3) pro2_unit = transformedProduct2.pro_unit3;
-        }
+    if (hotdeal.product2) {
+      const transformedProduct2 = await this.productService.transformProductWithUnits(hotdeal.product2);
+      const unitLevel2 = Number(hotdeal.pro2_unit);
+      if (unitLevel2 === 1) pro2_unit = transformedProduct2.pro_unit1;
+      else if (unitLevel2 === 2) pro2_unit = transformedProduct2.pro_unit2;
+      else if (unitLevel2 === 3) pro2_unit = transformedProduct2.pro_unit3;
+    }
 
-        return {
-          ...hd,
-          pro1_unit,
-          pro2_unit,
-        };
-      })
-    );
+    const transformedHotdeal = {
+      ...hotdeal,
+      pro1_unit,
+      pro2_unit,
+    };
 
     const cartItems = await this.shoppingCartService.getOrderFromCartMember(mem_code, pro_code);
 
@@ -816,9 +1024,10 @@ export class HotdealService {
     let totalAmountInSmallestUnit = 0;
     if (cartItems && cartItems.length > 0) {
       totalAmountInSmallestUnit = cartItems.reduce((total, item) => {
+        if (item.hotdeal_free) return total;
         const foundUnit = units.find((u) => u.unit_name === item.spc_unit);
         if (foundUnit && foundUnit.ratio) {
-          return total + Number(item.spc_amount) * foundUnit.ratio;
+          return total + Number(item.spc_amount) * Number(foundUnit.ratio);
         }
         return total;
       }, 0);
@@ -835,36 +1044,30 @@ export class HotdealService {
     let remainingPoints = totalAmountInSmallestUnit;
 
     if (totalAmountInSmallestUnit > 0) {
-      // สร้างรายการ hotdeals พร้อมเงื่อนไขแต้ม (ใช้ helper function)
-      const hotdealConditions = transformedHotdeal
-        .filter(hd => hd.pro1_amount && hd.pro1_unit && hd.product2)
-        .map(hd => {
-          const condition = convertToSmallest(hd.pro1_amount, hd.pro1_unit);
-          return condition > 0 ? { hotdeal: hd, condition } : null;
-        })
-        .filter(item => item !== null)
-        .sort((a, b) => a.condition - b.condition);
+      if (hotdeal.pro1_amount && hotdeal.pro1_unit && hotdeal.product2) {
+        const conditionInSmallestUnit = await this.convertToSmallestUnit(
+          pro_code,
+          hotdeal.pro1_amount,
+          hotdeal.pro1_unit,
+        );
 
-      // คำนวณทีละ hotdeal ตามลำดับ (แต้มน้อยไปมาก)
-      for (const item of hotdealConditions) {
-        if (item && remainingPoints >= item.condition) {
-          const hd = item.hotdeal;
-          const conditionInSmallestUnit = item.condition;
-
-          const sets = Math.floor(remainingPoints / conditionInSmallestUnit);
+        if (conditionInSmallestUnit && conditionInSmallestUnit > 0) {
+          const sets = Math.floor(
+            totalAmountInSmallestUnit / conditionInSmallestUnit,
+          );
           const usedPoints = sets * conditionInSmallestUnit;
+          const remainingPointsForThis = totalAmountInSmallestUnit - usedPoints;
+
+          freebies.push({
+            pro_code: hotdeal.product2.pro_code,
+            unit: hotdeal.pro2_unit,
+            quantity: sets * Number(hotdeal.pro2_amount),
+            usedPoints: usedPoints,
+            remainingPointsForThis: remainingPointsForThis,
+          });
 
           if (sets > 0) {
-            freebies.push({
-              pro_code: hd.product2.pro_code,
-              unit: hd.pro2_unit,
-              quantity: sets * Number(hd.pro2_amount),
-              usedPoints: usedPoints,
-              remainingPointsForThis: remainingPoints - usedPoints,
-            });
-
-            // หักแต้มที่ใช้ไปแล้วออกจากแต้มที่เหลือ
-            remainingPoints -= usedPoints;
+            remainingPoints = Math.min(remainingPoints, remainingPointsForThis);
           }
         }
       }
@@ -886,6 +1089,7 @@ export class HotdealService {
       where: { product: { pro_code: In(pro_code) } },
       relations: ['product', 'product2'],
       select: {
+        id: true,
         pro1_amount: true,
         pro1_unit: true,
         pro2_amount: true,
