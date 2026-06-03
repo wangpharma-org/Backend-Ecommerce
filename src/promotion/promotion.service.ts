@@ -21,7 +21,12 @@ import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import * as AWS from 'aws-sdk';
-import { getTodayRange } from 'src/utils/date.util';
+import {
+  getTodayRange,
+  toThaiDate,
+  toUtcStart,
+  toUtcEnd,
+} from 'src/utils/date.util';
 import { Cron } from '@nestjs/schedule';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
@@ -303,11 +308,7 @@ export class PromotionService {
     sort_by?: number;
   }): Promise<PromotionTierWithTransformedConditions | null> {
     try {
-      const now = new Date();
-      const startOfDay = new Date(now);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(now);
-      endOfDay.setHours(23, 59, 59, 999);
+      const { startOfDay, endOfDay } = getTodayRange();
 
       const tier = await this.promotionTierRepo
         .createQueryBuilder('tier')
@@ -618,12 +619,13 @@ export class PromotionService {
         creditor: data.creditor_code
           ? { creditor_code: data.creditor_code }
           : undefined,
-        start_date: data.start_date,
-        end_date: data.end_date,
+        start_date: toUtcStart(data.start_date),
+        end_date: toUtcEnd(data.end_date),
         status: data.status,
         promo_poster,
       });
-      await this.promotionRepo.save(newPromotion);
+      const savedPromotion = await this.promotionRepo.save(newPromotion);
+      return savedPromotion;
     } catch (error) {
       this.logger.error(error);
       throw new Error(`Failed to add promotion`);
@@ -687,10 +689,16 @@ export class PromotionService {
 
   async getPromotionById(promo_id: number) {
     try {
-      return await this.promotionRepo.findOne({
+      const promotion = await this.promotionRepo.findOne({
         where: { promo_id },
         relations: ['creditor', 'tiers', 'tiers.conditions', 'tiers.rewards'],
       });
+      if (!promotion) return null;
+      return {
+        ...promotion,
+        start_date: toThaiDate(promotion.start_date),
+        end_date: toThaiDate(promotion.end_date),
+      };
     } catch {
       throw new Error(`Failed to get promotion by id`);
     }
@@ -1598,8 +1606,8 @@ export class PromotionService {
         manager.create(PromotionEntity, {
           promo_name: source.promo_name,
           creditor: source.creditor ?? undefined,
-          start_date: data.start_date,
-          end_date: data.end_date,
+          start_date: toUtcStart(data.start_date),
+          end_date: toUtcEnd(data.end_date),
           status: false,
         }),
       );

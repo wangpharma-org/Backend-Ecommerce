@@ -11,6 +11,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__atlassian__createJiraIssue",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-jira-issue.py\"",
+            "timeout": 5,
+            "statusMessage": "Logging Jira issue…"
+          }
+        ]
+      }
     ]
   }
 }
