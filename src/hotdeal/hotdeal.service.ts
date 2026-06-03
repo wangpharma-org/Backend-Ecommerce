@@ -1,5 +1,11 @@
 /* eslint-disable prettier/prettier */
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  forwardRef,
+  HttpException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
@@ -20,6 +26,13 @@ export interface HotdealInput {
   pro2_unit: string;
   promo_title?: string;
   promo_body?: string;
+}
+
+interface HotdealProductUsage {
+  id: number;
+  proCode: string;
+  role: 'สินค้าซื้อ' | 'สินค้าแถม';
+  requestedRole: 'สินค้าซื้อ' | 'สินค้าแถม';
 }
 
 @Injectable()
@@ -121,6 +134,83 @@ export class HotdealService {
     if (normalizedUnit === '1') return product.pro_unit1;
     if (normalizedUnit === '2') return product.pro_unit2;
     return product.pro_unit3;
+  }
+
+  private async findHotdealProductUsage(
+    proCode: string,
+    existingRole: 'สินค้าซื้อ' | 'สินค้าแถม',
+    requestedRole: 'สินค้าซื้อ' | 'สินค้าแถม',
+  ): Promise<HotdealProductUsage | null> {
+    const hotdeal = await this.hotdealRepo.findOne({
+      where:
+        existingRole === 'สินค้าซื้อ'
+          ? { product: { pro_code: proCode } }
+          : { product2: { pro_code: proCode } },
+      relations: ['product', 'product2'],
+      select: {
+        id: true,
+        product: {
+          pro_code: true,
+        },
+        product2: {
+          pro_code: true,
+        },
+      },
+    });
+
+    if (!hotdeal) {
+      return null;
+    }
+
+    return {
+      id: hotdeal.id,
+      proCode,
+      role: existingRole,
+      requestedRole,
+    };
+  }
+
+  private async assertProductsAreAvailableForNewHotdeal(
+    datainput: HotdealInput,
+  ): Promise<void> {
+    if (datainput.pro1_code === datainput.pro2_code) {
+      throw new ConflictException(
+        `รหัสสินค้า ${datainput.pro1_code} ซ้ำกันระหว่างสินค้าซื้อและสินค้าแถม`,
+      );
+    }
+
+    const duplicateUsages = (
+      await Promise.all([
+        this.findHotdealProductUsage(
+          datainput.pro1_code,
+          'สินค้าซื้อ',
+          'สินค้าซื้อ',
+        ),
+        this.findHotdealProductUsage(
+          datainput.pro1_code,
+          'สินค้าแถม',
+          'สินค้าซื้อ',
+        ),
+        this.findHotdealProductUsage(
+          datainput.pro2_code,
+          'สินค้าซื้อ',
+          'สินค้าแถม',
+        ),
+      ])
+    ).filter((usage): usage is HotdealProductUsage => usage !== null);
+
+    if (duplicateUsages.length > 0) {
+      const details = duplicateUsages
+        .map(
+          (usage) =>
+            `${usage.proCode} เคยเป็น${usage.role}ในโปรโมชัน ID ${usage.id} จึงไม่สามารถใช้เป็น${usage.requestedRole}`,
+        )
+        .join(', ');
+
+      throw new ConflictException(
+        `ไม่สามารถเพิ่ม Hot Deal ได้ เพราะสินค้าอยู่ในโปรเดิมแล้ว: ${details}`,
+      );
+    }
   }
 
   // ตรวจสอบแล้วว่าใช้ได้
@@ -254,6 +344,7 @@ export class HotdealService {
             datainput.pro2_unit,
           ),
         };
+        await this.assertProductsAreAvailableForNewHotdeal(normalizedInput);
         const existingHotdeal = await this.hotdealRepo.findOne({
           where: {
             product: { pro_code: normalizedInput.pro1_code },
@@ -322,6 +413,9 @@ export class HotdealService {
       return { message: 'hotdeal not found' };
     } catch (error) {
       console.error('Error saving hotdeal:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new Error('Something Error in saveHotdeal');
     }
   }
