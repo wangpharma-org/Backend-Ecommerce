@@ -30,6 +30,7 @@ import {
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
+import * as dayjs from 'dayjs';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -1042,7 +1043,7 @@ export class ShoppingCartService {
     mem_code: string,
     priceOption: string,
   ): Promise<CompanyDayRewardContext | null> {
-    const today = new Date();
+    const today = dayjs().toDate();
     const promoMonth = today.getMonth() + 1;
     const isL16 = await this.isL16Member(mem_code);
 

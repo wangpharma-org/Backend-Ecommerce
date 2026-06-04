@@ -25,10 +25,10 @@ export class PromotionEntity {
   @Column({ length: 255 })
   promo_name!: string;
 
-  @Column()
+  @Column({ type: 'datetime' })
   start_date!: Date;
 
-  @Column()
+  @Column({ type: 'datetime' })
   end_date!: Date;
 
   @Column({ default: false })

@@ -665,7 +665,7 @@ export class PromotionService {
 
   async getAllPromotions() {
     try {
-      return await this.promotionRepo.find({
+      const promotions = await this.promotionRepo.find({
         relations: {
           creditor: true,
         },
@@ -682,6 +682,11 @@ export class PromotionService {
           },
         },
       });
+      return promotions.map((promo) => ({
+        ...promo,
+        start_date: toThaiDate(promo.start_date),
+        end_date: toThaiDate(promo.end_date),
+      }));
     } catch {
       throw new Error(`Failed to get promotions`);
     }
