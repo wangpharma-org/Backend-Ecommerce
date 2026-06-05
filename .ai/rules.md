@@ -18,3 +18,22 @@ this.logger.error('failed to fetch products', err)
 ```
 **Source:** PR#121 @MossOcelot, PR#137 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/121 , /pull/137
 **Added:** 2026-05-19  **Enforce:** lint (ESLint `no-console: error`)
+
+### R-002  ใช้ ADF format เสมอเมื่อสร้างหรือแก้ไข Jira issue description
+**Why:** การส่ง description เป็น markdown string ที่มี `\n` escape ใน JSON parameter ทำให้ Jira render เป็น literal `\n\n` text แทนที่จะเป็น newline จริง (พบใน ECWC-283, ECWC-284)
+**Example:**
+```ts
+// ✗ no — markdown string, \n จะเป็น literal
+{ description: "## หัวข้อ\n\nเนื้อหา", contentFormat: "markdown" }
+
+// ✓ ใช้ ADF JSON object เสมอ
+{
+  description: { version: 1, type: "doc", content: [
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "หัวข้อ" }] },
+    { type: "paragraph", content: [{ type: "text", text: "เนื้อหา" }] }
+  ]},
+  contentFormat: "adf"
+}
+```
+**Source:** ECWC-282 session 2026-05-30
+**Added:** 2026-05-30
