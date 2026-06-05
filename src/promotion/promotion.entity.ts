@@ -13,33 +13,33 @@ import { CreditorEntity } from '../products/creditor.entity';
 @Entity({ name: 'promotion' })
 export class PromotionEntity {
   @PrimaryGeneratedColumn()
-  promo_id: number;
+  promo_id!: number;
 
   @ManyToOne(() => CreditorEntity, (creditor) => creditor.promotions, {
     nullable: true,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'creditor_code', referencedColumnName: 'creditor_code' })
-  creditor: CreditorEntity;
+  creditor!: CreditorEntity;
 
   @Column({ length: 255 })
-  promo_name: string;
+  promo_name!: string;
 
-  @Column()
-  start_date: Date;
+  @Column({ type: 'datetime' })
+  start_date!: Date;
 
-  @Column()
-  end_date: Date;
+  @Column({ type: 'datetime' })
+  end_date!: Date;
 
   @Column({ default: false })
-  status: boolean;
+  status!: boolean;
 
   @Column({ type: 'varchar', nullable: true, default: null, length: 500 })
-  promo_poster: string | null;
+  promo_poster!: string | null;
 
   @DeleteDateColumn({ nullable: true })
-  deleted_at: Date;
+  deleted_at!: Date;
 
   @OneToMany(() => PromotionTierEntity, (tier) => tier.promotion)
-  tiers: PromotionTierEntity[];
+  tiers!: PromotionTierEntity[];
 }

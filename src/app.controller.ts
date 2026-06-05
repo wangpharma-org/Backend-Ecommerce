@@ -1240,12 +1240,47 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('special_deal') specialDeal?: string,
   ) {
     const memberCode = req.user.mem_code;
+    const specialDealFilter =
+      specialDeal === undefined ? undefined : specialDeal === 'true';
+
     return this.hotdealService.getAllHotdealsWithProductDetail(
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
       memberCode,
+      req.user.mem_route,
+      specialDealFilter,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/product-pro/simple-list')
+  async getProductProSimpleList(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.hotdealService.getProductProDeals(
+      limit ? Number(limit) : undefined,
+      offset ? Number(offset) : undefined,
+      req.user.mem_code,
+      req.user.mem_route,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/buy-more-get-1/simple-list')
+  async getBuyMoreGetOneSimpleList(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.hotdealService.getBuyMoreGetOneDeals(
+      limit ? Number(limit) : undefined,
+      offset ? Number(offset) : undefined,
+      req.user.mem_code,
       req.user.mem_route,
     );
   }

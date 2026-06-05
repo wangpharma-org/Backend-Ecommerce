@@ -129,7 +129,7 @@ export class FavoriteService {
           'cart',
           'cart.mem_code = :memCode AND cart.is_reward = false',
         )
-        .leftJoinAndSelect('product.inHotdeals', 'hotdeal')
+        .leftJoinAndSelect('product.hotdeal', 'hotdeal')
         .leftJoinAndSelect('hotdeal.product2', 'hotdealProduct2')
         .setParameter('memCode', mem_code)
         .where('fav.member.mem_code = :mem_code', { mem_code });

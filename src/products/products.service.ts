@@ -890,6 +890,7 @@ export class ProductsService {
           'product.pro_lowest_stock',
           'product.order_quantity',
           'product.sale_amount_day',
+          'product.pro_drugregister',
           'pharma.pro_code',
           'pharma.pp_properties',
           'pharma.pp_properties',

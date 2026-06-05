@@ -21,6 +21,12 @@ import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
 import * as AWS from 'aws-sdk';
+import {
+  getTodayRange,
+  toThaiDate,
+  toUtcStart,
+  toUtcEnd,
+} from 'src/utils/date.util';
 import { Cron } from '@nestjs/schedule';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
@@ -302,11 +308,7 @@ export class PromotionService {
     sort_by?: number;
   }): Promise<PromotionTierWithTransformedConditions | null> {
     try {
-      const now = new Date();
-      const startOfDay = new Date(now);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(now);
-      endOfDay.setHours(23, 59, 59, 999);
+      const { startOfDay, endOfDay } = getTodayRange();
 
       const tier = await this.promotionTierRepo
         .createQueryBuilder('tier')
@@ -417,17 +419,15 @@ export class PromotionService {
     mem_route?: string,
   ): Promise<GetAllTiersResult> {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       const isL16 = await this.isL16Member(mem_code, mem_route);
 
       const poster = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(startOfDay),
-            end_date: MoreThanOrEqual(endOfDay),
+            start_date: LessThanOrEqual(endOfDay),
+            end_date: MoreThanOrEqual(startOfDay),
           },
         },
         relations: {
@@ -454,7 +454,7 @@ export class PromotionService {
       });
 
       if (!poster.length) {
-        this.logger.log("No active promotions found");
+        this.logger.log('No active promotions found');
         return { poster: [], reward: [] };
       }
 
@@ -462,7 +462,7 @@ export class PromotionService {
         .map((p) => p.tier_id)
         .filter((id): id is number => id !== undefined && id !== null);
       if (!tierIds.length) {
-        this.logger.log("No tier IDs found for active promotions");
+        this.logger.log('No tier IDs found for active promotions');
         return { poster, reward: [] };
       }
 
@@ -541,22 +541,20 @@ export class PromotionService {
 
       return { poster, reward: limitedReward };
     } catch (error) {
-      this.logger.error("Error in getAllTiers:", error);
+      this.logger.error('Error in getAllTiers:', error);
       throw new Error(`Failed to get tiers: ${error}`);
     }
   }
 
   async getAllTiersProduct(): Promise<string[]> {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       const tiers = await this.promotionTierRepo.find({
         where: {
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(startOfDay),
-            end_date: MoreThanOrEqual(endOfDay),
+            start_date: LessThanOrEqual(endOfDay),
+            end_date: MoreThanOrEqual(startOfDay),
           },
         },
         relations: {
@@ -621,12 +619,13 @@ export class PromotionService {
         creditor: data.creditor_code
           ? { creditor_code: data.creditor_code }
           : undefined,
-        start_date: data.start_date,
-        end_date: data.end_date,
+        start_date: toUtcStart(data.start_date),
+        end_date: toUtcEnd(data.end_date),
         status: data.status,
         promo_poster,
       });
-      await this.promotionRepo.save(newPromotion);
+      const savedPromotion = await this.promotionRepo.save(newPromotion);
+      return savedPromotion;
     } catch (error) {
       this.logger.error(error);
       throw new Error(`Failed to add promotion`);
@@ -666,7 +665,7 @@ export class PromotionService {
 
   async getAllPromotions() {
     try {
-      return await this.promotionRepo.find({
+      const promotions = await this.promotionRepo.find({
         relations: {
           creditor: true,
         },
@@ -683,6 +682,11 @@ export class PromotionService {
           },
         },
       });
+      return promotions.map((promo) => ({
+        ...promo,
+        start_date: toThaiDate(promo.start_date),
+        end_date: toThaiDate(promo.end_date),
+      }));
     } catch {
       throw new Error(`Failed to get promotions`);
     }
@@ -690,10 +694,16 @@ export class PromotionService {
 
   async getPromotionById(promo_id: number) {
     try {
-      return await this.promotionRepo.findOne({
+      const promotion = await this.promotionRepo.findOne({
         where: { promo_id },
         relations: ['creditor', 'tiers', 'tiers.conditions', 'tiers.rewards'],
       });
+      if (!promotion) return null;
+      return {
+        ...promotion,
+        start_date: toThaiDate(promotion.start_date),
+        end_date: toThaiDate(promotion.end_date),
+      };
     } catch {
       throw new Error(`Failed to get promotion by id`);
     }
@@ -708,7 +718,6 @@ export class PromotionService {
     file: Express.Multer.File;
     is_unit_based?: boolean;
   }) {
-    
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id: data.promo_id },
@@ -1050,7 +1059,7 @@ export class PromotionService {
     promotions: PromotionEntityWithTransformedData[];
   }> {
     try {
-      this.logger.log("Fetching active promotions with all relations");
+      this.logger.log('Fetching active promotions with all relations');
 
       // ดึงข้อมูลพร้อม relations ทั้งหมดในครั้งเดียว
       const promotions = await this.promotionRepo.find({
@@ -1125,11 +1134,11 @@ export class PromotionService {
               ...reward,
               giftProduct: this.transformProductData(reward.giftProduct),
             })) as PromotionRewardWithTransformedProduct[] | undefined,
-          })) as PromotionTierWithTransformedData[] | undefined,
-        })) as PromotionEntityWithTransformedData[],
+          })),
+        })),
       };
     } catch (error) {
-      this.logger.error("Error fetching promotions:", error);
+      this.logger.error('Error fetching promotions:', error);
       throw new Error('Failed to get active promotions');
     }
   }
@@ -1176,9 +1185,7 @@ export class PromotionService {
     mem_code: string,
   ): Promise<TierConditionWithTransformedTier[]> {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       const tierCondition = await this.promotionConditionRepo
         .createQueryBuilder('condition')
         .leftJoinAndSelect('condition.product', 'product')
@@ -1289,7 +1296,7 @@ export class PromotionService {
             units: condition.product
               ? unitsMap[condition.product.pro_code]
               : [],
-          })) as PromotionConditionWithTransformedProduct[] | undefined,
+          })),
           rewards: tc.tier.rewards?.map((reward) => {
             const rewardUnits = reward.giftProduct
               ? unitsMap[reward.giftProduct.pro_code] || []
@@ -1311,23 +1318,21 @@ export class PromotionService {
         },
       })) as TierConditionWithTransformedTier[];
     } catch (error) {
-      this.logger.error("Error in getTierWithProCode:", error);
+      this.logger.error('Error in getTierWithProCode:', error);
       throw new Error('Failed to get tier with product code');
     }
   }
 
   async getTierAllProduct() {
     try {
-      const Today = new Date();
-      const startOfDay = new Date(Today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(Today.setHours(23, 59, 59, 999));
+      const { startOfDay, endOfDay } = getTodayRange();
       return await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
             status: true,
-            start_date: LessThanOrEqual(startOfDay),
-            end_date: MoreThanOrEqual(endOfDay),
+            start_date: LessThanOrEqual(endOfDay),
+            end_date: MoreThanOrEqual(startOfDay),
           },
         },
         relations: {
@@ -1490,7 +1495,7 @@ export class PromotionService {
         url: imgData.Location,
       };
     } catch (error) {
-      this.logger.error("Error updating tier poster:", error);
+      this.logger.error('Error updating tier poster:', error);
       throw new Error(`Failed to update tier poster`);
     }
   }
@@ -1520,7 +1525,7 @@ export class PromotionService {
         (t) => t.tier_id === tier_id,
       )?.min_amount;
 
-      this.logger.debug("editReward data:", data);
+      this.logger.debug('editReward data:', data);
 
       this.logger.debug(
         `Min amount for promotion ${promotion_id} and tier ${tier_id}: ${minAmount}`,
@@ -1606,8 +1611,8 @@ export class PromotionService {
         manager.create(PromotionEntity, {
           promo_name: source.promo_name,
           creditor: source.creditor ?? undefined,
-          start_date: data.start_date,
-          end_date: data.end_date,
+          start_date: toUtcStart(data.start_date),
+          end_date: toUtcEnd(data.end_date),
           status: false,
         }),
       );

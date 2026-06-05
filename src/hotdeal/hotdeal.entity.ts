@@ -14,7 +14,7 @@ export class HotdealEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => ProductEntity, (product) => product.inHotdeals)
+  @OneToOne(() => ProductEntity, (product) => product.hotdeal)
   @JoinColumn({ name: 'pro_code1' })
   product!: ProductEntity;
 
@@ -24,7 +24,7 @@ export class HotdealEntity {
   @Column({ length: 20, nullable: false })
   pro1_unit!: string;
 
-  @ManyToOne(() => ProductEntity, (product) => product.inHotdeals)
+  @ManyToOne(() => ProductEntity)
   @JoinColumn({ name: 'pro_code2' })
   product2!: ProductEntity;
 
@@ -39,6 +39,12 @@ export class HotdealEntity {
 
   @Column({ default: false })
   special_deal!: boolean;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  promo_title!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  promo_body!: string | null;
 
   @OneToOne(() => BannerHotdealEntity, (banner) => banner.hotdeal, {
     cascade: true,
