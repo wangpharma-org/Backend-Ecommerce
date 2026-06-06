@@ -11,6 +11,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
 import { DeleteCartEntity } from './delete-cart.entity';
+import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { DeleteCartEntity } from './delete-cart.entity';
       UserEntity,
       ProductEntity,
       DeleteCartEntity,
+      HotdealEntity,
     ]),
     forwardRef(() => ProductsModule),
     forwardRef(() => HotdealModule),
