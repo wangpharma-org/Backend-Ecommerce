@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserSessionsEntity } from './sessions.entity';
 import { Cron } from '@nestjs/schedule';
+import * as dayjs from 'dayjs';
 
 @Injectable()
 export class SessionsService {
@@ -91,7 +92,7 @@ export class SessionsService {
     memCode: string,
     withinMinutes: number,
   ): Promise<void> {
-    const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000);
+    const cutoff = dayjs().subtract(withinMinutes, 'minute').toDate();
     await this.sessionsRepository
       .createQueryBuilder()
       .update(UserSessionsEntity)
