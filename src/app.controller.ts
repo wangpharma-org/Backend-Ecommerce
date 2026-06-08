@@ -1798,6 +1798,13 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout-recent')
+  async logoutRecentSessions(@Body() data: { mem_code: string }) {
+    await this.sessionsService.logoutRecentUserSessions(data.mem_code);
+    return { message: 'Recently active sessions logged out successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/validate/:session_token')
   async validateSession(@Param('session_token') session_token: string) {
     const isValid = await this.sessionsService.isSessionValid(session_token);
@@ -4121,10 +4128,15 @@ export class AppController {
       throw new Error('You do not have permission to access this resource');
     }
     this.logger.log('Changing user role for mem_code:', mem_code);
-    return await this.usersService.changeUserRole(mem_code, newRole, permission, {
-      mem_code: req.user.mem_code,
-      username: req.user.username,
-    });
+    return await this.usersService.changeUserRole(
+      mem_code,
+      newRole,
+      permission,
+      {
+        mem_code: req.user.mem_code,
+        username: req.user.username,
+      },
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -4172,10 +4184,14 @@ export class AppController {
     if (req.user.role !== 'Admin') {
       throw new Error('You do not have permission to access this resource');
     }
-    return await this.usersService.updateUserFeatures(mem_code, features ?? [], {
-      mem_code: req.user.mem_code,
-      username: req.user.username,
-    });
+    return await this.usersService.updateUserFeatures(
+      mem_code,
+      features ?? [],
+      {
+        mem_code: req.user.mem_code,
+        username: req.user.username,
+      },
+    );
   }
 
   @UseGuards(JwtAuthGuard)
