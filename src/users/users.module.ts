@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from './users.entity';
+import { AdminActionLogEntity } from './admin-action-log.entity';
 import { UsersListner } from './users.listener';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([UserEntity])],
+  imports: [TypeOrmModule.forFeature([UserEntity, AdminActionLogEntity])],
   controllers: [UsersListner],
   providers: [UsersService],
   exports: [UsersService],
