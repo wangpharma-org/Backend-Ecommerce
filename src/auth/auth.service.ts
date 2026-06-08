@@ -9,13 +9,15 @@ import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import * as bcrypt from 'bcrypt';
-import { SALT_ROUNDS } from '../constants/app.constants'; 
+import { SALT_ROUNDS } from '../constants/app.constants';
 import { EmployeesService } from 'src/employees/employees.service';
 
 export interface SigninResponse {
   token: string;
   refresh_token: string;
 }
+
+export const ExpireSessionResponse = 15;
 
 @Injectable()
 export class AuthService {
@@ -224,7 +226,10 @@ export class AuthService {
             },
           );
         } else {
-          const hashedPassword = await bcrypt.hash(user.mem_password, SALT_ROUNDS);
+          const hashedPassword = await bcrypt.hash(
+            user.mem_password,
+            SALT_ROUNDS,
+          );
           const newUser = this.userRepo.create({
             mem_code: user.mem_code,
             mem_nameSite: user.mem_nameSite,
@@ -253,7 +258,10 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    const passwordMatch = await bcrypt.compare(data.password, user.mem_password);
+    const passwordMatch = await bcrypt.compare(
+      data.password,
+      user.mem_password,
+    );
     if (user && passwordMatch === false) {
       throw new UnauthorizedException('Invalid password');
     }
@@ -282,7 +290,7 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
     };
     const access_token = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
+      expiresIn: `${ExpireSessionResponse}m`,
     });
     const refreshTokenExpiresIn = data.source === 'mobile_app' ? '7d' : '18h';
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
@@ -298,7 +306,8 @@ export class AuthService {
   }
 
   async signinWithLineUserId(lineUserId: string): Promise<SigninResponse> {
-    const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
+    const notificationUrl =
+      process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
 
     let memCode: string;
     try {
@@ -342,18 +351,24 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
     };
 
-    const access_token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const access_token = await this.jwtService.signAsync(payload, {
+      expiresIn: `${ExpireSessionResponse}m`,
+    });
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
       secret: process.env.ACCESS_TOKEN_SECRET,
       expiresIn: '18h',
     });
 
-    await this.refreshTokenRepo.save({ mem_code: user.mem_code, refresh_token });
+    await this.refreshTokenRepo.save({
+      mem_code: user.mem_code,
+      refresh_token,
+    });
     return { token: access_token, refresh_token };
   }
 
   async signinWithLine(lineAccessToken: string): Promise<SigninResponse> {
-    const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
+    const notificationUrl =
+      process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
 
     let memCode: string;
     try {
@@ -365,7 +380,9 @@ export class AuthService {
       );
       memCode = res.data.mem_code;
     } catch {
-      throw new UnauthorizedException('LINE token ไม่ถูกต้องหรือยังไม่ได้ผูกบัญชี');
+      throw new UnauthorizedException(
+        'LINE token ไม่ถูกต้องหรือยังไม่ได้ผูกบัญชี',
+      );
     }
 
     const user = await this.userRepo.findOne({ where: { mem_code: memCode } });
@@ -397,13 +414,18 @@ export class AuthService {
       mem_code: user.mem_code ?? '',
     };
 
-    const access_token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const access_token = await this.jwtService.signAsync(payload, {
+      expiresIn: `${ExpireSessionResponse}m`,
+    });
     const refresh_token = await this.jwtService.signAsync(payload_reflesh, {
       secret: process.env.ACCESS_TOKEN_SECRET,
       expiresIn: '18h',
     });
 
-    await this.refreshTokenRepo.save({ mem_code: user.mem_code, refresh_token });
+    await this.refreshTokenRepo.save({
+      mem_code: user.mem_code,
+      refresh_token,
+    });
     return { token: access_token, refresh_token };
   }
 
@@ -479,7 +501,9 @@ export class AuthService {
 
         const refreshTokenExpiresIn = source === 'mobile_app' ? '7d' : '18h';
         const [access_token, new_refresh_token] = await Promise.all([
-          this.jwtService.signAsync(tokenPayload, { expiresIn: '15m' }),
+          this.jwtService.signAsync(tokenPayload, {
+            expiresIn: `${ExpireSessionResponse}m`,
+          }),
           this.jwtService.signAsync(payload_reflesh, {
             secret: process.env.ACCESS_TOKEN_SECRET,
             expiresIn: refreshTokenExpiresIn,
@@ -507,9 +531,9 @@ export class AuthService {
 
     try {
       // Get users within transaction แทนที่จะใช้ this.userRepo.find
-      const users = await queryRunner.manager.find(UserEntity, {
+      const users = (await queryRunner.manager.find(UserEntity, {
         select: { mem_code: true, mem_password: true },
-      }) as Pick<UserEntity, 'mem_code' | 'mem_password'>[];
+      })) as Pick<UserEntity, 'mem_code' | 'mem_password'>[];
 
       let hashCount = 0;
       let skipCount = 0;
@@ -522,31 +546,39 @@ export class AuthService {
           skipCount++;
           continue;
         }
-        
+
         try {
           const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-          console.log(`Hash length: ${hashedPassword.length} for user: ${user.mem_code}`);
-          
+          console.log(
+            `Hash length: ${hashedPassword.length} for user: ${user.mem_code}`,
+          );
+
           //Update within transaction แทนที่จะใช้ this.userRepo.update
-          await queryRunner.manager.update(UserEntity, 
+          await queryRunner.manager.update(
+            UserEntity,
             { mem_code: user.mem_code },
-            { mem_password: hashedPassword }
+            { mem_password: hashedPassword },
           );
           hashCount++;
         } catch (updateError) {
           //เก็บ error แทนที่จะ throw ทันทีเพื่อrollback ได้
-          errors.push(`Error updating user ${user.mem_code}: ${updateError.message}`);
-          console.error(`Error updating user ${user.mem_code}:`, updateError.message);
+          errors.push(
+            `Error updating user ${user.mem_code}: ${updateError.message}`,
+          );
+          console.error(
+            `Error updating user ${user.mem_code}:`,
+            updateError.message,
+          );
         }
       }
 
-      //ตรวจสอบ errors และ rollback ถ้ามี 
+      //ตรวจสอบ errors และ rollback ถ้ามี
       if (errors.length > 0) {
         await queryRunner.rollbackTransaction(); //rollback
         return {
           success: false,
           message: 'Hash password failed - transaction rolled back',
-          errors: errors
+          errors: errors,
         };
       }
 
@@ -558,18 +590,17 @@ export class AuthService {
         message: `Hashed ${hashCount} passwords, skipped ${skipCount}`,
         total: users.length,
         hashed: hashCount,
-        skipped: skipCount
+        skipped: skipCount,
       };
-
     } catch (error) {
       //Rollback เมื่อเกิด error
       await queryRunner.rollbackTransaction();
       console.error('Transaction failed:', error);
-      
+
       return {
         success: false,
         message: 'Hash password failed',
-        error: error.message
+        error: error.message,
       };
     } finally {
       //ปลดปล่อย connection เสมอ กัน memory leak
