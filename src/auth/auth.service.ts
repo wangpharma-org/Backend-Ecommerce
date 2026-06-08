@@ -273,6 +273,7 @@ export class AuthService {
       mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
       role: user.role,
+      admin_features: user.admin_features ?? null,
     };
 
     const payload_reflesh = {
@@ -333,6 +334,7 @@ export class AuthService {
       mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
       role: user.role,
+      admin_features: user.admin_features ?? null,
     };
     const payload_reflesh = {
       username: user.mem_username,
@@ -387,6 +389,7 @@ export class AuthService {
       mem_route: user.mem_route ?? '',
       permission: user.permision_admin,
       role: user.role,
+      admin_features: user.admin_features ?? null,
     };
     const payload_reflesh = {
       username: user.mem_username,
@@ -465,6 +468,7 @@ export class AuthService {
           mem_route: user.mem_route ?? '',
           permission: user.permision_admin,
           role: user.role,
+          admin_features: user.admin_features ?? null,
         };
 
         const payload_reflesh = {

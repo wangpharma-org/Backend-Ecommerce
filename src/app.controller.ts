@@ -3,6 +3,7 @@ import {
   BadGatewayException,
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   ForbiddenException,
   Get,
@@ -10,6 +11,7 @@ import {
   HttpStatus,
   Ip,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Put,
@@ -106,6 +108,7 @@ export interface JwtPayload {
   mem_route?: string;
   permission?: boolean;
   role?: string;
+  admin_features?: string[] | null;
 }
 
 @Controller()
@@ -4106,11 +4109,86 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/change-role/:mem_code')
   async changeUserRole(
+    @Req() req: Request & { user: JwtPayload },
     @Param('mem_code') mem_code: string,
     @Body('newRole') newRole: 'User' | 'Admin' | 'Sales',
+    @Body('permission') permission?: boolean,
   ) {
+    // Granting roles (incl. Admin) is a privilege-escalation-capable action —
+    // require the actor to actually BE an Admin, not merely have back-office
+    // `permission` (a Sales account can carry that flag too).
+    if (req.user.role !== 'Admin') {
+      throw new Error('You do not have permission to access this resource');
+    }
     this.logger.log('Changing user role for mem_code:', mem_code);
-    return await this.usersService.changeUserRole(mem_code, newRole);
+    return await this.usersService.changeUserRole(mem_code, newRole, permission, {
+      mem_code: req.user.mem_code,
+      username: req.user.username,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/user/staff-list')
+  async getStaffUsers(@Req() req: Request & { user: JwtPayload }) {
+    // ECWC-309: viewing/managing staff role assignments is Admin-only — `permission`
+    // alone is not enough (Sales accounts can also carry permission=true).
+    if (req.user.role !== 'Admin') {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.usersService.getStaffUsers();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/user/lookup/:mem_code')
+  async lookupUserForRoleManage(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    if (req.user.role !== 'Admin') {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.usersService.findUserForRoleManageByMemCode(mem_code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/user/search')
+  async searchUsersForRoleManage(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('q') query?: string,
+  ) {
+    if (req.user.role !== 'Admin') {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.usersService.searchUsersForRoleManage(query ?? '');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('/ecom/admin/user/update-features')
+  async updateUserFeatures(
+    @Req() req: Request & { user: JwtPayload },
+    @Body('mem_code') mem_code: string,
+    @Body('features') features: string[],
+  ) {
+    if (req.user.role !== 'Admin') {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.usersService.updateUserFeatures(mem_code, features ?? [], {
+      mem_code: req.user.mem_code,
+      username: req.user.username,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/user/role-logs')
+  async getAdminActionLogs(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    if (req.user.role !== 'Admin') {
+      throw new Error('You do not have permission to access this resource');
+    }
+    return await this.usersService.getAdminActionLogs(page, limit);
   }
 
   @UseGuards(JwtAuthGuard)
