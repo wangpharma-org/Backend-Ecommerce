@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserSessionsEntity } from './sessions.entity';
 import { Cron } from '@nestjs/schedule';
+import * as dayjs from 'dayjs';
+import { ExpireSessionResponse } from '../auth/auth.service';
 
 @Injectable()
 export class SessionsService {
@@ -81,6 +83,22 @@ export class SessionsService {
         logout_at: new Date(),
       },
     );
+  }
+
+  // Logs out only sessions that are still actively refreshing (last_activity
+  // within `withinMinutes`), instead of every session for the user. The
+  // client refreshes its token every 15 minutes, so idle sessions older than
+  // that will pick up the new role/permissions on their own next refresh.
+  async logoutRecentUserSessions(memCode: string): Promise<void> {
+    const cutoff = dayjs().subtract(ExpireSessionResponse, 'minute').toDate();
+    await this.sessionsRepository
+      .createQueryBuilder()
+      .update(UserSessionsEntity)
+      .set({ is_active: false, logout_at: new Date() })
+      .where('mem_code = :memCode', { memCode })
+      .andWhere('is_active = :isActive', { isActive: true })
+      .andWhere('last_activity >= :cutoff', { cutoff })
+      .execute();
   }
 
   @Cron('0 0 * * *')
