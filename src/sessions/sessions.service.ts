@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { UserSessionsEntity } from './sessions.entity';
 import { Cron } from '@nestjs/schedule';
 import * as dayjs from 'dayjs';
+import { ExpireSessionResponse } from '../auth/auth.service';
 
 @Injectable()
 export class SessionsService {
@@ -88,11 +89,8 @@ export class SessionsService {
   // within `withinMinutes`), instead of every session for the user. The
   // client refreshes its token every 15 minutes, so idle sessions older than
   // that will pick up the new role/permissions on their own next refresh.
-  async logoutRecentUserSessions(
-    memCode: string,
-    withinMinutes: number,
-  ): Promise<void> {
-    const cutoff = dayjs().subtract(withinMinutes, 'minute').toDate();
+  async logoutRecentUserSessions(memCode: string): Promise<void> {
+    const cutoff = dayjs().subtract(ExpireSessionResponse, 'minute').toDate();
     await this.sessionsRepository
       .createQueryBuilder()
       .update(UserSessionsEntity)
