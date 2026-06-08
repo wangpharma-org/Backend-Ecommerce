@@ -215,4 +215,10 @@ export class UserEntity {
 
   @Column({ type: 'enum', enum: ['User', 'Admin', 'Sales'], default: 'User' })
   role: 'User' | 'Admin' | 'Sales' = 'User';
+
+  // ECWC-309: per-user list of admin-menu feature keys (see AdminManage's
+  // MenuItem.feature on the frontend) the user is allowed to access,
+  // beyond the coarse role/permission gate. Admins bypass this list.
+  @Column({ type: 'simple-json', nullable: true, default: null })
+  admin_features!: string[] | null;
 }

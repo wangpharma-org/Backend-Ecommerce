@@ -206,6 +206,18 @@ interface Hotdeal {
   special_deal: boolean;
 }
 
+interface DesiredHotdealFreebie {
+  pro_code: string;
+  hotdeal_promain: string;
+  spc_unit_enum: '1' | '2' | '3';
+  amount: number;
+}
+
+interface HotdealSyncContext {
+  cartRows: ShoppingCartEntity[];
+  hotdeals: HotdealEntity[];
+}
+
 // Define a DTO for the return type
 export interface CartSummary {
   cart: any[];
@@ -281,6 +293,8 @@ export class ShoppingCartService {
     private readonly hotdealService: HotdealService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    @InjectRepository(HotdealEntity)
+    private readonly hotdealRepo: Repository<HotdealEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     @InjectRepository(DeleteCartEntity)
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
@@ -1932,21 +1946,302 @@ export class ShoppingCartService {
   }
 
   private async syncHotdealFreebiesForCart(mem_code: string): Promise<void> {
-    const mainCartRows = await this.shoppingCartRepo.find({
+    const [syncContext, existingFreebies] = await Promise.all([
+      this.getHotdealSyncContext(mem_code),
+      this.getExistingHotdealFreebies(mem_code),
+    ]);
+
+    const desiredFreebies = this.calculateDesiredHotdealFreebies(syncContext);
+
+    await this.applyHotdealFreebieSync(
+      mem_code,
+      desiredFreebies,
+      existingFreebies,
+    );
+  }
+
+  private async getHotdealSyncContext(
+    mem_code: string,
+  ): Promise<HotdealSyncContext> {
+    const cartRows = await this.shoppingCartRepo.find({
       where: {
         mem_code,
         hotdeal_free: false,
+        spc_checked: true,
       },
-      select: {
-        pro_code: true,
+      relations: {
+        product: {
+          units: true,
+        },
       },
     });
 
-    const mainProCodes = [...new Set(mainCartRows.map((row) => row.pro_code))];
-
-    for (const proCode of mainProCodes) {
-      await this.checkHotdealByProCode(mem_code, proCode);
+    const mainProCodes = [...new Set(cartRows.map((row) => row.pro_code))];
+    if (mainProCodes.length === 0) {
+      return { cartRows, hotdeals: [] };
     }
+
+    const hotdeals = await this.hotdealRepo.find({
+      where: {
+        product: {
+          pro_code: In(mainProCodes),
+        },
+      },
+      relations: {
+        product: {
+          units: true,
+        },
+        product2: {
+          units: true,
+        },
+      },
+      order: {
+        pro1_amount: 'ASC',
+        id: 'ASC',
+      },
+    });
+
+    return { cartRows, hotdeals };
+  }
+
+  private async getExistingHotdealFreebies(
+    mem_code: string,
+  ): Promise<ShoppingCartEntity[]> {
+    return this.shoppingCartRepo.find({
+      where: {
+        mem_code,
+        hotdeal_free: true,
+      },
+      select: {
+        spc_id: true,
+        pro_code: true,
+        spc_amount: true,
+        spc_unit_enum: true,
+        hotdeal_promain: true,
+      },
+    });
+  }
+
+  private calculateDesiredHotdealFreebies(
+    syncContext: HotdealSyncContext,
+  ): Map<string, DesiredHotdealFreebie> {
+    const cartTotalsByMain = new Map<string, number>();
+    for (const row of syncContext.cartRows) {
+      if (!row.product) continue;
+
+      const cartUnit = this.findProductUnit(row.product, row.spc_unit_enum);
+      if (!cartUnit) continue;
+
+      cartTotalsByMain.set(
+        row.pro_code,
+        (cartTotalsByMain.get(row.pro_code) ?? 0) +
+          Number(row.spc_amount) * Number(cartUnit.ratio),
+      );
+    }
+
+    const hotdealsByMain = new Map<string, HotdealEntity[]>();
+    for (const hotdeal of syncContext.hotdeals) {
+      const mainProCode = hotdeal.product?.pro_code;
+      if (!mainProCode) continue;
+
+      const existing = hotdealsByMain.get(mainProCode) ?? [];
+      existing.push(hotdeal);
+      hotdealsByMain.set(mainProCode, existing);
+    }
+
+    const desiredFreebies = new Map<string, DesiredHotdealFreebie>();
+    for (const [proCode, productHotdeals] of hotdealsByMain) {
+      const totalCartSmallest = cartTotalsByMain.get(proCode) ?? 0;
+      if (totalCartSmallest <= 0) continue;
+
+      const minPoint = Math.min(
+        ...productHotdeals.map((hotdeal) => Number(hotdeal.pro1_amount)),
+      );
+      const bestHotdeals = productHotdeals.filter(
+        (hotdeal) => Number(hotdeal.pro1_amount) === minPoint,
+      );
+      let totalCartInSmallest = totalCartSmallest;
+
+      for (const hotdeal of bestHotdeals) {
+        if (
+          !hotdeal.product ||
+          !hotdeal.pro1_amount ||
+          !hotdeal.pro2_amount ||
+          !hotdeal.product2?.pro_code
+        ) {
+          continue;
+        }
+
+        const requiredUnit = this.findProductUnit(
+          hotdeal.product,
+          hotdeal.pro1_unit,
+        );
+        const freebieUnit = this.findProductUnit(
+          hotdeal.product2,
+          hotdeal.pro2_unit,
+        );
+        if (!requiredUnit || !freebieUnit) continue;
+
+        const hotdealRequiredInSmallest =
+          Number(hotdeal.pro1_amount) * Number(requiredUnit.ratio);
+        if (hotdealRequiredInSmallest <= 0) continue;
+
+        const totalFreebies = Math.floor(
+          totalCartInSmallest / hotdealRequiredInSmallest,
+        );
+        if (totalFreebies <= 0) {
+          continue;
+        }
+
+        const freebieUnitEnum = this.normalizeHotdealUnitLevel(
+          freebieUnit.level,
+        );
+        if (!freebieUnitEnum) {
+          this.logger.warn(
+            `Skipping hotdeal freebie ${hotdeal.product2.pro_code}: invalid unit level ${freebieUnit.level}`,
+          );
+          continue;
+        }
+
+        const quantity = totalFreebies * Number(hotdeal.pro2_amount);
+        const key = this.buildHotdealFreebieKey(
+          proCode,
+          hotdeal.product2.pro_code,
+          freebieUnitEnum,
+        );
+        const existing = desiredFreebies.get(key);
+        if (existing) {
+          existing.amount += quantity;
+        } else {
+          desiredFreebies.set(key, {
+            pro_code: hotdeal.product2.pro_code,
+            hotdeal_promain: proCode,
+            spc_unit_enum: freebieUnitEnum,
+            amount: quantity,
+          });
+        }
+
+        totalCartInSmallest -= totalFreebies * hotdealRequiredInSmallest;
+      }
+    }
+
+    return desiredFreebies;
+  }
+
+  private findProductUnit(
+    product: ProductEntity,
+    unit: string | number | null | undefined,
+  ): ProductUnitEntity | undefined {
+    if (unit === null || unit === undefined || unit === '') return undefined;
+
+    const unitValue = String(unit);
+    return product.units?.find(
+      (productUnit) =>
+        String(productUnit.level) === unitValue ||
+        productUnit.unit_name === unitValue,
+    );
+  }
+
+  private async applyHotdealFreebieSync(
+    mem_code: string,
+    desiredFreebies: Map<string, DesiredHotdealFreebie>,
+    freebieRows: ShoppingCartEntity[],
+  ): Promise<void> {
+    const existingFreebieMap = new Map<string, ShoppingCartEntity>();
+    const duplicateFreebies: ShoppingCartEntity[] = [];
+    for (const freebie of freebieRows) {
+      if (!freebie.hotdeal_promain || !freebie.spc_unit_enum) {
+        duplicateFreebies.push(freebie);
+        continue;
+      }
+
+      const key = this.buildHotdealFreebieKey(
+        freebie.hotdeal_promain,
+        freebie.pro_code,
+        freebie.spc_unit_enum,
+      );
+      if (existingFreebieMap.has(key)) {
+        duplicateFreebies.push(freebie);
+      } else {
+        existingFreebieMap.set(key, freebie);
+      }
+    }
+
+    const freebiesToRemove = [
+      ...duplicateFreebies,
+      ...freebieRows.filter((freebie) => {
+        if (!freebie.hotdeal_promain || !freebie.spc_unit_enum) return false;
+        const key = this.buildHotdealFreebieKey(
+          freebie.hotdeal_promain,
+          freebie.pro_code,
+          freebie.spc_unit_enum,
+        );
+        return !desiredFreebies.has(key);
+      }),
+    ];
+    if (freebiesToRemove.length > 0) {
+      await this.deleteCartRowsById(freebiesToRemove);
+    }
+
+    const updateOps: Promise<unknown>[] = [];
+    const freebiesToCreate: Partial<ShoppingCartEntity>[] = [];
+    for (const [key, desired] of desiredFreebies) {
+      const existing = existingFreebieMap.get(key);
+      if (existing) {
+        if (Number(existing.spc_amount) !== desired.amount) {
+          updateOps.push(
+            this.shoppingCartRepo.update(
+              { spc_id: existing.spc_id },
+              {
+                spc_amount: desired.amount,
+                spc_datetime: new Date(),
+              },
+            ),
+          );
+        }
+      } else {
+        freebiesToCreate.push({
+          pro_code: desired.pro_code,
+          mem_code,
+          spc_unit_enum: desired.spc_unit_enum,
+          spc_amount: desired.amount,
+          hotdeal_free: true,
+          hotdeal_promain: desired.hotdeal_promain,
+          spc_datetime: new Date(),
+        });
+      }
+    }
+
+    if (updateOps.length > 0) {
+      await Promise.all(updateOps);
+    }
+    if (freebiesToCreate.length > 0) {
+      await this.shoppingCartRepo.save(freebiesToCreate);
+    }
+  }
+
+  private buildHotdealFreebieKey(
+    hotdealPromain: string,
+    proCode: string,
+    unitEnum: '1' | '2' | '3',
+  ): string {
+    return `${hotdealPromain}::${proCode}::${unitEnum}`;
+  }
+
+  private async deleteCartRowsById(rows: ShoppingCartEntity[]): Promise<void> {
+    const ids = [...new Set(rows.map((row) => row.spc_id))];
+    if (ids.length === 0) return;
+    await this.shoppingCartRepo.delete({ spc_id: In(ids) });
+  }
+
+  private normalizeHotdealUnitLevel(
+    unitLevel: string | number | null | undefined,
+  ): '1' | '2' | '3' | null {
+    const level = Number(unitLevel);
+    if (level === 1 || level === 2 || level === 3) {
+      return String(level) as '1' | '2' | '3';
+    }
+    return null;
   }
 
   async removeAllCarthotdeal(pro_code: string): Promise<string> {
