@@ -83,6 +83,25 @@ export class SessionsService {
     );
   }
 
+  // Logs out only sessions that are still actively refreshing (last_activity
+  // within `withinMinutes`), instead of every session for the user. The
+  // client refreshes its token every 15 minutes, so idle sessions older than
+  // that will pick up the new role/permissions on their own next refresh.
+  async logoutRecentUserSessions(
+    memCode: string,
+    withinMinutes: number,
+  ): Promise<void> {
+    const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000);
+    await this.sessionsRepository
+      .createQueryBuilder()
+      .update(UserSessionsEntity)
+      .set({ is_active: false, logout_at: new Date() })
+      .where('mem_code = :memCode', { memCode })
+      .andWhere('is_active = :isActive', { isActive: true })
+      .andWhere('last_activity >= :cutoff', { cutoff })
+      .execute();
+  }
+
   @Cron('0 0 * * *')
   async cleanupInactiveSessions(daysOld: number = 30): Promise<void> {
     const cutoffDate = new Date();

@@ -1798,6 +1798,16 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/session/logout-recent')
+  async logoutRecentSessions(
+    @Body() data: { mem_code: string; minutes?: number },
+  ) {
+    const minutes = data.minutes ?? 15;
+    await this.sessionsService.logoutRecentUserSessions(data.mem_code, minutes);
+    return { message: 'Recently active sessions logged out successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/validate/:session_token')
   async validateSession(@Param('session_token') session_token: string) {
     const isValid = await this.sessionsService.isSessionValid(session_token);
