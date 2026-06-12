@@ -43,6 +43,7 @@ import { ProductReturnModule } from './product-return/product-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
+import { SearchCartTrackingModule } from './search-cart-tracking/search-cart-tracking.module';
 import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
 import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
@@ -118,6 +119,7 @@ import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,
+    SearchCartTrackingModule,
     LineOaMonitorModule,
     ElasticsearchModule,
     HappyHourModule,
