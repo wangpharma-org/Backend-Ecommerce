@@ -1245,7 +1245,12 @@ export class ProductsService {
         ])
         .getMany();
 
-      return { products, totalCount };
+      const productsWithUnits: ProductEntity[] = [];
+      for (const product of products) {
+        productsWithUnits.push(await this.transformProductWithUnits(product));
+      }
+
+      return { products: productsWithUnits, totalCount };
     } catch (error) {
       this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
