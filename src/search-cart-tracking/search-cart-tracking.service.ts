@@ -9,6 +9,7 @@ export interface SearchTrackingEvent {
   mem_code: string;
   search_query: string;
   result_count: number;
+  result_pro_codes: string[];
   created_at: string;
 }
 
@@ -16,6 +17,7 @@ export interface AddToCartTrackingEvent {
   event: 'add_to_cart';
   mem_code: string;
   pro_code: string;
+  pro_name?: string;
   pro_unit: string;
   amount: number;
   source?: string;
@@ -41,13 +43,18 @@ export class SearchCartTrackingService {
 
   emitSearchEvent(
     memCode: string,
-    payload: { search_query: string; result_count: number },
+    payload: {
+      search_query: string;
+      result_count: number;
+      result_pro_codes: string[];
+    },
   ) {
     const eventData: SearchTrackingEvent = {
       event: 'search',
       mem_code: memCode,
       search_query: payload.search_query,
       result_count: payload.result_count,
+      result_pro_codes: payload.result_pro_codes,
       created_at: new Date().toISOString(),
     };
     setTimeout(() => void this.safeEmitEvent(eventData), 0);
@@ -57,6 +64,7 @@ export class SearchCartTrackingService {
     memCode: string,
     payload: {
       pro_code: string;
+      pro_name?: string;
       pro_unit: string;
       amount: number;
       source?: string;
@@ -67,6 +75,7 @@ export class SearchCartTrackingService {
       event: 'add_to_cart',
       mem_code: memCode,
       pro_code: payload.pro_code,
+      pro_name: payload.pro_name,
       pro_unit: payload.pro_unit,
       amount: payload.amount,
       source: payload.source,

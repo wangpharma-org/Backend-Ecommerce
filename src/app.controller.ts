@@ -453,6 +453,7 @@ export class AppController {
     this.searchCartTrackingService.emitSearchEvent(mem_code, {
       search_query: data.keyword,
       result_count: result.totalCount,
+      result_pro_codes: result.products.map((product) => product.pro_code),
     });
     return result;
   }
@@ -646,8 +647,10 @@ export class AppController {
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
+    const addedProduct = cart.find((item) => item.pro_code === data.pro_code);
     this.searchCartTrackingService.emitAddToCartEvent(data.mem_code, {
       pro_code: data.pro_code,
+      pro_name: addedProduct?.pro_name,
       pro_unit: data.pro_unit,
       amount: data.amount,
       source: data.source,

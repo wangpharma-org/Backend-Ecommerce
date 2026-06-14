@@ -43,6 +43,7 @@ describe('SearchCartTrackingService', () => {
       service.emitSearchEvent('MEM001', {
         search_query: 'พารา',
         result_count: 5,
+        result_pro_codes: ['P001', 'P002'],
       });
       await jest.advanceTimersByTimeAsync(0);
 
@@ -56,6 +57,7 @@ describe('SearchCartTrackingService', () => {
           mem_code: 'MEM001',
           search_query: 'พารา',
           result_count: 5,
+          result_pro_codes: ['P001', 'P002'],
         }),
       );
     });
@@ -66,6 +68,7 @@ describe('SearchCartTrackingService', () => {
       service.emitSearchEvent('MEM001', {
         search_query: 'zzznotfound123',
         result_count: 0,
+        result_pro_codes: [],
       });
       await jest.advanceTimersByTimeAsync(0);
 
@@ -75,6 +78,7 @@ describe('SearchCartTrackingService', () => {
           event: 'search',
           search_query: 'zzznotfound123',
           result_count: 0,
+          result_pro_codes: [],
         }),
       );
     });
@@ -86,6 +90,7 @@ describe('SearchCartTrackingService', () => {
       service.emitSearchEvent('MEM001', {
         search_query: 'พารา',
         result_count: 5,
+        result_pro_codes: ['P001'],
       });
       await jest.advanceTimersByTimeAsync(0);
 
@@ -99,6 +104,7 @@ describe('SearchCartTrackingService', () => {
 
       service.emitAddToCartEvent('MEM001', {
         pro_code: 'P001',
+        pro_name: 'พาราเซตามอล',
         pro_unit: 'ขวด',
         amount: 2,
         source: 'search',
@@ -112,6 +118,7 @@ describe('SearchCartTrackingService', () => {
           event: 'add_to_cart',
           mem_code: 'MEM001',
           pro_code: 'P001',
+          pro_name: 'พาราเซตามอล',
           pro_unit: 'ขวด',
           amount: 2,
           source: 'search',
@@ -145,6 +152,7 @@ describe('SearchCartTrackingService', () => {
         service.emitSearchEvent('MEM001', {
           search_query: 'พารา',
           result_count: 1,
+          result_pro_codes: ['P001'],
         }),
       ).not.toThrow();
       await jest.advanceTimersByTimeAsync(0);
@@ -161,6 +169,7 @@ describe('SearchCartTrackingService', () => {
       service.emitSearchEvent('MEM001', {
         search_query: 'พารา',
         result_count: 1,
+        result_pro_codes: ['P001'],
       });
 
       // initial attempt + 3 retries with 2s/4s/8s backoff
@@ -176,6 +185,7 @@ describe('SearchCartTrackingService', () => {
       service.emitSearchEvent('MEM001', {
         search_query: 'ฟ้าทะลายโจร',
         result_count: 2,
+        result_pro_codes: ['P002'],
       });
       await jest.advanceTimersByTimeAsync(0);
 
