@@ -1,6 +1,6 @@
 {
   "repo": "wangpharma-org/Backend-Ecommerce",
-  "last_run": "2026-05-19",
+  "last_run": "2026-06-15",
   "approvers": [
     "62theories"
   ],
@@ -12,14 +12,19 @@
       "status": "proposed",
       "source_prs": [
         121,
-        137
+        137,
+        157,
+        178
       ],
       "reviewers": [
-        "MossOcelot"
+        "MossOcelot",
+        "62theories",
+        "Sasit-Nine"
       ],
+      "origin": "human",
       "confidence": "high",
       "first_seen": "2026-05-19",
-      "last_seen": "2026-05-19",
+      "last_seen": "2026-05-25",
       "approved_by": null,
       "approved_at": null,
       "promoted_from": "preference"
@@ -86,9 +91,46 @@
       "reviewers": [
         "MossOcelot"
       ],
+      "origin": "human",
       "confidence": "low",
       "first_seen": "2026-05-19",
       "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "Q-002",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "source_prs": [
+        154
+      ],
+      "reviewers": [
+        "MossOcelot"
+      ],
+      "origin": "human",
+      "confidence": "low",
+      "first_seen": "2026-06-15",
+      "last_seen": "2026-06-15",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "Q-003",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "source_prs": [
+        139
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "origin": "human",
+      "confidence": "low",
+      "first_seen": "2026-06-15",
+      "last_seen": "2026-06-15",
       "approved_by": null,
       "approved_at": null
     }
