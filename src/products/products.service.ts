@@ -666,6 +666,7 @@ export class ProductsService {
       pro_ratio1?: number;
       pro_ratio2?: number;
       pro_ratio3?: number;
+      creditor_code?: string | null;
     },
   ) {
     try {
@@ -676,6 +677,7 @@ export class ProductsService {
         pro_ratio1,
         pro_ratio2,
         pro_ratio3,
+        creditor_code,
         ...productData
       } = product;
 
@@ -684,6 +686,10 @@ export class ProductsService {
         pro_keysearch: Array.isArray(productData.pro_keysearch)
           ? (productData.pro_keysearch as string[]).join(',')
           : productData.pro_keysearch,
+        // ผูก creditor ผ่าน FK (creditor_code) — creditor มาก่อน/หลังก็ join ได้ตอน query
+        creditor: creditor_code
+          ? ({ creditor_code } as CreditorEntity)
+          : null,
       });
       await this.productRepo.save(newProduct);
 
@@ -740,6 +746,7 @@ export class ProductsService {
       pro_ratio1?: number;
       pro_ratio2?: number;
       pro_ratio3?: number;
+      creditor_code?: string | null;
     },
   ) {
     try {
@@ -750,6 +757,7 @@ export class ProductsService {
         pro_ratio1,
         pro_ratio2,
         pro_ratio3,
+        creditor_code,
         ...productData
       } = product;
 
@@ -760,6 +768,12 @@ export class ProductsService {
           pro_keysearch: Array.isArray(productData.pro_keysearch)
             ? (productData.pro_keysearch as string[]).join(',')
             : productData.pro_keysearch,
+          // อัปเดต creditor link เฉพาะเมื่อ payload ส่ง creditor_code มา
+          ...(creditor_code !== undefined && {
+            creditor: creditor_code
+              ? ({ creditor_code } as CreditorEntity)
+              : null,
+          }),
         },
       );
 

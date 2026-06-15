@@ -7,6 +7,8 @@ import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ProductListner } from './product.listener';
 import { CreditorEntity } from './creditor.entity';
+import { CreditorService } from './creditor.service';
+import { CreditorListener } from './creditor.listener';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendModule } from 'src/backend/backend.module';
 import { ImagedebugModule } from 'src/imagedebug/imagedebug.module';
@@ -34,8 +36,8 @@ import { ProductUnitEntity } from './product-unit.entity';
     ElasticsearchModule,
     forwardRef(() => ShoppingCartModule),
   ],
-  providers: [ProductsService],
-  controllers: [ProductListner],
+  providers: [ProductsService, CreditorService],
+  controllers: [ProductListner, CreditorListener],
   exports: [ProductsService],
 })
 export class ProductsModule {}
