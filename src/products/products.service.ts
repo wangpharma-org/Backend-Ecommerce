@@ -1965,6 +1965,97 @@ export class ProductsService {
     }
   }
 
+  async syncAllProductsToElastic(): Promise<{
+    total: number;
+    created: number;
+    updated: number;
+    noop: number;
+    errors: number;
+  }> {
+    const BATCH_SIZE = 500;
+    let offset = 0;
+    let total = 0;
+    let created = 0;
+    let updated = 0;
+    let noop = 0;
+    let errors = 0;
+
+    while (true) {
+      const products = await this.productRepo.find({
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_nameSale: true,
+          pro_nameEN: true,
+          pro_nameMain: true,
+          pro_nameTH: true,
+          pro_genericname: true,
+          pro_keysearch: true,
+          pro_barcode1: true,
+          pro_barcode2: true,
+          pro_barcode3: true,
+          pro_drugmain: true,
+          pro_drugmain2: true,
+          pro_drugmain3: true,
+          pro_drugmain4: true,
+          pro_priceA: true,
+          pro_priceB: true,
+          pro_priceC: true,
+          pro_l16_only: true,
+        },
+        relations: ['creditor'],
+        // โหลดเฉพาะ FK ของ invisibleProduct ไม่โหลด entity เต็ม
+        loadRelationIds: { relations: ['invisibleProduct'] },
+        skip: offset,
+        take: BATCH_SIZE,
+        order: { pro_code: 'ASC' },
+      });
+
+      if (products.length === 0) break;
+
+      const docs: EsProductDoc[] = products.map((p) => ({
+        pro_code: p.pro_code,
+        pro_name: p.pro_name ?? null,
+        pro_nameSale: p.pro_nameSale ?? null,
+        pro_nameEN: p.pro_nameEN ?? null,
+        pro_nameMain: p.pro_nameMain ?? null,
+        pro_nameTH: p.pro_nameTH ?? null,
+        pro_genericname: p.pro_genericname ?? null,
+        pro_keysearch: p.pro_keysearch ?? null,
+        pro_barcode1: p.pro_barcode1 ?? null,
+        pro_barcode2: p.pro_barcode2 ?? null,
+        pro_barcode3: p.pro_barcode3 ?? null,
+        pro_drugmain: p.pro_drugmain ?? null,
+        pro_drugmain2: p.pro_drugmain2 ?? null,
+        pro_drugmain3: p.pro_drugmain3 ?? null,
+        pro_drugmain4: p.pro_drugmain4 ?? null,
+        pro_priceA: p.pro_priceA ?? null,
+        pro_priceB: p.pro_priceB ?? null,
+        pro_priceC: p.pro_priceC ?? null,
+        creditor_code: p.creditor?.creditor_code ?? null,
+        // loadRelationIds ทำให้ invisibleProduct เป็น FK number แทน entity
+        invisible_id: (p.invisibleProduct as unknown as number) ?? null,
+        pro_l16_only: p.pro_l16_only,
+      }));
+
+      const result = await this.elasticsearchService.bulkIndex(docs);
+      total += products.length;
+      created += result.created;
+      updated += result.updated;
+      noop += result.noop;
+      errors += result.errors;
+
+      this.logger.log(
+        `ES sync progress: ${total} processed — created: ${created}, updated: ${updated}, noop: ${noop}, errors: ${errors}`,
+      );
+
+      if (products.length < BATCH_SIZE) break;
+      offset += BATCH_SIZE;
+    }
+
+    return { total, created, updated, noop, errors };
+  }
+
   async updateProductFromBackOffice(body: {
     group: {
       pro_code: string;
