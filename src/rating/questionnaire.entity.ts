@@ -17,6 +17,9 @@ export class QuestionnaireEntity {
   @Column({ type: 'int' })
   rating_point!: number;
 
+  @Column({ type: 'text', nullable: true, default: null })
+  text_answer!: string | null;
+
   @Column()
   rating_id!: number;
 

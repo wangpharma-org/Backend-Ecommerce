@@ -6,6 +6,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export type QuestionnaireInputType = 'star' | 'text';
+
 @Entity({ name: 'questionnaire_config' })
 export class QuestionnaireConfigEntity {
   @PrimaryGeneratedColumn()
@@ -16,6 +18,13 @@ export class QuestionnaireConfigEntity {
 
   @Column({ default: true })
   status!: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: ['star', 'text'],
+    default: 'star',
+  })
+  input_type!: QuestionnaireInputType;
 
   @CreateDateColumn()
   created_at!: Date;

@@ -41,6 +41,7 @@ export interface BatchRatingResult {
 export interface CreateQuestionnaireAnswerDto {
   question_id: number;
   rating_point: number;
+  text_answer?: string;
 }
 
 export interface CreateSelectConfigDto {
@@ -58,11 +59,13 @@ export interface UpdateSelectConfigDto {
 export interface CreateQuestionnaireConfigDto {
   question: string;
   status?: boolean;
+  input_type?: 'star' | 'text';
 }
 
 export interface UpdateQuestionnaireConfigDto {
   question?: string;
   status?: boolean;
+  input_type?: 'star' | 'text';
 }
 
 interface RatingStatsSummary {
@@ -197,6 +200,7 @@ export class RatingService {
           rating_id,
           question_id: answer.question_id,
           rating_point: answer.rating_point,
+          text_answer: answer.text_answer ?? null,
         });
         saved.push(await this.questionnaireRepo.save(q));
       }
