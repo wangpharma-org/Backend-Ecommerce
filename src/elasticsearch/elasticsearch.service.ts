@@ -37,6 +37,30 @@ export interface EsCountResponse {
   };
 }
 
+export interface EsProductDoc {
+  pro_code: string;
+  pro_name?: string | null;
+  pro_nameSale?: string | null;
+  pro_nameEN?: string | null;
+  pro_nameMain?: string | null;
+  pro_nameTH?: string | null;
+  pro_genericname?: string | null;
+  pro_keysearch?: string | null;
+  pro_barcode1?: string | null;
+  pro_barcode2?: string | null;
+  pro_barcode3?: string | null;
+  pro_drugmain?: string | null;
+  pro_drugmain2?: string | null;
+  pro_drugmain3?: string | null;
+  pro_drugmain4?: string | null;
+  pro_priceA?: number | null;
+  pro_priceB?: number | null;
+  pro_priceC?: number | null;
+  creditor_code?: string | null;
+  invisible_id?: number | null;
+  pro_l16_only?: number;
+}
+
 @Injectable()
 export class ElasticsearchService {
   private readonly client: AxiosInstance;
@@ -80,5 +104,65 @@ export class ElasticsearchService {
   async checkHealth(): Promise<unknown> {
     const response = await this.client.get('/_cluster/health');
     return response.data;
+  }
+
+  async indexProduct(doc: EsProductDoc): Promise<void> {
+    await this.client.put(`/${this.index}/_doc/${doc.pro_code}`, doc);
+  }
+
+  async updateProductDoc(
+    proCode: string,
+    fields: Partial<Omit<EsProductDoc, 'pro_code'>>,
+  ): Promise<void> {
+    await this.client.post(`/${this.index}/_update/${proCode}`, {
+      doc: fields,
+      doc_as_upsert: true,
+    });
+  }
+
+  async bulkIndex(docs: EsProductDoc[]): Promise<{
+    created: number;
+    updated: number;
+    noop: number;
+    errors: number;
+  }> {
+    const ndjson =
+      docs
+        .flatMap(({ pro_code, ...fields }) => [
+          JSON.stringify({ update: { _index: this.index, _id: pro_code } }),
+          JSON.stringify({
+            doc: { pro_code, ...fields },
+            doc_as_upsert: true,
+            detect_noop: true,
+          }),
+        ])
+        .join('\n') + '\n';
+
+    const response = await this.client.post<{
+      errors: boolean;
+      items: Array<{ update: { status: number; result: string } }>;
+    }>('/_bulk', ndjson, {
+      headers: { 'Content-Type': 'application/x-ndjson' },
+    });
+
+    let created = 0;
+    let updated = 0;
+    let noop = 0;
+    let errors = 0;
+
+    for (const item of response.data.items) {
+      const op = item.update;
+      if (op.status >= 400) {
+        errors++;
+      } else if (op.result === 'created') {
+        created++;
+      } else if (op.result === 'updated') {
+        updated++;
+      } else {
+        noop++;
+      }
+    }
+
+    return { created, updated, noop, errors };
   }
 }
