@@ -1,13 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ProductEntity } from 'src/products/products.entity';
+import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 
 @Injectable()
 export class ProductKeywordService {
+  private readonly logger = new Logger(ProductKeywordService.name);
+
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
+    private readonly elasticsearchService: ElasticsearchService,
   ) {}
 
   async updateKeyword(data: {
@@ -25,6 +29,15 @@ export class ProductKeywordService {
           viwers: data.viewers,
         },
       );
+
+      void this.elasticsearchService
+        .updateProductDoc(data.pro_code, { pro_keysearch: data.keysearch })
+        .catch((err: unknown) =>
+          this.logger.error(
+            `Failed to sync keysearch to ES for product ${data.pro_code}`,
+            err,
+          ),
+        );
     } catch {
       throw new Error('Something Error in UpdateKeyword');
     }

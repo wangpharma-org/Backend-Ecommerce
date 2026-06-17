@@ -1421,6 +1421,12 @@ export class AppController {
       throw new Error('Error updating stock from back office');
     }
   }
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/sync-products-elastic')
+  async syncProductsToElastic() {
+    return this.productsService.syncAllProductsToElastic();
+  }
+
   @Get('/ecom/fileLog/:feature')
   async getFileLog(@Param('feature') feature: string) {
     const fileLogs = await this.backendService.getFeatured({
