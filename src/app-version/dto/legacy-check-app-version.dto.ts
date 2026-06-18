@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsEnum, IsNotEmpty, IsString, Matches } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 import { AppPlatform } from '../app-version.entity';
 import {
   APP_VERSION_PATTERN,
@@ -8,10 +9,18 @@ import {
 } from './app-version-validation';
 
 export class LegacyCheckAppVersionDto {
+  @ApiProperty({
+    enum: AppPlatform,
+    description: 'แพลตฟอร์มของแอป (android หรือ ios)',
+  })
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
   os!: AppPlatform;
 
+  @ApiProperty({
+    description: 'เวอร์ชันปัจจุบันของแอปที่ client ใช้งานอยู่ (legacy client)',
+    example: '1.2.3',
+  })
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()

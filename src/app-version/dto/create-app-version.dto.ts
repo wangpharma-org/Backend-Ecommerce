@@ -9,6 +9,7 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AppPlatform } from '../app-version.entity';
 import {
   APP_VERSION_PATTERN,
@@ -18,22 +19,38 @@ import {
 } from './app-version-validation';
 
 export class CreateAppVersionDto {
+  @ApiProperty({
+    enum: AppPlatform,
+    description: 'แพลตฟอร์มของแอป (android หรือ ios) ที่ต้องการขึ้น blacklist',
+  })
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
   platform!: AppPlatform;
 
+  @ApiProperty({
+    description: 'เวอร์ชันของแอปที่ต้องการ block/บังคับอัปเดต',
+    example: '1.0.0',
+  })
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @Matches(APP_VERSION_PATTERN)
   version!: string;
 
+  @ApiPropertyOptional({
+    description: 'ข้อความที่จะแสดงให้ผู้ใช้เห็นเมื่อเวอร์ชันถูก block',
+    maxLength: 500,
+  })
   @Transform(normalizeOptionalString)
   @IsOptional()
   @IsString()
   @MaxLength(500)
   message?: string;
 
+  @ApiProperty({
+    description: 'URL ของ store ให้ผู้ใช้ไปอัปเดตแอป',
+    example: 'https://play.google.com/store/apps/details?id=com.example.app',
+  })
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()
@@ -43,6 +60,10 @@ export class CreateAppVersionDto {
   })
   storeUrl!: string;
 
+  @ApiPropertyOptional({
+    description: 'สถานะการเปิดใช้งาน entry นี้',
+    default: true,
+  })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
