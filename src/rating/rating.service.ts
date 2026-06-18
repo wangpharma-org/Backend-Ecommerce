@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import * as AWS from 'aws-sdk';
 import { RatingEntity } from './rating.entity';
 import { ImageReviewEntity } from './image-review.entity';
@@ -463,6 +463,13 @@ export class RatingService {
       });
       if (!config)
         throw new NotFoundException(`QuestionnaireConfig ${id} not found`);
+
+      // backfill snapshot สำหรับ answer เก่าที่ยังไม่มี question_text
+      await this.questionnaireRepo.update(
+        { question_id: id, question_text: IsNull() },
+        { question_text: config.question },
+      );
+
       await this.questionnaireConfigRepo.delete(id);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
