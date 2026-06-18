@@ -23,8 +23,8 @@ export class QuestionnaireEntity {
   @Column()
   rating_id!: number;
 
-  @Column()
-  question_id!: number;
+  @Column({ nullable: true, default: null })
+  question_id!: number | null;
 
   @ManyToOne(() => RatingEntity, (rating) => rating.questionnaires, {
     onDelete: 'CASCADE',
@@ -32,7 +32,7 @@ export class QuestionnaireEntity {
   @JoinColumn({ name: 'rating_id' })
   rating?: Relation<RatingEntity>;
 
-  @ManyToOne(() => QuestionnaireConfigEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => QuestionnaireConfigEntity, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'question_id' })
-  question?: Relation<QuestionnaireConfigEntity>;
+  question?: Relation<QuestionnaireConfigEntity> | null;
 }
