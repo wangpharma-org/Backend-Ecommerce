@@ -194,6 +194,13 @@ export class RatingService {
       });
       if (!rating) throw new NotFoundException(`Rating ${rating_id} not found`);
 
+      const questionIds = answers.map((a) => a.question_id).filter(Boolean) as number[];
+      const configs = await this.questionnaireConfigRepo.find({
+        where: { id: In(questionIds) },
+        select: { id: true, question: true },
+      });
+      const configMap = new Map(configs.map((c) => [c.id, c.question]));
+
       const saved: QuestionnaireEntity[] = [];
       for (const answer of answers) {
         const q = this.questionnaireRepo.create({
@@ -201,6 +208,7 @@ export class RatingService {
           question_id: answer.question_id,
           rating_point: answer.rating_point,
           text_answer: answer.text_answer ?? null,
+          question_text: configMap.get(answer.question_id) ?? null,
         });
         saved.push(await this.questionnaireRepo.save(q));
       }

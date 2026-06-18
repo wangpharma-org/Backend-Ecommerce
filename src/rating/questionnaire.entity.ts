@@ -20,6 +20,9 @@ export class QuestionnaireEntity {
   @Column({ type: 'text', nullable: true, default: null })
   text_answer!: string | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
+  question_text!: string | null;
+
   @Column()
   rating_id!: number;
 
