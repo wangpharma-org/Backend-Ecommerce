@@ -16,7 +16,7 @@ export class CreditorEntity {
   creditor_name: string;
 
   @Column({ nullable: true, default: null })
-  creditor_address: string;
+  creditor_address: string | null;
 
   @OneToMany(() => ProductEntity, (product) => product)
   product: ProductEntity;
