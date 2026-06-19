@@ -82,6 +82,21 @@ export class ProductListner {
     }
   }
 
+  @MessagePattern('product_stock_update')
+  async updateStock(
+    @Payload() message: { product_code: string; product_stock: number },
+  ) {
+    try {
+      this.logger.log('Received message in product stock listener:', message);
+      await this.productServerce.updateStockFromKafka(message);
+    } catch (error) {
+      this.logger.error(
+        'Kafka Received message in product stock listener',
+        String(error),
+      );
+    }
+  }
+
   @MessagePattern('product_created_detail_ecom')
   async addProductDetail(@Payload() message: ProductPharmaEntity) {
     try {
