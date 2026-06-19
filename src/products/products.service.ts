@@ -697,22 +697,6 @@ export class ProductsService {
     }
   }
 
-  async updateStockFromKafka(message: {
-    product_code: string;
-    product_stock: number;
-  }) {
-    try {
-      // pro_stock เป็น int — ปัดเศษกัน decimal จากต้นทางถูก MySQL ตัดทิ้งเงียบ ๆ
-      await this.productRepo.update(
-        { pro_code: message.product_code },
-        { pro_stock: Math.round(Number(message.product_stock) || 0) },
-      );
-    } catch (error) {
-      this.logger.error('Error updating product stock', String(error));
-      throw error;
-    }
-  }
-
   async createProduct(
     product: ProductEntity & {
       pro_unit1?: string;
