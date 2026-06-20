@@ -54,6 +54,7 @@ import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
+import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 
 @Module({
   imports: [
@@ -121,6 +122,7 @@ import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
     LineOaMonitorModule,
     ElasticsearchModule,
     HappyHourModule,
+    DeliveryPreferenceModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
