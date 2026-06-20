@@ -5,7 +5,7 @@ import { ProductsService } from './products.service';
 interface CreditorEcomPayload {
   creditor_code: string;
   creditor_name?: string;
-  creditor_address?: string | null;
+  creditor_address?: string;
 }
 
 @Controller()
