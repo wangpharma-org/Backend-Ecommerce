@@ -197,7 +197,7 @@ export class ProductsService {
   async upsertCreditor(data: {
     creditor_code: string;
     creditor_name?: string;
-    creditor_address?: string | null;
+    creditor_address?: string;
   }) {
     try {
       const existing = await this.creditorRepo.findOne({
@@ -211,7 +211,7 @@ export class ProductsService {
               creditor_name: data.creditor_name,
             }),
             ...(data.creditor_address !== undefined && {
-              creditor_address: data.creditor_address ?? null,
+              creditor_address: data.creditor_address ?? '',
             }),
           },
         );
@@ -219,7 +219,7 @@ export class ProductsService {
         const newCreditor = this.creditorRepo.create({
           creditor_code: data.creditor_code,
           creditor_name: data.creditor_name ?? '',
-          creditor_address: data.creditor_address ?? null,
+          creditor_address: data.creditor_address ?? '',
         });
         await this.creditorRepo.save(newCreditor);
       }
