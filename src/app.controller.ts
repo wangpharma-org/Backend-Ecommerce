@@ -91,6 +91,7 @@ import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.s
 import { TrackOrderService } from './track-order/track-order.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
 
 export interface JwtPayload {
   username: string;
@@ -154,6 +155,7 @@ export class AppController {
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
 
   @Get('/ecom/get-data/:soh_running')
@@ -448,6 +450,11 @@ export class AppController {
         imageUrl: resultItem.pro_imgmain,
       });
     }
+    this.searchCartTrackingService.emitSearchEvent(mem_code, {
+      search_query: data.keyword,
+      result_count: result.totalCount,
+      result_pro_codes: result.products.map((product) => product.pro_code),
+    });
     return result;
   }
 
@@ -607,6 +614,8 @@ export class AppController {
       cartVersion?: string | number;
       clientVersion?: string;
       company_day_source?: string;
+      source?: string;
+      search_query?: string;
     },
   ) {
     const priceCondition = req.user.price_option ?? 'C';
@@ -638,6 +647,15 @@ export class AppController {
     const summaryCart = await this.shoppingCartService.summaryCart(
       data.mem_code,
     );
+    const addedProduct = cart.find((item) => item.pro_code === data.pro_code);
+    this.searchCartTrackingService.emitAddToCartEvent(data.mem_code, {
+      pro_code: data.pro_code,
+      pro_name: addedProduct?.pro_name,
+      pro_unit: data.pro_unit,
+      amount: data.amount,
+      source: data.source,
+      search_query: data.search_query,
+    });
     return {
       cart,
       summaryCart: summaryCart.total,
