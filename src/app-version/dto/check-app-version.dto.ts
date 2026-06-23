@@ -11,14 +11,15 @@ import {
 export class CheckAppVersionDto {
   @ApiProperty({
     enum: AppPlatform,
-    description: 'แพลตฟอร์มของแอป (android หรือ ios)',
+    example: AppPlatform.ANDROID,
+    description: 'Required; แพลตฟอร์มของแอป (android หรือ ios)',
   })
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
   os!: AppPlatform;
 
   @ApiProperty({
-    description: 'เวอร์ชันปัจจุบันของแอปที่ client ใช้งานอยู่',
+    description: 'Required; not empty; เวอร์ชันปัจจุบันของแอปที่ client ใช้งานอยู่',
     example: '1.2.3',
   })
   @Transform(trimString)
@@ -28,7 +29,7 @@ export class CheckAppVersionDto {
   version!: string;
 
   @ApiProperty({
-    description: 'หมายเลข build ของแอปที่ client ใช้งานอยู่',
+    description: 'Required; not empty; หมายเลข build ของแอปที่ client ใช้งานอยู่',
     example: '123',
   })
   @Transform(trimString)

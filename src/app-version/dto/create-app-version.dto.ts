@@ -21,14 +21,15 @@ import {
 export class CreateAppVersionDto {
   @ApiProperty({
     enum: AppPlatform,
-    description: 'แพลตฟอร์มของแอป (android หรือ ios) ที่ต้องการขึ้น blacklist',
+    example: AppPlatform.ANDROID,
+    description: 'Required; แพลตฟอร์มของแอป (android หรือ ios) ที่ต้องการขึ้น blacklist',
   })
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
   platform!: AppPlatform;
 
   @ApiProperty({
-    description: 'เวอร์ชันของแอปที่ต้องการ block/บังคับอัปเดต',
+    description: 'Required; not empty; เวอร์ชันของแอปที่ต้องการ block/บังคับอัปเดต',
     example: '1.0.0',
   })
   @Transform(trimString)
@@ -38,7 +39,8 @@ export class CreateAppVersionDto {
   version!: string;
 
   @ApiPropertyOptional({
-    description: 'ข้อความที่จะแสดงให้ผู้ใช้เห็นเมื่อเวอร์ชันถูก block',
+    description: 'Optional; empty string allowed; ข้อความที่จะแสดงให้ผู้ใช้เห็นเมื่อเวอร์ชันถูก block',
+    example: 'เวอร์ชันนี้ไม่รองรับ กรุณาอัปเดตแอป',
     maxLength: 500,
   })
   @Transform(normalizeOptionalString)
@@ -48,7 +50,7 @@ export class CreateAppVersionDto {
   message?: string;
 
   @ApiProperty({
-    description: 'URL ของ store ให้ผู้ใช้ไปอัปเดตแอป',
+    description: 'Required; not empty; URL ของ store ให้ผู้ใช้ไปอัปเดตแอป',
     example: 'https://play.google.com/store/apps/details?id=com.example.app',
   })
   @Transform(trimString)
@@ -61,7 +63,8 @@ export class CreateAppVersionDto {
   storeUrl!: string;
 
   @ApiPropertyOptional({
-    description: 'สถานะการเปิดใช้งาน entry นี้',
+    description: 'Optional; defaults to true; สถานะการเปิดใช้งาน entry นี้',
+    example: true,
     default: true,
   })
   @IsOptional()

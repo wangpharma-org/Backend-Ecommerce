@@ -11,14 +11,15 @@ import {
 export class LegacyCheckAppVersionDto {
   @ApiProperty({
     enum: AppPlatform,
-    description: 'แพลตฟอร์มของแอป (android หรือ ios)',
+    example: AppPlatform.ANDROID,
+    description: 'Required; แพลตฟอร์มของแอป (android หรือ ios)',
   })
   @Transform(normalizePlatform)
   @IsEnum(AppPlatform)
   os!: AppPlatform;
 
   @ApiProperty({
-    description: 'เวอร์ชันปัจจุบันของแอปที่ client ใช้งานอยู่ (legacy client)',
+    description: 'Required; not empty; เวอร์ชันปัจจุบันของแอปที่ client ใช้งานอยู่ (legacy client)',
     example: '1.2.3',
   })
   @Transform(trimString)

@@ -17,7 +17,8 @@ export class AuthController {
       properties: {
         lineAccessToken: {
           type: 'string',
-          description: 'Access token ที่ได้จาก LINE Login',
+          example: 'eyJhbGciOiJIUzI1NiJ9.line-access-token-example',
+          description: 'Required; not empty; Access token ที่ได้จาก LINE Login',
         },
       },
     },
@@ -42,7 +43,8 @@ export class AuthController {
       properties: {
         lineUserId: {
           type: 'string',
-          description: 'LINE user id ของผู้ใช้',
+          example: 'U1234567890abcdef1234567890abcdef',
+          description: 'Required; not empty; LINE user id ของผู้ใช้',
         },
       },
     },

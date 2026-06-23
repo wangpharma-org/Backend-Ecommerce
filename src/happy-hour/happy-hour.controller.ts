@@ -125,7 +125,7 @@ export class HappyHourController {
   }
 
   @ApiOperation({ summary: 'แก้ไข slot ของ Happy Hour ตาม id' })
-  @ApiParam({ name: 'id', description: 'รหัส slot' })
+  @ApiParam({ name: 'id', description: 'รหัส slot', example: '1' })
   @ApiBody({ type: UpdateSlotDto })
   @ApiResponse({ status: 200, description: 'แก้ไข slot สำเร็จ' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -139,7 +139,7 @@ export class HappyHourController {
   }
 
   @ApiOperation({ summary: 'ลบ slot ของ Happy Hour ตาม id' })
-  @ApiParam({ name: 'id', description: 'รหัส slot' })
+  @ApiParam({ name: 'id', description: 'รหัส slot', example: '1' })
   @ApiResponse({ status: 204, description: 'ลบ slot สำเร็จ' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Delete('slots/:id')
@@ -199,11 +199,11 @@ export class HappyHourController {
   @ApiOperation({
     summary: 'ดึง audit log การ CREATE / UPDATE / DELETE slot พร้อม pagination',
   })
-  @ApiQuery({ name: 'action', required: false, enum: ['CREATE', 'UPDATE', 'DELETE'], description: 'กรองตาม action' })
-  @ApiQuery({ name: 'slot_id', required: false, description: 'กรองตาม slot id' })
-  @ApiQuery({ name: 'performed_by', required: false, description: 'กรองตาม username (บางส่วนก็ได้)' })
-  @ApiQuery({ name: 'page', required: false, description: 'หน้าที่ต้องการ (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'จำนวนรายการต่อหน้า (default 20)' })
+  @ApiQuery({ name: 'action', required: false, enum: ['CREATE', 'UPDATE', 'DELETE'], example: 'UPDATE', description: 'Optional; กรองตาม action' })
+  @ApiQuery({ name: 'slot_id', required: false, example: '1', description: 'Optional; กรองตาม slot id' })
+  @ApiQuery({ name: 'performed_by', required: false, example: 'admin01', description: 'Optional; กรองตาม username (บางส่วนก็ได้)' })
+  @ApiQuery({ name: 'page', required: false, example: '1', description: 'Optional; หน้าที่ต้องการ (default 1)' })
+  @ApiQuery({ name: 'limit', required: false, example: '20', description: 'Optional; จำนวนรายการต่อหน้า (default 20)' })
   @ApiResponse({ status: 200, description: 'รายการ audit log ของ slot พร้อม pagination' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Get('slot-logs')
@@ -224,10 +224,10 @@ export class HappyHourController {
   @ApiOperation({
     summary: 'ดึง audit log การเปลี่ยน config (UPDATE / TOGGLE) พร้อม pagination',
   })
-  @ApiQuery({ name: 'action', required: false, enum: ['UPDATE', 'TOGGLE'], description: 'กรองตาม action' })
-  @ApiQuery({ name: 'performed_by', required: false, description: 'กรองตาม username (บางส่วนก็ได้)' })
-  @ApiQuery({ name: 'page', required: false, description: 'หน้าที่ต้องการ (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'จำนวนรายการต่อหน้า (default 20)' })
+  @ApiQuery({ name: 'action', required: false, enum: ['UPDATE', 'TOGGLE'], example: 'TOGGLE', description: 'Optional; กรองตาม action' })
+  @ApiQuery({ name: 'performed_by', required: false, example: 'admin01', description: 'Optional; กรองตาม username (บางส่วนก็ได้)' })
+  @ApiQuery({ name: 'page', required: false, example: '1', description: 'Optional; หน้าที่ต้องการ (default 1)' })
+  @ApiQuery({ name: 'limit', required: false, example: '20', description: 'Optional; จำนวนรายการต่อหน้า (default 20)' })
   @ApiResponse({ status: 200, description: 'รายการ audit log ของ config พร้อม pagination' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Get('config-logs')
@@ -249,7 +249,8 @@ export class HappyHourController {
   @ApiQuery({
     name: 'codes',
     required: false,
-    description: "รหัสสินค้าหลายตัวคั่นด้วย comma เช่น 'A001,A002'",
+    example: 'A001,A002',
+    description: "Optional; รหัสสินค้าหลายตัวคั่นด้วย comma เช่น 'A001,A002'",
   })
   @ApiResponse({ status: 200, description: 'รายการ [{ pro_code, unit }]' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -265,7 +266,7 @@ export class HappyHourController {
    * Response: [{ vendor_code, vendor_name }]
    */
   @ApiOperation({ summary: "ค้นหา vendor (เจ้าหนี้) สำหรับ min_order_scope = 'vendor'" })
-  @ApiQuery({ name: 'keyword', required: false, description: 'คำค้นหาชื่อ/รหัส vendor' })
+  @ApiQuery({ name: 'keyword', required: false, example: 'บริษัท ยา', description: 'Optional; คำค้นหาชื่อ/รหัส vendor' })
   @ApiResponse({ status: 200, description: 'รายการ [{ vendor_code, vendor_name }]' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Get('vendors/search')
@@ -281,7 +282,7 @@ export class HappyHourController {
   @ApiOperation({
     summary: "ดึงรายการสินค้าทั้งหมดของเจ้าหนี้ (vendor) ที่ระบุ (ใช้ query param เพราะ vendor_code อาจมี '/')",
   })
-  @ApiQuery({ name: 'vendor_code', required: false, description: 'รหัสเจ้าหนี้/vendor' })
+  @ApiQuery({ name: 'vendor_code', required: false, example: 'V001', description: 'Optional; รหัสเจ้าหนี้/vendor' })
   @ApiResponse({ status: 200, description: 'รายการ [{ pro_code, pro_name }]' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Get('vendors/products')

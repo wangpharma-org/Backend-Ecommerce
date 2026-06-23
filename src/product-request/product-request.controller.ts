@@ -52,25 +52,40 @@ export class ProductRequestController {
       type: 'object',
       required: ['keyword', 'pro_name'],
       properties: {
-        keyword: { type: 'string', description: 'คำค้นหาที่ผู้ใช้ใช้ค้นหาสินค้า' },
-        pro_name: { type: 'string', description: 'ชื่อสินค้าที่ต้องการ' },
-        note: { type: 'string', description: 'หมายเหตุเพิ่มเติม (ถ้ามี)' },
+        keyword: {
+          type: 'string',
+          example: 'ยาแก้ปวดหัว',
+          description: 'Required; not empty; คำค้นหาที่ผู้ใช้ใช้ค้นหาสินค้า',
+        },
+        pro_name: {
+          type: 'string',
+          example: 'พาราเซตามอล 500mg',
+          description: 'Required; not empty; ชื่อสินค้าที่ต้องการ',
+        },
+        note: {
+          type: 'string',
+          example: 'ต้องการแบบซองเล็ก',
+          description: 'Optional; empty string allowed; หมายเหตุเพิ่มเติม (ถ้ามี)',
+        },
         source_page: {
           type: 'string',
-          description: 'หน้าที่ผู้ใช้ส่งคำขอมา (ถ้ามี)',
+          example: '/products/search',
+          description: 'Optional; empty string allowed; หน้าที่ผู้ใช้ส่งคำขอมา (ถ้ามี)',
         },
         shown_products: {
           type: 'string',
-          description: 'รายการสินค้าที่แสดงอยู่ในหน้านั้น (ถ้ามี)',
+          example: 'A001,A002,A003',
+          description: 'Optional; empty string allowed; รายการสินค้าที่แสดงอยู่ในหน้านั้น (ถ้ามี)',
         },
         current_page: {
           type: 'number',
-          description: 'หมายเลขหน้าปัจจุบัน (ถ้ามี)',
+          example: 1,
+          description: 'Optional; หมายเลขหน้าปัจจุบัน (ถ้ามี)',
         },
         image: {
           type: 'string',
           format: 'binary',
-          description: 'ไฟล์รูปภาพสินค้า (ไม่เกิน 5MB, เฉพาะไฟล์ภาพ)',
+          description: 'Optional; ไฟล์รูปภาพสินค้า (ไม่เกิน 5MB, เฉพาะไฟล์ภาพ)',
         },
       },
     },
@@ -127,13 +142,14 @@ export class ProductRequestController {
 
   @ApiOperation({ summary: 'ดึงรายการคำขอสินค้าทั้งหมดแบบแบ่งหน้า (admin)' })
   @ApiBearerAuth()
-  @ApiQuery({ name: 'page', required: false, description: 'หมายเลขหน้า (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'จำนวนต่อหน้า (default: 20)' })
+  @ApiQuery({ name: 'page', required: false, example: '1', description: 'Optional; หมายเลขหน้า (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, example: '20', description: 'Optional; จำนวนต่อหน้า (default: 20)' })
   @ApiQuery({
     name: 'status',
     required: false,
     enum: ProductRequestStatus,
-    description: 'กรองตามสถานะคำขอสินค้า',
+    example: ProductRequestStatus.PENDING,
+    description: 'Optional; กรองตามสถานะคำขอสินค้า',
   })
   @ApiResponse({ status: 200, description: 'รายการคำขอสินค้าพร้อม pagination' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -149,7 +165,7 @@ export class ProductRequestController {
 
   @ApiOperation({ summary: 'อัปเดตสถานะคำขอสินค้าตาม id (admin)' })
   @ApiBearerAuth()
-  @ApiParam({ name: 'id', description: 'id ของคำขอสินค้า' })
+  @ApiParam({ name: 'id', description: 'id ของคำขอสินค้า', example: '1' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -158,7 +174,8 @@ export class ProductRequestController {
         status: {
           type: 'string',
           enum: Object.values(ProductRequestStatus),
-          description: 'สถานะใหม่ของคำขอสินค้า',
+          example: ProductRequestStatus.RESOLVED,
+          description: 'Required; สถานะใหม่ของคำขอสินค้า',
         },
       },
     },

@@ -20,7 +20,8 @@ import {
 export class UpdateAppVersionDto {
   @ApiPropertyOptional({
     enum: AppPlatform,
-    description: 'แพลตฟอร์มของแอป (android หรือ ios) ที่ต้องการแก้ไข',
+    example: AppPlatform.ANDROID,
+    description: 'Optional; แพลตฟอร์มของแอป (android หรือ ios) ที่ต้องการแก้ไข',
   })
   @Transform(normalizePlatform)
   @IsOptional()
@@ -28,7 +29,7 @@ export class UpdateAppVersionDto {
   platform?: AppPlatform;
 
   @ApiPropertyOptional({
-    description: 'เวอร์ชันของแอปที่ต้องการ block/บังคับอัปเดต',
+    description: 'Optional; เวอร์ชันของแอปที่ต้องการ block/บังคับอัปเดต',
     example: '1.0.0',
   })
   @Transform(trimString)
@@ -38,7 +39,8 @@ export class UpdateAppVersionDto {
   version?: string;
 
   @ApiPropertyOptional({
-    description: 'ข้อความที่จะแสดงให้ผู้ใช้เห็นเมื่อเวอร์ชันถูก block',
+    description: 'Optional; empty string allowed; ข้อความที่จะแสดงให้ผู้ใช้เห็นเมื่อเวอร์ชันถูก block',
+    example: 'เวอร์ชันนี้ไม่รองรับ กรุณาอัปเดตแอป',
     maxLength: 500,
   })
   @Transform(normalizeOptionalString)
@@ -48,7 +50,7 @@ export class UpdateAppVersionDto {
   message?: string;
 
   @ApiPropertyOptional({
-    description: 'URL ของ store ให้ผู้ใช้ไปอัปเดตแอป',
+    description: 'Optional; URL ของ store ให้ผู้ใช้ไปอัปเดตแอป',
     example: 'https://play.google.com/store/apps/details?id=com.example.app',
   })
   @Transform(trimString)
@@ -61,7 +63,8 @@ export class UpdateAppVersionDto {
   storeUrl?: string;
 
   @ApiPropertyOptional({
-    description: 'สถานะการเปิดใช้งาน entry นี้',
+    description: 'Optional; สถานะการเปิดใช้งาน entry นี้',
+    example: true,
   })
   @IsOptional()
   @IsBoolean()

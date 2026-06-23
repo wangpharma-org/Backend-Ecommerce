@@ -52,7 +52,8 @@ export class RatingController {
     name: 'type',
     required: false,
     enum: ['positive', 'negative'],
-    description: 'กรองประเภทตัวเลือก: positive หรือ negative',
+    example: 'positive',
+    description: 'Optional; กรองประเภทตัวเลือก: positive หรือ negative',
   })
   @ApiResponse({ status: 200, description: 'รายการตัวเลือก select config ที่เปิดใช้งาน' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -72,7 +73,7 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'ตรวจสอบว่าออเดอร์ (sh_running) นี้มีการรีวิวแล้วหรือยัง' })
-  @ApiParam({ name: 'sh_running', description: 'เลขที่ออเดอร์/บิล' })
+  @ApiParam({ name: 'sh_running', description: 'เลขที่ออเดอร์/บิล', example: 'SH00001234' })
   @ApiResponse({ status: 200, description: 'ข้อมูลรีวิวของออเดอร์นี้ (ถ้ามี)' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -86,19 +87,37 @@ export class RatingController {
     schema: {
       type: 'object',
       properties: {
-        sh_running: { type: 'string', description: 'เลขที่ออเดอร์/บิล' },
-        mem_code: { type: 'string', description: 'รหัสสมาชิก (optional)' },
-        rating_point: { type: 'number', description: 'คะแนนที่ให้' },
-        comment: { type: 'string', description: 'ความเห็นเพิ่มเติม (optional)' },
+        sh_running: {
+          type: 'string',
+          example: 'SH00001234',
+          description: 'Required; not empty; เลขที่ออเดอร์/บิล',
+        },
+        mem_code: {
+          type: 'string',
+          example: 'M00001',
+          description: 'Optional; empty string allowed; รหัสสมาชิก',
+        },
+        rating_point: {
+          type: 'number',
+          example: 5,
+          description: 'Required; คะแนนที่ให้',
+        },
+        comment: {
+          type: 'string',
+          example: 'สินค้าดี จัดส่งรวดเร็ว',
+          description: 'Optional; empty string allowed; ความเห็นเพิ่มเติม',
+        },
         positive_select: {
           type: 'array',
           items: { type: 'string' },
-          description: 'ตัวเลือกด้านบวกที่เลือก (optional)',
+          example: ['จัดส่งเร็ว', 'สินค้าตรงปก'],
+          description: 'Optional; ตัวเลือกด้านบวกที่เลือก',
         },
         negative_select: {
           type: 'array',
           items: { type: 'string' },
-          description: 'ตัวเลือกด้านลบที่เลือก (optional)',
+          example: [],
+          description: 'Optional; ตัวเลือกด้านลบที่เลือก',
         },
       },
       required: ['sh_running', 'rating_point'],
@@ -119,19 +138,37 @@ export class RatingController {
       items: {
         type: 'object',
         properties: {
-          sh_running: { type: 'string', description: 'เลขที่ออเดอร์/บิล' },
-          mem_code: { type: 'string', description: 'รหัสสมาชิก (optional)' },
-          rating_point: { type: 'number', description: 'คะแนนที่ให้' },
-          comment: { type: 'string', description: 'ความเห็นเพิ่มเติม (optional)' },
+          sh_running: {
+            type: 'string',
+            example: 'SH00001234',
+            description: 'Required; not empty; เลขที่ออเดอร์/บิล',
+          },
+          mem_code: {
+            type: 'string',
+            example: 'M00001',
+            description: 'Optional; empty string allowed; รหัสสมาชิก',
+          },
+          rating_point: {
+            type: 'number',
+            example: 5,
+            description: 'Required; คะแนนที่ให้',
+          },
+          comment: {
+            type: 'string',
+            example: 'สินค้าดี จัดส่งรวดเร็ว',
+            description: 'Optional; empty string allowed; ความเห็นเพิ่มเติม',
+          },
           positive_select: {
             type: 'array',
             items: { type: 'string' },
-            description: 'ตัวเลือกด้านบวกที่เลือก (optional)',
+            example: ['จัดส่งเร็ว', 'สินค้าตรงปก'],
+            description: 'Optional; ตัวเลือกด้านบวกที่เลือก',
           },
           negative_select: {
             type: 'array',
             items: { type: 'string' },
-            description: 'ตัวเลือกด้านลบที่เลือก (optional)',
+            example: [],
+            description: 'Optional; ตัวเลือกด้านลบที่เลือก',
           },
         },
         required: ['sh_running', 'rating_point'],
@@ -147,7 +184,7 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'อัปโหลดรูปภาพประกอบรีวิว (สูงสุด 10 ไฟล์ ไฟล์ละไม่เกิน 5MB)' })
-  @ApiParam({ name: 'id', description: 'รหัสรีวิว (rating id)' })
+  @ApiParam({ name: 'id', description: 'รหัสรีวิว (rating id)', example: '1' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -156,7 +193,7 @@ export class RatingController {
         files: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
-          description: 'ไฟล์รูปภาพ (สูงสุด 10 ไฟล์)',
+          description: 'Optional; ไฟล์รูปภาพ (สูงสุด 10 ไฟล์)',
         },
       },
     },
@@ -188,15 +225,23 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'ส่งคำตอบแบบสอบถาม (questionnaire) สำหรับรีวิวหนึ่งรายการ' })
-  @ApiParam({ name: 'id', description: 'รหัสรีวิว (rating id)' })
+  @ApiParam({ name: 'id', description: 'รหัสรีวิว (rating id)', example: '1' })
   @ApiBody({
     schema: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
-          question_id: { type: 'number', description: 'รหัสคำถาม' },
-          rating_point: { type: 'number', description: 'คะแนนที่ให้สำหรับคำถามนี้' },
+          question_id: {
+            type: 'number',
+            example: 1,
+            description: 'Required; รหัสคำถาม',
+          },
+          rating_point: {
+            type: 'number',
+            example: 5,
+            description: 'Required; คะแนนที่ให้สำหรับคำถามนี้',
+          },
         },
         required: ['question_id', 'rating_point'],
       },
@@ -243,10 +288,10 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'ดึงรายการรีวิวทั้งหมดแบบ pagination พร้อมกรองตามช่วงคะแนน' })
-  @ApiQuery({ name: 'page', required: false, description: 'หน้าที่ต้องการ (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'จำนวนรายการต่อหน้า (default 20)' })
-  @ApiQuery({ name: 'minPoint', required: false, description: 'คะแนนต่ำสุดที่ใช้กรอง' })
-  @ApiQuery({ name: 'maxPoint', required: false, description: 'คะแนนสูงสุดที่ใช้กรอง' })
+  @ApiQuery({ name: 'page', required: false, example: '1', description: 'Optional; หน้าที่ต้องการ (default 1)' })
+  @ApiQuery({ name: 'limit', required: false, example: '20', description: 'Optional; จำนวนรายการต่อหน้า (default 20)' })
+  @ApiQuery({ name: 'minPoint', required: false, example: '1', description: 'Optional; คะแนนต่ำสุดที่ใช้กรอง' })
+  @ApiQuery({ name: 'maxPoint', required: false, example: '5', description: 'Optional; คะแนนสูงสุดที่ใช้กรอง' })
   @ApiResponse({ status: 200, description: 'รายการรีวิวพร้อม pagination' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -266,7 +311,7 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'ดึงรายละเอียดรีวิวรายการเดียวตาม id (admin)' })
-  @ApiParam({ name: 'id', description: 'รหัสรีวิว (rating id)' })
+  @ApiParam({ name: 'id', description: 'รหัสรีวิว (rating id)', example: '1' })
   @ApiResponse({ status: 200, description: 'รายละเอียดรีวิว' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -280,9 +325,22 @@ export class RatingController {
     schema: {
       type: 'object',
       properties: {
-        choice: { type: 'string', description: 'ข้อความตัวเลือก' },
-        type: { type: 'string', enum: ['positive', 'negative'], description: 'ประเภทตัวเลือก' },
-        status: { type: 'boolean', description: 'สถานะเปิดใช้งาน (optional)' },
+        choice: {
+          type: 'string',
+          example: 'จัดส่งเร็ว',
+          description: 'Required; not empty; ข้อความตัวเลือก',
+        },
+        type: {
+          type: 'string',
+          enum: ['positive', 'negative'],
+          example: 'positive',
+          description: 'Required; ประเภทตัวเลือก',
+        },
+        status: {
+          type: 'boolean',
+          example: true,
+          description: 'Optional; สถานะเปิดใช้งาน',
+        },
       },
       required: ['choice', 'type'],
     },
@@ -296,14 +354,27 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'แก้ไข select config ตาม id (admin)' })
-  @ApiParam({ name: 'id', description: 'รหัส select config' })
+  @ApiParam({ name: 'id', description: 'รหัส select config', example: '1' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        choice: { type: 'string', description: 'ข้อความตัวเลือก (optional)' },
-        type: { type: 'string', enum: ['positive', 'negative'], description: 'ประเภทตัวเลือก (optional)' },
-        status: { type: 'boolean', description: 'สถานะเปิดใช้งาน (optional)' },
+        choice: {
+          type: 'string',
+          example: 'จัดส่งเร็ว',
+          description: 'Optional; empty string allowed; ข้อความตัวเลือก',
+        },
+        type: {
+          type: 'string',
+          enum: ['positive', 'negative'],
+          example: 'positive',
+          description: 'Optional; ประเภทตัวเลือก',
+        },
+        status: {
+          type: 'boolean',
+          example: true,
+          description: 'Optional; สถานะเปิดใช้งาน',
+        },
       },
     },
   })
@@ -319,7 +390,7 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'ลบ select config ตาม id (admin)' })
-  @ApiParam({ name: 'id', description: 'รหัส select config' })
+  @ApiParam({ name: 'id', description: 'รหัส select config', example: '1' })
   @ApiResponse({ status: 200, description: 'ลบ select config สำเร็จ' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -333,8 +404,16 @@ export class RatingController {
     schema: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: 'ข้อความคำถาม' },
-        status: { type: 'boolean', description: 'สถานะเปิดใช้งาน (optional)' },
+        question: {
+          type: 'string',
+          example: 'พนักงานบริการดีหรือไม่',
+          description: 'Required; not empty; ข้อความคำถาม',
+        },
+        status: {
+          type: 'boolean',
+          example: true,
+          description: 'Optional; สถานะเปิดใช้งาน',
+        },
       },
       required: ['question'],
     },
@@ -348,13 +427,21 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'แก้ไข questionnaire config ตาม id (admin)' })
-  @ApiParam({ name: 'id', description: 'รหัส questionnaire config' })
+  @ApiParam({ name: 'id', description: 'รหัส questionnaire config', example: '1' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: 'ข้อความคำถาม (optional)' },
-        status: { type: 'boolean', description: 'สถานะเปิดใช้งาน (optional)' },
+        question: {
+          type: 'string',
+          example: 'พนักงานบริการดีหรือไม่',
+          description: 'Optional; empty string allowed; ข้อความคำถาม',
+        },
+        status: {
+          type: 'boolean',
+          example: true,
+          description: 'Optional; สถานะเปิดใช้งาน',
+        },
       },
     },
   })
@@ -370,7 +457,7 @@ export class RatingController {
   }
 
   @ApiOperation({ summary: 'ลบ questionnaire config ตาม id (admin)' })
-  @ApiParam({ name: 'id', description: 'รหัส questionnaire config' })
+  @ApiParam({ name: 'id', description: 'รหัส questionnaire config', example: '1' })
   @ApiResponse({ status: 200, description: 'ลบ questionnaire config สำเร็จ' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)

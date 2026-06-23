@@ -121,7 +121,7 @@ export class AppVersionController {
 
   @ApiOperation({ summary: 'แก้ไข app version blacklist ตาม id (admin)' })
   @ApiBearerAuth()
-  @ApiParam({ name: 'id', description: 'id ของ app version blacklist' })
+  @ApiParam({ name: 'id', description: 'id ของ app version blacklist', example: '1' })
   @ApiBody({ type: UpdateAppVersionDto })
   @ApiResponse({ status: 200, description: 'แก้ไข app version blacklist สำเร็จ' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -139,7 +139,7 @@ export class AppVersionController {
 
   @ApiOperation({ summary: 'ลบ app version blacklist ตาม id (admin)' })
   @ApiBearerAuth()
-  @ApiParam({ name: 'id', description: 'id ของ app version blacklist' })
+  @ApiParam({ name: 'id', description: 'id ของ app version blacklist', example: '1' })
   @ApiResponse({ status: 200, description: 'ลบ app version blacklist สำเร็จ' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })

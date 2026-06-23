@@ -167,7 +167,7 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Send order data to old system' })
-  @ApiParam({ name: 'soh_running', description: 'Order running number' })
+  @ApiParam({ name: 'soh_running', description: 'Order running number', example: 'SO-67010001' })
   @ApiResponse({ status: 200, description: 'Data sent to old system' })
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -176,7 +176,13 @@ export class AppController {
 
   @ApiTags('Banner & Contract Log')
   @ApiOperation({ summary: 'Get banner image URLs by location' })
-  @ApiQuery({ name: 'location', required: false, description: 'Banner placement location' })
+  @ApiQuery({
+    name: 'location',
+    required: false,
+    description: 'Banner placement location. Omit to get banners for all locations.',
+    enum: ['store_carousel', 'landing_hero', 'popup', 'sidebar'],
+    example: 'landing_hero',
+  })
   @ApiResponse({ status: 200, description: 'Banner image URLs' })
   @Get('/ecom/image-banner')
   async getImageUrl(
@@ -189,7 +195,7 @@ export class AppController {
   @ApiTags('Banner & Contract Log')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a banner by id' })
-  @ApiParam({ name: 'id', description: 'Banner id' })
+  @ApiParam({ name: 'id', description: 'Banner id', example: '12' })
   @ApiResponse({ status: 200, description: 'Banner deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -201,8 +207,11 @@ export class AppController {
   @ApiTags('Banner & Contract Log')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a banner by id' })
-  @ApiParam({ name: 'id', description: 'Banner id' })
-  @ApiBody({ type: BannerEntity })
+  @ApiParam({ name: 'id', description: 'Banner id', example: '12' })
+  @ApiBody({
+    description: 'Partial banner fields to update — any subset of BannerEntity columns; omitted fields are left unchanged.',
+    type: BannerEntity,
+  })
   @ApiResponse({ status: 200, description: 'Banner updated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -217,7 +226,7 @@ export class AppController {
   @ApiTags('User & Employee Management')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get user data by member code' })
-  @ApiParam({ name: 'mem_code', description: 'Member code' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'User data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -229,7 +238,7 @@ export class AppController {
   @ApiTags('User & Employee Management')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update user data' })
-  @ApiBody({ type: UserEntity })
+  @ApiBody({ description: 'Full UserEntity payload (must include mem_code to identify the user)', type: UserEntity })
   @ApiResponse({ status: 201, description: 'User data updated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -245,13 +254,39 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary' },
-        date_start: { type: 'string', format: 'date-time' },
-        date_end: { type: 'string', format: 'date-time' },
-        banner_name: { type: 'string' },
-        banner_location: { type: 'string' },
-        link_url: { type: 'string' },
+        file: { type: 'string', format: 'binary', description: 'Banner image file (required)' },
+        date_start: { type: 'string', format: 'date-time', example: '2026-07-01T00:00:00Z', description: 'Required' },
+        date_end: { type: 'string', format: 'date-time', example: '2026-07-31T23:59:59Z', description: 'Required' },
+        banner_name: { type: 'string', example: 'Summer Sale', description: 'Optional; empty string allowed' },
+        banner_location: {
+          type: 'string',
+          enum: ['store_carousel', 'landing_hero', 'popup', 'sidebar'],
+          example: 'landing_hero',
+          description: 'Optional',
+        },
+        link_url: { type: 'string', example: 'https://wangpharma.com/promo', description: 'Optional; empty string allowed' },
+        display_type: {
+          type: 'string',
+          enum: ['image_only', 'text_only', 'image_with_text'],
+          example: 'image_with_text',
+          description: 'Optional',
+        },
+        title: { type: 'string', example: 'ลดราคาช่วงซัมเมอร์', description: 'Optional; empty string allowed' },
+        subtitle: { type: 'string', example: 'สูงสุด 50%', description: 'Optional; empty string allowed' },
+        description: { type: 'string', example: 'โปรโมชั่นพิเศษเฉพาะเดือนนี้', description: 'Optional; empty string allowed' },
+        cta_text: { type: 'string', example: 'ดูเพิ่มเติม', description: 'Optional; empty string allowed' },
+        cta_url: { type: 'string', example: 'https://wangpharma.com/promo', description: 'Optional; empty string allowed' },
+        cta_secondary_text: { type: 'string', example: 'ปิด', description: 'Optional; empty string allowed' },
+        cta_secondary_url: { type: 'string', example: '', description: 'Optional; empty string allowed' },
+        text_color: { type: 'string', enum: ['light', 'dark'], example: 'light', description: 'Optional' },
+        text_position: { type: 'string', enum: ['left', 'center', 'right'], example: 'center', description: 'Optional' },
+        bg_gradient: { type: 'string', example: 'linear-gradient(90deg,#000,#fff)', description: 'Optional; empty string allowed' },
+        is_drug: { type: 'boolean', example: false, description: 'Optional' },
+        advertise_code: { type: 'string', example: 'ADV001', description: 'Optional; empty string allowed' },
+        creditor: { type: 'string', example: 'C001', description: 'Optional; empty string allowed' },
+        product_list: { type: 'string', example: 'P00123,P00124', description: 'Optional comma-separated product codes; empty string allowed' },
       },
+      required: ['file', 'date_start', 'date_end'],
     },
   })
   @ApiResponse({ status: 201, description: 'Banner uploaded' })
@@ -299,12 +334,18 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        img_url: { type: 'string' },
-        banner_name: { type: 'string' },
-        banner_location: { type: 'string' },
-        date_start: { type: 'string', format: 'date-time' },
-        date_end: { type: 'string', format: 'date-time' },
+        img_url: { type: 'string', example: 'https://cdn.wangpharma.com/banners/abc.jpg', description: 'Required' },
+        banner_name: { type: 'string', example: 'Summer Sale', description: 'Optional; empty string allowed' },
+        banner_location: {
+          type: 'string',
+          enum: ['store_carousel', 'landing_hero', 'popup', 'sidebar'],
+          example: 'landing_hero',
+          description: 'Optional',
+        },
+        date_start: { type: 'string', format: 'date-time', example: '2026-07-01T00:00:00Z', description: 'Required' },
+        date_end: { type: 'string', format: 'date-time', example: '2026-07-31T23:59:59Z', description: 'Required' },
       },
+      required: ['img_url', 'date_start', 'date_end'],
     },
   })
   @ApiResponse({ status: 201, description: 'Banner created' })
@@ -337,11 +378,12 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary' },
-        mem_code: { type: 'string' },
-        type: { type: 'string' },
-        old_url: { type: 'string' },
+        file: { type: 'string', format: 'binary', description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required' },
+        type: { type: 'string', example: 'profile', description: 'Required; image category/usage tag' },
+        old_url: { type: 'string', example: 'https://cdn.wangpharma.com/users/old.jpg', description: 'Required; pass empty string if there is no previous image to remove' },
       },
+      required: ['file', 'mem_code', 'type', 'old_url'],
     },
   })
   @ApiResponse({ status: 201, description: 'User image uploaded' })
@@ -363,7 +405,7 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get a feature flag status' })
-  @ApiParam({ name: 'flag', description: 'Feature flag name' })
+  @ApiParam({ name: 'flag', description: 'Feature flag name', example: 'new_checkout' })
   @ApiResponse({ status: 200, description: 'Feature flag status' })
   @Get('/ecom/feature-flag/:flag')
   async checkFlag(@Param('flag') flag: string) {
@@ -387,7 +429,11 @@ export class AppController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { flag: { type: 'string' }, status: { type: 'boolean' } },
+      properties: {
+        flag: { type: 'string', example: 'new_checkout', description: 'Required' },
+        status: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['flag', 'status'],
     },
   })
   @ApiResponse({ status: 201, description: 'Feature flag updated' })
@@ -406,7 +452,11 @@ export class AppController {
       type: 'array',
       items: {
         type: 'object',
-        properties: { pro_code: { type: 'string' }, month: { type: 'number' } },
+        properties: {
+          pro_code: { type: 'string', example: 'P00123', description: 'Required; product code, not empty' },
+          month: { type: 'number', example: 6, description: 'Required; month number 1-12' },
+        },
+        required: ['pro_code', 'month'],
       },
     },
   })
@@ -435,9 +485,10 @@ export class AppController {
       items: {
         type: 'object',
         properties: {
-          productCode: { type: 'string' },
-          quantity: { type: 'number' },
+          productCode: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+          quantity: { type: 'number', example: 50, description: 'Required' },
         },
+        required: ['productCode', 'quantity'],
       },
     },
   })
@@ -464,9 +515,25 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        data: { type: 'array', items: { type: 'object' } },
-        filename: { type: 'string' },
+        data: {
+          type: 'array',
+          description: 'Required',
+          items: {
+            type: 'object',
+            properties: {
+              pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+              status: {
+                oneOf: [{ type: 'number' }, { type: 'string' }],
+                example: 1,
+                description: 'Required; 1 = L16-only, 0 = normal',
+              },
+            },
+            required: ['pro_code', 'status'],
+          },
+        },
+        filename: { type: 'string', example: 'l16-upload-2026-06.xlsx', description: 'Required; not empty' },
       },
+      required: ['data', 'filename'],
     },
   })
   @ApiResponse({ status: 201, description: 'Product L16 status uploaded' })
@@ -524,8 +591,8 @@ export class AppController {
   @ApiTags('Product Search')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get favorite product list' })
-  @ApiParam({ name: 'mem_code', description: 'Member code' })
-  @ApiQuery({ name: 'sort_by', required: false, description: 'Sort order' })
+  @ApiParam({ name: 'mem_code', description: 'Member code (unused, taken from JWT)', example: 'M00123' })
+  @ApiQuery({ name: 'sort_by', required: false, description: 'Optional sort order key; omit for default order', example: 'name' })
   @ApiResponse({ status: 200, description: 'Favorite list' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -549,9 +616,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        limit: { type: 'number' },
-        mem_code: { type: 'string' },
+        limit: { type: 'number', example: 20, description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Optional; overridden by JWT member code if present' },
       },
+      required: ['limit'],
     },
   })
   @ApiResponse({ status: 201, description: 'Flash sale list' })
@@ -587,9 +655,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        mem_code: { type: 'string' },
-        pro_code: { type: 'string' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
       },
+      required: ['mem_code', 'pro_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Added to favorites' })
@@ -607,10 +676,11 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        fav_id: { type: 'number' },
-        mem_code: { type: 'string' },
-        sort_by: { type: 'number' },
+        fav_id: { type: 'number', example: 101, description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required, but overridden by JWT member code' },
+        sort_by: { type: 'number', example: 1, description: 'Optional' },
       },
+      required: ['fav_id', 'mem_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Favorite deleted' })
@@ -634,9 +704,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        username: { type: 'string' },
-        password: { type: 'string' },
+        username: { type: 'string', example: 'pharmacy01', description: 'Required; not empty' },
+        password: { type: 'string', example: 'P@ssw0rd123', description: 'Required; not empty' },
       },
+      required: ['username', 'password'],
     },
   })
   @ApiResponse({ status: 201, description: 'Login successful' })
@@ -659,13 +730,19 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        keyword: { type: 'string' },
-        offset: { type: 'number' },
-        mem_code: { type: 'string' },
-        sort_by: { type: 'number' },
-        limit: { type: 'number' },
-        creditor_codes: { type: 'array', items: { type: 'string' } },
+        keyword: { type: 'string', example: 'paracetamol', description: 'Required; empty string returns unfiltered results' },
+        offset: { type: 'number', example: 0, description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required, but overridden by JWT member code' },
+        sort_by: { type: 'number', example: 1, description: 'Optional' },
+        limit: { type: 'number', example: 20, description: 'Required' },
+        creditor_codes: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['C001', 'C002'],
+          description: 'Optional filter by creditor codes',
+        },
       },
+      required: ['keyword', 'offset', 'mem_code', 'limit'],
     },
   })
   @ApiResponse({ status: 201, description: 'Search results' })
@@ -706,13 +783,14 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        keyword: { type: 'string' },
-        offset: { type: 'number' },
-        category: { type: 'number' },
-        mem_code: { type: 'string' },
-        sort_by: { type: 'number' },
-        limit: { type: 'number' },
+        keyword: { type: 'string', example: '', description: 'Required field; empty string allowed (returns whole category)' },
+        offset: { type: 'number', example: 0, description: 'Required' },
+        category: { type: 'number', example: 5, description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required, but overridden by JWT member code' },
+        sort_by: { type: 'number', example: 1, description: 'Optional' },
+        limit: { type: 'number', example: 20, description: 'Required' },
       },
+      required: ['keyword', 'offset', 'category', 'mem_code', 'limit'],
     },
   })
   @ApiResponse({ status: 201, description: 'Category search results' })
@@ -746,9 +824,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        keyword: { type: 'string' },
-        pro_code: { type: 'string' },
+        keyword: { type: 'string', example: '', description: 'Required; empty string allowed' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
       },
+      required: ['keyword', 'pro_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Recommended products' })
@@ -774,15 +853,38 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        emp_code: { type: 'string' },
-        mem_code: { type: 'string' },
-        total_price: { type: 'number' },
-        listFree: { type: 'array', items: { type: 'object' }, nullable: true },
-        priceOption: { type: 'string' },
-        paymentOptions: { type: 'string' },
-        shippingOptions: { type: 'string' },
-        addressed: { type: 'string' },
+        emp_code: { type: 'string', example: 'E001', description: 'Optional; empty string allowed' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required, but overridden by JWT member code' },
+        total_price: { type: 'number', example: 1500.5, description: 'Required' },
+        listFree: {
+          type: 'array',
+          nullable: true,
+          description: 'Required; pass null if no point-redeemed free items',
+          items: {
+            type: 'object',
+            properties: {
+              pro_code: { type: 'string', example: 'P00123' },
+              amount: { type: 'number', example: 1 },
+              pro_unit1: { type: 'string', example: 'กล่อง' },
+              pro_point: { type: 'number', example: 10 },
+              unit_enum: { type: 'string', enum: ['1', '2', '3'], example: '1' },
+            },
+          },
+        },
+        priceOption: { type: 'string', example: 'A', description: 'Required; not empty' },
+        paymentOptions: { type: 'string', example: 'cash', description: 'Required; not empty' },
+        shippingOptions: { type: 'string', example: 'standard', description: 'Required; not empty' },
+        addressed: { type: 'string', example: '123 ถ.สุขุมวิท กรุงเทพฯ', description: 'Required; not empty' },
       },
+      required: [
+        'mem_code',
+        'total_price',
+        'listFree',
+        'priceOption',
+        'paymentOptions',
+        'shippingOptions',
+        'addressed',
+      ],
     },
   })
   @ApiResponse({ status: 201, description: 'Order submitted' })
@@ -834,7 +936,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get cart item count' })
-  @ApiParam({ name: 'mem_code', description: 'Member code' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'Cart item count' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -850,9 +952,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        pro_code: { type: 'string' },
-        mem_code: { type: 'string' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required, but overridden by JWT member code' },
       },
+      required: ['pro_code', 'mem_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Product detail' })
@@ -880,7 +983,7 @@ export class AppController {
   @ApiTags('Product Search')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List point-redeemable products' })
-  @ApiParam({ name: 'sortBy', description: 'Sort order' })
+  @ApiParam({ name: 'sortBy', description: 'Sort order key, e.g. "name" or "point"', example: 'name' })
   @ApiResponse({ status: 200, description: 'Product coin list' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -925,15 +1028,16 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        mem_code: { type: 'string' },
-        pro_code: { type: 'string' },
-        pro_unit: { type: 'string' },
-        amount: { type: 'number' },
-        flashsale_end: { type: 'string' },
-        cartVersion: { type: 'string' },
-        clientVersion: { type: 'string' },
-        company_day_source: { type: 'string' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required, but overridden by JWT member code' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        pro_unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
+        amount: { type: 'number', example: 2, description: 'Required' },
+        flashsale_end: { type: 'string', example: '', description: 'Required; pass empty string if not a flash-sale item' },
+        cartVersion: { type: 'string', example: '1', description: 'Optional' },
+        clientVersion: { type: 'string', example: '1.0.0', description: 'Optional' },
+        company_day_source: { type: 'string', example: '', description: 'Optional; empty string allowed' },
       },
+      required: ['mem_code', 'pro_code', 'pro_unit', 'amount', 'flashsale_end'],
     },
   })
   @ApiResponse({ status: 201, description: 'Product added to cart' })
@@ -999,11 +1103,12 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        promo_id: { type: 'number' },
-        promo_name: { type: 'string' },
-        tier: { type: 'string' },
-        source: { type: 'string' },
+        promo_id: { type: 'number', example: 5, description: 'Required' },
+        promo_name: { type: 'string', example: 'Company Day มิถุนายน', description: 'Required; not empty' },
+        tier: { type: 'string', example: 'Gold', description: 'Required; not empty' },
+        source: { type: 'string', example: 'banner', description: 'Required; not empty' },
       },
+      required: ['promo_id', 'promo_name', 'tier', 'source'],
     },
   })
   @ApiResponse({ status: 201, description: 'View tracked' })
@@ -1032,10 +1137,11 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        mem_code: { type: 'string' },
-        type: { type: 'string' },
-        clientVersion: { type: 'string' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        type: { type: 'string', enum: ['check', 'uncheck'], example: 'check', description: 'Required; not empty' },
+        clientVersion: { type: 'string', example: '1.0.0', description: 'Optional' },
       },
+      required: ['mem_code', 'type'],
     },
   })
   @ApiResponse({ status: 201, description: 'Cart items updated' })
@@ -1079,10 +1185,11 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        mem_code: { type: 'string' },
-        pro_code: { type: 'string' },
-        clientVersion: { type: 'string' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        clientVersion: { type: 'string', example: '1.0.0', description: 'Optional' },
       },
+      required: ['mem_code', 'pro_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Product removed from cart' })
@@ -1125,11 +1232,12 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        mem_code: { type: 'string' },
-        pro_code: { type: 'string' },
-        type: { type: 'string' },
-        clientVersion: { type: 'string' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        type: { type: 'string', enum: ['check', 'uncheck'], example: 'check', description: 'Required; not empty' },
+        clientVersion: { type: 'string', example: '1.0.0', description: 'Optional' },
       },
+      required: ['mem_code', 'pro_code', 'type'],
     },
   })
   @ApiResponse({ status: 201, description: 'Cart item updated' })
@@ -1172,7 +1280,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get cart snapshot with summary' })
-  @ApiParam({ name: 'mem_code', description: 'Member code' })
+  @ApiParam({ name: 'mem_code', description: 'Member code (unused, taken from JWT)', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'Cart snapshot' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1205,7 +1313,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Soft delete a cart item' })
-  @ApiParam({ name: 'pro_code', description: 'Product code' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
   @ApiResponse({ status: 200, description: 'Cart item soft deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1223,7 +1331,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single product for cart' })
-  @ApiParam({ name: 'pro_code', description: 'Product code' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
   @ApiResponse({ status: 200, description: 'Product detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1235,7 +1343,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get last 6 orders by member' })
-  @ApiParam({ name: 'memCode', description: 'Member code' })
+  @ApiParam({ name: 'memCode', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'Last 6 orders' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1257,7 +1365,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all orders by member' })
-  @ApiParam({ name: 'memCode', description: 'Member code' })
+  @ApiParam({ name: 'memCode', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'All member orders' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1280,7 +1388,7 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single order by running number' })
-  @ApiParam({ name: 'soh_runing', description: 'Order running number' })
+  @ApiParam({ name: 'soh_runing', description: 'Order running number', example: 'SO-67010001' })
   @ApiResponse({ status: 200, description: 'Order detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1305,13 +1413,14 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary' },
-        promo_name: { type: 'string' },
-        creditor_code: { type: 'string' },
-        start_date: { type: 'string', format: 'date-time' },
-        end_date: { type: 'string', format: 'date-time' },
-        status: { type: 'string' },
+        file: { type: 'string', format: 'binary', description: 'Required; promotion poster image' },
+        promo_name: { type: 'string', example: 'โปรโมชั่นซัมเมอร์', description: 'Required; not empty' },
+        creditor_code: { type: 'string', example: 'C001', description: 'Optional; empty string treated as no creditor' },
+        start_date: { type: 'string', format: 'date-time', example: '2026-07-01T00:00:00Z', description: 'Required' },
+        end_date: { type: 'string', format: 'date-time', example: '2026-07-31T23:59:59Z', description: 'Required' },
+        status: { type: 'string', enum: ['true', 'false'], example: 'true', description: 'Required; string "true"/"false"' },
       },
+      required: ['file', 'promo_name', 'start_date', 'end_date', 'status'],
     },
   })
   @ApiResponse({ status: 201, description: 'Promotion created' })
@@ -1345,9 +1454,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary' },
-        promo_id: { type: 'string' },
+        file: { type: 'string', format: 'binary', description: 'Required' },
+        promo_id: { type: 'string', example: '12', description: 'Required; not empty' },
       },
+      required: ['file', 'promo_id'],
     },
   })
   @ApiResponse({ status: 201, description: 'Poster updated' })
@@ -1379,7 +1489,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get promotion detail by id' })
-  @ApiParam({ name: 'promo_id', description: 'Promotion id' })
+  @ApiParam({ name: 'promo_id', description: 'Promotion id', example: '12' })
   @ApiResponse({ status: 200, description: 'Promotion detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1395,14 +1505,15 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary' },
-        promo_id: { type: 'number' },
-        tier_name: { type: 'string' },
-        min_amount: { type: 'number' },
-        description: { type: 'string' },
-        detail: { type: 'string' },
-        is_unit_based: { type: 'string' },
+        file: { type: 'string', format: 'binary', description: 'Optional; tier poster image' },
+        promo_id: { type: 'number', example: 12, description: 'Required' },
+        tier_name: { type: 'string', example: 'Gold', description: 'Required; not empty' },
+        min_amount: { type: 'number', example: 1000, description: 'Required' },
+        description: { type: 'string', example: 'ซื้อครบ 1,000 บาท', description: 'Optional; empty string allowed' },
+        detail: { type: 'string', example: 'รับส่วนลด 10%', description: 'Optional; empty string allowed' },
+        is_unit_based: { type: 'string', enum: ['true', 'false'], example: 'false', description: 'Optional; string "true"/"false"' },
       },
+      required: ['promo_id', 'tier_name', 'min_amount'],
     },
   })
   @ApiResponse({ status: 201, description: 'Tier added' })
@@ -1439,7 +1550,11 @@ export class AppController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { promo_id: { type: 'number' }, status: { type: 'boolean' } },
+      properties: {
+        promo_id: { type: 'number', example: 12, description: 'Required' },
+        status: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['promo_id', 'status'],
     },
   })
   @ApiResponse({ status: 201, description: 'Status updated' })
@@ -1456,7 +1571,11 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a tier' })
   @ApiBody({
-    schema: { type: 'object', properties: { tier_id: { type: 'number' } } },
+    schema: {
+      type: 'object',
+      properties: { tier_id: { type: 'number', example: 5, description: 'Required' } },
+      required: ['tier_id'],
+    },
   })
   @ApiResponse({ status: 201, description: 'Tier deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1470,7 +1589,11 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a promotion' })
   @ApiBody({
-    schema: { type: 'object', properties: { promo_id: { type: 'number' } } },
+    schema: {
+      type: 'object',
+      properties: { promo_id: { type: 'number', example: 12, description: 'Required' } },
+      required: ['promo_id'],
+    },
   })
   @ApiResponse({ status: 201, description: 'Promotion deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1498,10 +1621,11 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        promo_id: { type: 'number' },
-        start_date: { type: 'string', format: 'date-time' },
-        end_date: { type: 'string', format: 'date-time' },
+        promo_id: { type: 'number', example: 12, description: 'Required' },
+        start_date: { type: 'string', format: 'date-time', example: '2026-08-01T00:00:00Z', description: 'Required' },
+        end_date: { type: 'string', format: 'date-time', example: '2026-08-31T23:59:59Z', description: 'Required' },
       },
+      required: ['promo_id', 'start_date', 'end_date'],
     },
   })
   @ApiResponse({ status: 201, description: 'Promotion duplicated' })
@@ -1521,9 +1645,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        tier_id: { type: 'number' },
-        product_gcode: { type: 'string' },
+        tier_id: { type: 'number', example: 5, description: 'Required' },
+        product_gcode: { type: 'string', example: 'G001', description: 'Required; not empty' },
       },
+      required: ['tier_id', 'product_gcode'],
     },
   })
   @ApiResponse({ status: 201, description: 'Condition created' })
@@ -1544,7 +1669,11 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a promotion condition' })
   @ApiBody({
-    schema: { type: 'object', properties: { cond_id: { type: 'number' } } },
+    schema: {
+      type: 'object',
+      properties: { cond_id: { type: 'number', example: 7, description: 'Required' } },
+      required: ['cond_id'],
+    },
   })
   @ApiResponse({ status: 201, description: 'Condition deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1557,7 +1686,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List conditions by tier' })
-  @ApiParam({ name: 'tier_id', description: 'Tier id' })
+  @ApiParam({ name: 'tier_id', description: 'Tier id', example: '5' })
   @ApiResponse({ status: 200, description: 'Conditions list' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1573,11 +1702,12 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        tier_id: { type: 'number' },
-        product_gcode: { type: 'string' },
-        qty: { type: 'number' },
-        unit: { type: 'string' },
+        tier_id: { type: 'number', example: 5, description: 'Required' },
+        product_gcode: { type: 'string', example: 'G001', description: 'Required; not empty' },
+        qty: { type: 'number', example: 1, description: 'Required' },
+        unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
       },
+      required: ['tier_id', 'product_gcode', 'qty', 'unit'],
     },
   })
   @ApiResponse({ status: 201, description: 'Reward created' })
@@ -1599,7 +1729,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List rewards by tier' })
-  @ApiParam({ name: 'tier_id', description: 'Tier id' })
+  @ApiParam({ name: 'tier_id', description: 'Tier id', example: '5' })
   @ApiResponse({ status: 200, description: 'Rewards list' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1621,7 +1751,8 @@ export class AppController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { creditor_code: { type: 'string' } },
+      properties: { creditor_code: { type: 'string', example: 'C001', description: 'Required; not empty' } },
+      required: ['creditor_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Products by creditor' })
@@ -1677,7 +1808,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a tier by id' })
-  @ApiParam({ name: 'tier_id', description: 'Tier id' })
+  @ApiParam({ name: 'tier_id', description: 'Tier id', example: '5' })
   @ApiResponse({ status: 200, description: 'Tier detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1690,7 +1821,11 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a promotion reward' })
   @ApiBody({
-    schema: { type: 'object', properties: { reward_id: { type: 'number' } } },
+    schema: {
+      type: 'object',
+      properties: { reward_id: { type: 'number', example: 9, description: 'Required' } },
+      required: ['reward_id'],
+    },
   })
   @ApiResponse({ status: 201, description: 'Reward deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1707,12 +1842,13 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        promo_id: { type: 'number' },
-        promo_name: { type: 'string' },
-        start_date: { type: 'string', format: 'date-time' },
-        end_date: { type: 'string', format: 'date-time' },
-        status: { type: 'boolean' },
+        promo_id: { type: 'number', example: 12, description: 'Required' },
+        promo_name: { type: 'string', example: 'โปรโมชั่นซัมเมอร์', description: 'Optional; empty string allowed' },
+        start_date: { type: 'string', format: 'date-time', example: '2026-08-01T00:00:00Z', description: 'Optional' },
+        end_date: { type: 'string', format: 'date-time', example: '2026-08-31T23:59:59Z', description: 'Optional' },
+        status: { type: 'boolean', example: true, description: 'Optional' },
       },
+      required: ['promo_id'],
     },
   })
   @ApiResponse({ status: 201, description: 'Promotion updated' })
@@ -1739,10 +1875,11 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        reward_id: { type: 'number' },
-        qty: { type: 'number' },
-        unit: { type: 'string' },
+        reward_id: { type: 'number', example: 9, description: 'Required' },
+        qty: { type: 'number', example: 2, description: 'Required' },
+        unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
       },
+      required: ['reward_id', 'qty', 'unit'],
     },
   })
   @ApiResponse({ status: 201, description: 'Reward edited' })
@@ -1792,10 +1929,11 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        tier_id: { type: 'number' },
-        mem_code: { type: 'string' },
-        sort_by: { type: 'number' },
+        tier_id: { type: 'number', example: 5, description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        sort_by: { type: 'number', example: 1, description: 'Optional' },
       },
+      required: ['tier_id', 'mem_code'],
     },
   })
   @ApiResponse({ status: 201, description: 'Tier products' })
@@ -1814,9 +1952,10 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        creditor_code: { type: 'string' },
-        creditor_name: { type: 'string' },
+        creditor_code: { type: 'string', example: 'C001', description: 'Required; not empty' },
+        creditor_name: { type: 'string', example: 'บริษัท ตัวอย่าง จำกัด', description: 'Required; not empty' },
       },
+      required: ['creditor_code', 'creditor_name'],
     },
   })
   @ApiResponse({ status: 201, description: 'Creditor added' })
@@ -1833,12 +1972,13 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        tier_id: { type: 'number' },
-        tier_name: { type: 'string' },
-        min_amount: { type: 'number' },
-        description: { type: 'string' },
-        detail: { type: 'string' },
+        tier_id: { type: 'number', example: 5, description: 'Required' },
+        tier_name: { type: 'string', example: 'Gold', description: 'Optional; empty string allowed' },
+        min_amount: { type: 'number', example: 1000, description: 'Optional' },
+        description: { type: 'string', example: 'ซื้อครบ 1,000 บาท', description: 'Optional; empty string allowed' },
+        detail: { type: 'string', example: 'รับส่วนลด 10%', description: 'Optional; empty string allowed' },
       },
+      required: ['tier_id'],
     },
   })
   @ApiResponse({ status: 201, description: 'Tier edited' })
@@ -1862,11 +2002,16 @@ export class AppController {
     schema: {
       type: 'object',
       properties: {
-        data: { type: 'array', items: { type: 'object' } },
-        isLastChunk: { type: 'boolean' },
-        isFirstChunk: { type: 'boolean' },
-        fileName: { type: 'string' },
+        data: {
+          type: 'array',
+          description: 'Required; rows from Excel with Thai column keys (วันที่, เลขที่ใบกำกับ, รหัสลูกค้า, ยอดเงินสุทธิ)',
+          items: { type: 'object' },
+        },
+        isLastChunk: { type: 'boolean', example: true, description: 'Required' },
+        isFirstChunk: { type: 'boolean', example: false, description: 'Required' },
+        fileName: { type: 'string', example: 'wangday-2026-06.xlsx', description: 'Required; not empty' },
       },
+      required: ['data', 'isLastChunk', 'isFirstChunk', 'fileName'],
     },
   })
   @ApiResponse({ status: 201, description: 'Wangday data imported' })
@@ -1932,7 +2077,7 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get monthly wangday sum by code' })
-  @ApiParam({ name: 'wang_code', description: 'Wang code' })
+  @ApiParam({ name: 'wang_code', description: 'Wang code', example: 'W001' })
   @ApiResponse({ status: 200, description: 'Monthly wangday sum' })
   @Get('/ecom/wangday/monthly/:wang_code')
   async getWangdayMonthly(@Param('wang_code') wang_code: string) {
@@ -1941,7 +2086,7 @@ export class AppController {
   }
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get all wangday sum price by code' })
-  @ApiParam({ name: 'wang_code', description: 'Wang code' })
+  @ApiParam({ name: 'wang_code', description: 'Wang code', example: 'W001' })
   @ApiResponse({ status: 200, description: 'Wangday sum price' })
   @Get('/ecom/wangsumprice/:wang_code')
   async getWangSumPrice(@Param('wang_code') wang_code: string) {
@@ -1950,7 +2095,7 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiOperation({ summary: 'Search main products for hotdeal' })
-  @ApiParam({ name: 'keyword', description: 'Search keyword' })
+  @ApiParam({ name: 'keyword', description: 'Search keyword', example: 'paracetamol' })
   @ApiResponse({ status: 201, description: 'Matched products' })
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
   async searchProductMain(@Param('keyword') keyword: string) {
@@ -1964,6 +2109,23 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create or update a hotdeal' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        data: { type: 'object', description: 'Required; hotdeal input payload (pro_code, dates, discount, freebies, etc.)' },
+        id: { type: 'number', example: 5, description: 'Optional; omit to create, provide to update' },
+        order: { type: 'number', example: 1, description: 'Optional' },
+        special_deal: { type: 'boolean', example: false, description: 'Optional' },
+      },
+      required: ['data'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Hotdeal saved' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/save-hotdeal')
   async saveHotdeal(
@@ -1984,17 +2146,43 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiOperation({ summary: 'Get all hotdeals with product names' })
+  @ApiResponse({ status: 200, description: 'List of hotdeals' })
   @Get('/ecom/admin/hotdeal/all-hotdeals')
   async getAllHotdeals() {
     return this.hotdealService.getAllHotdealsWithProductNames();
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a hotdeal' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', example: 5, description: 'Required' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      },
+      required: ['id', 'pro_code'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Hotdeal deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/admin/hotdeal/delete')
   async deleteHotdeal(@Body() data: { id: number; pro_code: string }) {
     return this.hotdealService.deleteHotdeal(data.id, data.pro_code);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get hotdeals (simple list) for current member' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
+  @ApiQuery({ name: 'special_deal', required: false, type: String, description: '"true" or "false"', example: 'false' })
+  @ApiResponse({ status: 200, description: 'List of hotdeals' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/simple-list')
   async getAllHotdealsSimple(
@@ -2016,6 +2204,13 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get product-pro deals (simple list) for current member' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
+  @ApiResponse({ status: 200, description: 'List of product-pro deals' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-pro/simple-list')
   async getProductProSimpleList(
@@ -2031,6 +2226,13 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get "buy more get 1" deals (simple list) for current member' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
+  @ApiResponse({ status: 200, description: 'List of buy-more-get-1 deals' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/buy-more-get-1/simple-list')
   async getBuyMoreGetOneSimpleList(
@@ -2046,6 +2248,38 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiOperation({ summary: 'Check which cart items match active hotdeals' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hotDeal: {
+          type: 'array',
+          description: 'Required',
+          items: {
+            type: 'object',
+            properties: {
+              pro_code: { type: 'string', example: 'P00123' },
+              shopping_cart: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    pro1_unit: { type: 'string', example: 'กล่อง' },
+                    pro1_amount: { type: 'string', example: '2' },
+                  },
+                },
+              },
+            },
+            required: ['pro_code', 'shopping_cart'],
+          },
+        },
+      },
+      required: ['hotDeal'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Matched hotdeals' })
   @Post('/ecom/hotdeal/check-hotdeal-match')
   async checkHotdealMatch(
     @Body()
@@ -2075,6 +2309,18 @@ export class AppController {
     }
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Apply a promo code and check reward in cart' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { code_text: { type: 'string', example: 'PROMO2026', description: 'Required; not empty' } },
+      required: ['code_text'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Reward checked' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/code/use')
   async useCodeForCheckReward(
@@ -2090,6 +2336,18 @@ export class AppController {
     );
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Generate a promo code for a member (requires permission)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' } },
+      required: ['mem_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Promo code generated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/code/generate')
   async generateCodePromotion(
@@ -2103,11 +2361,32 @@ export class AppController {
     return this.promotionService.generateCodePromotion(data.mem_code);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiOperation({ summary: 'Get hotdeal/freebie detail by product code' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiResponse({ status: 200, description: 'Hotdeal detail' })
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
     return await this.hotdealService.getHotdealFromCode(pro_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Bulk update products from back office import file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        group: {
+          type: 'array',
+          description: 'Required; rows of product fields to update (pro_code, pro_name, prices, ratios, units, supplier, stock fields)',
+          items: { type: 'object' },
+        },
+        filename: { type: 'string', example: 'back-office-2026-06.xlsx', description: 'Required; not empty' },
+      },
+      required: ['group', 'filename'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Products updated' })
   @Post('/ecom/admin/update-product-from-back-office')
   async updateProductFromBackOffice(
     @Body()
@@ -2142,6 +2421,36 @@ export class AppController {
     }
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Bulk upsert customer accounts' })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+          mem_nameSite: { type: 'string', example: 'ร้านยาตัวอย่าง', description: 'Required; not empty' },
+          mem_username: { type: 'string', example: 'pharmacy01', description: 'Required; not empty' },
+          mem_password: { type: 'string', example: 'P@ssw0rd123', description: 'Required; not empty' },
+          mem_price: { type: 'string', example: 'A', description: 'Required; not empty' },
+          emp_saleoffice: { type: 'string', example: 'E001', description: 'Required; not empty' },
+          latest_purchase: { type: 'string', example: '2026-06-01', description: 'Required; not empty' },
+          emp_id_ref: { type: 'string', example: 'E001', description: 'Optional; empty string allowed' },
+        },
+        required: [
+          'mem_code',
+          'mem_nameSite',
+          'mem_username',
+          'mem_password',
+          'mem_price',
+          'emp_saleoffice',
+          'latest_purchase',
+        ],
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Customers upserted' })
   @Post('/ecom/update-customer-data')
   async updateCustomerData(
     @Body()
@@ -2159,11 +2468,38 @@ export class AppController {
     return this.authService.upsertUser(data);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get last shopping head running number' })
+  @ApiResponse({ status: 200, description: 'Last sh_running value' })
   @Get('/ecom/last-sh-running')
   async getLastShRunning() {
     return this.shoppingHeadService.getLastSHRunnning();
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Bulk update stock from back office import file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        group: {
+          type: 'array',
+          description: 'Required',
+          items: {
+            type: 'object',
+            properties: {
+              pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+              stock: { type: 'number', example: 100, description: 'Required' },
+            },
+            required: ['pro_code', 'stock'],
+          },
+        },
+        filename: { type: 'string', example: 'stock-2026-06.xlsx', description: 'Required; not empty' },
+      },
+      required: ['group', 'filename'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Stock updated' })
   @Post('/ecom/admin/update-stock-from-back-office')
   async updateStockFromBackOffice(
     @Body()
@@ -2179,12 +2515,21 @@ export class AppController {
       throw new Error('Error updating stock from back office');
     }
   }
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reindex all products to Elasticsearch' })
+  @ApiResponse({ status: 201, description: 'Sync started/completed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/sync-products-elastic')
   async syncProductsToElastic() {
     return this.productsService.syncAllProductsToElastic();
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get file log entries by feature' })
+  @ApiParam({ name: 'feature', description: 'Feature name', example: 'wangday-import' })
+  @ApiResponse({ status: 200, description: 'File log entries' })
   @Get('/ecom/fileLog/:feature')
   async getFileLog(@Param('feature') feature: string) {
     const fileLogs = await this.backendService.getFeatured({
@@ -2193,18 +2538,35 @@ export class AppController {
     return fileLogs;
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all debtor records for a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'List of debtor records' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/debtor/:mem_code')
   async getDebtor(@Param('mem_code') mem_code: string) {
     return await this.debtorService.getAllDebtors(mem_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get favorite product count for a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'Favorite count' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/favorite/count/:mem_code')
   async getCountFavorite(@Param('mem_code') mem_code: string) {
     return await this.favoriteService.getCountFavorite(mem_code);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all searchable product keywords for current member' })
+  @ApiResponse({ status: 200, description: 'List of product keywords' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product/keysearch-all')
   async getKeySearch(@Req() req: Request & { user: JwtPayload }) {
@@ -2215,6 +2577,26 @@ export class AppController {
     );
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add product lot/expiry records' })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          lot: { type: 'string', example: 'LOT2026A', description: 'Required; not empty' },
+          mfg: { type: 'string', example: '2026-01-01', description: 'Required; not empty' },
+          exp: { type: 'string', example: '2028-01-01', description: 'Required; not empty' },
+          pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        },
+        required: ['lot', 'mfg', 'exp', 'pro_code'],
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Lots added' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/lot/add-lots')
   async addLots(
@@ -2229,6 +2611,24 @@ export class AppController {
     return this.lotService.addLots(data);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a daily flash sale promotion' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        promotion_name: { type: 'string', example: 'Flash Sale วันศุกร์', description: 'Required; not empty' },
+        date: { type: 'string', example: '2026-07-03', description: 'Required; not empty' },
+        time_start: { type: 'string', example: '10:00', description: 'Required; not empty' },
+        time_end: { type: 'string', example: '14:00', description: 'Required; not empty' },
+        is_active: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['promotion_name', 'date', 'time_start', 'time_end', 'is_active'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Flash sale created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/add-flashsale')
   async addDailyFlashsale(
@@ -2244,6 +2644,22 @@ export class AppController {
     return await this.flashsaleService.addFlashSale(data);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a product to a daily flash sale' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        promotion_id: { type: 'number', example: 3, description: 'Required' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        limit: { type: 'number', example: 50, description: 'Required' },
+      },
+      required: ['promotion_id', 'pro_code', 'limit'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product added to flash sale' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/add-product')
   async addProductToDailyFlashsale(
@@ -2257,12 +2673,23 @@ export class AppController {
     return await this.flashsaleService.addProductToFlashSale(data);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all daily flash sale promotions' })
+  @ApiResponse({ status: 200, description: 'List of flash sales' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/daily-flashsale/list')
   async getAllDailyFlashsales() {
     return await this.flashsaleService.getAllFlashSales();
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get products in a daily flash sale' })
+  @ApiParam({ name: 'promotion_id', description: 'Flash sale promotion id', example: '3' })
+  @ApiResponse({ status: 200, description: 'List of products in flash sale' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/daily-flashsale/products/:promotion_id')
   async getProductsInDailyFlashsale(
@@ -2271,12 +2698,39 @@ export class AppController {
     return await this.flashsaleService.getProductsInFlashSale(promotion_id);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a product from a daily flash sale' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { id: { type: 'number', example: 10, description: 'Required' } },
+      required: ['id'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Product removed from flash sale' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/daily-flashsale/delete-product')
   async deleteProductDailyFlashsale(@Body('id') id: number) {
     return await this.flashsaleService.deleteProduct(id);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Edit a product in a daily flash sale' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', example: 10, description: 'Required' },
+        limit: { type: 'number', example: 50, description: 'Required' },
+      },
+      required: ['id', 'limit'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product updated in flash sale' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/edit-product')
   async editProductInDailyFlashSale(
@@ -2285,6 +2739,20 @@ export class AppController {
     return await this.flashsaleService.editProductInFlashSale(data);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get active flash sale for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', example: 20, description: 'Optional; max items to return' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Optional; overridden by JWT mem_code if present' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Flash sale data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/get-flashsale')
   async getFlashsaleByDate(
@@ -2299,6 +2767,21 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change active status of a daily flash sale' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', example: 10, description: 'Required' },
+        is_active: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['id', 'is_active'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Status changed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/change-status')
   async changeStatusDailyFlashsale(
@@ -2310,12 +2793,39 @@ export class AppController {
     });
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a daily flash sale' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { id: { type: 'number', example: 3, description: 'Required' } },
+      required: ['id'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Flash sale deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/daily-flashsale/delete-flashsale')
   async deleteDailyFlashsale(@Body('id') id: number) {
     return await this.flashsaleService.deleteFlashSale(id);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upsert a file log entry' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        feature: { type: 'string', example: 'wangday-import', description: 'Required; not empty' },
+        filename: { type: 'string', example: 'import-2026-06-23.csv', description: 'Required; not empty' },
+      },
+      required: ['feature', 'filename'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'File log upserted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/upload-log-file')
   async uploadLogFile(@Body() data: { feature: string; filename: string }) {
@@ -2325,11 +2835,34 @@ export class AppController {
     });
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get the log file for a feature' })
+  @ApiParam({ name: 'feature', description: 'Feature name', example: 'wangday-import' })
+  @ApiResponse({ status: 200, description: 'Log file content' })
   @Get('/ecom/get-upload-log-file/:feature')
   async getUploadLogFile(@Param('feature') feature: string) {
     return await this.backendService.getLogfile(feature);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Edit a daily flash sale promotion' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        promotion_id: { type: 'number', example: 3, description: 'Required' },
+        promotion_name: { type: 'string', example: 'Flash Sale วันหยุด', description: 'Required; not empty' },
+        date: { type: 'string', example: '2026-06-23', description: 'Required; format YYYY-MM-DD' },
+        time_start: { type: 'string', example: '09:00', description: 'Required; format HH:mm' },
+        time_end: { type: 'string', example: '21:00', description: 'Required; format HH:mm' },
+        is_active: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['promotion_id', 'promotion_name', 'date', 'time_start', 'time_end', 'is_active'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Flash sale updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/edit-flashsale')
   async editDailyFlashsale(
@@ -2346,6 +2879,22 @@ export class AppController {
     return await this.flashsaleService.EditFlashSale(data);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add an invisible-product topic for a creditor' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        invisible_name: { type: 'string', example: 'ซ่อนสินค้าโปรโมชั่น', description: 'Required; not empty' },
+        date_end: { type: 'string', example: '2026-12-31', description: 'Required; format YYYY-MM-DD' },
+        creditor_code: { type: 'string', example: 'C00123', description: 'Required; not empty' },
+      },
+      required: ['invisible_name', 'date_end', 'creditor_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Topic added' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/invisible-product/add-invisible-topic')
   async addInvisibleTopic(
@@ -2359,12 +2908,21 @@ export class AppController {
     return await this.invisibleService.addInvisibleTopic(data);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all invisible-product topics' })
+  @ApiResponse({ status: 200, description: 'List of invisible-product topics' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/invisible-product/get-invisible-topic-all')
   async getInvisibleTopic() {
     return await this.invisibleService.handleGetInvisibleTopics();
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get invisible products by creditor code' })
+  @ApiParam({ name: 'creditor_code', description: 'Creditor code', example: 'C00123' })
+  @ApiResponse({ status: 200, description: 'List of products' })
   @Get('/ecom/invisible/product/creditor/:creditor_code')
   async getInvisibleProductByCreditor(
     @Param('creditor_code') creditor_code: string,
@@ -2372,6 +2930,10 @@ export class AppController {
     return this.productsService.getProductByCreditor(creditor_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get invisible products by invisible topic id' })
+  @ApiParam({ name: 'invisible_id', description: 'Invisible topic id', example: 1 })
+  @ApiResponse({ status: 200, description: 'List of products' })
   @Get('/ecom/invisible/product/creditor/list/:invisible_id')
   async getInvisibleProductByInvisibleID(
     @Param('invisible_id') invisible_id: number,
@@ -2379,6 +2941,21 @@ export class AppController {
     return this.invisibleService.handleGetInvisibleProducts(invisible_id);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a product to an invisible-product topic' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        invisible_id: { type: 'number', example: 1, description: 'Required' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      },
+      required: ['invisible_id', 'pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product added to topic' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/invisible-product/add-product')
   async addInvisibleProduct(
@@ -2391,12 +2968,36 @@ export class AppController {
     return await this.invisibleService.updateProductInvisible(data);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a product from invisible-product topics' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product removed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/invisible-product/delete-product')
   async deleteInvisibleProduct(@Body('pro_code') pro_code: string) {
     return await this.invisibleService.removeProductInvisible(pro_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete an invisible-product topic' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { invisible_id: { type: 'string', example: '1', description: 'Required; not empty' } },
+      required: ['invisible_id'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Topic deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/invisible-product/delete-topic')
   async deleteInvisibleTopic(@Body('invisible_id') invisible_id: string) {
@@ -2405,12 +3006,51 @@ export class AppController {
     );
   }
 
+  @ApiTags('Address')
+  @ApiOperation({ summary: 'Get an address by id' })
+  @ApiParam({ name: 'addressId', description: 'Address id', example: 5 })
+  @ApiResponse({ status: 201, description: 'Address detail' })
   // @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/edit-address/:addressId')
   async editAddress(@Param('addressId') addressId: number) {
     return this.editAddressService.getAddressById(addressId);
   }
 
+  @ApiTags('Address')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a new address for a member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'บ้าน', description: 'Optional; empty string allowed' },
+        fullName: { type: 'string', example: 'สมชาย ใจดี', description: 'Required; not empty' },
+        mem_address: { type: 'string', example: '99/1', description: 'Optional; empty string allowed' },
+        mem_village: { type: 'string', example: 'หมู่ 5', description: 'Optional; empty string allowed' },
+        mem_alley: { type: 'string', example: 'ซอย 1', description: 'Optional; empty string allowed' },
+        mem_road: { type: 'string', example: 'ถนนสุขุมวิท', description: 'Optional; empty string allowed' },
+        mem_province: { type: 'string', example: 'กรุงเทพมหานคร', description: 'Required; not empty' },
+        mem_amphur: { type: 'string', example: 'บางนา', description: 'Required; not empty' },
+        mem_tumbon: { type: 'string', example: 'บางนา', description: 'Required; not empty' },
+        mem_post: { type: 'string', example: '10260', description: 'Required; not empty' },
+        phoneNumber: { type: 'string', example: '0812345678', description: 'Required; not empty' },
+        Note: { type: 'string', example: 'ฝากไว้กับยาม', description: 'Optional; empty string allowed' },
+        defaults: { type: 'boolean', example: false, description: 'Optional; defaults to false' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+      },
+      required: [
+        'fullName',
+        'mem_province',
+        'mem_amphur',
+        'mem_tumbon',
+        'mem_post',
+        'phoneNumber',
+        'mem_code',
+      ],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Address created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/address/create-address')
   async createAddress(
@@ -2435,17 +3075,41 @@ export class AppController {
     return this.editAddressService.createAddress(addressData);
   }
 
+  @ApiTags('Address')
+  @ApiOperation({ summary: 'Update an existing address' })
+  @ApiParam({ name: 'id', description: 'Address id', example: 5 })
+  @ApiBody({ type: EditAddress })
+  @ApiResponse({ status: 200, description: 'Address updated' })
   // @UseGuards(JwtAuthGuard)
   @Put('/ecom/address/update-address/:id')
   async updateAddress(@Param('id') id: number, @Body() address: EditAddress) {
     return this.editAddressService.updateAddress(id, address);
   }
 
+  @ApiTags('Address')
+  @ApiOperation({ summary: 'Get all addresses for a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'List of addresses' })
   @Get('/ecom/address/:mem_code')
   async getAddressByUser(@Param('mem_code') mem_code: string) {
     return await this.editAddressService.getAddressesByUser(mem_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Save modal/popup content' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', example: 1, description: 'Required' },
+        title: { type: 'string', example: 'ประกาศปิดระบบ', description: 'Required; not empty' },
+        content: { type: 'string', example: '<p>เนื้อหา</p>', description: 'Optional; empty string allowed' },
+        show: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['id', 'title', 'show'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Modal content saved' })
   @Post('/ecom/admin/modal-content/save')
   async saveModalContent(
     @Body()
@@ -2459,11 +3123,19 @@ export class AppController {
     return this.modalContentService.saveModalContent(body);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get modal/popup content' })
+  @ApiResponse({ status: 200, description: 'Modal content' })
   @Get('/ecom/admin/modal-content/get')
   async getModalContent() {
     return this.modalContentService.getModalContent();
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all "fix free" (point-redeemable) products' })
+  @ApiResponse({ status: 200, description: 'List of free products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-free/all')
   async getAllProductFree() {
@@ -2474,18 +3146,60 @@ export class AppController {
     }
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a product to the "fix free" point-redeemable list' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        pro_point: { type: 'number', example: 100, description: 'Required' },
+      },
+      required: ['pro_code', 'pro_point'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product added' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/add')
   async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
     return await this.fixFreeService.addProductFree(data);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a product from the "fix free" list' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Product removed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/product-free/delete')
   async deleteProductFree(@Body() data: { pro_code: string }) {
     return await this.fixFreeService.removeProductFree(data.pro_code);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Edit the point cost of a "fix free" product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        pro_point: { type: 'number', example: 150, description: 'Required' },
+      },
+      required: ['pro_code', 'pro_point'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product point updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/edit')
   async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
@@ -2497,6 +3211,16 @@ export class AppController {
   //   return { ip };
   // }
 
+  @ApiTags('Auth')
+  @ApiOperation({ summary: 'Refresh an access token' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIs...', description: 'Required; not empty; refresh token' } },
+      required: ['token'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'New access token issued' })
   @Post('/ecom/refresh_token')
   async refreshToken(@Body() body: { token: string }, @Req() req: Request) {
     return this.authService.refreshToken(
@@ -2506,6 +3230,23 @@ export class AppController {
   }
 
   // Session Management APIs
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a login session for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        session_token: { type: 'string', example: 'a1b2c3d4e5', description: 'Required; not empty' },
+        ip_address: { type: 'string', example: '203.0.113.10', description: 'Optional; empty string allowed' },
+        user_agent: { type: 'string', example: 'Mozilla/5.0', description: 'Optional; empty string allowed' },
+        device_type: { type: 'string', example: 'mobile', description: 'Optional; empty string allowed' },
+      },
+      required: ['session_token'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Session created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/create')
   async createSession(
@@ -2528,18 +3269,36 @@ export class AppController {
     );
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get an active session by token' })
+  @ApiParam({ name: 'session_token', description: 'Session token', example: 'a1b2c3d4e5' })
+  @ApiResponse({ status: 200, description: 'Active session' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/active/:session_token')
   async getActiveSession(@Param('session_token') session_token: string) {
     return await this.sessionsService.findActiveSession(session_token);
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all active sessions for a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'List of active sessions' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/user-sessions/:mem_code')
   async getUserActiveSessions(@Param('mem_code') mem_code: string) {
     return await this.sessionsService.findUserActiveSessions(mem_code);
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update last activity timestamp of a session' })
+  @ApiParam({ name: 'session_token', description: 'Session token', example: 'a1b2c3d4e5' })
+  @ApiResponse({ status: 200, description: 'Session activity updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/session/update-activity/:session_token')
   async updateSessionActivity(@Param('session_token') session_token: string) {
@@ -2547,6 +3306,18 @@ export class AppController {
     return { message: 'Session activity updated successfully' };
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Logout a single session' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { session_token: { type: 'string', example: 'a1b2c3d4e5', description: 'Required; not empty' } },
+      required: ['session_token'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Logout successful' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout')
   async logoutSession(@Body() data: { session_token: string }) {
@@ -2554,6 +3325,18 @@ export class AppController {
     return { message: 'Logout successful' };
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Logout all sessions of a member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' } },
+      required: ['mem_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'All sessions logged out' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-all')
   async logoutAllSessions(@Body() data: { mem_code: string }) {
@@ -2561,6 +3344,18 @@ export class AppController {
     return { message: 'All sessions logged out successfully' };
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Logout recently active sessions of a member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' } },
+      required: ['mem_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Recently active sessions logged out' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-recent')
   async logoutRecentSessions(@Body() data: { mem_code: string }) {
@@ -2568,6 +3363,12 @@ export class AppController {
     return { message: 'Recently active sessions logged out successfully' };
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Validate whether a session token is still active' })
+  @ApiParam({ name: 'session_token', description: 'Session token', example: 'a1b2c3d4e5' })
+  @ApiResponse({ status: 200, description: 'Validation result' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/validate/:session_token')
   async validateSession(@Param('session_token') session_token: string) {
@@ -2575,6 +3376,12 @@ export class AppController {
     return { is_valid: isValid };
   }
 
+  @ApiTags('Session')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Count active sessions of a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'Active session count' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/count/:mem_code')
   async countActiveSessions(@Param('mem_code') mem_code: string) {
@@ -2582,6 +3389,10 @@ export class AppController {
     return { active_sessions_count: count };
   }
 
+  @ApiTags('Password')
+  @ApiOperation({ summary: 'Check whether a member has an email on file for password reset' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'Email check result' })
   @Get('/ecom/password/check-email/:mem_code')
   async checkEmail(@Param('mem_code') mem_code: string): Promise<{
     RefKey?: string;
@@ -2593,6 +3404,16 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Password')
+  @ApiOperation({ summary: 'Request an OTP for password reset' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' } },
+      required: ['mem_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'OTP request result' })
   @Post('/ecom/password/request-otp')
   async requestOtp(@Body('mem_code') mem_code: string): Promise<{
     valid: boolean;
@@ -2603,6 +3424,20 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Password')
+  @ApiOperation({ summary: 'Validate an OTP for password reset' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        mem_username: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        otp: { type: 'string', example: '123456', description: 'Required; not empty' },
+        timeNow: { type: 'string', example: '2026-06-23T10:00:00.000Z', description: 'Required; ISO datetime' },
+      },
+      required: ['mem_username', 'otp', 'timeNow'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'OTP validation result' })
   @Post('/ecom/password/validate-otp')
   async validateOtp(
     @Body()
@@ -2616,6 +3451,22 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Password')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change password for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        new_password: { type: 'string', example: 'NewP@ssw0rd', description: 'Required; not empty' },
+        old_password: { type: 'string', example: 'OldP@ssw0rd', description: 'Required; not empty' },
+        logout_all_devices: { type: 'boolean', example: false, description: 'Optional; defaults to false' },
+      },
+      required: ['new_password', 'old_password'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Password change result' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/password/change-password')
   async changePassword(
@@ -2647,6 +3498,20 @@ export class AppController {
     }
   }
 
+  @ApiTags('Password')
+  @ApiOperation({ summary: 'Reset password using a validated OTP' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        mem_username: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        new_password: { type: 'string', example: 'NewP@ssw0rd', description: 'Required; not empty' },
+        otp: { type: 'string', example: '123456', description: 'Required; not empty' },
+      },
+      required: ['mem_username', 'new_password', 'otp'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Password reset result' })
   @Put('/ecom/password/reset-password')
   async resetPassword(
     @Body()
@@ -2659,6 +3524,27 @@ export class AppController {
     return this.changePasswordService.forgotPasswordUpdate(body);
   }
 
+  @ApiTags('Products')
+  @ApiOperation({ summary: 'Bulk add new-arrival product batches' })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+          LOT: { type: 'string', example: 'L2026001', description: 'Required; not empty' },
+          MFG: { type: 'string', example: '2026-01-01', description: 'Required; format YYYY-MM-DD' },
+          EXP: { type: 'string', example: '2028-01-01', description: 'Required; format YYYY-MM-DD' },
+          createdAt: { type: 'string', format: 'date-time', example: '2026-06-23T10:00:00.000Z', description: 'Required; ISO datetime' },
+          amount: { type: 'number', example: 100, description: 'Required' },
+          unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
+        },
+        required: ['pro_code', 'LOT', 'MFG', 'EXP', 'createdAt', 'amount', 'unit'],
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'New arrivals added' })
   @Post('/ecom/new-arrivals')
   async NewArrivals(
     @Body()
@@ -2681,6 +3567,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get up to 30 new-arrival products for current member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code (unused, taken from JWT)', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'List of new-arrival products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
   async getNewArrivalsLimit30(@Req() req: Request & { user: JwtPayload }) {
@@ -2691,11 +3583,20 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiOperation({ summary: 'Find a hotdeal by product code' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiResponse({ status: 200, description: 'Hotdeal detail' })
   @Get('/ecom/hotdeal/find/:pro_code')
   find(@Param('pro_code') pro_code: string): Promise<any> {
     return this.hotdealService.find(pro_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get wangday data grouped by product (requires permission)' })
+  @ApiResponse({ status: 200, description: 'Wangday data by product' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/wangday')
   async getProductWangday(@Req() req: Request & { user: JwtPayload }): Promise<{
@@ -2712,6 +3613,11 @@ export class AppController {
     return await this.wangdayService.getProductWangday();
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all company-day promotions (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of promotions' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/company-days')
   async getCompanyDays(@Req() req: Request & { user: JwtPayload }): Promise<{
@@ -2724,6 +3630,11 @@ export class AppController {
     return await this.promotionService.getPromotions();
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all banners (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of banners' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/banner')
   async getBanner(
@@ -2736,6 +3647,11 @@ export class AppController {
     return await this.bannerService.findAllBanners();
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all hotdeals (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of hotdeals' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/hotdeals')
   async getHotdeals(
@@ -2748,6 +3664,11 @@ export class AppController {
     return await this.hotdealService.findAllHotdeals();
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all flash sales (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of flash sales' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/flashsales')
   async getFlashsales(@Req() req: Request & { user: JwtPayload }) {
@@ -2757,6 +3678,11 @@ export class AppController {
     }
     return await this.flashsaleService.findAllFlashSales();
   }
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all "fix free" products (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of free products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/product-free')
   async getProductFree(
@@ -2769,6 +3695,11 @@ export class AppController {
     return await this.productsService.findProductFree();
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all promotional products (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of promotional products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/product-promotion')
   async getProductPromotion(@Req() req: Request & { user: JwtPayload }) {
@@ -2779,6 +3710,42 @@ export class AppController {
     return await this.productsService.findProductPromotion();
   }
 
+  @ApiTags('Debtor / Reduction')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk import reduction invoice data' })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', example: '2026-06-23', description: 'Required; format YYYY-MM-DD' },
+          invoice: { type: 'string', example: 'INV00123', description: 'Required; not empty' },
+          mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+          date_due: { type: 'string', example: '2026-07-23', description: 'Required; format YYYY-MM-DD' },
+          total: { type: 'string', example: '1000.00', description: 'Required; not empty' },
+          payment: { type: 'string', example: '500.00', description: 'Required; not empty' },
+          balance: { type: 'string', example: '500.00', description: 'Required; not empty' },
+          bill_list: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                date: { type: 'string', example: '2026-06-23', description: 'Required; format YYYY-MM-DD' },
+                invoice: { type: 'string', example: 'INV00123', description: 'Required; not empty' },
+                price: { type: 'string', example: '500.00', description: 'Required; not empty' },
+                comments: { type: 'string', example: '', description: 'Optional; empty string allowed' },
+              },
+              required: ['date', 'invoice', 'price'],
+            },
+          },
+        },
+        required: ['date', 'invoice', 'mem_code', 'date_due', 'total', 'payment', 'balance', 'bill_list'],
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Invoices imported' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/reduct-invoice/add-invoice')
   async importData(
@@ -2796,6 +3763,43 @@ export class AppController {
     }
   }
 
+  @ApiTags('Debtor / Reduction')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk import reduction RT (return) data' })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          invoice: { type: 'string', example: 'INV00123', description: 'Required; not empty' },
+          date: { type: 'string', example: '2026-06-23', description: 'Required; format YYYY-MM-DD' },
+          mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+          pro_amount: { type: 'string', example: '10', description: 'Required; not empty' },
+          dis_price: { type: 'string', example: '50.00', description: 'Required; not empty' },
+          comments: { type: 'string', example: '', description: 'Optional; empty string allowed' },
+          pro_list: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+                pro_name: { type: 'string', example: 'ยาพาราเซตามอล', description: 'Required; not empty' },
+                pro_amount: { type: 'string', example: '10', description: 'Required; not empty' },
+                pro_unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
+                pro_price_per_unit: { type: 'string', example: '5.00', description: 'Required; not empty' },
+                pro_discount: { type: 'string', example: '0.00', description: 'Required; not empty' },
+              },
+              required: ['pro_code', 'pro_name', 'pro_amount', 'pro_unit', 'pro_price_per_unit', 'pro_discount'],
+            },
+          },
+        },
+        required: ['invoice', 'date', 'mem_code', 'pro_amount', 'dis_price', 'pro_list'],
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'RT entries imported' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/reduct-invoice/add-rt')
   async importDataRT(
@@ -2813,6 +3817,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Debtor / Reduction')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Find a reduction invoice by invoice id for current member' })
+  @ApiParam({ name: 'invoice', description: 'Invoice number', example: 'INV00123' })
+  @ApiResponse({ status: 200, description: 'Debtor/invoice record' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/reduct-invoice/invoice/id/:invoice')
   async findReductionInvoices(
@@ -2829,6 +3839,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Debtor / Reduction')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Find a reduction RT (return) record by id for current member' })
+  @ApiParam({ name: 'rt', description: 'RT (return) number', example: 'RT00123' })
+  @ApiResponse({ status: 200, description: 'Reduction RT record' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/reduct-invoice/rt/id/:rt')
   async findReductionRTs(
@@ -2845,6 +3861,22 @@ export class AppController {
     }
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update search keywords for a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        keysearch: { type: 'string', example: 'พารา,แก้ปวด', description: 'Optional; empty string allowed' },
+        viewers: { type: 'number', example: 0, description: 'Optional' },
+      },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Keyword updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/keysearch/update-product-keysearch')
   async updateKeysearch(
@@ -2853,12 +3885,23 @@ export class AppController {
     await this.productKeySearch.updateKeyword(data);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get keysearch info for one product' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiResponse({ status: 200, description: 'Keysearch info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/keysearch/get-one/:pro_code')
   async keysearchProductGetOne(@Param('pro_code') pro_code: string) {
     return await this.productKeySearch.getProductOne(pro_code);
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check/refresh latest purchase date for current member' })
+  @ApiResponse({ status: 200, description: 'Check result' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/usercheck_latest_purchase')
   async checkLatestPurchase(@Req() req: Request & { user: JwtPayload }) {
@@ -2870,12 +3913,44 @@ export class AppController {
     return { message: 'Check initiated' };
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all employees' })
+  @ApiResponse({ status: 200, description: 'List of employees' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/list')
   async getEmployeeList() {
     return this.employeesService.getAllEmployees();
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create or update an employee record' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        emp_code: { type: 'string', example: 'E00123', description: 'Required; not empty' },
+        data: {
+          type: 'object',
+          properties: {
+            emp_code: { type: 'string', example: 'E00123', description: 'Required; not empty' },
+            emp_nickname: { type: 'string', example: 'นัท', description: 'Optional; empty string allowed' },
+            emp_firstname: { type: 'string', example: 'สมชาย', description: 'Optional; empty string allowed' },
+            emp_lastname: { type: 'string', example: 'ใจดี', description: 'Optional; empty string allowed' },
+            emp_mobile: { type: 'string', example: '0812345678', description: 'Optional; empty string allowed' },
+            emp_email: { type: 'string', example: 'somchai@example.com', description: 'Optional; empty string allowed' },
+            emp_ID_line: { type: 'string', example: 'somchai_line', description: 'Optional; empty string allowed' },
+          },
+          required: ['emp_code'],
+        },
+      },
+      required: ['emp_code', 'data'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Employee upserted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/user/employee/upsert-employee')
   async upsertEmployee(
@@ -2908,6 +3983,24 @@ export class AppController {
     }
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk update daily sale amount for products' })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+          amount: { type: 'number', example: 25, description: 'Required' },
+        },
+        required: ['pro_code', 'amount'],
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Sale amounts updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product/pro-sale-amount-update')
   async updateProductProSaleAmount(
@@ -2916,6 +4009,22 @@ export class AppController {
     return await this.productsService.updateSaleDayly(data);
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update or clear VIP tag for a member (requires permission)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        message: { type: 'string', example: 'อนุมัติ VIP แล้ว', description: 'Required; not empty' },
+        tagVIP: { type: 'string', example: 'VIP', description: 'Optional; empty string/omit clears the tag' },
+      },
+      required: ['mem_code', 'message'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'VIP tag updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/user/employee/user-vip')
   async updateAndDeleteUserVIP(
@@ -2938,6 +4047,11 @@ export class AppController {
     );
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all VIP-tagged members' })
+  @ApiResponse({ status: 200, description: 'List of VIP members' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/user/employee/user-vip-list')
   async getUserVIPList(): Promise<
@@ -2957,6 +4071,11 @@ export class AppController {
     }));
   }
 
+  @ApiTags('Shopping Cart')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get total item count in cart for current member' })
+  @ApiResponse({ status: 200, description: 'Cart item total' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/cart/summary')
   async summaryCart(
@@ -2967,24 +4086,62 @@ export class AppController {
     return data.total;
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all recommend tags' })
+  @ApiResponse({ status: 200, description: 'List of recommend tags' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/recommend/tags')
   async getRecommendTags() {
     return await this.recommendService.getAllTags();
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Insert a recommend tag' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { tag: { type: 'string', example: 'สินค้าขายดี', description: 'Required; not empty' } },
+      required: ['tag'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tag inserted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/insertTag')
   async insertRecommendTag(@Body() data: { tag: string }) {
     return await this.recommendService.insertTag(data.tag);
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get products under a recommend tag' })
+  @ApiParam({ name: 'tag_id', description: 'Recommend tag id', example: 1 })
+  @ApiResponse({ status: 200, description: 'List of products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/recommend/products/:tag_id')
   async getRecommendProductsByTag(@Param('tag_id') tag_id: number) {
     return await this.recommendService.getProductsByTag(tag_id);
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Attach a recommend tag to a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tag_id: { type: 'number', example: 1, description: 'Required' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      },
+      required: ['tag_id', 'pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tag attached to product' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/updateTagToProduct')
   async updateTagToProduct(@Body() data: { tag_id: number; pro_code: string }) {
@@ -2994,6 +4151,21 @@ export class AppController {
     );
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update display rank for a recommended product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        rank: { type: 'number', example: 1, description: 'Required' },
+      },
+      required: ['pro_code', 'rank'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Rank updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/updateRank')
   async updateRecommendRank(@Body() data: { pro_code: string; rank: number }) {
@@ -3001,24 +4173,76 @@ export class AppController {
     return await this.recommendService.UpdateRank(data.pro_code, data.rank);
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove all recommend tags from a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tags removed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/removeTagFromProduct')
   async removeTagFromProduct(@Body() data: { pro_code: string }) {
     return await this.recommendService.DeleteTagFromProduct(data.pro_code);
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete display rank for a recommended product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Rank deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/deleteRank')
   async deleteRecommendRank(@Body() data: { pro_code: string }) {
     return await this.recommendService.DeleteRank(data.pro_code);
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a recommend tag' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { tag_id: { type: 'number', example: 1, description: 'Required' } },
+      required: ['tag_id'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tag deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/deleteTag')
   async deleteRecommendTag(@Body() data: { tag_id: number }) {
     return await this.recommendService.deleteTag(data.tag_id);
   }
 
+  @ApiTags('Recommend')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get recommended products by recommend ids for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'array', items: { type: 'string', example: 'P00123' }, description: 'Optional; not used by the implementation' },
+        recommend_id: { type: 'array', items: { type: 'number', example: 1 }, description: 'Required; not empty' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Optional; overridden by JWT mem_code if present' },
+      },
+      required: ['recommend_id'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'List of recommended products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/recommend/recommend-products')
   async getRecommendProducts(
@@ -3038,6 +4262,21 @@ export class AppController {
     );
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Set promotion status for all products under a tier' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tier_id: { type: 'number', example: 1, description: 'Required' },
+        status: { type: 'boolean', example: true, description: 'Required' },
+      },
+      required: ['tier_id', 'status'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Promotion status updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/set-all-product')
   async setAllProductPromotion(
@@ -3049,6 +4288,21 @@ export class AppController {
     );
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check the promotion tier applicable to a product for a member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+      },
+      required: ['pro_code', 'mem_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tier/promotion info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/check-product-promotion')
   async checkProductPromotion(
@@ -3060,6 +4314,11 @@ export class AppController {
     );
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all image-debug records (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of image-debug records' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/image-bug/all-imagedebug')
   async getAllImagedebug(@Req() req: Request & { user: JwtPayload }) {
@@ -3070,12 +4329,23 @@ export class AppController {
     return await this.imagedebugService.getAllImagedebug();
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get promotion tier list for all products' })
+  @ApiResponse({ status: 200, description: 'Tier list' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product')
   async getPromotionTierList() {
     return await this.promotionService.getTierAllProduct();
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get reward products for a promotion tier' })
+  @ApiParam({ name: 'tier_id', description: 'Tier id', example: 1 })
+  @ApiResponse({ status: 200, description: 'List of reward products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product-reward/:tier_id')
   async getPromotionTierListReward(
@@ -3089,6 +4359,23 @@ export class AppController {
     );
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a banner/contract-log image' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Required; image file' },
+        name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed' },
+        type: { type: 'string', enum: ['wang', 'attestor', 'creditor', 'banner'], example: 'banner', description: 'Optional' },
+        bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed' },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'File uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/create-log-banner')
   @UseInterceptors(FileInterceptor('file'))
@@ -3118,6 +4405,23 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get contract-log banner(s) by id or all' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        bannerId: {
+          oneOf: [{ type: 'number' }, { type: 'string', enum: ['all'] }],
+          example: 'all',
+          description: 'Optional; banner id, or "all" to get every banner',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Banner(s) found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/banner')
   async getContractLogBanner(
@@ -3127,6 +4431,21 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get dropdown data for contract-log forms (e.g. attestor/creditor lists)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        group: { type: 'string', example: 'attestor', description: 'Required; not empty' },
+        type: { type: 'string', example: 'attestor', description: 'Required; not empty' },
+      },
+      required: ['group', 'type'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Dropdown data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/dropdown')
   async selectDataDropdown(
@@ -3140,6 +4459,30 @@ export class AppController {
     return { type: data.type, data: result.data };
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a contract-log banner record' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        selectedWang: { type: 'number', example: 1, description: 'Optional' },
+        selectedAttestor: { type: 'number', example: 1, description: 'Optional' },
+        selectedAttestor2: { type: 'number', example: 2, description: 'Optional' },
+        selectedCreditor: { type: 'number', example: 1, description: 'Optional' },
+        bannerId: { type: 'number', example: 1, description: 'Optional' },
+        bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed' },
+        signingDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        creditorCode: { type: 'string', example: 'C00123', description: 'Optional; empty string allowed' },
+        startDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        endDate: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        paymentDue: { type: 'string', format: 'date-time', example: '2026-07-23T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        address: { type: 'string', example: '99/1 ถนนสุขุมวิท', description: 'Optional; empty string allowed' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Banner record created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/create-banner')
   async createContractLogBanner(
@@ -3165,6 +4508,17 @@ export class AppController {
     return result;
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search creditors by keyword for contract-log forms' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { keyword: { type: 'string', example: 'บริษัท วังเภสัช', description: 'Optional; empty string allowed' } },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'List of matching creditors' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/search-creditor')
   async getDataCreditor(
@@ -3173,6 +4527,24 @@ export class AppController {
     return await this.productsService.getDataCreditor(keyword);
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a contract-log creditor/banner image and info' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        contractId: { type: 'number', example: 1, description: 'Required' },
+        name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed' },
+        type: { type: 'string', enum: ['creditor', 'banner'], example: 'creditor', description: 'Optional' },
+        bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed' },
+        file: { type: 'string', format: 'binary', description: 'Optional; image file' },
+      },
+      required: ['contractId'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Contract log updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/update-creditor-person')
   @UseInterceptors(FileInterceptor('file'))
@@ -3198,6 +4570,22 @@ export class AppController {
     });
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a signed contract file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        contractId: { type: 'number', example: 1, description: 'Required' },
+        name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed' },
+        file: { type: 'string', format: 'binary', description: 'Required; signed contract file' },
+      },
+      required: ['contractId', 'file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Signed contract uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/upload-signed-contract')
   @UseInterceptors(FileInterceptor('file'))
@@ -3213,6 +4601,23 @@ export class AppController {
     });
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get contract-log company-day record(s) by id or all' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        companyDayId: {
+          oneOf: [{ type: 'number' }, { type: 'string', enum: ['all'] }],
+          example: 'all',
+          description: 'Optional; company-day record id, or "all" to get every record',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Company-day record(s)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/contract-details')
   async getContractCompanyDays(
@@ -3224,6 +4629,21 @@ export class AppController {
     );
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update reward redemption limit for a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        limit: { type: 'number', example: 50, description: 'Required' },
+      },
+      required: ['pro_code', 'limit'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Limit updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/limit-update')
   async updatePromotionLimit(
@@ -3235,12 +4655,41 @@ export class AppController {
     );
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reset reward redemption count for a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Limit count reset' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/reset-limit-count')
   async resetLimitReward(@Body() data: { pro_code: string }) {
     return await this.promotionService.resetCountLimit(data.pro_code);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Set a replacement product for a discontinued product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        replace_pro_code: { type: 'string', example: 'P00456', description: 'Required; not empty' },
+        note: { type: 'string', example: 'สินค้าหมดสายผลิต', description: 'Optional; empty string allowed' },
+        date_end: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime' },
+      },
+      required: ['pro_code', 'replace_pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Replacement product set' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/replace-product')
   async ReplaceProduct(
@@ -3261,6 +4710,39 @@ export class AppController {
     );
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a contract-log company-day record' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        selectedWang: { type: 'number', example: 1, description: 'Optional' },
+        selectedAttestor: { type: 'number', example: 1, description: 'Optional' },
+        selectedAttestor2: { type: 'number', example: 2, description: 'Optional' },
+        selectedCreditor: { type: 'number', example: 1, description: 'Optional' },
+        bannerId: { type: 'number', example: 1, description: 'Optional' },
+        bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed' },
+        signingDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        creditorCode: { type: 'string', example: 'C00123', description: 'Optional; empty string allowed' },
+        startDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        endDate: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        address: { type: 'string', example: '99/1 ถนนสุขุมวิท', description: 'Optional; empty string allowed' },
+        reportDueDate: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        finalPaymentAmount: { type: 'number', example: 5000, description: 'Optional' },
+        totalSupportValue: { type: 'number', example: 10000, description: 'Optional' },
+        supportDeliveryDate: { type: 'string', format: 'date-time', example: '2026-07-01T00:00:00.000Z', description: 'Optional; ISO datetime' },
+        numberOfInstallments: { type: 'number', example: 3, description: 'Optional' },
+        installmentIntervalDays: { type: 'number', example: 30, description: 'Optional' },
+        firstInstallmentAmount: { type: 'number', example: 3000, description: 'Optional' },
+        firstPaymentCondition: { type: 'string', example: 'ชำระทันทีหลังเซ็นสัญญา', description: 'Optional; empty string allowed' },
+        finalInstallmentAmount: { type: 'number', example: 2000, description: 'Optional' },
+        productsToOrder: { type: 'string', example: 'P00123, P00456', description: 'Optional; empty string allowed' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Company-day record created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/create-company-day')
   async createContractCompanyDay(
@@ -3293,6 +4775,23 @@ export class AppController {
     return await this.contractLogService.createContractLogCompanyDay(data);
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a contract-log company-day record (creditor image)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        contractId: { type: 'number', example: 1, description: 'Required' },
+        name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed' },
+        type: { type: 'string', enum: ['creditor'], example: 'creditor', description: 'Optional' },
+        file: { type: 'string', format: 'binary', description: 'Optional; image file' },
+      },
+      required: ['contractId'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Company-day record updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/update-company-day')
   @UseInterceptors(FileInterceptor('file'))
@@ -3319,6 +4818,21 @@ export class AppController {
     });
   }
 
+  @ApiTags('Contract Log')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a signed company-day contract file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        contractId: { type: 'number', example: 1, description: 'Required' },
+        file: { type: 'string', format: 'binary', description: 'Required; signed contract file' },
+      },
+      required: ['contractId', 'file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Signed contract uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/contract-log/upload-signed-company-day')
   @UseInterceptors(FileInterceptor('file'))
@@ -3334,18 +4848,53 @@ export class AppController {
     });
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the replacement product info for a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Replacement product info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/get-product')
   async GetProductAndReplace(@Body() data: { pro_code: string }) {
     return await this.recommendService.GetProductAndReplace(data.pro_code);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Clear the replacement product for a product' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Replacement product cleared' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/replace/replace-product-null')
   async UpdateProductAndReplaceNull(@Body() data: { pro_code: string }) {
     return await this.recommendService.RemoveReplaceProduct(data.pro_code);
   }
 
+  @ApiTags('Policy Document')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Find policy document categories (optionally by name)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { name: { type: 'string', example: 'นโยบายความเป็นส่วนตัว', description: 'Optional; empty string allowed' } },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'List of policy categories' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/policy/option-catagory')
   async findOptionCatagoryPolicy(@Body('name') name?: string) {
@@ -3353,6 +4902,22 @@ export class AppController {
     return await this.policyDocService.findOptionCatagoryPolicy(name);
   }
 
+  @ApiTags('Policy Document')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Save a new policy document version' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', example: '<p>เนื้อหานโยบาย</p>', description: 'Required; not empty' },
+        category: { type: 'number', example: 1, description: 'Required' },
+        type: { type: 'number', example: 1, description: 'Required' },
+      },
+      required: ['content', 'category', 'type'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Policy document saved' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/policy/upload-policy')
   async savePolicyDoc(
@@ -3368,6 +4933,11 @@ export class AppController {
     return await this.policyDocService.savePolicyDoc(content, category, type);
   }
 
+  @ApiTags('Policy Document')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check and get the correct (latest unsigned) policy for current member' })
+  @ApiResponse({ status: 200, description: 'Applicable policy document' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/policy/check-policy')
   async ensureUserHasPolicyMember(@Req() req: Request & { user: JwtPayload }) {
@@ -3375,6 +4945,18 @@ export class AppController {
     return await this.policyDocService.checkAndGetCorrectPolicy(mem_code);
   }
 
+  @ApiTags('Policy Document')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Agree to a policy document for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { policyID: { type: 'number', example: 1, description: 'Required' } },
+      required: ['policyID'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Agreement recorded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/policy/agree')
   async agreeToPolicyDoc(
@@ -3387,6 +4969,11 @@ export class AppController {
     return await this.policyDocService.agreePolicyDoc(mem_code, body.policyID);
   }
 
+  @ApiTags('Policy Document')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all policy documents' })
+  @ApiResponse({ status: 200, description: 'List of policy documents' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/policy/all-policies')
   async getAllPolicies(): Promise<
@@ -3403,6 +4990,11 @@ export class AppController {
     return await this.policyDocService.getAllPolicies();
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all campaigns' })
+  @ApiResponse({ status: 200, description: 'List of campaigns' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns')
   async getAllCampaigns() {
@@ -3421,6 +5013,21 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a campaign' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'แคมเปญสิ้นปี 2026', description: 'Required; not empty' },
+        description: { type: 'string', example: 'แคมเปญลดราคาสิ้นปี', description: 'Optional; empty string allowed' },
+      },
+      required: ['name'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Campaign created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns')
   async createCampaign(@Body() body: { name: string; description?: string }) {
@@ -3438,6 +5045,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a campaign' })
+  @ApiParam({ name: 'id', description: 'Campaign id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Campaign deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:id')
   async deleteCampaign(@Param('id') id: string) {
@@ -3458,6 +5071,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get tracking data for a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Campaign data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns/:campaignId/data')
   async getCampaignData(@Param('campaignId') campaignId: string) {
@@ -3475,6 +5094,24 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a data row in a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        set_number: { type: 'number', example: 1, description: 'Required' },
+        condition: { type: 'string', example: 'ซื้อครบ 1000 บาท', description: 'Optional; empty string allowed' },
+        target: { type: 'string', example: 'P00123', description: 'Optional; empty string allowed' },
+        con_percent: { type: 'string', example: '10', description: 'Optional; empty string allowed' },
+      },
+      required: ['set_number'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Row created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data')
   async createRow(
@@ -3498,6 +5135,29 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a campaign data row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', example: 'P00123', description: 'Optional; empty string allowed' },
+        con_percent: { type: 'string', example: '10', description: 'Optional; empty string allowed' },
+        condition: { type: 'string', example: 'ซื้อครบ 1000 บาท', description: 'Optional; empty string allowed' },
+        set_number: { type: 'number', example: 1, description: 'Optional' },
+        price_per_set: { type: 'string', example: '500.00', description: 'Optional; empty string allowed' },
+        number_of_sets: { type: 'number', example: 2, description: 'Optional' },
+        unit_price: { type: 'number', example: 250, description: 'Optional' },
+        quantity: { type: 'number', example: 2, description: 'Optional' },
+        discounted_price: { type: 'number', example: 450, description: 'Optional' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Row updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/campaigns/:campaignId/data/:rowId')
   async updateRow(
@@ -3528,6 +5188,13 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a campaign data row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Row deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/data/:rowId')
   async deleteRow(
@@ -3545,6 +5212,23 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a reward column for a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'ของแถม', description: 'Required; not empty' },
+        unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed' },
+        value_per_unit: { type: 'string', example: '10.00', description: 'Optional; empty string allowed' },
+      },
+      required: ['name'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Reward column created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/columns')
   async createRewardColumn(
@@ -3566,6 +5250,13 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a reward column from a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'columnId', description: 'Reward column id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Reward column deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/columns/:columnId')
   async deleteRewardColumn(
@@ -3591,6 +5282,11 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all products available to add to campaigns' })
+  @ApiResponse({ status: 200, description: 'List of products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns/products')
   async getProducts() {
@@ -3609,6 +5305,20 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a product to a campaign row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product added to row' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/products')
   async addProductToRow(
@@ -3639,6 +5349,20 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a product from a campaign row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } },
+      required: ['pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Product removed from row' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/products-delete')
   async removeProductFromRow(
@@ -3672,6 +5396,26 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a promo reward value to a campaign row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reward_column_id: { type: 'string', example: '1', description: 'Required; not empty' },
+        quantity: { type: 'string', example: '2', description: 'Optional; empty string allowed' },
+        unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed' },
+        price: { type: 'string', example: '10.00', description: 'Optional; empty string allowed' },
+        value: { type: 'string', example: '20.00', description: 'Optional; empty string allowed' },
+      },
+      required: ['reward_column_id'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Promo reward added' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/rewards')
   async addPromoReward(
@@ -3701,6 +5445,25 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a promo reward value in a campaign row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiParam({ name: 'rewardId', description: 'Reward id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        quantity: { type: 'string', example: '2', description: 'Optional; empty string allowed' },
+        unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed' },
+        price: { type: 'string', example: '10.00', description: 'Optional; empty string allowed' },
+        value: { type: 'string', example: '20.00', description: 'Optional; empty string allowed' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Promo reward updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/campaigns/:campaignId/data/:rowId/rewards/:rewardId')
   async updatePromoReward(
@@ -3737,6 +5500,14 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a promo reward from a campaign row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiParam({ name: 'rewardId', description: 'Reward id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Promo reward deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/data/:rowId/rewards/:rewardId')
   async deletePromoReward(
@@ -3762,6 +5533,22 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a reward column image/product link' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reward_id: { type: 'string', example: '1', description: 'Required; not empty' },
+        url: { type: 'string', example: 'https://example.com/image.png', description: 'Required; not empty' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      },
+      required: ['reward_id', 'url', 'pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Reward column updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/update-collumn-reward')
   async updateRewardColumn(
@@ -3785,6 +5572,21 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload an image for a campaign reward' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Required; image file' },
+        reward_id: { type: 'string', example: '1', description: 'Required; not empty' },
+      },
+      required: ['file', 'reward_id'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Image uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/upload-reward-image')
   @UseInterceptors(FileInterceptor('file'))
@@ -3806,6 +5608,18 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a generic campaign image' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary', description: 'Required; image file' } },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Image uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/upload-image')
   @UseInterceptors(FileInterceptor('file'))
@@ -3821,6 +5635,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get purchase products listed in a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiResponse({ status: 200, description: 'List of purchase products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns/:campaignId/purchase-products')
   async getPurchaseProducts(@Param('campaignId') campaignId: string) {
@@ -3835,6 +5655,19 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a purchase product entry for a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { name: { type: 'string', example: 'แชมพูสมุนไพร', description: 'Required; not empty' } },
+      required: ['name'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Purchase product created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/purchase-products')
   async createPurchaseProduct(
@@ -3855,6 +5688,22 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a purchase product entry' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'productId', description: 'Purchase product id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'แชมพูสมุนไพร', description: 'Optional; empty string allowed' },
+        img_url: { type: 'string', example: 'https://example.com/image.png', description: 'Optional; empty string allowed' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Purchase product updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Patch('/campaigns/:campaignId/purchase-products/:productId')
   async updatePurchaseProduct(
@@ -3877,6 +5726,13 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a purchase product entry' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'productId', description: 'Purchase product id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Purchase product deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/campaigns/:campaignId/purchase-products/:productId')
   async deletePurchaseProduct(
@@ -3894,6 +5750,20 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload an image for a purchase product' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'productId', description: 'Purchase product id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary', description: 'Required; image file' } },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Image uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/purchase-products/:productId/upload-image')
   @UseInterceptors(FileInterceptor('file'))
@@ -3920,6 +5790,33 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiOperation({ summary: 'Generate a campaign poster image via AI' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', example: 'โปสเตอร์โปรโมชั่นสินค้าฤดูร้อน', description: 'Required; not empty' },
+        aspectRatio: { type: 'string', example: '1:1', description: 'Required; not empty' },
+        imageItems: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', example: 'https://example.com/image.png', description: 'Required; not empty' },
+              name: { type: 'string', example: 'แชมพูสมุนไพร', description: 'Required; not empty' },
+              quantity: { type: 'number', example: 1, description: 'Required' },
+              unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed' },
+            },
+            required: ['url', 'name', 'quantity'],
+          },
+        },
+        session_cookies: { type: 'string', example: '', description: 'Optional; empty string allowed' },
+      },
+      required: ['prompt', 'aspectRatio'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Poster generation request id' })
   // @UseGuards(JwtAuthGuard)
   @Post('/campaigns/generate-poster')
   async generatePoster(
@@ -3944,6 +5841,16 @@ export class AppController {
     );
   }
 
+  @ApiTags('Campaigns')
+  @ApiOperation({ summary: 'Poll for AI poster generation result by request id' })
+  @ApiParam({ name: 'requestId', description: 'Poster generation request id', example: 'req_00123' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { session_cookies: { type: 'string', example: '', description: 'Optional; empty string allowed' } },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Generation result' })
   @Post('/campaigns/get-response-id/:requestId')
   async getResponseId(
     @Param('requestId') requestId: string,
@@ -3955,6 +5862,12 @@ export class AppController {
     );
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get reward columns for a campaign' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiResponse({ status: 200, description: 'List of reward columns' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns/:campaignId/columns')
   async getRewardColumns(@Param('campaignId') campaignId: string) {
@@ -3962,6 +5875,20 @@ export class AppController {
     return { success: true, data: columns };
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update value-per-unit for a reward column' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'columnId', description: 'Reward column id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { value_per_unit: { type: 'number', example: 10, description: 'Required' } },
+      required: ['value_per_unit'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Value per unit updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Patch('/campaigns/:campaignId/columns/:columnId')
   async updateRewardColumnValuePerUnit(
@@ -3977,6 +5904,20 @@ export class AppController {
     return { success: true };
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Save a generated poster image to a campaign row history' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { img_url: { type: 'string', example: 'https://example.com/poster.png', description: 'Required; not empty' } },
+      required: ['img_url'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Poster history saved' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/campaigns/:campaignId/data/:rowId/poster-history')
   async savePosterHistory(
@@ -3997,6 +5938,32 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a banner from a poster history image and link it' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiParam({ name: 'historyId', description: 'Poster history id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        img_url: { type: 'string', example: 'https://example.com/poster.png', description: 'Required; not empty' },
+        banner_name: { type: 'string', example: 'โปสเตอร์โปรโมชั่นฤดูร้อน', description: 'Optional; empty string allowed' },
+        banner_location: {
+          type: 'string',
+          enum: ['store_carousel', 'landing_hero', 'popup', 'sidebar'],
+          example: 'store_carousel',
+          description: 'Required; not empty',
+        },
+        date_start: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Required; ISO datetime' },
+        date_end: { type: 'string', format: 'date-time', example: '2026-07-23T00:00:00.000Z', description: 'Required; ISO datetime' },
+      },
+      required: ['img_url', 'banner_location', 'date_start', 'date_end'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Banner created and linked' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post(
     '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links',
@@ -4035,6 +6002,15 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a banner link from poster history (keeps the banner image file)' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiParam({ name: 'historyId', description: 'Poster history id', example: '1' })
+  @ApiParam({ name: 'linkId', description: 'Banner link id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Banner link removed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete(
     '/campaigns/:campaignId/data/:rowId/poster-history/:historyId/banner-links/:linkId',
@@ -4054,6 +6030,13 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get poster history for a campaign row' })
+  @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
+  @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
+  @ApiResponse({ status: 200, description: 'List of poster history items' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/campaigns/:campaignId/data/:rowId/poster-history')
   async getPosterHistory(@Param('rowId') rowId: string) {
@@ -4068,6 +6051,10 @@ export class AppController {
     }
   }
 
+  @ApiTags('Campaigns')
+  @ApiOperation({ summary: 'Proxy-download an ideogram.ai generated image (avoids CORS)' })
+  @ApiQuery({ name: 'url', description: 'Must start with https://ideogram.ai/', example: 'https://ideogram.ai/api/images/example.png' })
+  @ApiResponse({ status: 200, description: 'Image binary stream' })
   @Get('/campaigns/proxy-image')
   async proxyImage(@Query('url') url: string, @Res() res: Response) {
     if (!url || !url.startsWith('https://ideogram.ai/')) {
@@ -4089,6 +6076,11 @@ export class AppController {
     res.send(Buffer.from(response.data));
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search banner-eligible products (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/products-banner')
   async searchProductsBanner(@Req() req: Request & { user: JwtPayload }) {
@@ -4099,6 +6091,11 @@ export class AppController {
     return await this.productsService.searchProductsBanner();
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all creditors (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of creditors' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/get-creditor')
   async getCreditors(@Req() req: Request & { user: JwtPayload }) {
@@ -4109,6 +6106,10 @@ export class AppController {
     return await this.productsService.getCreditors();
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Get delivery tracking location for an order' })
+  @ApiParam({ name: 'sh_running', description: 'Shopping head running number', example: 'SO00123' })
+  @ApiResponse({ status: 200, description: 'Order tracking location' })
   @Get('/ecom/track-order/:sh_running')
   async trackOrder(@Param('sh_running') sh_running: string) {
     try {
@@ -4127,6 +6128,12 @@ export class AppController {
   // ========== Product Return APIs ==========
 
   // Customer: Get eligible orders for return
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get orders eligible for return for a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'List of eligible orders' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/returns/eligible-orders/:mem_code')
   async getEligibleOrders(@Param('mem_code') mem_code: string) {
@@ -4147,6 +6154,12 @@ export class AppController {
   }
 
   // Customer: Get order items for return selection
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get order items available for return selection' })
+  @ApiParam({ name: 'soh_running', description: 'Shopping order head running number', example: 'SO00123' })
+  @ApiResponse({ status: 200, description: 'List of order items' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/returns/order-items/:soh_running')
   async getOrderItemsForReturn(
@@ -4173,6 +6186,50 @@ export class AppController {
   }
 
   // Customer: Create return request
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a product return request (customer-initiated)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        soh_id: { type: 'number', example: 12345, description: 'Required' },
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        reason: {
+          type: 'string',
+          enum: ['damaged', 'expired', 'wrong_item', 'disaster', 'other'],
+          example: 'damaged',
+          description: 'Required; not empty',
+        },
+        reason_detail: { type: 'string', example: 'สินค้าชำรุดตอนเปิดกล่อง', description: 'Optional; empty string allowed' },
+        resolution_type: {
+          type: 'string',
+          enum: ['refund', 'replacement'],
+          example: 'refund',
+          description: 'Required; not empty',
+        },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+              qty: { type: 'number', example: 2, description: 'Required' },
+              unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
+              price_per_unit: { type: 'number', example: 150, description: 'Required' },
+              item_reason: { type: 'string', example: 'สินค้าชำรุด', description: 'Optional; empty string allowed' },
+              expiry_date: { type: 'string', example: '2026-12-31', description: 'Optional; format YYYY-MM-DD' },
+            },
+            required: ['pro_code', 'qty', 'unit', 'price_per_unit'],
+          },
+        },
+        notes: { type: 'string', example: '', description: 'Optional; empty string allowed' },
+      },
+      required: ['soh_id', 'mem_code', 'reason', 'resolution_type', 'items'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Return request created' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/returns/create')
   async createReturn(
@@ -4214,6 +6271,21 @@ export class AppController {
   }
 
   // Customer: Upload evidence images
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload evidence images for a return request (up to 5 files)' })
+  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string', format: 'binary' }, description: 'Optional; up to 5 image files' },
+        description: { type: 'string', example: '', description: 'Optional; empty string allowed' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Images uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/returns/:return_id/images')
   @UseInterceptors(FileFieldsInterceptor([{ name: 'files', maxCount: 5 }]))
@@ -4243,6 +6315,12 @@ export class AppController {
   }
 
   // Customer: Submit return request
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Submit a draft return request for review' })
+  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiResponse({ status: 201, description: 'Return request submitted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/returns/:return_id/submit')
   async submitReturn(
@@ -4269,6 +6347,15 @@ export class AppController {
   }
 
   // Customer: Get my returns
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get return requests for a member' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiQuery({ name: 'status', required: false, type: String, example: 'pending' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
+  @ApiResponse({ status: 200, description: 'List of return requests' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/returns/my-returns/:mem_code')
   async getMyReturns(
@@ -4298,6 +6385,12 @@ export class AppController {
   }
 
   // Customer: Get return detail
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get detail of a return request' })
+  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Return request detail' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/returns/:return_id')
   async getReturnDetail(@Param('return_id') return_id: string) {
@@ -4320,6 +6413,12 @@ export class AppController {
   }
 
   // Customer: Delete draft return
+  @ApiTags('Product Returns')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a draft (unsubmitted) return request' })
+  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Draft return deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/returns/:return_id')
   async deleteDraftReturn(
@@ -4402,6 +6501,14 @@ export class AppController {
   // }
 
   // Get user behavior (for personalization)
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get tracked behavior events for a member (for personalization)' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiResponse({ status: 200, description: 'User behavior data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/tracking/user/:mem_code')
   async getUserBehavior(
@@ -4430,6 +6537,14 @@ export class AppController {
   }
 
   // Admin: Get product analytics
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get product view/interaction analytics (requires permission)' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiResponse({ status: 200, description: 'Product analytics data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/product/:pro_code')
   async getProductAnalytics(
@@ -4463,6 +6578,13 @@ export class AppController {
   }
 
   // Admin: Get search analytics
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get search behavior analytics (requires permission)' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiResponse({ status: 200, description: 'Search analytics data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/searches')
   async getSearchAnalytics(
@@ -4494,6 +6616,13 @@ export class AppController {
   }
 
   // Admin: Get dashboard stats
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get behavior tracking dashboard stats (requires permission)' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiResponse({ status: 200, description: 'Dashboard stats' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/dashboard')
   async getTrackingDashboard(
@@ -4525,6 +6654,13 @@ export class AppController {
   }
 
   // Admin: Get daily trend
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get daily behavior trend (requires permission)' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiResponse({ status: 200, description: 'Daily trend data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/daily-trend')
   async getDailyTrend(
@@ -4556,6 +6692,14 @@ export class AppController {
   }
 
   // Admin: Get top products
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get top viewed/purchased products (requires permission)' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '10' })
+  @ApiResponse({ status: 200, description: 'List of top products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/top-products')
   async getTopProducts(
@@ -4589,6 +6733,12 @@ export class AppController {
   }
 
   // Admin: Get recent activity feed
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get recent customer activity feed (requires permission)' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '50' })
+  @ApiResponse({ status: 200, description: 'Recent activity feed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/recent-activity')
   async getRecentActivity(
@@ -4618,6 +6768,12 @@ export class AppController {
   }
 
   // Admin: Get user journeys
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get user navigation journeys (requires permission)' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiResponse({ status: 200, description: 'List of user journeys' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/user-journeys')
   async getUserJourneys(
@@ -4647,6 +6803,14 @@ export class AppController {
   }
 
   // Admin: Get zero result searches
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get search queries that returned zero results (requires permission)' })
+  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '30' })
+  @ApiResponse({ status: 200, description: 'List of zero-result searches' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/zero-result-searches')
   async getZeroResultSearches(
@@ -4680,6 +6844,13 @@ export class AppController {
   }
 
   // Admin: Get stock alerts based on demand
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get demand-based stock alerts (requires permission)' })
+  @ApiQuery({ name: 'days', required: false, type: String, example: '7' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiResponse({ status: 200, description: 'List of stock alerts' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/stock-alerts')
   async getStockAlerts(
@@ -4711,6 +6882,13 @@ export class AppController {
   }
 
   // Admin: Get cart conversion analytics
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get cart-to-purchase conversion analytics (requires permission)' })
+  @ApiQuery({ name: 'days', required: false, type: String, example: '30' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
+  @ApiResponse({ status: 200, description: 'Cart conversion analytics' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/cart-analytics')
   async getCartConversionAnalytics(
@@ -4742,6 +6920,12 @@ export class AppController {
   }
 
   // Admin: Get customer segments
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer segmentation analysis (requires permission)' })
+  @ApiQuery({ name: 'days', required: false, type: String, example: '90' })
+  @ApiResponse({ status: 200, description: 'Customer segments' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/customer-segments')
   async getCustomerSegments(
@@ -4771,6 +6955,12 @@ export class AppController {
   }
 
   // Admin: Get retention analysis
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer retention analysis (requires permission)' })
+  @ApiQuery({ name: 'weeks', required: false, type: String, example: '8' })
+  @ApiResponse({ status: 200, description: 'Retention analysis' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/retention')
   async getRetentionAnalysis(
@@ -4800,6 +6990,12 @@ export class AppController {
   }
 
   // Admin: Get repeat purchase patterns
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get repeat purchase patterns (requires permission)' })
+  @ApiQuery({ name: 'days', required: false, type: String, example: '180' })
+  @ApiResponse({ status: 200, description: 'Repeat purchase patterns' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/repeat-purchases')
   async getRepeatPurchasePatterns(
@@ -4829,6 +7025,13 @@ export class AppController {
   }
 
   // Admin: Get purchase interval box plot data
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get purchase interval box-plot data (requires permission)' })
+  @ApiQuery({ name: 'days', required: false, type: String, example: '180' })
+  @ApiQuery({ name: 'group_by', required: false, type: String, example: 'overall', description: 'one of: overall, product, segment, month' })
+  @ApiResponse({ status: 200, description: 'Box-plot data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/purchase-intervals-boxplot')
   async getPurchaseIntervalBoxPlot(
@@ -4860,6 +7063,13 @@ export class AppController {
   }
 
   // Admin: Get user journey sankey
+  @ApiTags('Behavior Tracking')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get user journey sankey diagram data (requires permission)' })
+  @ApiQuery({ name: 'from_date', required: true, type: String, example: '2026-06-01' })
+  @ApiQuery({ name: 'to_date', required: true, type: String, example: '2026-06-23' })
+  @ApiResponse({ status: 200, description: 'Sankey diagram data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/tracking/user-journey-sankey')
   async getUserJourneySankey(
@@ -4877,6 +7087,22 @@ export class AppController {
     );
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change a member\'s role/permission (Admin only)' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        newRole: { type: 'string', enum: ['User', 'Admin', 'Sales'], example: 'Sales', description: 'Required; not empty' },
+        permission: { type: 'boolean', example: true, description: 'Optional; defaults to false' },
+      },
+      required: ['newRole'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Role changed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/change-role/:mem_code')
   async changeUserRole(
@@ -4903,6 +7129,11 @@ export class AppController {
     );
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all staff users (Admin only)' })
+  @ApiResponse({ status: 200, description: 'List of staff users' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/user/staff-list')
   async getStaffUsers(@Req() req: Request & { user: JwtPayload }) {
@@ -4914,6 +7145,12 @@ export class AppController {
     return await this.usersService.getStaffUsers();
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Look up a member for role management (Admin only)' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'Member info for role management' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/user/lookup/:mem_code')
   async lookupUserForRoleManage(
@@ -4926,6 +7163,12 @@ export class AppController {
     return await this.usersService.findUserForRoleManageByMemCode(mem_code);
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search members for role management (Admin only)' })
+  @ApiQuery({ name: 'q', required: false, type: String, example: 'สมชาย' })
+  @ApiResponse({ status: 200, description: 'List of matching members' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/user/search')
   async searchUsersForRoleManage(
@@ -4938,6 +7181,25 @@ export class AppController {
     return await this.usersService.searchUsersForRoleManage(query ?? '');
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update enabled feature flags for a member (Admin only)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+        features: {
+          type: 'array',
+          items: { type: 'string', example: 'happy_hour' },
+          description: 'Required; list of feature flag keys',
+        },
+      },
+      required: ['mem_code', 'features'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Features updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/admin/user/update-features')
   async updateUserFeatures(
@@ -4958,6 +7220,13 @@ export class AppController {
     );
   }
 
+  @ApiTags('Users')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get paginated admin role-change action logs (Admin only)' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiResponse({ status: 200, description: 'Paginated admin action logs' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/user/role-logs')
   async getAdminActionLogs(
@@ -4971,12 +7240,31 @@ export class AppController {
     return await this.usersService.getAdminActionLogs(page, limit);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get RT (return) order notifications from the last 3 days' })
+  @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
+  @ApiResponse({ status: 200, description: 'List of RT notifications' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/get-notification-rt/:mem_code')
   async getRTNotifications(@Param('mem_code') mem_code: string) {
     return await this.notifyRtService.getRTOrdersInTheLast3Days(mem_code);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiOperation({ summary: 'Update RT (return) notification read status' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        soh_running: { type: 'string', example: 'SO00123', description: 'Required; not empty' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      },
+      required: ['soh_running', 'pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'RT notification status updated' })
   @Post('/ecom/update-notification-rt')
   async updateRTNotification(
     @Body() data: { soh_running: string; pro_code: string },
@@ -4985,6 +7273,18 @@ export class AppController {
     return await this.notifyRtService.updateRTStatus(data);
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Register a push notification token for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { token: { type: 'string', example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', description: 'Required; not empty' } },
+      required: ['token'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Token registered' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/qc/add-token-for-notification')
   async addTokenForNotification(
@@ -4998,6 +7298,18 @@ export class AppController {
     });
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a push notification token for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { token: { type: 'string', example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', description: 'Required; not empty' } },
+      required: ['token'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Token removed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/qc/remove-token-for-notification')
   async removeTokenForNotification(
@@ -5011,6 +7323,21 @@ export class AppController {
     });
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a banner image for a hotdeal' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', example: 1, description: 'Required' },
+        file: { type: 'string', format: 'binary', description: 'Required; image file' },
+      },
+      required: ['id', 'file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Banner uploaded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/admin/hotdeal/upload-banner')
   @UseInterceptors(FileInterceptor('file'))
@@ -5021,18 +7348,36 @@ export class AppController {
     return await this.hotdealService.uploadBannerHotdeal(file, body.id);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all hotdeals with their banners' })
+  @ApiResponse({ status: 200, description: 'List of hotdeals with banners' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/hotdeal/get-banner')
   async getHotdealBanner() {
     return await this.hotdealService.getAllHotdealsWithBanners();
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a hotdeal banner' })
+  @ApiParam({ name: 'id', description: 'Hotdeal banner id', example: '1' })
+  @ApiResponse({ status: 200, description: 'Banner deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/admin/hotdeal/delete-banner/:id')
   async deleteHotdealBanner(@Param('id') id: number) {
     return await this.hotdealService.deleteBannerHotdeal(id);
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get paginated list of products with a replacement set' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiResponse({ status: 200, description: 'Paginated replacement products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/replace-product')
   async getReplacementProduct(
@@ -5042,6 +7387,21 @@ export class AppController {
     return await this.recommendService.getAllReplaceProducts(page, limit);
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload/update the poster image for a promotion tier' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tier_id: { type: 'string', example: '1', description: 'Required; not empty' },
+        file: { type: 'string', format: 'binary', description: 'Required; image file' },
+      },
+      required: ['tier_id', 'file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tier poster updated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('ecom/promotion/update-tier-poster')
   @UseInterceptors(FileInterceptor('file'))
@@ -5052,6 +7412,19 @@ export class AppController {
     return this.promotionService.updateTierPoster(Number(tier_id), file);
   }
 
+  @ApiTags('Promotion & Tier')
+  @ApiOperation({ summary: 'Check/recalculate tier-turn-back reward price for an order item' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        sh_running: { type: 'string', example: 'SO00123', description: 'Required; not empty' },
+        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      },
+      required: ['sh_running', 'pro_code'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tier price result' })
   @Post('/ecom/get-tier-price')
   async getTierPrice(@Body() body: { sh_running: string; pro_code: string }) {
     return await this.shoppingOrderService.checkOrderTurnBackReward(
@@ -5060,6 +7433,19 @@ export class AppController {
     );
   }
 
+  @ApiTags('Happy Hour')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check and adjust happy-hour reward for an order (requires permission)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { sh_running: { type: 'string', example: 'SO00123', description: 'Required; not empty' } },
+      required: ['sh_running'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Happy-hour reward adjusted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/check-happy-hour-reward')
   async checkHappyHourReward(
@@ -5074,6 +7460,12 @@ export class AppController {
     );
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get hotdeal detail by product code for current member' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiResponse({ status: 200, description: 'Hotdeal detail' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/hotdeal/:pro_code')
   async getHotdealByProCode(
@@ -5084,6 +7476,32 @@ export class AppController {
     return await this.hotdealService.getHotdealFromproCode(pro_code, mem_code);
   }
 
+  @ApiTags('Hotdeal & Flash Sale')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add hotdeal freebie products to cart for current member' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        freebies: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+              unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
+              amount: { type: 'number', example: 1, description: 'Required' },
+              pro_code1: { type: 'string', example: 'P00100', description: 'Required; not empty; the qualifying product code' },
+            },
+            required: ['pro_code', 'unit', 'amount', 'pro_code1'],
+          },
+        },
+      },
+      required: ['freebies'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Freebies added to cart' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/hotdeal/add-other-product')
   async createHotdeal(
@@ -5110,6 +7528,11 @@ export class AppController {
     return results;
   }
 
+  @ApiTags('Products')
+  @ApiOperation({ summary: 'Get product image by product code' })
+  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiResponse({ status: 200, description: 'Product image data' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
   @Get('/ecom/get-product-image/:pro_code')
   async getProductImage(@Param('pro_code') pro_code: string) {
     this.logger.log('Fetching product image for pro_code:', pro_code);
@@ -5137,12 +7560,23 @@ export class AppController {
     }
   }
 
+  @ApiTags('Misc / Admin Tools')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Manually trigger the company-day promotion cart re-check' })
+  @ApiResponse({ status: 200, description: 'Check triggered' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/trigger/check-promotion-company-day')
   async triggerCheckPromotionCompanyDay() {
     await this.shoppingCartService.callCheckCartPromotion();
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Autocomplete product search against the external product source' })
+  @ApiQuery({ name: 'search', description: 'Search keyword', example: 'แชมพู' })
+  @ApiResponse({ status: 200, description: 'List of matching products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-search-autocomplete')
   async productSearchAutoComplete(@Query('search') search: string) {
@@ -5156,6 +7590,12 @@ export class AppController {
     }
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search Lotus gift card products (requires permission)' })
+  @ApiResponse({ status: 200, description: 'List of Lotus card products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/products/lotus-cards')
   async searchLotusCards(@Req() req: Request & { user: JwtPayload }) {
@@ -5167,6 +7607,13 @@ export class AppController {
     }
   }
 
+  @ApiTags('Products')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search products by name for admin (requires permission)' })
+  @ApiQuery({ name: 'keyword', required: false, type: String, example: 'แชมพู' })
+  @ApiResponse({ status: 200, description: 'List of matching products' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @UseGuards(JwtAuthGuard)
   @Get('ecom/admin/products/search')
   async productSearchProductName(
