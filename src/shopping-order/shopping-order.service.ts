@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
@@ -10,7 +15,6 @@ import { ProductEntity } from '../products/products.entity';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
-import { Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
@@ -19,10 +23,20 @@ import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-
 import { PromotionService } from 'src/promotion/promotion.service';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
+import { ClientKafka } from '@nestjs/microservices';
+import { lastValueFrom } from 'rxjs';
 
 interface CountSale {
   pro_code: string;
   order_count: number;
+}
+
+interface EcommerceOrderCreatedEvent {
+  sh_running: string;
+  sh_datetime: string;
+  mem_code: string;
+  source: 'ecommerce';
+  occurred_at: string;
 }
 
 @Injectable()
@@ -52,6 +66,8 @@ export class ShoppingOrderService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
     private readonly happyHourService: HappyHourService,
+    @Inject('ECOMMERCE_KAFKA_SERVICE')
+    private readonly clientKafka: ClientKafka,
   ) {}
 
   private convertEnumToUnitName(
@@ -275,6 +291,7 @@ export class ShoppingOrderService {
       const numberOfMonth = new Date().getMonth() + 1;
       runningNumbers = [];
       const allIdCartForDelete: number[] = [];
+      const ecommerceOrderCreatedEvents: EcommerceOrderCreatedEvent[] = [];
       let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
@@ -332,6 +349,16 @@ export class ShoppingOrderService {
             { soh_running: running },
           );
           runningNumbers.push(running);
+          const shDatetime = NewHead.soh_datetime
+            ? new Date(NewHead.soh_datetime)
+            : new Date();
+          ecommerceOrderCreatedEvents.push({
+            sh_running: running,
+            sh_datetime: shDatetime.toISOString(),
+            mem_code: data.mem_code,
+            source: 'ecommerce',
+            occurred_at: new Date().toISOString(),
+          });
           submitLogContext.push({ createdOrderHead: running });
 
           const normalItems = group.filter((item) => !item.is_reward);
@@ -822,6 +849,7 @@ export class ShoppingOrderService {
         });
         await this.saleLogEntity.save(raw);
       }
+      await this.emitEcommerceOrderCreatedEvents(ecommerceOrderCreatedEvents);
       return runningNumbers;
     } catch (error) {
       this.logger.error('Error submitting order', {
@@ -855,6 +883,30 @@ export class ShoppingOrderService {
         console.error('Failed to notify Slack', e);
       }
       throw new Error('Failed to submit order. ' + error);
+    }
+  }
+
+  private async emitEcommerceOrderCreatedEvents(
+    events: EcommerceOrderCreatedEvent[],
+  ): Promise<void> {
+    for (const event of events) {
+      try {
+        await lastValueFrom(
+          this.clientKafka.emit('ecommerce_order_created', event),
+        );
+        this.logger.log('ecommerce_order_created_emitted', {
+          event: 'ecommerce_order_created_emitted',
+          sh_running: event.sh_running,
+          sh_datetime: event.sh_datetime,
+          mem_code: event.mem_code,
+        });
+      } catch (error) {
+        this.logger.error('Failed to emit ecommerce_order_created', {
+          event: 'ecommerce_order_created_failed',
+          sh_running: event.sh_running,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
