@@ -2,7 +2,7 @@ import { Controller, Res } from '@nestjs/common';
 import { Get, Post, Body } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { LineRegisterMeetingService } from './line-register-meeting.service';
-import { RegisterMeetingDto } from './dto/register-meeting.dto';
+import { RegisterMeetingDto } from 'src/common/dto-index';
 import { Response } from 'express';
 
 @ApiTags('LINE Register Meeting')

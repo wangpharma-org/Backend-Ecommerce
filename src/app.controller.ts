@@ -51,56 +51,58 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealService } from './hotdeal/hotdeal.service';
 import { PromotionService } from './promotion/promotion.service';
 import type { PromotionEntityWithTransformedData } from './promotion/promotion.service';
-import { UpdateUserDataDto } from 'src/users/dto/update-user-data.dto';
-import { UpdateBannerDto } from 'src/banner/dto/update-banner.dto';
-import { UploadBannerDto } from 'src/banner/dto/upload-banner.dto';
-import { CreateBannerFromUrlDto } from 'src/banner/dto/create-banner-from-url.dto';
-import { UploadImageUserDto } from 'src/users/dto/upload-image-user.dto';
-import { UpdateFlagDto } from 'src/feature-flags/dto/update-flag.dto';
-import { UploadPoItemDto } from 'src/products/dto/upload-po-item.dto';
-import { UploadProductFlashSaleItemDto } from 'src/products/dto/upload-product-flashsale-item.dto';
-import { UploadProductL16Dto } from 'src/products/dto/upload-product-l16.dto';
-import { GetFlashSaleDto } from 'src/products/dto/get-flashsale.dto';
-import { AddToFavoriteDto } from 'src/favorite/dto/add-to-favorite.dto';
-import { DeleteFavoriteDto } from 'src/favorite/dto/delete-favorite.dto';
-import { SigninDto } from 'src/auth/dto/signin.dto';
-import { SearchProductsDto } from 'src/products/dto/search-products.dto';
-import { SearchCategoryProductsDto } from 'src/products/dto/search-category-products.dto';
-import { ProductForYouDto } from 'src/products/dto/product-for-you.dto';
-import { SubmitOrderDto } from 'src/shopping-order/dto/submit-order.dto';
-import { GetProductDetailDto } from 'src/products/dto/get-product-detail.dto';
-import { AddProductCartDto } from 'src/shopping-cart/dto/add-product-cart.dto';
-import { TrackCompanyDayViewDto } from 'src/company-day-analytic/dto/track-company-day-view.dto';
-import { CheckProductCartAllDto } from 'src/shopping-cart/dto/check-product-cart-all.dto';
-import { DeleteProductCartDto } from 'src/shopping-cart/dto/delete-product-cart.dto';
-import { CheckProductCartDto } from 'src/shopping-cart/dto/check-product-cart.dto';
-import { AddPromotionDto } from 'src/promotion/dto/add-promotion.dto';
-import { UpdatePromoPosterDto } from 'src/promotion/dto/update-promo-poster.dto';
-import { AddTierDto } from 'src/promotion/dto/add-tier.dto';
-import { UpdatePromotionStatusDto } from 'src/promotion/dto/update-promotion-status.dto';
-import { DeleteTierDto } from 'src/promotion/dto/delete-tier.dto';
-import { DeletePromotionDto } from 'src/promotion/dto/delete-promotion.dto';
-import { DuplicatePromotionDto } from 'src/promotion/dto/duplicate-promotion.dto';
-import { AddPromotionConditionDto } from 'src/promotion/dto/add-promotion-condition.dto';
-import { DeletePromotionConditionDto } from 'src/promotion/dto/delete-promotion-condition.dto';
-import { AddPromotionRewardDto } from 'src/promotion/dto/add-promotion-reward.dto';
-import { GetProductByCreditorDto } from 'src/promotion/dto/get-product-by-creditor.dto';
-import { DeletePromotionRewardDto } from 'src/promotion/dto/delete-promotion-reward.dto';
-import { UpdatePromotionDto } from 'src/promotion/dto/update-promotion.dto';
-import { EditPromotionRewardDto } from 'src/promotion/dto/edit-promotion-reward.dto';
-import { GetProductTierDto } from 'src/promotion/dto/get-product-tier.dto';
-import { AddCreditorDto } from 'src/products/dto/add-creditor.dto';
-import { EditTierDto } from 'src/promotion/dto/edit-tier.dto';
-import { ImportWangdayDto } from 'src/wangday/dto/import-wangday.dto';
-import { SaveHotdealDto } from 'src/hotdeal/dto/save-hotdeal.dto';
-import { DeleteHotdealDto } from 'src/hotdeal/dto/delete-hotdeal.dto';
-import { CheckHotdealMatchDto } from 'src/hotdeal/dto/check-hotdeal-match.dto';
-import { UseCodeForCheckRewardDto } from 'src/promotion/dto/use-code-for-check-reward.dto';
-import { GenerateCodePromotionDto } from 'src/promotion/dto/generate-code-promotion.dto';
-import { UpdateProductFromBackOfficeDto, UpdateStockFromBackOfficeDto } from 'src/products/dto/back-office.dto';
-import { UpdateCustomerDataDto, RefreshTokenDto } from 'src/auth/dto/auth.dto';
-import { AddLotItemDto } from 'src/lot/dto/add-lots.dto';
 import {
+  UpdateUserDataDto,
+  UpdateBannerDto,
+  UploadBannerDto,
+  CreateBannerFromUrlDto,
+  UploadImageUserDto,
+  UpdateFlagDto,
+  UploadPoItemDto,
+  UploadProductFlashSaleItemDto,
+  UploadProductL16Dto,
+  GetFlashSaleDto,
+  AddToFavoriteDto,
+  DeleteFavoriteDto,
+  SigninDto,
+  SearchProductsDto,
+  SearchCategoryProductsDto,
+  ProductForYouDto,
+  SubmitOrderDto,
+  GetProductDetailDto,
+  AddProductCartDto,
+  TrackCompanyDayViewDto,
+  CheckProductCartAllDto,
+  DeleteProductCartDto,
+  CheckProductCartDto,
+  AddPromotionDto,
+  UpdatePromoPosterDto,
+  AddTierDto,
+  UpdatePromotionStatusDto,
+  DeleteTierDto,
+  DeletePromotionDto,
+  DuplicatePromotionDto,
+  AddPromotionConditionDto,
+  DeletePromotionConditionDto,
+  AddPromotionRewardDto,
+  GetProductByCreditorDto,
+  DeletePromotionRewardDto,
+  UpdatePromotionDto,
+  EditPromotionRewardDto,
+  GetProductTierDto,
+  AddCreditorDto,
+  EditTierDto,
+  ImportWangdayDto,
+  SaveHotdealDto,
+  DeleteHotdealDto,
+  CheckHotdealMatchDto,
+  UseCodeForCheckRewardDto,
+  GenerateCodePromotionDto,
+  UpdateProductFromBackOfficeDto,
+  UpdateStockFromBackOfficeDto,
+  UpdateCustomerDataDto,
+  RefreshTokenDto,
+  AddLotItemDto,
   AddFlashsaleDto,
   AddProductToFlashsaleDto,
   DeleteProductFlashsaleDto,
@@ -109,27 +111,28 @@ import {
   ChangeStatusFlashsaleDto,
   DeleteFlashsaleDto,
   EditFlashsaleDto,
-} from 'src/flashsale/dto/flashsale.dto';
-import { UploadLogFileDto } from 'src/backend/dto/upload-log-file.dto';
-import {
+  UploadLogFileDto,
   AddInvisibleTopicDto,
   AddInvisibleProductDto,
   DeleteInvisibleProductDto,
   DeleteInvisibleTopicDto,
-} from 'src/invisible-product/dto/invisible-product.dto';
-import { CreateAddressBodyDto } from 'src/edit-address/dto/create-address.dto';
-import { SaveModalContentDto } from 'src/modalmain/dto/save-modal-content.dto';
-import { AddProductFreeDto, DeleteProductFreeDto, EditProductFreeDto } from 'src/fix-free/dto/fix-free.dto';
-import { CreateSessionDto, LogoutSessionDto, MemCodeDto } from 'src/sessions/dto/sessions.dto';
-import {
+  CreateAddressBodyDto,
+  SaveModalContentDto,
+  AddProductFreeDto,
+  DeleteProductFreeDto,
+  EditProductFreeDto,
+  CreateSessionDto,
+  LogoutSessionDto,
+  MemCodeDto,
   RequestOtpDto,
   ValidateOtpDto,
   ChangePasswordDto,
   ResetPasswordDto,
-} from 'src/change-password/dto/change-password.dto';
-import { NewArrivalItemDto } from 'src/new-arrivals/dto/new-arrival-item.dto';
-import { ImportDataInvoiceDto, ImportDataRtDto } from 'src/debtor/dto/debtor.dto';
-import { UpdateKeysearchDto } from 'src/product-keyword/dto/update-keysearch.dto';
+  NewArrivalItemDto,
+  ImportDataInvoiceDto,
+  ImportDataRtDto,
+  UpdateKeysearchDto,
+} from 'src/common/dto-index';
 import { objectSchema, arraySchema } from 'src/common/swagger-helpers';
 import { BackendService } from './backend/backend.service';
 import { DebtorService } from './debtor/debtor.service';
@@ -242,7 +245,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Send order data to old system' })
-  @ApiParam({ name: 'soh_running', description: 'Order running number', example: 'SO-67010001' })
+  @ApiParam({
+    name: 'soh_running',
+    description: 'Order running number',
+    example: 'SO-67010001',
+  })
   @ApiResponse({ status: 200, description: 'Data sent to old system' })
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -254,7 +261,8 @@ export class AppController {
   @ApiQuery({
     name: 'location',
     required: false,
-    description: 'Banner placement location. Omit to get banners for all locations.',
+    description:
+      'Banner placement location. Omit to get banners for all locations.',
     enum: ['store_carousel', 'landing_hero', 'popup', 'sidebar'],
     example: 'landing_hero',
   })
@@ -284,7 +292,8 @@ export class AppController {
   @ApiOperation({ summary: 'Update a banner by id' })
   @ApiParam({ name: 'id', description: 'Banner id', example: '12' })
   @ApiBody({
-    description: 'Partial banner fields to update — any subset of BannerEntity columns; omitted fields are left unchanged.',
+    description:
+      'Partial banner fields to update — any subset of BannerEntity columns; omitted fields are left unchanged.',
     type: UpdateBannerDto,
   })
   @ApiResponse({ status: 200, description: 'Banner updated' })
@@ -380,7 +389,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get a feature flag status' })
-  @ApiParam({ name: 'flag', description: 'Feature flag name', example: 'new_checkout' })
+  @ApiParam({
+    name: 'flag',
+    description: 'Feature flag name',
+    example: 'new_checkout',
+  })
   @ApiResponse({ status: 200, description: 'Feature flag status' })
   @Get('/ecom/feature-flag/:flag')
   async checkFlag(@Param('flag') flag: string) {
@@ -505,8 +518,17 @@ export class AppController {
   @ApiTags('Product Search')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get favorite product list' })
-  @ApiParam({ name: 'mem_code', description: 'Member code (unused, taken from JWT)', example: 'M00123' })
-  @ApiQuery({ name: 'sort_by', required: false, description: 'Optional sort order key; omit for default order', example: 'name' })
+  @ApiParam({
+    name: 'mem_code',
+    description: 'Member code (unused, taken from JWT)',
+    example: 'M00123',
+  })
+  @ApiQuery({
+    name: 'sort_by',
+    required: false,
+    description: 'Optional sort order key; omit for default order',
+    example: 'name',
+  })
   @ApiResponse({ status: 200, description: 'Favorite list' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -738,7 +760,11 @@ export class AppController {
   @ApiTags('Product Search')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List point-redeemable products' })
-  @ApiParam({ name: 'sortBy', description: 'Sort order key, e.g. "name" or "point"', example: 'name' })
+  @ApiParam({
+    name: 'sortBy',
+    description: 'Sort order key, e.g. "name" or "point"',
+    example: 'name',
+  })
   @ApiResponse({ status: 200, description: 'Product coin list' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -945,7 +971,11 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get cart snapshot with summary' })
-  @ApiParam({ name: 'mem_code', description: 'Member code (unused, taken from JWT)', example: 'M00123' })
+  @ApiParam({
+    name: 'mem_code',
+    description: 'Member code (unused, taken from JWT)',
+    example: 'M00123',
+  })
   @ApiResponse({ status: 200, description: 'Cart snapshot' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -978,7 +1008,11 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Soft delete a cart item' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Cart item soft deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -996,7 +1030,11 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single product for cart' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Product detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1053,7 +1091,11 @@ export class AppController {
   @ApiTags('Cart & Checkout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single order by running number' })
-  @ApiParam({ name: 'soh_runing', description: 'Order running number', example: 'SO-67010001' })
+  @ApiParam({
+    name: 'soh_runing',
+    description: 'Order running number',
+    example: 'SO-67010001',
+  })
   @ApiResponse({ status: 200, description: 'Order detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1512,7 +1554,11 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiOperation({ summary: 'Search main products for hotdeal' })
-  @ApiParam({ name: 'keyword', description: 'Search keyword', example: 'paracetamol' })
+  @ApiParam({
+    name: 'keyword',
+    description: 'Search keyword',
+    example: 'paracetamol',
+  })
   @ApiResponse({ status: 201, description: 'Matched products' })
   @Post('/ecom/admin/hotdeal/search-product-main/:keyword')
   async searchProductMain(@Param('keyword') keyword: string) {
@@ -1569,7 +1615,13 @@ export class AppController {
   @ApiOperation({ summary: 'Get hotdeals (simple list) for current member' })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
-  @ApiQuery({ name: 'special_deal', required: false, type: String, description: '"true" or "false"', example: 'false' })
+  @ApiQuery({
+    name: 'special_deal',
+    required: false,
+    type: String,
+    description: '"true" or "false"',
+    example: 'false',
+  })
   @ApiResponse({ status: 200, description: 'List of hotdeals' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1595,7 +1647,9 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get product-pro deals (simple list) for current member' })
+  @ApiOperation({
+    summary: 'Get product-pro deals (simple list) for current member',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
   @ApiResponse({ status: 200, description: 'List of product-pro deals' })
@@ -1617,7 +1671,9 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get "buy more get 1" deals (simple list) for current member' })
+  @ApiOperation({
+    summary: 'Get "buy more get 1" deals (simple list) for current member',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
   @ApiResponse({ status: 200, description: 'List of buy-more-get-1 deals' })
@@ -1685,7 +1741,9 @@ export class AppController {
 
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Generate a promo code for a member (requires permission)' })
+  @ApiOperation({
+    summary: 'Generate a promo code for a member (requires permission)',
+  })
   @ApiBody({ type: GenerateCodePromotionDto })
   @ApiResponse({ status: 201, description: 'Promo code generated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1704,7 +1762,11 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiOperation({ summary: 'Get hotdeal/freebie detail by product code' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Hotdeal detail' })
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
@@ -1712,7 +1774,9 @@ export class AppController {
   }
 
   @ApiTags('Misc / Admin Tools')
-  @ApiOperation({ summary: 'Bulk update products from back office import file' })
+  @ApiOperation({
+    summary: 'Bulk update products from back office import file',
+  })
   @ApiBody({ type: UpdateProductFromBackOfficeDto })
   @ApiResponse({ status: 201, description: 'Products updated' })
   @Post('/ecom/admin/update-product-from-back-office')
@@ -1780,7 +1844,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get file log entries by feature' })
-  @ApiParam({ name: 'feature', description: 'Feature name', example: 'wangday-import' })
+  @ApiParam({
+    name: 'feature',
+    description: 'Feature name',
+    example: 'wangday-import',
+  })
   @ApiResponse({ status: 200, description: 'File log entries' })
   @Get('/ecom/fileLog/:feature')
   async getFileLog(@Param('feature') feature: string) {
@@ -1816,7 +1884,9 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all searchable product keywords for current member' })
+  @ApiOperation({
+    summary: 'Get all searchable product keywords for current member',
+  })
   @ApiResponse({ status: 200, description: 'List of product keywords' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1888,7 +1958,11 @@ export class AppController {
   @ApiTags('Hotdeal & Flash Sale')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get products in a daily flash sale' })
-  @ApiParam({ name: 'promotion_id', description: 'Flash sale promotion id', example: '3' })
+  @ApiParam({
+    name: 'promotion_id',
+    description: 'Flash sale promotion id',
+    example: '3',
+  })
   @ApiResponse({ status: 200, description: 'List of products in flash sale' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -1919,9 +1993,7 @@ export class AppController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/edit-product')
-  async editProductInDailyFlashSale(
-    @Body() data: EditProductInFlashsaleDto,
-  ) {
+  async editProductInDailyFlashSale(@Body() data: EditProductInFlashsaleDto) {
     return await this.flashsaleService.editProductInFlashSale(data);
   }
 
@@ -1953,9 +2025,7 @@ export class AppController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/daily-flashsale/change-status')
-  async changeStatusDailyFlashsale(
-    @Body() data: ChangeStatusFlashsaleDto,
-  ) {
+  async changeStatusDailyFlashsale(@Body() data: ChangeStatusFlashsaleDto) {
     return await this.flashsaleService.changeStatus({
       promotion_id: data.id,
       is_active: data.is_active,
@@ -1991,7 +2061,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get the log file for a feature' })
-  @ApiParam({ name: 'feature', description: 'Feature name', example: 'wangday-import' })
+  @ApiParam({
+    name: 'feature',
+    description: 'Feature name',
+    example: 'wangday-import',
+  })
   @ApiResponse({ status: 200, description: 'Log file content' })
   @Get('/ecom/get-upload-log-file/:feature')
   async getUploadLogFile(@Param('feature') feature: string) {
@@ -2041,7 +2115,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get invisible products by creditor code' })
-  @ApiParam({ name: 'creditor_code', description: 'Creditor code', example: 'C00123' })
+  @ApiParam({
+    name: 'creditor_code',
+    description: 'Creditor code',
+    example: 'C00123',
+  })
   @ApiResponse({ status: 200, description: 'List of products' })
   @Get('/ecom/invisible/product/creditor/:creditor_code')
   async getInvisibleProductByCreditor(
@@ -2052,7 +2130,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get invisible products by invisible topic id' })
-  @ApiParam({ name: 'invisible_id', description: 'Invisible topic id', example: 1 })
+  @ApiParam({
+    name: 'invisible_id',
+    description: 'Invisible topic id',
+    example: 1,
+  })
   @ApiResponse({ status: 200, description: 'List of products' })
   @Get('/ecom/invisible/product/creditor/list/:invisible_id')
   async getInvisibleProductByInvisibleID(
@@ -2184,7 +2266,9 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add a product to the "fix free" point-redeemable list' })
+  @ApiOperation({
+    summary: 'Add a product to the "fix free" point-redeemable list',
+  })
   @ApiBody({ type: AddProductFreeDto })
   @ApiResponse({ status: 201, description: 'Product added' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -2262,7 +2346,11 @@ export class AppController {
   @ApiTags('Session')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get an active session by token' })
-  @ApiParam({ name: 'session_token', description: 'Session token', example: 'a1b2c3d4e5' })
+  @ApiParam({
+    name: 'session_token',
+    description: 'Session token',
+    example: 'a1b2c3d4e5',
+  })
   @ApiResponse({ status: 200, description: 'Active session' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2286,7 +2374,11 @@ export class AppController {
   @ApiTags('Session')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update last activity timestamp of a session' })
-  @ApiParam({ name: 'session_token', description: 'Session token', example: 'a1b2c3d4e5' })
+  @ApiParam({
+    name: 'session_token',
+    description: 'Session token',
+    example: 'a1b2c3d4e5',
+  })
   @ApiResponse({ status: 200, description: 'Session activity updated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2326,7 +2418,10 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout recently active sessions of a member' })
   @ApiBody({ type: MemCodeDto })
-  @ApiResponse({ status: 201, description: 'Recently active sessions logged out' })
+  @ApiResponse({
+    status: 201,
+    description: 'Recently active sessions logged out',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-recent')
@@ -2338,7 +2433,11 @@ export class AppController {
   @ApiTags('Session')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Validate whether a session token is still active' })
-  @ApiParam({ name: 'session_token', description: 'Session token', example: 'a1b2c3d4e5' })
+  @ApiParam({
+    name: 'session_token',
+    description: 'Session token',
+    example: 'a1b2c3d4e5',
+  })
   @ApiResponse({ status: 200, description: 'Validation result' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2362,7 +2461,9 @@ export class AppController {
   }
 
   @ApiTags('Password')
-  @ApiOperation({ summary: 'Check whether a member has an email on file for password reset' })
+  @ApiOperation({
+    summary: 'Check whether a member has an email on file for password reset',
+  })
   @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'Email check result' })
   @Get('/ecom/password/check-email/:mem_code')
@@ -2468,8 +2569,14 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get up to 30 new-arrival products for current member' })
-  @ApiParam({ name: 'mem_code', description: 'Member code (unused, taken from JWT)', example: 'M00123' })
+  @ApiOperation({
+    summary: 'Get up to 30 new-arrival products for current member',
+  })
+  @ApiParam({
+    name: 'mem_code',
+    description: 'Member code (unused, taken from JWT)',
+    example: 'M00123',
+  })
   @ApiResponse({ status: 200, description: 'List of new-arrival products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2484,7 +2591,11 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiOperation({ summary: 'Find a hotdeal by product code' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Hotdeal detail' })
   @Get('/ecom/hotdeal/find/:pro_code')
   find(@Param('pro_code') pro_code: string): Promise<any> {
@@ -2493,7 +2604,9 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get wangday data grouped by product (requires permission)' })
+  @ApiOperation({
+    summary: 'Get wangday data grouped by product (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'Wangday data by product' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2514,7 +2627,9 @@ export class AppController {
 
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all company-day promotions (requires permission)' })
+  @ApiOperation({
+    summary: 'Get all company-day promotions (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'List of promotions' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2579,7 +2694,9 @@ export class AppController {
   }
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all "fix free" products (requires permission)' })
+  @ApiOperation({
+    summary: 'Get all "fix free" products (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'List of free products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2596,7 +2713,9 @@ export class AppController {
 
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all promotional products (requires permission)' })
+  @ApiOperation({
+    summary: 'Get all promotional products (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'List of promotional products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2657,8 +2776,14 @@ export class AppController {
 
   @ApiTags('Debtor / Reduction')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Find a reduction invoice by invoice id for current member' })
-  @ApiParam({ name: 'invoice', description: 'Invoice number', example: 'INV00123' })
+  @ApiOperation({
+    summary: 'Find a reduction invoice by invoice id for current member',
+  })
+  @ApiParam({
+    name: 'invoice',
+    description: 'Invoice number',
+    example: 'INV00123',
+  })
   @ApiResponse({ status: 200, description: 'Debtor/invoice record' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2679,8 +2804,14 @@ export class AppController {
 
   @ApiTags('Debtor / Reduction')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Find a reduction RT (return) record by id for current member' })
-  @ApiParam({ name: 'rt', description: 'RT (return) number', example: 'RT00123' })
+  @ApiOperation({
+    summary: 'Find a reduction RT (return) record by id for current member',
+  })
+  @ApiParam({
+    name: 'rt',
+    description: 'RT (return) number',
+    example: 'RT00123',
+  })
   @ApiResponse({ status: 200, description: 'Reduction RT record' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2707,16 +2838,18 @@ export class AppController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/keysearch/update-product-keysearch')
-  async updateKeysearch(
-    @Body() data: UpdateKeysearchDto,
-  ) {
+  async updateKeysearch(@Body() data: UpdateKeysearchDto) {
     await this.productKeySearch.updateKeyword(data);
   }
 
   @ApiTags('Products')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get keysearch info for one product' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Keysearch info' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2727,7 +2860,9 @@ export class AppController {
 
   @ApiTags('Users')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check/refresh latest purchase date for current member' })
+  @ApiOperation({
+    summary: 'Check/refresh latest purchase date for current member',
+  })
   @ApiResponse({ status: 200, description: 'Check result' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2757,15 +2892,53 @@ export class AppController {
   @ApiOperation({ summary: 'Create or update an employee record' })
   @ApiBody({
     schema: objectSchema({
-      emp_code: { type: 'string', example: 'E00123', description: 'Required; not empty' },
+      emp_code: {
+        type: 'string',
+        example: 'E00123',
+        description: 'Required; not empty',
+      },
       data: objectSchema({
-        emp_code: { type: 'string', example: 'E00123', description: 'Required; not empty' },
-        emp_nickname: { type: 'string', example: 'นัท', description: 'Optional; empty string allowed', optional: true },
-        emp_firstname: { type: 'string', example: 'สมชาย', description: 'Optional; empty string allowed', optional: true },
-        emp_lastname: { type: 'string', example: 'ใจดี', description: 'Optional; empty string allowed', optional: true },
-        emp_mobile: { type: 'string', example: '0812345678', description: 'Optional; empty string allowed', optional: true },
-        emp_email: { type: 'string', example: 'somchai@example.com', description: 'Optional; empty string allowed', optional: true },
-        emp_ID_line: { type: 'string', example: 'somchai_line', description: 'Optional; empty string allowed', optional: true },
+        emp_code: {
+          type: 'string',
+          example: 'E00123',
+          description: 'Required; not empty',
+        },
+        emp_nickname: {
+          type: 'string',
+          example: 'นัท',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
+        emp_firstname: {
+          type: 'string',
+          example: 'สมชาย',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
+        emp_lastname: {
+          type: 'string',
+          example: 'ใจดี',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
+        emp_mobile: {
+          type: 'string',
+          example: '0812345678',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
+        emp_email: {
+          type: 'string',
+          example: 'somchai@example.com',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
+        emp_ID_line: {
+          type: 'string',
+          example: 'somchai_line',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
       }),
     }),
   })
@@ -2808,7 +2981,11 @@ export class AppController {
   @ApiOperation({ summary: 'Bulk update daily sale amount for products' })
   @ApiBody({
     schema: arraySchema({
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
       amount: { type: 'number', example: 25, description: 'Required' },
     }),
   })
@@ -2824,12 +3001,27 @@ export class AppController {
 
   @ApiTags('Users')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update or clear VIP tag for a member (requires permission)' })
+  @ApiOperation({
+    summary: 'Update or clear VIP tag for a member (requires permission)',
+  })
   @ApiBody({
     schema: objectSchema({
-      mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
-      message: { type: 'string', example: 'อนุมัติ VIP แล้ว', description: 'Required; not empty' },
-      tagVIP: { type: 'string', example: 'VIP', description: 'Optional; empty string/omit clears the tag', optional: true },
+      mem_code: {
+        type: 'string',
+        example: 'M00123',
+        description: 'Required; not empty',
+      },
+      message: {
+        type: 'string',
+        example: 'อนุมัติ VIP แล้ว',
+        description: 'Required; not empty',
+      },
+      tagVIP: {
+        type: 'string',
+        example: 'VIP',
+        description: 'Optional; empty string/omit clears the tag',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 200, description: 'VIP tag updated' })
@@ -2909,7 +3101,15 @@ export class AppController {
   @ApiTags('Recommend')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Insert a recommend tag' })
-  @ApiBody({ schema: objectSchema({ tag: { type: 'string', example: 'สินค้าขายดี', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      tag: {
+        type: 'string',
+        example: 'สินค้าขายดี',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Tag inserted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2936,7 +3136,11 @@ export class AppController {
   @ApiBody({
     schema: objectSchema({
       tag_id: { type: 'number', example: 1, description: 'Required' },
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Tag attached to product' })
@@ -2955,7 +3159,11 @@ export class AppController {
   @ApiOperation({ summary: 'Update display rank for a recommended product' })
   @ApiBody({
     schema: objectSchema({
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
       rank: { type: 'number', example: 1, description: 'Required' },
     }),
   })
@@ -2971,7 +3179,15 @@ export class AppController {
   @ApiTags('Recommend')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Remove all recommend tags from a product' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Tags removed' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2983,7 +3199,15 @@ export class AppController {
   @ApiTags('Recommend')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete display rank for a recommended product' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Rank deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -2995,7 +3219,11 @@ export class AppController {
   @ApiTags('Recommend')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a recommend tag' })
-  @ApiBody({ schema: objectSchema({ tag_id: { type: 'number', example: 1, description: 'Required' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      tag_id: { type: 'number', example: 1, description: 'Required' },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Tag deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3006,12 +3234,28 @@ export class AppController {
 
   @ApiTags('Recommend')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get recommended products by recommend ids for current member' })
+  @ApiOperation({
+    summary: 'Get recommended products by recommend ids for current member',
+  })
   @ApiBody({
     schema: objectSchema({
-      pro_code: { type: 'array', items: { type: 'string', example: 'P00123' }, description: 'Optional; not used by the implementation', optional: true },
-      recommend_id: { type: 'array', items: { type: 'number', example: 1 }, description: 'Required; not empty' },
-      mem_code: { type: 'string', example: 'M00123', description: 'Optional; overridden by JWT mem_code if present', optional: true },
+      pro_code: {
+        type: 'array',
+        items: { type: 'string', example: 'P00123' },
+        description: 'Optional; not used by the implementation',
+        optional: true,
+      },
+      recommend_id: {
+        type: 'array',
+        items: { type: 'number', example: 1 },
+        description: 'Required; not empty',
+      },
+      mem_code: {
+        type: 'string',
+        example: 'M00123',
+        description: 'Optional; overridden by JWT mem_code if present',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'List of recommended products' })
@@ -3037,7 +3281,9 @@ export class AppController {
 
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Set promotion status for all products under a tier' })
+  @ApiOperation({
+    summary: 'Set promotion status for all products under a tier',
+  })
   @ApiBody({
     schema: objectSchema({
       tier_id: { type: 'number', example: 1, description: 'Required' },
@@ -3059,11 +3305,21 @@ export class AppController {
 
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check the promotion tier applicable to a product for a member' })
+  @ApiOperation({
+    summary: 'Check the promotion tier applicable to a product for a member',
+  })
   @ApiBody({
     schema: objectSchema({
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
-      mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+      mem_code: {
+        type: 'string',
+        example: 'M00123',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Tier/promotion info' })
@@ -3081,7 +3337,9 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all image-debug records (requires permission)' })
+  @ApiOperation({
+    summary: 'Get all image-debug records (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'List of image-debug records' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3129,10 +3387,30 @@ export class AppController {
   @ApiOperation({ summary: 'Upload a banner/contract-log image' })
   @ApiBody({
     schema: objectSchema({
-      file: { type: 'string', format: 'binary', description: 'Required; image file' },
-      name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed', optional: true },
-      type: { type: 'string', enum: ['wang', 'attestor', 'creditor', 'banner'], example: 'banner', description: 'Optional', optional: true },
-      bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed', optional: true },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; image file',
+      },
+      name: {
+        type: 'string',
+        example: 'สมชาย ใจดี',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      type: {
+        type: 'string',
+        enum: ['wang', 'attestor', 'creditor', 'banner'],
+        example: 'banner',
+        description: 'Optional',
+        optional: true,
+      },
+      bannerName: {
+        type: 'string',
+        example: 'แบนเนอร์โปรโมชั่น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'File uploaded' })
@@ -3192,11 +3470,22 @@ export class AppController {
 
   @ApiTags('Contract Log')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get dropdown data for contract-log forms (e.g. attestor/creditor lists)' })
+  @ApiOperation({
+    summary:
+      'Get dropdown data for contract-log forms (e.g. attestor/creditor lists)',
+  })
   @ApiBody({
     schema: objectSchema({
-      group: { type: 'string', example: 'attestor', description: 'Required; not empty' },
-      type: { type: 'string', example: 'attestor', description: 'Required; not empty' },
+      group: {
+        type: 'string',
+        example: 'attestor',
+        description: 'Required; not empty',
+      },
+      type: {
+        type: 'string',
+        example: 'attestor',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Dropdown data' })
@@ -3219,18 +3508,82 @@ export class AppController {
   @ApiOperation({ summary: 'Create a contract-log banner record' })
   @ApiBody({
     schema: objectSchema({
-      selectedWang: { type: 'number', example: 1, description: 'Optional', optional: true },
-      selectedAttestor: { type: 'number', example: 1, description: 'Optional', optional: true },
-      selectedAttestor2: { type: 'number', example: 2, description: 'Optional', optional: true },
-      selectedCreditor: { type: 'number', example: 1, description: 'Optional', optional: true },
-      bannerId: { type: 'number', example: 1, description: 'Optional', optional: true },
-      bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed', optional: true },
-      signingDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      creditorCode: { type: 'string', example: 'C00123', description: 'Optional; empty string allowed', optional: true },
-      startDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      endDate: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      paymentDue: { type: 'string', format: 'date-time', example: '2026-07-23T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      address: { type: 'string', example: '99/1 ถนนสุขุมวิท', description: 'Optional; empty string allowed', optional: true },
+      selectedWang: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      selectedAttestor: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      selectedAttestor2: {
+        type: 'number',
+        example: 2,
+        description: 'Optional',
+        optional: true,
+      },
+      selectedCreditor: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      bannerId: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      bannerName: {
+        type: 'string',
+        example: 'แบนเนอร์โปรโมชั่น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      signingDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-06-23T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      creditorCode: {
+        type: 'string',
+        example: 'C00123',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      startDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-06-23T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      endDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-12-31T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      paymentDue: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-07-23T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      address: {
+        type: 'string',
+        example: '99/1 ถนนสุขุมวิท',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Banner record created' })
@@ -3262,10 +3615,17 @@ export class AppController {
 
   @ApiTags('Contract Log')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Search creditors by keyword for contract-log forms' })
+  @ApiOperation({
+    summary: 'Search creditors by keyword for contract-log forms',
+  })
   @ApiBody({
     schema: objectSchema({
-      keyword: { type: 'string', example: 'บริษัท วังเภสัช', description: 'Optional; empty string allowed', optional: true },
+      keyword: {
+        type: 'string',
+        example: 'บริษัท วังเภสัช',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'List of matching creditors' })
@@ -3280,14 +3640,37 @@ export class AppController {
 
   @ApiTags('Contract Log')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a contract-log creditor/banner image and info' })
+  @ApiOperation({
+    summary: 'Update a contract-log creditor/banner image and info',
+  })
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
-      name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed', optional: true },
-      type: { type: 'string', enum: ['creditor', 'banner'], example: 'creditor', description: 'Optional', optional: true },
-      bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed', optional: true },
-      file: { type: 'string', format: 'binary', description: 'Optional; image file', optional: true },
+      name: {
+        type: 'string',
+        example: 'สมชาย ใจดี',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      type: {
+        type: 'string',
+        enum: ['creditor', 'banner'],
+        example: 'creditor',
+        description: 'Optional',
+        optional: true,
+      },
+      bannerName: {
+        type: 'string',
+        example: 'แบนเนอร์โปรโมชั่น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Optional; image file',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Contract log updated' })
@@ -3323,8 +3706,17 @@ export class AppController {
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
-      name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed', optional: true },
-      file: { type: 'string', format: 'binary', description: 'Required; signed contract file' },
+      name: {
+        type: 'string',
+        example: 'สมชาย ใจดี',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; signed contract file',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Signed contract uploaded' })
@@ -3346,13 +3738,16 @@ export class AppController {
 
   @ApiTags('Contract Log')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get contract-log company-day record(s) by id or all' })
+  @ApiOperation({
+    summary: 'Get contract-log company-day record(s) by id or all',
+  })
   @ApiBody({
     schema: objectSchema({
       companyDayId: {
         oneOf: [{ type: 'number' }, { type: 'string', enum: ['all'] }],
         example: 'all',
-        description: 'Optional; company-day record id, or "all" to get every record',
+        description:
+          'Optional; company-day record id, or "all" to get every record',
         optional: true,
       },
     }),
@@ -3375,7 +3770,11 @@ export class AppController {
   @ApiOperation({ summary: 'Update reward redemption limit for a product' })
   @ApiBody({
     schema: objectSchema({
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
       limit: { type: 'number', example: 50, description: 'Required' },
     }),
   })
@@ -3395,7 +3794,15 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reset reward redemption count for a product' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Limit count reset' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3406,13 +3813,34 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Set a replacement product for a discontinued product' })
+  @ApiOperation({
+    summary: 'Set a replacement product for a discontinued product',
+  })
   @ApiBody({
     schema: objectSchema({
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
-      replace_pro_code: { type: 'string', example: 'P00456', description: 'Required; not empty' },
-      note: { type: 'string', example: 'สินค้าหมดสายผลิต', description: 'Optional; empty string allowed', optional: true },
-      date_end: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+      replace_pro_code: {
+        type: 'string',
+        example: 'P00456',
+        description: 'Required; not empty',
+      },
+      note: {
+        type: 'string',
+        example: 'สินค้าหมดสายผลิต',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      date_end: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-12-31T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Replacement product set' })
@@ -3442,27 +3870,137 @@ export class AppController {
   @ApiOperation({ summary: 'Create a contract-log company-day record' })
   @ApiBody({
     schema: objectSchema({
-      selectedWang: { type: 'number', example: 1, description: 'Optional', optional: true },
-      selectedAttestor: { type: 'number', example: 1, description: 'Optional', optional: true },
-      selectedAttestor2: { type: 'number', example: 2, description: 'Optional', optional: true },
-      selectedCreditor: { type: 'number', example: 1, description: 'Optional', optional: true },
-      bannerId: { type: 'number', example: 1, description: 'Optional', optional: true },
-      bannerName: { type: 'string', example: 'แบนเนอร์โปรโมชั่น', description: 'Optional; empty string allowed', optional: true },
-      signingDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      creditorCode: { type: 'string', example: 'C00123', description: 'Optional; empty string allowed', optional: true },
-      startDate: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      endDate: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      address: { type: 'string', example: '99/1 ถนนสุขุมวิท', description: 'Optional; empty string allowed', optional: true },
-      reportDueDate: { type: 'string', format: 'date-time', example: '2026-12-31T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      finalPaymentAmount: { type: 'number', example: 5000, description: 'Optional', optional: true },
-      totalSupportValue: { type: 'number', example: 10000, description: 'Optional', optional: true },
-      supportDeliveryDate: { type: 'string', format: 'date-time', example: '2026-07-01T00:00:00.000Z', description: 'Optional; ISO datetime', optional: true },
-      numberOfInstallments: { type: 'number', example: 3, description: 'Optional', optional: true },
-      installmentIntervalDays: { type: 'number', example: 30, description: 'Optional', optional: true },
-      firstInstallmentAmount: { type: 'number', example: 3000, description: 'Optional', optional: true },
-      firstPaymentCondition: { type: 'string', example: 'ชำระทันทีหลังเซ็นสัญญา', description: 'Optional; empty string allowed', optional: true },
-      finalInstallmentAmount: { type: 'number', example: 2000, description: 'Optional', optional: true },
-      productsToOrder: { type: 'string', example: 'P00123, P00456', description: 'Optional; empty string allowed', optional: true },
+      selectedWang: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      selectedAttestor: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      selectedAttestor2: {
+        type: 'number',
+        example: 2,
+        description: 'Optional',
+        optional: true,
+      },
+      selectedCreditor: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      bannerId: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      bannerName: {
+        type: 'string',
+        example: 'แบนเนอร์โปรโมชั่น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      signingDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-06-23T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      creditorCode: {
+        type: 'string',
+        example: 'C00123',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      startDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-06-23T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      endDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-12-31T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      address: {
+        type: 'string',
+        example: '99/1 ถนนสุขุมวิท',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      reportDueDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-12-31T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      finalPaymentAmount: {
+        type: 'number',
+        example: 5000,
+        description: 'Optional',
+        optional: true,
+      },
+      totalSupportValue: {
+        type: 'number',
+        example: 10000,
+        description: 'Optional',
+        optional: true,
+      },
+      supportDeliveryDate: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-07-01T00:00:00.000Z',
+        description: 'Optional; ISO datetime',
+        optional: true,
+      },
+      numberOfInstallments: {
+        type: 'number',
+        example: 3,
+        description: 'Optional',
+        optional: true,
+      },
+      installmentIntervalDays: {
+        type: 'number',
+        example: 30,
+        description: 'Optional',
+        optional: true,
+      },
+      firstInstallmentAmount: {
+        type: 'number',
+        example: 3000,
+        description: 'Optional',
+        optional: true,
+      },
+      firstPaymentCondition: {
+        type: 'string',
+        example: 'ชำระทันทีหลังเซ็นสัญญา',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      finalInstallmentAmount: {
+        type: 'number',
+        example: 2000,
+        description: 'Optional',
+        optional: true,
+      },
+      productsToOrder: {
+        type: 'string',
+        example: 'P00123, P00456',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Company-day record created' })
@@ -3501,13 +4039,31 @@ export class AppController {
 
   @ApiTags('Contract Log')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a contract-log company-day record (creditor image)' })
+  @ApiOperation({
+    summary: 'Update a contract-log company-day record (creditor image)',
+  })
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
-      name: { type: 'string', example: 'สมชาย ใจดี', description: 'Optional; empty string allowed', optional: true },
-      type: { type: 'string', enum: ['creditor'], example: 'creditor', description: 'Optional', optional: true },
-      file: { type: 'string', format: 'binary', description: 'Optional; image file', optional: true },
+      name: {
+        type: 'string',
+        example: 'สมชาย ใจดี',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      type: {
+        type: 'string',
+        enum: ['creditor'],
+        example: 'creditor',
+        description: 'Optional',
+        optional: true,
+      },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Optional; image file',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Company-day record updated' })
@@ -3544,7 +4100,11 @@ export class AppController {
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
-      file: { type: 'string', format: 'binary', description: 'Required; signed contract file' },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; signed contract file',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Signed contract uploaded' })
@@ -3567,7 +4127,15 @@ export class AppController {
   @ApiTags('Products')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the replacement product info for a product' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Replacement product info' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3579,7 +4147,15 @@ export class AppController {
   @ApiTags('Products')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Clear the replacement product for a product' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Replacement product cleared' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3590,10 +4166,17 @@ export class AppController {
 
   @ApiTags('Policy Document')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Find policy document categories (optionally by name)' })
+  @ApiOperation({
+    summary: 'Find policy document categories (optionally by name)',
+  })
   @ApiBody({
     schema: objectSchema({
-      name: { type: 'string', example: 'นโยบายความเป็นส่วนตัว', description: 'Optional; empty string allowed', optional: true },
+      name: {
+        type: 'string',
+        example: 'นโยบายความเป็นส่วนตัว',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'List of policy categories' })
@@ -3610,7 +4193,11 @@ export class AppController {
   @ApiOperation({ summary: 'Save a new policy document version' })
   @ApiBody({
     schema: objectSchema({
-      content: { type: 'string', example: '<p>เนื้อหานโยบาย</p>', description: 'Required; not empty' },
+      content: {
+        type: 'string',
+        example: '<p>เนื้อหานโยบาย</p>',
+        description: 'Required; not empty',
+      },
       category: { type: 'number', example: 1, description: 'Required' },
       type: { type: 'number', example: 1, description: 'Required' },
     }),
@@ -3634,7 +4221,10 @@ export class AppController {
 
   @ApiTags('Policy Document')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check and get the correct (latest unsigned) policy for current member' })
+  @ApiOperation({
+    summary:
+      'Check and get the correct (latest unsigned) policy for current member',
+  })
   @ApiResponse({ status: 200, description: 'Applicable policy document' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3647,7 +4237,11 @@ export class AppController {
   @ApiTags('Policy Document')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Agree to a policy document for current member' })
-  @ApiBody({ schema: objectSchema({ policyID: { type: 'number', example: 1, description: 'Required' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      policyID: { type: 'number', example: 1, description: 'Required' },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Agreement recorded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -3711,8 +4305,17 @@ export class AppController {
   @ApiOperation({ summary: 'Create a campaign' })
   @ApiBody({
     schema: objectSchema({
-      name: { type: 'string', example: 'แคมเปญสิ้นปี 2026', description: 'Required; not empty' },
-      description: { type: 'string', example: 'แคมเปญลดราคาสิ้นปี', description: 'Optional; empty string allowed', optional: true },
+      name: {
+        type: 'string',
+        example: 'แคมเปญสิ้นปี 2026',
+        description: 'Required; not empty',
+      },
+      description: {
+        type: 'string',
+        example: 'แคมเปญลดราคาสิ้นปี',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Campaign created' })
@@ -3790,9 +4393,24 @@ export class AppController {
   @ApiBody({
     schema: objectSchema({
       set_number: { type: 'number', example: 1, description: 'Required' },
-      condition: { type: 'string', example: 'ซื้อครบ 1000 บาท', description: 'Optional; empty string allowed', optional: true },
-      target: { type: 'string', example: 'P00123', description: 'Optional; empty string allowed', optional: true },
-      con_percent: { type: 'string', example: '10', description: 'Optional; empty string allowed', optional: true },
+      condition: {
+        type: 'string',
+        example: 'ซื้อครบ 1000 บาท',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      target: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      con_percent: {
+        type: 'string',
+        example: '10',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Row created' })
@@ -3827,15 +4445,60 @@ export class AppController {
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
   @ApiBody({
     schema: objectSchema({
-      target: { type: 'string', example: 'P00123', description: 'Optional; empty string allowed', optional: true },
-      con_percent: { type: 'string', example: '10', description: 'Optional; empty string allowed', optional: true },
-      condition: { type: 'string', example: 'ซื้อครบ 1000 บาท', description: 'Optional; empty string allowed', optional: true },
-      set_number: { type: 'number', example: 1, description: 'Optional', optional: true },
-      price_per_set: { type: 'string', example: '500.00', description: 'Optional; empty string allowed', optional: true },
-      number_of_sets: { type: 'number', example: 2, description: 'Optional', optional: true },
-      unit_price: { type: 'number', example: 250, description: 'Optional', optional: true },
-      quantity: { type: 'number', example: 2, description: 'Optional', optional: true },
-      discounted_price: { type: 'number', example: 450, description: 'Optional', optional: true },
+      target: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      con_percent: {
+        type: 'string',
+        example: '10',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      condition: {
+        type: 'string',
+        example: 'ซื้อครบ 1000 บาท',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      set_number: {
+        type: 'number',
+        example: 1,
+        description: 'Optional',
+        optional: true,
+      },
+      price_per_set: {
+        type: 'string',
+        example: '500.00',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      number_of_sets: {
+        type: 'number',
+        example: 2,
+        description: 'Optional',
+        optional: true,
+      },
+      unit_price: {
+        type: 'number',
+        example: 250,
+        description: 'Optional',
+        optional: true,
+      },
+      quantity: {
+        type: 'number',
+        example: 2,
+        description: 'Optional',
+        optional: true,
+      },
+      discounted_price: {
+        type: 'number',
+        example: 450,
+        description: 'Optional',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 200, description: 'Row updated' })
@@ -3900,9 +4563,23 @@ export class AppController {
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiBody({
     schema: objectSchema({
-      name: { type: 'string', example: 'ของแถม', description: 'Required; not empty' },
-      unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed', optional: true },
-      value_per_unit: { type: 'string', example: '10.00', description: 'Optional; empty string allowed', optional: true },
+      name: {
+        type: 'string',
+        example: 'ของแถม',
+        description: 'Required; not empty',
+      },
+      unit: {
+        type: 'string',
+        example: 'ชิ้น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      value_per_unit: {
+        type: 'string',
+        example: '10.00',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Reward column created' })
@@ -3988,7 +4665,15 @@ export class AppController {
   @ApiOperation({ summary: 'Add a product to a campaign row' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Product added to row' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4026,7 +4711,15 @@ export class AppController {
   @ApiOperation({ summary: 'Remove a product from a campaign row' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
-  @ApiBody({ schema: objectSchema({ pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Product removed from row' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4069,11 +4762,35 @@ export class AppController {
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
   @ApiBody({
     schema: objectSchema({
-      reward_column_id: { type: 'string', example: '1', description: 'Required; not empty' },
-      quantity: { type: 'string', example: '2', description: 'Optional; empty string allowed', optional: true },
-      unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed', optional: true },
-      price: { type: 'string', example: '10.00', description: 'Optional; empty string allowed', optional: true },
-      value: { type: 'string', example: '20.00', description: 'Optional; empty string allowed', optional: true },
+      reward_column_id: {
+        type: 'string',
+        example: '1',
+        description: 'Required; not empty',
+      },
+      quantity: {
+        type: 'string',
+        example: '2',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      unit: {
+        type: 'string',
+        example: 'ชิ้น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      price: {
+        type: 'string',
+        example: '10.00',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      value: {
+        type: 'string',
+        example: '20.00',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Promo reward added' })
@@ -4115,10 +4832,30 @@ export class AppController {
   @ApiParam({ name: 'rewardId', description: 'Reward id', example: '1' })
   @ApiBody({
     schema: objectSchema({
-      quantity: { type: 'string', example: '2', description: 'Optional; empty string allowed', optional: true },
-      unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed', optional: true },
-      price: { type: 'string', example: '10.00', description: 'Optional; empty string allowed', optional: true },
-      value: { type: 'string', example: '20.00', description: 'Optional; empty string allowed', optional: true },
+      quantity: {
+        type: 'string',
+        example: '2',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      unit: {
+        type: 'string',
+        example: 'ชิ้น',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      price: {
+        type: 'string',
+        example: '10.00',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      value: {
+        type: 'string',
+        example: '20.00',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 200, description: 'Promo reward updated' })
@@ -4197,9 +4934,21 @@ export class AppController {
   @ApiOperation({ summary: 'Update a reward column image/product link' })
   @ApiBody({
     schema: objectSchema({
-      reward_id: { type: 'string', example: '1', description: 'Required; not empty' },
-      url: { type: 'string', example: 'https://example.com/image.png', description: 'Required; not empty' },
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      reward_id: {
+        type: 'string',
+        example: '1',
+        description: 'Required; not empty',
+      },
+      url: {
+        type: 'string',
+        example: 'https://example.com/image.png',
+        description: 'Required; not empty',
+      },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Reward column updated' })
@@ -4232,8 +4981,16 @@ export class AppController {
   @ApiOperation({ summary: 'Upload an image for a campaign reward' })
   @ApiBody({
     schema: objectSchema({
-      file: { type: 'string', format: 'binary', description: 'Required; image file' },
-      reward_id: { type: 'string', example: '1', description: 'Required; not empty' },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; image file',
+      },
+      reward_id: {
+        type: 'string',
+        example: '1',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Image uploaded' })
@@ -4262,7 +5019,15 @@ export class AppController {
   @ApiTags('Campaigns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a generic campaign image' })
-  @ApiBody({ schema: objectSchema({ file: { type: 'string', format: 'binary', description: 'Required; image file' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; image file',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Image uploaded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4304,7 +5069,15 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a purchase product entry for a campaign' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
-  @ApiBody({ schema: objectSchema({ name: { type: 'string', example: 'แชมพูสมุนไพร', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      name: {
+        type: 'string',
+        example: 'แชมพูสมุนไพร',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Purchase product created' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4331,11 +5104,25 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a purchase product entry' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
-  @ApiParam({ name: 'productId', description: 'Purchase product id', example: '1' })
+  @ApiParam({
+    name: 'productId',
+    description: 'Purchase product id',
+    example: '1',
+  })
   @ApiBody({
     schema: objectSchema({
-      name: { type: 'string', example: 'แชมพูสมุนไพร', description: 'Optional; empty string allowed', optional: true },
-      img_url: { type: 'string', example: 'https://example.com/image.png', description: 'Optional; empty string allowed', optional: true },
+      name: {
+        type: 'string',
+        example: 'แชมพูสมุนไพร',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
+      img_url: {
+        type: 'string',
+        example: 'https://example.com/image.png',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 200, description: 'Purchase product updated' })
@@ -4366,7 +5153,11 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a purchase product entry' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
-  @ApiParam({ name: 'productId', description: 'Purchase product id', example: '1' })
+  @ApiParam({
+    name: 'productId',
+    description: 'Purchase product id',
+    example: '1',
+  })
   @ApiResponse({ status: 200, description: 'Purchase product deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4390,8 +5181,20 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload an image for a purchase product' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
-  @ApiParam({ name: 'productId', description: 'Purchase product id', example: '1' })
-  @ApiBody({ schema: objectSchema({ file: { type: 'string', format: 'binary', description: 'Required; image file' } }) })
+  @ApiParam({
+    name: 'productId',
+    description: 'Purchase product id',
+    example: '1',
+  })
+  @ApiBody({
+    schema: objectSchema({
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; image file',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Image uploaded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4424,18 +5227,44 @@ export class AppController {
   @ApiOperation({ summary: 'Generate a campaign poster image via AI' })
   @ApiBody({
     schema: objectSchema({
-      prompt: { type: 'string', example: 'โปสเตอร์โปรโมชั่นสินค้าฤดูร้อน', description: 'Required; not empty' },
-      aspectRatio: { type: 'string', example: '1:1', description: 'Required; not empty' },
+      prompt: {
+        type: 'string',
+        example: 'โปสเตอร์โปรโมชั่นสินค้าฤดูร้อน',
+        description: 'Required; not empty',
+      },
+      aspectRatio: {
+        type: 'string',
+        example: '1:1',
+        description: 'Required; not empty',
+      },
       imageItems: {
         ...arraySchema({
-          url: { type: 'string', example: 'https://example.com/image.png', description: 'Required; not empty' },
-          name: { type: 'string', example: 'แชมพูสมุนไพร', description: 'Required; not empty' },
+          url: {
+            type: 'string',
+            example: 'https://example.com/image.png',
+            description: 'Required; not empty',
+          },
+          name: {
+            type: 'string',
+            example: 'แชมพูสมุนไพร',
+            description: 'Required; not empty',
+          },
           quantity: { type: 'number', example: 1, description: 'Required' },
-          unit: { type: 'string', example: 'ชิ้น', description: 'Optional; empty string allowed', optional: true },
+          unit: {
+            type: 'string',
+            example: 'ชิ้น',
+            description: 'Optional; empty string allowed',
+            optional: true,
+          },
         }),
         optional: true,
       },
-      session_cookies: { type: 'string', example: '', description: 'Optional; empty string allowed', optional: true },
+      session_cookies: {
+        type: 'string',
+        example: '',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Poster generation request id' })
@@ -4464,11 +5293,22 @@ export class AppController {
   }
 
   @ApiTags('Campaigns')
-  @ApiOperation({ summary: 'Poll for AI poster generation result by request id' })
-  @ApiParam({ name: 'requestId', description: 'Poster generation request id', example: 'req_00123' })
+  @ApiOperation({
+    summary: 'Poll for AI poster generation result by request id',
+  })
+  @ApiParam({
+    name: 'requestId',
+    description: 'Poster generation request id',
+    example: 'req_00123',
+  })
   @ApiBody({
     schema: objectSchema({
-      session_cookies: { type: 'string', example: '', description: 'Optional; empty string allowed', optional: true },
+      session_cookies: {
+        type: 'string',
+        example: '',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Generation result' })
@@ -4501,7 +5341,11 @@ export class AppController {
   @ApiOperation({ summary: 'Update value-per-unit for a reward column' })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiParam({ name: 'columnId', description: 'Reward column id', example: '1' })
-  @ApiBody({ schema: objectSchema({ value_per_unit: { type: 'number', example: 10, description: 'Required' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      value_per_unit: { type: 'number', example: 10, description: 'Required' },
+    }),
+  })
   @ApiResponse({ status: 200, description: 'Value per unit updated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4521,10 +5365,20 @@ export class AppController {
 
   @ApiTags('Campaigns')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Save a generated poster image to a campaign row history' })
+  @ApiOperation({
+    summary: 'Save a generated poster image to a campaign row history',
+  })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
-  @ApiBody({ schema: objectSchema({ img_url: { type: 'string', example: 'https://example.com/poster.png', description: 'Required; not empty' } }) })
+  @ApiBody({
+    schema: objectSchema({
+      img_url: {
+        type: 'string',
+        example: 'https://example.com/poster.png',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Poster history saved' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4549,22 +5403,47 @@ export class AppController {
 
   @ApiTags('Campaigns')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a banner from a poster history image and link it' })
+  @ApiOperation({
+    summary: 'Create a banner from a poster history image and link it',
+  })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
-  @ApiParam({ name: 'historyId', description: 'Poster history id', example: '1' })
+  @ApiParam({
+    name: 'historyId',
+    description: 'Poster history id',
+    example: '1',
+  })
   @ApiBody({
     schema: objectSchema({
-      img_url: { type: 'string', example: 'https://example.com/poster.png', description: 'Required; not empty' },
-      banner_name: { type: 'string', example: 'โปสเตอร์โปรโมชั่นฤดูร้อน', description: 'Optional; empty string allowed', optional: true },
+      img_url: {
+        type: 'string',
+        example: 'https://example.com/poster.png',
+        description: 'Required; not empty',
+      },
+      banner_name: {
+        type: 'string',
+        example: 'โปสเตอร์โปรโมชั่นฤดูร้อน',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
       banner_location: {
         type: 'string',
         enum: ['store_carousel', 'landing_hero', 'popup', 'sidebar'],
         example: 'store_carousel',
         description: 'Required; not empty',
       },
-      date_start: { type: 'string', format: 'date-time', example: '2026-06-23T00:00:00.000Z', description: 'Required; ISO datetime' },
-      date_end: { type: 'string', format: 'date-time', example: '2026-07-23T00:00:00.000Z', description: 'Required; ISO datetime' },
+      date_start: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-06-23T00:00:00.000Z',
+        description: 'Required; ISO datetime',
+      },
+      date_end: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-07-23T00:00:00.000Z',
+        description: 'Required; ISO datetime',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Banner created and linked' })
@@ -4609,10 +5488,17 @@ export class AppController {
 
   @ApiTags('Campaigns')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove a banner link from poster history (keeps the banner image file)' })
+  @ApiOperation({
+    summary:
+      'Remove a banner link from poster history (keeps the banner image file)',
+  })
   @ApiParam({ name: 'campaignId', description: 'Campaign id', example: '1' })
   @ApiParam({ name: 'rowId', description: 'Row id', example: '1' })
-  @ApiParam({ name: 'historyId', description: 'Poster history id', example: '1' })
+  @ApiParam({
+    name: 'historyId',
+    description: 'Poster history id',
+    example: '1',
+  })
   @ApiParam({ name: 'linkId', description: 'Banner link id', example: '1' })
   @ApiResponse({ status: 200, description: 'Banner link removed' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -4657,8 +5543,14 @@ export class AppController {
   }
 
   @ApiTags('Campaigns')
-  @ApiOperation({ summary: 'Proxy-download an ideogram.ai generated image (avoids CORS)' })
-  @ApiQuery({ name: 'url', description: 'Must start with https://ideogram.ai/', example: 'https://ideogram.ai/api/images/example.png' })
+  @ApiOperation({
+    summary: 'Proxy-download an ideogram.ai generated image (avoids CORS)',
+  })
+  @ApiQuery({
+    name: 'url',
+    description: 'Must start with https://ideogram.ai/',
+    example: 'https://ideogram.ai/api/images/example.png',
+  })
   @ApiResponse({ status: 200, description: 'Image binary stream' })
   @Get('/campaigns/proxy-image')
   async proxyImage(@Query('url') url: string, @Res() res: Response) {
@@ -4683,7 +5575,9 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Search banner-eligible products (requires permission)' })
+  @ApiOperation({
+    summary: 'Search banner-eligible products (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'List of products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4713,7 +5607,11 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiOperation({ summary: 'Get delivery tracking location for an order' })
-  @ApiParam({ name: 'sh_running', description: 'Shopping head running number', example: 'SO00123' })
+  @ApiParam({
+    name: 'sh_running',
+    description: 'Shopping head running number',
+    example: 'SO00123',
+  })
   @ApiResponse({ status: 200, description: 'Order tracking location' })
   @Get('/ecom/track-order/:sh_running')
   async trackOrder(@Param('sh_running') sh_running: string) {
@@ -4762,7 +5660,11 @@ export class AppController {
   @ApiTags('Product Returns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get order items available for return selection' })
-  @ApiParam({ name: 'soh_running', description: 'Shopping order head running number', example: 'SO00123' })
+  @ApiParam({
+    name: 'soh_running',
+    description: 'Shopping order head running number',
+    example: 'SO00123',
+  })
   @ApiResponse({ status: 200, description: 'List of order items' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4793,18 +5695,29 @@ export class AppController {
   // Customer: Create return request
   @ApiTags('Product Returns')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a product return request (customer-initiated)' })
+  @ApiOperation({
+    summary: 'Create a product return request (customer-initiated)',
+  })
   @ApiBody({
     schema: objectSchema({
       soh_id: { type: 'number', example: 12345, description: 'Required' },
-      mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+      mem_code: {
+        type: 'string',
+        example: 'M00123',
+        description: 'Required; not empty',
+      },
       reason: {
         type: 'string',
         enum: ['damaged', 'expired', 'wrong_item', 'disaster', 'other'],
         example: 'damaged',
         description: 'Required; not empty',
       },
-      reason_detail: { type: 'string', example: 'สินค้าชำรุดตอนเปิดกล่อง', description: 'Optional; empty string allowed', optional: true },
+      reason_detail: {
+        type: 'string',
+        example: 'สินค้าชำรุดตอนเปิดกล่อง',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
       resolution_type: {
         type: 'string',
         enum: ['refund', 'replacement'],
@@ -4812,14 +5725,41 @@ export class AppController {
         description: 'Required; not empty',
       },
       items: arraySchema({
-        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+        pro_code: {
+          type: 'string',
+          example: 'P00123',
+          description: 'Required; not empty',
+        },
         qty: { type: 'number', example: 2, description: 'Required' },
-        unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
-        price_per_unit: { type: 'number', example: 150, description: 'Required' },
-        item_reason: { type: 'string', example: 'สินค้าชำรุด', description: 'Optional; empty string allowed', optional: true },
-        expiry_date: { type: 'string', example: '2026-12-31', description: 'Optional; format YYYY-MM-DD', optional: true },
+        unit: {
+          type: 'string',
+          example: 'กล่อง',
+          description: 'Required; not empty',
+        },
+        price_per_unit: {
+          type: 'number',
+          example: 150,
+          description: 'Required',
+        },
+        item_reason: {
+          type: 'string',
+          example: 'สินค้าชำรุด',
+          description: 'Optional; empty string allowed',
+          optional: true,
+        },
+        expiry_date: {
+          type: 'string',
+          example: '2026-12-31',
+          description: 'Optional; format YYYY-MM-DD',
+          optional: true,
+        },
       }),
-      notes: { type: 'string', example: '', description: 'Optional; empty string allowed', optional: true },
+      notes: {
+        type: 'string',
+        example: '',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Return request created' })
@@ -4867,12 +5807,28 @@ export class AppController {
   // Customer: Upload evidence images
   @ApiTags('Product Returns')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Upload evidence images for a return request (up to 5 files)' })
-  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiOperation({
+    summary: 'Upload evidence images for a return request (up to 5 files)',
+  })
+  @ApiParam({
+    name: 'return_id',
+    description: 'Return request id',
+    example: '1',
+  })
   @ApiBody({
     schema: objectSchema({
-      files: { type: 'array', items: { type: 'string', format: 'binary' }, description: 'Optional; up to 5 image files', optional: true },
-      description: { type: 'string', example: '', description: 'Optional; empty string allowed', optional: true },
+      files: {
+        type: 'array',
+        items: { type: 'string', format: 'binary' },
+        description: 'Optional; up to 5 image files',
+        optional: true,
+      },
+      description: {
+        type: 'string',
+        example: '',
+        description: 'Optional; empty string allowed',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Images uploaded' })
@@ -4909,7 +5865,11 @@ export class AppController {
   @ApiTags('Product Returns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Submit a draft return request for review' })
-  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiParam({
+    name: 'return_id',
+    description: 'Return request id',
+    example: '1',
+  })
   @ApiResponse({ status: 201, description: 'Return request submitted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -4942,7 +5902,12 @@ export class AppController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get return requests for a member' })
   @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
-  @ApiQuery({ name: 'status', required: false, type: String, example: 'pending' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    example: 'pending',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiQuery({ name: 'offset', required: false, type: String, example: '0' })
   @ApiResponse({ status: 200, description: 'List of return requests' })
@@ -4979,7 +5944,11 @@ export class AppController {
   @ApiTags('Product Returns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get detail of a return request' })
-  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiParam({
+    name: 'return_id',
+    description: 'Return request id',
+    example: '1',
+  })
   @ApiResponse({ status: 200, description: 'Return request detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5007,7 +5976,11 @@ export class AppController {
   @ApiTags('Product Returns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a draft (unsubmitted) return request' })
-  @ApiParam({ name: 'return_id', description: 'Return request id', example: '1' })
+  @ApiParam({
+    name: 'return_id',
+    description: 'Return request id',
+    example: '1',
+  })
   @ApiResponse({ status: 200, description: 'Draft return deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5094,10 +6067,22 @@ export class AppController {
   // Get user behavior (for personalization)
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get tracked behavior events for a member (for personalization)' })
+  @ApiOperation({
+    summary: 'Get tracked behavior events for a member (for personalization)',
+  })
   @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiResponse({ status: 200, description: 'User behavior data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5130,10 +6115,26 @@ export class AppController {
   // Admin: Get product analytics
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get product view/interaction analytics (requires permission)' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiOperation({
+    summary: 'Get product view/interaction analytics (requires permission)',
+  })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiResponse({ status: 200, description: 'Product analytics data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5171,9 +6172,21 @@ export class AppController {
   // Admin: Get search analytics
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get search behavior analytics (requires permission)' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiOperation({
+    summary: 'Get search behavior analytics (requires permission)',
+  })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiResponse({ status: 200, description: 'Search analytics data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5209,9 +6222,21 @@ export class AppController {
   // Admin: Get dashboard stats
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get behavior tracking dashboard stats (requires permission)' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiOperation({
+    summary: 'Get behavior tracking dashboard stats (requires permission)',
+  })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiResponse({ status: 200, description: 'Dashboard stats' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5248,8 +6273,18 @@ export class AppController {
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get daily behavior trend (requires permission)' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiResponse({ status: 200, description: 'Daily trend data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5285,9 +6320,21 @@ export class AppController {
   // Admin: Get top products
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get top viewed/purchased products (requires permission)' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiOperation({
+    summary: 'Get top viewed/purchased products (requires permission)',
+  })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '10' })
   @ApiResponse({ status: 200, description: 'List of top products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5326,7 +6373,9 @@ export class AppController {
   // Admin: Get recent activity feed
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get recent customer activity feed (requires permission)' })
+  @ApiOperation({
+    summary: 'Get recent customer activity feed (requires permission)',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '50' })
   @ApiResponse({ status: 200, description: 'Recent activity feed' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5361,7 +6410,9 @@ export class AppController {
   // Admin: Get user journeys
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get user navigation journeys (requires permission)' })
+  @ApiOperation({
+    summary: 'Get user navigation journeys (requires permission)',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiResponse({ status: 200, description: 'List of user journeys' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5396,9 +6447,22 @@ export class AppController {
   // Admin: Get zero result searches
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get search queries that returned zero results (requires permission)' })
-  @ApiQuery({ name: 'from_date', required: false, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: false, type: String, example: '2026-06-23' })
+  @ApiOperation({
+    summary:
+      'Get search queries that returned zero results (requires permission)',
+  })
+  @ApiQuery({
+    name: 'from_date',
+    required: false,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: false,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '30' })
   @ApiResponse({ status: 200, description: 'List of zero-result searches' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5437,7 +6501,9 @@ export class AppController {
   // Admin: Get stock alerts based on demand
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get demand-based stock alerts (requires permission)' })
+  @ApiOperation({
+    summary: 'Get demand-based stock alerts (requires permission)',
+  })
   @ApiQuery({ name: 'days', required: false, type: String, example: '7' })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiResponse({ status: 200, description: 'List of stock alerts' })
@@ -5475,7 +6541,9 @@ export class AppController {
   // Admin: Get cart conversion analytics
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get cart-to-purchase conversion analytics (requires permission)' })
+  @ApiOperation({
+    summary: 'Get cart-to-purchase conversion analytics (requires permission)',
+  })
   @ApiQuery({ name: 'days', required: false, type: String, example: '30' })
   @ApiQuery({ name: 'limit', required: false, type: String, example: '20' })
   @ApiResponse({ status: 200, description: 'Cart conversion analytics' })
@@ -5513,7 +6581,9 @@ export class AppController {
   // Admin: Get customer segments
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get customer segmentation analysis (requires permission)' })
+  @ApiOperation({
+    summary: 'Get customer segmentation analysis (requires permission)',
+  })
   @ApiQuery({ name: 'days', required: false, type: String, example: '90' })
   @ApiResponse({ status: 200, description: 'Customer segments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5548,7 +6618,9 @@ export class AppController {
   // Admin: Get retention analysis
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get customer retention analysis (requires permission)' })
+  @ApiOperation({
+    summary: 'Get customer retention analysis (requires permission)',
+  })
   @ApiQuery({ name: 'weeks', required: false, type: String, example: '8' })
   @ApiResponse({ status: 200, description: 'Retention analysis' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5583,7 +6655,9 @@ export class AppController {
   // Admin: Get repeat purchase patterns
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get repeat purchase patterns (requires permission)' })
+  @ApiOperation({
+    summary: 'Get repeat purchase patterns (requires permission)',
+  })
   @ApiQuery({ name: 'days', required: false, type: String, example: '180' })
   @ApiResponse({ status: 200, description: 'Repeat purchase patterns' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5618,9 +6692,17 @@ export class AppController {
   // Admin: Get purchase interval box plot data
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get purchase interval box-plot data (requires permission)' })
+  @ApiOperation({
+    summary: 'Get purchase interval box-plot data (requires permission)',
+  })
   @ApiQuery({ name: 'days', required: false, type: String, example: '180' })
-  @ApiQuery({ name: 'group_by', required: false, type: String, example: 'overall', description: 'one of: overall, product, segment, month' })
+  @ApiQuery({
+    name: 'group_by',
+    required: false,
+    type: String,
+    example: 'overall',
+    description: 'one of: overall, product, segment, month',
+  })
   @ApiResponse({ status: 200, description: 'Box-plot data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5656,9 +6738,21 @@ export class AppController {
   // Admin: Get user journey sankey
   @ApiTags('Behavior Tracking')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get user journey sankey diagram data (requires permission)' })
-  @ApiQuery({ name: 'from_date', required: true, type: String, example: '2026-06-01' })
-  @ApiQuery({ name: 'to_date', required: true, type: String, example: '2026-06-23' })
+  @ApiOperation({
+    summary: 'Get user journey sankey diagram data (requires permission)',
+  })
+  @ApiQuery({
+    name: 'from_date',
+    required: true,
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'to_date',
+    required: true,
+    type: String,
+    example: '2026-06-23',
+  })
   @ApiResponse({ status: 200, description: 'Sankey diagram data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5680,12 +6774,22 @@ export class AppController {
 
   @ApiTags('Users')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Change a member\'s role/permission (Admin only)' })
+  @ApiOperation({ summary: "Change a member's role/permission (Admin only)" })
   @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
   @ApiBody({
     schema: objectSchema({
-      newRole: { type: 'string', enum: ['User', 'Admin', 'Sales'], example: 'Sales', description: 'Required; not empty' },
-      permission: { type: 'boolean', example: true, description: 'Optional; defaults to false', optional: true },
+      newRole: {
+        type: 'string',
+        enum: ['User', 'Admin', 'Sales'],
+        example: 'Sales',
+        description: 'Required; not empty',
+      },
+      permission: {
+        type: 'boolean',
+        example: true,
+        description: 'Optional; defaults to false',
+        optional: true,
+      },
     }),
   })
   @ApiResponse({ status: 200, description: 'Role changed' })
@@ -5734,7 +6838,9 @@ export class AppController {
 
   @ApiTags('Users')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Look up a member for role management (Admin only)' })
+  @ApiOperation({
+    summary: 'Look up a member for role management (Admin only)',
+  })
   @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'Member info for role management' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5770,10 +6876,16 @@ export class AppController {
 
   @ApiTags('Users')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update enabled feature flags for a member (Admin only)' })
+  @ApiOperation({
+    summary: 'Update enabled feature flags for a member (Admin only)',
+  })
   @ApiBody({
     schema: objectSchema({
-      mem_code: { type: 'string', example: 'M00123', description: 'Required; not empty' },
+      mem_code: {
+        type: 'string',
+        example: 'M00123',
+        description: 'Required; not empty',
+      },
       features: {
         type: 'array',
         items: { type: 'string', example: 'happy_hour' },
@@ -5805,7 +6917,9 @@ export class AppController {
 
   @ApiTags('Users')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get paginated admin role-change action logs (Admin only)' })
+  @ApiOperation({
+    summary: 'Get paginated admin role-change action logs (Admin only)',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   @ApiResponse({ status: 200, description: 'Paginated admin action logs' })
@@ -5825,7 +6939,9 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get RT (return) order notifications from the last 3 days' })
+  @ApiOperation({
+    summary: 'Get RT (return) order notifications from the last 3 days',
+  })
   @ApiParam({ name: 'mem_code', description: 'Member code', example: 'M00123' })
   @ApiResponse({ status: 200, description: 'List of RT notifications' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -5839,8 +6955,16 @@ export class AppController {
   @ApiOperation({ summary: 'Update RT (return) notification read status' })
   @ApiBody({
     schema: objectSchema({
-      soh_running: { type: 'string', example: 'SO00123', description: 'Required; not empty' },
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      soh_running: {
+        type: 'string',
+        example: 'SO00123',
+        description: 'Required; not empty',
+      },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'RT notification status updated' })
@@ -5854,8 +6978,18 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Register a push notification token for current member' })
-  @ApiBody({ schema: objectSchema({ token: { type: 'string', example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', description: 'Required; not empty' } }) })
+  @ApiOperation({
+    summary: 'Register a push notification token for current member',
+  })
+  @ApiBody({
+    schema: objectSchema({
+      token: {
+        type: 'string',
+        example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Token registered' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5873,8 +7007,18 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove a push notification token for current member' })
-  @ApiBody({ schema: objectSchema({ token: { type: 'string', example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', description: 'Required; not empty' } }) })
+  @ApiOperation({
+    summary: 'Remove a push notification token for current member',
+  })
+  @ApiBody({
+    schema: objectSchema({
+      token: {
+        type: 'string',
+        example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Token removed' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -5896,7 +7040,11 @@ export class AppController {
   @ApiBody({
     schema: objectSchema({
       id: { type: 'number', example: 1, description: 'Required' },
-      file: { type: 'string', format: 'binary', description: 'Required; image file' },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; image file',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Banner uploaded' })
@@ -5936,7 +7084,9 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get paginated list of products with a replacement set' })
+  @ApiOperation({
+    summary: 'Get paginated list of products with a replacement set',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
   @ApiResponse({ status: 200, description: 'Paginated replacement products' })
@@ -5952,11 +7102,21 @@ export class AppController {
 
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Upload/update the poster image for a promotion tier' })
+  @ApiOperation({
+    summary: 'Upload/update the poster image for a promotion tier',
+  })
   @ApiBody({
     schema: objectSchema({
-      tier_id: { type: 'string', example: '1', description: 'Required; not empty' },
-      file: { type: 'string', format: 'binary', description: 'Required; image file' },
+      tier_id: {
+        type: 'string',
+        example: '1',
+        description: 'Required; not empty',
+      },
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Required; image file',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Tier poster updated' })
@@ -5972,11 +7132,21 @@ export class AppController {
   }
 
   @ApiTags('Promotion & Tier')
-  @ApiOperation({ summary: 'Check/recalculate tier-turn-back reward price for an order item' })
+  @ApiOperation({
+    summary: 'Check/recalculate tier-turn-back reward price for an order item',
+  })
   @ApiBody({
     schema: objectSchema({
-      sh_running: { type: 'string', example: 'SO00123', description: 'Required; not empty' },
-      pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
+      sh_running: {
+        type: 'string',
+        example: 'SO00123',
+        description: 'Required; not empty',
+      },
+      pro_code: {
+        type: 'string',
+        example: 'P00123',
+        description: 'Required; not empty',
+      },
     }),
   })
   @ApiResponse({ status: 201, description: 'Tier price result' })
@@ -5990,8 +7160,19 @@ export class AppController {
 
   @ApiTags('Happy Hour')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check and adjust happy-hour reward for an order (requires permission)' })
-  @ApiBody({ schema: objectSchema({ sh_running: { type: 'string', example: 'SO00123', description: 'Required; not empty' } }) })
+  @ApiOperation({
+    summary:
+      'Check and adjust happy-hour reward for an order (requires permission)',
+  })
+  @ApiBody({
+    schema: objectSchema({
+      sh_running: {
+        type: 'string',
+        example: 'SO00123',
+        description: 'Required; not empty',
+      },
+    }),
+  })
   @ApiResponse({ status: 201, description: 'Happy-hour reward adjusted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
@@ -6011,8 +7192,14 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get hotdeal detail by product code for current member' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiOperation({
+    summary: 'Get hotdeal detail by product code for current member',
+  })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Hotdeal detail' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -6027,14 +7214,28 @@ export class AppController {
 
   @ApiTags('Hotdeal & Flash Sale')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add hotdeal freebie products to cart for current member' })
+  @ApiOperation({
+    summary: 'Add hotdeal freebie products to cart for current member',
+  })
   @ApiBody({
     schema: objectSchema({
       freebies: arraySchema({
-        pro_code: { type: 'string', example: 'P00123', description: 'Required; not empty' },
-        unit: { type: 'string', example: 'กล่อง', description: 'Required; not empty' },
+        pro_code: {
+          type: 'string',
+          example: 'P00123',
+          description: 'Required; not empty',
+        },
+        unit: {
+          type: 'string',
+          example: 'กล่อง',
+          description: 'Required; not empty',
+        },
         amount: { type: 'number', example: 1, description: 'Required' },
-        pro_code1: { type: 'string', example: 'P00100', description: 'Required; not empty; the qualifying product code' },
+        pro_code1: {
+          type: 'string',
+          example: 'P00100',
+          description: 'Required; not empty; the qualifying product code',
+        },
       }),
     }),
   })
@@ -6068,7 +7269,11 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiOperation({ summary: 'Get product image by product code' })
-  @ApiParam({ name: 'pro_code', description: 'Product code', example: 'P00123' })
+  @ApiParam({
+    name: 'pro_code',
+    description: 'Product code',
+    example: 'P00123',
+  })
   @ApiResponse({ status: 200, description: 'Product image data' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   @Get('/ecom/get-product-image/:pro_code')
@@ -6100,7 +7305,9 @@ export class AppController {
 
   @ApiTags('Misc / Admin Tools')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Manually trigger the company-day promotion cart re-check' })
+  @ApiOperation({
+    summary: 'Manually trigger the company-day promotion cart re-check',
+  })
   @ApiResponse({ status: 200, description: 'Check triggered' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(JwtAuthGuard)
@@ -6111,7 +7318,9 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Autocomplete product search against the external product source' })
+  @ApiOperation({
+    summary: 'Autocomplete product search against the external product source',
+  })
   @ApiQuery({ name: 'search', description: 'Search keyword', example: 'แชมพู' })
   @ApiResponse({ status: 200, description: 'List of matching products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -6130,7 +7339,9 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Search Lotus gift card products (requires permission)' })
+  @ApiOperation({
+    summary: 'Search Lotus gift card products (requires permission)',
+  })
   @ApiResponse({ status: 200, description: 'List of Lotus card products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
@@ -6147,8 +7358,15 @@ export class AppController {
 
   @ApiTags('Products')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Search products by name for admin (requires permission)' })
-  @ApiQuery({ name: 'keyword', required: false, type: String, example: 'แชมพู' })
+  @ApiOperation({
+    summary: 'Search products by name for admin (requires permission)',
+  })
+  @ApiQuery({
+    name: 'keyword',
+    required: false,
+    type: String,
+    example: 'แชมพู',
+  })
   @ApiResponse({ status: 200, description: 'List of matching products' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })

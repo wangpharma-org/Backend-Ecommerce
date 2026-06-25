@@ -12,7 +12,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../app.controller';
 import { DeliveryPreferenceService } from './delivery-preference.service';
-import { SetPreferenceDto } from './dto/set-preference.dto';
+import { SetPreferenceDto } from 'src/common/dto-index';
 
 @UseGuards(JwtAuthGuard)
 @Controller('ecom/delivery-preference')

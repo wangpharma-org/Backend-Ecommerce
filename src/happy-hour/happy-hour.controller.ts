@@ -27,13 +27,15 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { HappyHourService } from './happy-hour.service';
-import { CreateSlotDto } from './dto/create-slot.dto';
-import { UpdateSlotDto } from './dto/update-slot.dto';
-import { UpdateConfigDto } from './dto/update-config.dto';
-import { SimulateDto } from './dto/simulate.dto';
-import { CartPreviewDto } from './dto/cart-preview.dto';
-import { SlotLogQueryDto } from './dto/slot-log-query.dto';
-import { ConfigLogQueryDto } from './dto/config-log-query.dto';
+import {
+  CreateSlotDto,
+  UpdateSlotDto,
+  UpdateConfigDto,
+  SimulateDto,
+  CartPreviewDto,
+  SlotLogQueryDto,
+  ConfigLogQueryDto,
+} from 'src/common/dto-index';
 interface JwtUser {
   username: string;
   name: string;

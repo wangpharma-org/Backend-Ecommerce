@@ -23,10 +23,12 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AppVersionService } from './app-version.service';
-import { CheckAppVersionDto } from './dto/check-app-version.dto';
-import { CreateAppVersionDto } from './dto/create-app-version.dto';
-import { LegacyCheckAppVersionDto } from './dto/legacy-check-app-version.dto';
-import { UpdateAppVersionDto } from './dto/update-app-version.dto';
+import {
+  CheckAppVersionDto,
+  CreateAppVersionDto,
+  LegacyCheckAppVersionDto,
+  UpdateAppVersionDto,
+} from 'src/common/dto-index';
 
 interface JwtPayload {
   permission?: boolean;
