@@ -2,6 +2,7 @@ import { Controller, Res } from '@nestjs/common';
 import { Get, Post, Body } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { LineRegisterMeetingService } from './line-register-meeting.service';
+import { RegisterMeetingDto } from './dto/register-meeting.dto';
 import { Response } from 'express';
 
 @ApiTags('LINE Register Meeting')
@@ -32,72 +33,28 @@ export class LineRegisterMeetingController {
   }
 
   @ApiOperation({ summary: 'ลงทะเบียนร้านค้าและผู้เข้าร่วมประชุมผ่าน LINE' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['mem_code', 'store_name', 'attendees'],
-      properties: {
-        mem_code: {
-          type: 'string',
-          example: 'M00001',
-          description: 'Required; not empty; รหัสสมาชิก/ร้านค้า',
-        },
-        store_name: {
-          type: 'string',
-          example: 'ร้านยาสุขภาพดี',
-          description: 'Required; not empty; ชื่อร้านค้า',
-        },
-        attendees: {
-          type: 'array',
-          description: 'Required; not empty; รายชื่อผู้เข้าร่วมประชุม',
-          items: {
-            type: 'object',
-            required: ['member_name', 'phone', 'province', 'line_id'],
-            properties: {
-              member_name: {
-                type: 'string',
-                example: 'สมชาย ใจดี',
-                description: 'Required; not empty; ชื่อผู้เข้าร่วม',
-              },
-              phone: {
-                type: 'string',
-                example: '0812345678',
-                description: 'Required; not empty; เบอร์โทรศัพท์',
-              },
-              province: {
-                type: 'string',
-                example: 'กรุงเทพมหานคร',
-                description: 'Required; not empty; จังหวัด',
-              },
-              line_id: {
-                type: 'string',
-                example: 'U1234567890abcdef1234567890abcdef',
-                description: 'Required; not empty; LINE ID',
-              },
-            },
-          },
-        },
-      },
-    },
-  })
+  @ApiBody({ type: RegisterMeetingDto })
   @ApiResponse({
     status: 201,
     description: 'ลงทะเบียนเข้าร่วมประชุมสำเร็จ',
+    schema: {
+      example: {
+        id: 1,
+        mem_code: 'M00001',
+        store_name: 'ร้านยาสุขภาพดี',
+        attendees: [
+          {
+            member_name: 'สมชาย ใจดี',
+            phone: '0812345678',
+            province: 'กรุงเทพมหานคร',
+            line_id: 'U1234567890abcdef1234567890abcdef',
+          },
+        ],
+      },
+    },
   })
   @Post()
-  registerMeeting(
-    @Body()
-    data: {
-      mem_code: string;
-      store_name: string;
-      attendees: {
-        member_name: string;
-        phone: string;
-        province: string;
-        line_id: string;
-      }[];
-    },
-  ) {
+  registerMeeting(@Body() data: RegisterMeetingDto) {
     return this.lineRegisterMeetingService.registerMeeting(data);
   }
 }

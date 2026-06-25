@@ -193,6 +193,42 @@ export class ProductsService {
     }
   }
 
+  // sync creditor (supplier) master จาก agentservice ผ่าน Kafka — upsert ตาม creditor_code
+  async upsertCreditor(data: {
+    creditor_code: string;
+    creditor_name?: string;
+    creditor_address?: string | null;
+  }) {
+    try {
+      const existing = await this.creditorRepo.findOne({
+        where: { creditor_code: data.creditor_code },
+      });
+      if (existing) {
+        await this.creditorRepo.update(
+          { creditor_code: data.creditor_code },
+          {
+            ...(data.creditor_name !== undefined && {
+              creditor_name: data.creditor_name,
+            }),
+            ...(data.creditor_address !== undefined && {
+              creditor_address: data.creditor_address ?? null,
+            }),
+          },
+        );
+      } else {
+        const newCreditor = this.creditorRepo.create({
+          creditor_code: data.creditor_code,
+          creditor_name: data.creditor_name ?? '',
+          creditor_address: data.creditor_address ?? null,
+        });
+        await this.creditorRepo.save(newCreditor);
+      }
+    } catch (error) {
+      this.logger.error('Error upserting creditor:', String(error));
+      throw error;
+    }
+  }
+
   async getProductByCreditor(creditor_code: string) {
     try {
       const qb = this.productRepo.createQueryBuilder('product');
