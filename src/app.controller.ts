@@ -30,6 +30,7 @@ import {
   ApiQuery,
   ApiBody,
   ApiResponse,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import axios from 'axios';
 import { AppService } from './app.service';
@@ -331,6 +332,7 @@ export class AppController {
   @ApiTags('Banner & Contract Log')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload banner image with metadata' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UploadBannerDto })
   @ApiResponse({ status: 201, description: 'Banner uploaded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -369,6 +371,7 @@ export class AppController {
   @ApiTags('User & Employee Management')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload user profile image' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UploadImageUserDto })
   @ApiResponse({ status: 201, description: 'User image uploaded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1116,6 +1119,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add a promotion with poster' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: AddPromotionDto })
   @ApiResponse({ status: 201, description: 'Promotion created' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1137,6 +1141,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update promotion poster image' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdatePromoPosterDto })
   @ApiResponse({ status: 201, description: 'Poster updated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1179,6 +1184,7 @@ export class AppController {
   @ApiTags('Promotion & Tier')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add a tier to a promotion' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: AddTierDto })
   @ApiResponse({ status: 201, description: 'Tier added' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -3385,6 +3391,7 @@ export class AppController {
   @ApiTags('Contract Log')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a banner/contract-log image' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       file: {
@@ -3643,6 +3650,7 @@ export class AppController {
   @ApiOperation({
     summary: 'Update a contract-log creditor/banner image and info',
   })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
@@ -3703,6 +3711,7 @@ export class AppController {
   @ApiTags('Contract Log')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a signed contract file' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
@@ -4042,6 +4051,7 @@ export class AppController {
   @ApiOperation({
     summary: 'Update a contract-log company-day record (creditor image)',
   })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
@@ -4097,6 +4107,7 @@ export class AppController {
   @ApiTags('Contract Log')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a signed company-day contract file' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       contractId: { type: 'number', example: 1, description: 'Required' },
@@ -4979,6 +4990,7 @@ export class AppController {
   @ApiTags('Campaigns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload an image for a campaign reward' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       file: {
@@ -5019,6 +5031,7 @@ export class AppController {
   @ApiTags('Campaigns')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a generic campaign image' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       file: {
@@ -5186,6 +5199,7 @@ export class AppController {
     description: 'Purchase product id',
     example: '1',
   })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: objectSchema({
       file: {
