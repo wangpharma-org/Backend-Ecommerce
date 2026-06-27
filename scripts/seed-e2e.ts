@@ -5,12 +5,26 @@
  *
  * idempotent: รันซ้ำได้ ถ้ามีข้อมูลอยู่แล้วจะ skip ไม่ทับของเดิม
  */
-import { AppDataSource } from '../src/data-source';
+import { DataSource } from 'typeorm';
 import { UserEntity } from '../src/users/users.entity';
 import { ProductEntity } from '../src/products/products.entity';
 import * as bcrypt from 'bcrypt';
 
 const SALT_ROUNDS = 10;
+
+// สร้าง DataSource ของตัวเองแยกจาก src/data-source.ts (อันนั้น synchronize: false เสมอ
+// เพราะใช้ร่วมกับ migration CLI) — seed script นี้ตั้ง synchronize: true เพื่อสร้าง schema
+// เองตรงนี้เลย ไม่ต้องพึ่ง timing ว่า backend process (อีก connection แยกกัน) sync ไปก่อนหรือยัง
+const SeedDataSource = new DataSource({
+  type: 'mysql',
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT),
+  username: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  entities: [__dirname + '/../src/**/*.entity{.ts,.js}'],
+  synchronize: true,
+});
 
 // ตรงกับ E2E_ADMIN_USERNAME / E2E_ADMIN_PASSWORD ที่ Ecommerce-Frontend ใช้ login ผ่าน loginAsAdmin()
 const ADMIN_CODE = process.env.E2E_SEED_ADMIN_CODE ?? '0539';
@@ -24,7 +38,7 @@ const SEED_PRODUCTS: Partial<ProductEntity>[] = [
   { pro_code: 'E2E-LOTUS-200', pro_name: 'บัตรโลตัส200บ/ใบ' },
 ];
 
-async function seedAdminUser(dataSource: typeof AppDataSource) {
+async function seedAdminUser(dataSource: DataSource) {
   const userRepo = dataSource.getRepository(UserEntity);
   const existing = await userRepo.findOne({
     where: { mem_username: ADMIN_CODE },
@@ -47,7 +61,7 @@ async function seedAdminUser(dataSource: typeof AppDataSource) {
   console.log(`seed-e2e: สร้าง admin user "${ADMIN_CODE}" แล้ว`);
 }
 
-async function seedProducts(dataSource: typeof AppDataSource) {
+async function seedProducts(dataSource: DataSource) {
   const productRepo = dataSource.getRepository(ProductEntity);
 
   for (const product of SEED_PRODUCTS) {
@@ -64,13 +78,13 @@ async function seedProducts(dataSource: typeof AppDataSource) {
 }
 
 async function main() {
-  await AppDataSource.initialize();
+  await SeedDataSource.initialize();
   try {
-    await seedAdminUser(AppDataSource);
-    await seedProducts(AppDataSource);
+    await seedAdminUser(SeedDataSource);
+    await seedProducts(SeedDataSource);
     console.log('seed-e2e: เสร็จสิ้น');
   } finally {
-    await AppDataSource.destroy();
+    await SeedDataSource.destroy();
   }
 }
 
