@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ProductListner } from './product.listener';
+import { CreditorListener } from './creditor.listener';
 import { CreditorEntity } from './creditor.entity';
 import { LogFileEntity } from 'src/backend/logFile.entity';
 import { BackendModule } from 'src/backend/backend.module';
@@ -35,7 +36,7 @@ import { ProductUnitEntity } from './product-unit.entity';
     forwardRef(() => ShoppingCartModule),
   ],
   providers: [ProductsService],
-  controllers: [ProductListner],
+  controllers: [ProductListner, CreditorListener],
   exports: [ProductsService],
 })
 export class ProductsModule {}
