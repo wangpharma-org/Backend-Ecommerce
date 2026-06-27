@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(cd \"d:/WP/Wang-E-commerce/Backend-Ecommerce\" && npx tsc --noEmit -p tsconfig.json *)",
+      "Bash(cd \"D:/WP/Wang-E-commerce/Backend-Ecommerce/.claude/worktrees/swagger-docs\" && npx tsc --noEmit -p tsconfig.json *)",
+      "Bash(cd \"d:\\WP\\Wang-E-commerce\\Backend-Ecommerce\" && npm run build *)",
+      "Bash(cd \"d:\\WP\\Wang-E-commerce\\Backend-Ecommerce\" && npx jest delivery-preference *)"
+    ]
+  },
   "hooks": {
     "Stop": [
       {

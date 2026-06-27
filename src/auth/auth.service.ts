@@ -138,7 +138,7 @@ export class AuthService {
     }
   }
 
-  async updateUserData(data: UserEntity) {
+  async updateUserData(data: Partial<UserEntity>) {
     try {
       await this.userRepo.update({ mem_code: data.mem_code }, { ...data });
       await this.updateDataToOldSystem(data);
@@ -148,7 +148,7 @@ export class AuthService {
     }
   }
 
-  async updateDataToOldSystem(data: UserEntity) {
+  async updateDataToOldSystem(data: Partial<UserEntity>) {
     // Skip external API call in dev mode
     if (process.env.DISABLE_EXTERNAL_API === 'true') {
       console.log('[DEV] External API call to wangpharma.com skipped');

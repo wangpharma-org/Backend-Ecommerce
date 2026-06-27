@@ -1,14 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ContactEntity, ContactStatus } from './contact.entity';
 
-export interface CreateContactDto {
+export class CreateContactDto {
+  @ApiProperty({ description: 'ชื่อผู้ติดต่อ', example: 'สมชาย ใจดี' })
   name: string;
+
+  @ApiProperty({ description: 'อีเมลผู้ติดต่อ', example: 'somchai@example.com' })
   email: string;
+
+  @ApiPropertyOptional({ description: 'เบอร์โทรศัพท์', example: '0812345678' })
   phone?: string;
+
+  @ApiPropertyOptional({ description: 'ชื่อบริษัท/ร้าน', example: 'ร้านยาสมชาย' })
   company?: string;
+
+  @ApiProperty({ description: 'หัวข้อเรื่องที่ติดต่อ', example: 'สอบถามเรื่องสินค้า' })
   subject: string;
+
+  @ApiProperty({ description: 'เนื้อหาข้อความ', example: 'อยากสอบถามเรื่องราคาสินค้า' })
   message: string;
 }
 
