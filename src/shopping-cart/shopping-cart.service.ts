@@ -305,10 +305,28 @@ export class ShoppingCartService {
     product: ProductEntity,
   ): '1' | '2' | '3' {
     const units: ProductUnitEntity[] = product.units ?? [];
-    const foundUnit = units.find((u) => u.unit_name === unitName);
+    const normalizedUnitName = unitName?.trim() ?? '';
+    if (!normalizedUnitName) {
+      const fallbackUnit = [...units]
+        .filter((u) => {
+          const level = Number(u.level);
+          return u.unit_name.trim().length > 0 && level >= 1 && level <= 3;
+        })
+        .sort((a, b) => Number(a.level) - Number(b.level))[0];
+
+      if (!fallbackUnit) {
+        throw new BadRequestException(
+          `ไม่พบหน่วยสินค้าสำหรับสินค้า '${product?.pro_code}'`,
+        );
+      }
+
+      return String(fallbackUnit.level) as '1' | '2' | '3';
+    }
+
+    const foundUnit = units.find((u) => u.unit_name === normalizedUnitName);
     if (!foundUnit) {
       throw new BadRequestException(
-        `หน่วย '${unitName}' ไม่ถูกต้องสำหรับสินค้า '${product?.pro_code}'`,
+        `หน่วย '${normalizedUnitName}' ไม่ถูกต้องสำหรับสินค้า '${product?.pro_code}'`,
       );
     }
     const level = Number(foundUnit.level);
