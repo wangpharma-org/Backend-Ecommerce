@@ -223,6 +223,7 @@ export class AuthService {
               emp_saleoffice: user.emp_saleoffice,
               latest_purchase: user.latest_purchase,
               emp_id_ref: user?.emp_id_ref ?? null,
+              file_upload_type: 'pass',
             },
           );
         } else {
@@ -239,12 +240,16 @@ export class AuthService {
             emp_saleoffice: user.emp_saleoffice,
             latest_purchase: user.latest_purchase,
             emp_id_ref: user?.emp_id_ref ?? null,
+            file_upload_type: 'pass',
           });
           await this.userRepo.save(newUser);
         }
       }
     } catch (error) {
-      console.log(error);
+      this.logger.error(
+        'Something Error in upsertUser',
+        error instanceof Error ? error.stack : String(error),
+      );
       throw new Error('Something Error in upsertUser');
     }
   }

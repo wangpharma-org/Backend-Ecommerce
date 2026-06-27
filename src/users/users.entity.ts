@@ -221,4 +221,7 @@ export class UserEntity {
   // beyond the coarse role/permission gate. Admins bypass this list.
   @Column({ type: 'simple-json', nullable: true, default: null })
   admin_features!: string[] | null;
+
+  @Column({ type: 'enum', enum: ['com', 'pass'], default: 'com' })
+  file_upload_type: 'com' | 'pass' = 'com';
 }
