@@ -8,6 +8,7 @@
 import { DataSource } from 'typeorm';
 import { UserEntity } from '../src/users/users.entity';
 import { ProductEntity } from '../src/products/products.entity';
+import { Modalmain } from '../src/modalmain/modalmain.entity';
 import * as bcrypt from 'bcrypt';
 
 const SALT_ROUNDS = 10;
@@ -77,11 +78,33 @@ async function seedProducts(dataSource: DataSource) {
   }
 }
 
+// ModalContentService.saveModalContent() ทำแค่ repository.update({id}, ...) ไม่เคย insert
+// แถวใหม่เลย ถ้า table modalmain ว่างเปล่า (database สดใหม่) save จะ no-op เงียบๆตลอดไป
+// (ไม่มี error แต่ก็ไม่เคยมีแถวให้ GET เจอ) ต้อง seed แถวเริ่มต้นไว้ก่อนให้ update มี row ให้แก้จริง
+async function seedModalContent(dataSource: DataSource) {
+  const modalRepo = dataSource.getRepository(Modalmain);
+  const existing = await modalRepo.find();
+  if (existing.length > 0) {
+    console.log('seed-e2e: modalmain มีข้อมูลอยู่แล้ว — skip');
+    return;
+  }
+
+  await modalRepo.save(
+    modalRepo.create({
+      title: 'Happy Hour',
+      content: 'ทดสอบ',
+      show: false,
+    }),
+  );
+  console.log('seed-e2e: สร้าง modalmain แถวเริ่มต้นแล้ว');
+}
+
 async function main() {
   await SeedDataSource.initialize();
   try {
     await seedAdminUser(SeedDataSource);
     await seedProducts(SeedDataSource);
+    await seedModalContent(SeedDataSource);
     console.log('seed-e2e: เสร็จสิ้น');
   } finally {
     await SeedDataSource.destroy();
