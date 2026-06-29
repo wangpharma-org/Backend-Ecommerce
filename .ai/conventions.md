@@ -15,3 +15,14 @@ if (!Number.isInteger(page) || page < 1) throw new BadRequestException('current_
 ```
 **Source:** PR#148 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/148
 **Added:** 2026-05-19  **Confidence:** medium (single occurrence)
+
+### C-002  Include the migration file in the same PR as the entity or feature that requires it
+**Why:** PR#176 — migration file was absent from the PR, leaving the DB schema change and the feature code in separate PRs. Splitting them makes the branch undeployable until both land and prevents reviewers from verifying the schema matches the entity.
+**Example:**
+```
+feat/my-feature/
+  ├── src/my-feature/my-feature.entity.ts      ← entity change
+  └── src/migrations/1234567890-my-feature.ts  ← migration in the SAME PR
+```
+**Source:** PR#176 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/176
+**Added:** 2026-06-29  **Confidence:** medium (single occurrence)
