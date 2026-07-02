@@ -2698,6 +2698,8 @@ export class ProductsService {
         `${process.env.OLD_WEBSITE_URL}/API/appV3/search_auto.php`,
         {
           params: { search },
+          // เว็บเก่าเคยค้างนานถึง 16 นาที → กัน event loop congestion
+          timeout: 10000,
         },
       );
 
@@ -2758,6 +2760,8 @@ export class ProductsService {
         `${process.env.OLD_WEBSITE_URL}/API/appV3/search_enter.php`,
         {
           params: { search },
+          // เว็บเก่าเคยค้างนานถึง 16 นาที → กัน event loop congestion
+          timeout: 10000,
         },
       );
 
