@@ -1114,13 +1114,16 @@ export class HotdealService {
       ]),
     ] as string[];
 
+    // ดึง units ของทุก code ในครั้งเดียว แล้ว transform จาก map — กัน N+1
+    const unitsMap = await this.productService.getUnitsMapByProCodes(uniqueCodes);
     const transformedMap = new Map<string, { pro_unit1: string; pro_unit2: string; pro_unit3: string }>();
-    await Promise.all(
-      uniqueCodes.map(async (code) => {
-        const t = await this.productService.transformProductWithUnits({ pro_code: code } as ProductEntity);
-        transformedMap.set(code, t);
-      }),
-    );
+    for (const code of uniqueCodes) {
+      const t = await this.productService.transformProductWithUnits(
+        { pro_code: code } as ProductEntity,
+        unitsMap.get(code) ?? [],
+      );
+      transformedMap.set(code, t);
+    }
 
     const resolveUnit = (transformed: { pro_unit1: string; pro_unit2: string; pro_unit3: string } | undefined, level: number, fallback: string) => {
       if (!transformed) return fallback;

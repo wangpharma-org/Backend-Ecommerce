@@ -132,6 +132,7 @@ export class ProductsService {
 
   async transformProductWithUnits<T extends { pro_code: string }>(
     product: T,
+    units?: { level: number; unit_name: string; ratio: number }[],
   ): Promise<
     T & {
       pro_unit1: string;
@@ -142,21 +143,56 @@ export class ProductsService {
       pro_ratio3: number;
     }
   > {
-    const units = await this.productUnitRepo.find({
-      where: { product: { pro_code: product.pro_code } },
-      select: ['level', 'unit_name', 'ratio'],
-      order: { level: 'ASC' },
-    });
+    // ถ้า caller ส่ง units มาแล้ว (prefetch แบบ batch) ไม่ query ซ้ำ กัน N+1
+    const resolvedUnits =
+      units ??
+      (await this.productUnitRepo.find({
+        where: { product: { pro_code: product.pro_code } },
+        select: ['level', 'unit_name', 'ratio'],
+        order: { level: 'ASC' },
+      }));
 
     return {
       ...product,
-      pro_unit1: this.convertEnumToUnitName(1, units),
-      pro_unit2: this.convertEnumToUnitName(2, units),
-      pro_unit3: this.convertEnumToUnitName(3, units),
-      pro_ratio1: this.getRatioFromUnits(1, units),
-      pro_ratio2: this.getRatioFromUnits(2, units),
-      pro_ratio3: this.getRatioFromUnits(3, units),
+      pro_unit1: this.convertEnumToUnitName(1, resolvedUnits),
+      pro_unit2: this.convertEnumToUnitName(2, resolvedUnits),
+      pro_unit3: this.convertEnumToUnitName(3, resolvedUnits),
+      pro_ratio1: this.getRatioFromUnits(1, resolvedUnits),
+      pro_ratio2: this.getRatioFromUnits(2, resolvedUnits),
+      pro_ratio3: this.getRatioFromUnits(3, resolvedUnits),
     };
+  }
+
+  // ดึง units ของหลาย pro_code ในครั้งเดียว แล้ว group เป็น map — กัน N+1 ตอน transform หลายตัว
+  async getUnitsMapByProCodes(
+    proCodes: string[],
+  ): Promise<
+    Map<string, { level: number; unit_name: string; ratio: number }[]>
+  > {
+    const map = new Map<
+      string,
+      { level: number; unit_name: string; ratio: number }[]
+    >();
+    if (proCodes.length === 0) {
+      return map;
+    }
+
+    const allUnits = await this.productUnitRepo.find({
+      where: { pro_code: In(proCodes) },
+      select: { pro_code: true, level: true, unit_name: true, ratio: true },
+      order: { level: 'ASC' },
+    });
+
+    for (const unit of allUnits) {
+      const list = map.get(unit.pro_code);
+      if (list) {
+        list.push(unit);
+      } else {
+        map.set(unit.pro_code, [unit]);
+      }
+    }
+
+    return map;
   }
 
   private async isL16Member(
