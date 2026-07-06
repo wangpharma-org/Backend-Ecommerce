@@ -3351,10 +3351,17 @@ export class AppController {
     return await this.productsService.getCreditors();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/track-order/:sh_running')
-  async trackOrder(@Param('sh_running') sh_running: string) {
+  async trackOrder(
+    @Param('sh_running') sh_running: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
     try {
-      return this.trackOrderService.getOrderLocation(sh_running);
+      return this.trackOrderService.getOrderLocation(
+        sh_running,
+        req.user.mem_code,
+      );
     } catch {
       throw new HttpException(
         {
