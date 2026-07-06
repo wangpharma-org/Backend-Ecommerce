@@ -37,3 +37,19 @@ this.logger.error('failed to fetch products', err)
 ```
 **Source:** ECWC-282 session 2026-05-30
 **Added:** 2026-05-30
+
+### R-003  Every endpoint that mutates or reads user/order data must be protected with `@UseGuards(JwtAuthGuard)`; never leave mutation endpoints unauthenticated
+**Why:** PR#176 — the new `/ecom/check-happy-hour-reward` endpoint was merged without `@UseGuards(JwtAuthGuard)`, allowing any unauthenticated caller to POST and alter freebie quantities on orders. Reviewer flagged it as critical before merge.
+**Example:**
+```ts
+// ✗ no — any caller can hit this
+@Post('/ecom/check-happy-hour-reward')
+async checkHappyHourReward(@Body() body: { sh_running: string }) { ... }
+
+// ✓ guard every non-public endpoint
+@UseGuards(JwtAuthGuard)
+@Post('/ecom/check-happy-hour-reward')
+async checkHappyHourReward(@Body() body: { sh_running: string }) { ... }
+```
+**Source:** PR#176 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/176
+**Added:** 2026-07-06  **Confidence:** high (security-critical)
