@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ChangePassword } from './change-password.entity';
@@ -12,6 +12,7 @@ dotenv.config();
 
 @Injectable()
 export class ChangePasswordService {
+  private readonly logger = new Logger(ChangePasswordService.name);
   private OTP_TTL_SECONDS = 15 * 60; // 15 นาที
   private REQUEST_COOLDOWN_SECONDS = 5 * 60; // ขอซ้ำได้ห่างกันอย่างน้อย 30 วินาที
 
@@ -71,7 +72,7 @@ export class ChangePasswordService {
     try {
       emailSent = await this.sendEmailCode(OTP, user.mem_email, RefKey);
     } catch (error) {
-      console.error('Error sending OTP email:', error);
+      this.logger.error('Error sending OTP email:', error);
       emailSent = false;
     }
 
@@ -227,7 +228,7 @@ export class ChangePasswordService {
 
       return true;
     } catch (error: unknown) {
-      console.error(
+      this.logger.error(
         'Error sending email:',
         error instanceof Error ? error.message : 'Unknown error',
       );
@@ -268,7 +269,7 @@ export class ChangePasswordService {
             otpData.RefKey,
           );
         } catch (error) {
-          console.error('Failed to send email:', error);
+          this.logger.error('Failed to send email:', error);
           emailSent = false;
         }
       }
@@ -282,7 +283,7 @@ export class ChangePasswordService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error in sendOtp:', errorMessage);
+      this.logger.error('Error in sendOtp:', errorMessage);
       return {
         code: '',
         email: null,
@@ -427,7 +428,7 @@ export class ChangePasswordService {
         message: 'Unable to process request',
       };
     } catch (error) {
-      console.error('Error in CheckTimeRequest:', error);
+      this.logger.error('Error in CheckTimeRequest:', error);
       return { valid: false, message: 'Error checking request time' };
     }
   }
@@ -454,14 +455,14 @@ export class ChangePasswordService {
         user.mem_password = await bcrypt.hash(data.new_password, SALT_ROUNDS);
         await this.usersService.update(user.mem_username, user);
       } catch (hashError) {
-        console.error('Error hashing/updating password:', hashError);
+        this.logger.error('Error hashing/updating password:', hashError);
         throw new Error('Error updating password');
       }
       return { success: true, message: 'Password updated successfully' };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error updating password:', errorMessage);
+      this.logger.error('Error updating password:', errorMessage);
       return { success: false, message: errorMessage };
     }
   }
@@ -491,7 +492,7 @@ export class ChangePasswordService {
         user.mem_password = await bcrypt.hash(data.new_password, SALT_ROUNDS);
         await this.usersService.update(user.mem_username, user);
       } catch (hashError) {
-        console.error('Error hashing/updating password:', hashError);
+        this.logger.error('Error hashing/updating password:', hashError);
         throw new Error('Error updating password');
       }
 
@@ -499,7 +500,7 @@ export class ChangePasswordService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error updating password:', errorMessage);
+      this.logger.error('Error updating password:', errorMessage);
       return { success: false, message: errorMessage };
     }
   }

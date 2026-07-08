@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Repository, In } from 'typeorm';
 import { WangDay } from './wangday.entity';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -7,6 +7,8 @@ import { BackendService } from 'src/backend/backend.service';
 
 @Injectable()
 export class WangdayService {
+  private readonly logger = new Logger(WangdayService.name);
+
   private accumulatedRows: Partial<WangDay>[] = [];
   constructor(
     @InjectRepository(WangDay)
@@ -83,17 +85,15 @@ export class WangdayService {
       for (const row of allRows) {
         if (row.date) allDateSet.add(row.date);
       }
-      console.log('Deleting existing rows for dates:', Array.from(allDateSet));
       await this.wangdayRepo.delete({ date: In(Array.from(allDateSet)) });
       const inserted = await this.wangdayRepo.save(allRows);
       await this.backendService.updateLogFile(
         { feature: 'WangDay' },
         { uploadedAt: new Date(), filename: fileName },
       );
-      console.log('Inserted rows count:', inserted.length);
       return inserted;
     } catch (error) {
-      console.error('Error in importFromExcel:', error);
+      this.logger.error('Error in importFromExcel:', error);
       throw error;
     }
   }
@@ -178,7 +178,7 @@ export class WangdayService {
 
       return groupedData;
     } catch (error) {
-      console.error('Error in getProductWangday:', error);
+      this.logger.error('Error in getProductWangday:', error);
       throw new Error('Failed to get product wangday data');
     }
   }

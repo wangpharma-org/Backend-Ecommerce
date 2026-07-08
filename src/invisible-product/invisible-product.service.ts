@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InvisibleEntity } from './invisible-product.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
@@ -8,6 +8,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class InvisibleProductService {
+  private readonly logger = new Logger(InvisibleProductService.name);
+
   constructor(
     @InjectRepository(InvisibleEntity)
     private readonly invisibleRepo: Repository<InvisibleEntity>,
@@ -41,8 +43,7 @@ export class InvisibleProductService {
 
       return await this.invisibleRepo.save(invisible);
     } catch (error) {
-      console.log(`${Date()} Error Something in addInvisibleTopic`);
-      console.log(error);
+      this.logger.error('Error Something in addInvisibleTopic', error);
       throw new Error('Error Something in addInvisibleTopic');
     }
   }
@@ -57,22 +58,19 @@ export class InvisibleProductService {
         { invisibleProduct: { invisible_id: data.invisible_id } },
       );
     } catch (error) {
-      console.log(`${Date()} Error Something in updateProductInvisible`);
-      console.log(error);
+      this.logger.error('Error Something in updateProductInvisible', error);
       throw new Error('Error Something in updateProductInvisible');
     }
   }
 
   async removeProductInvisible(pro_code: string) {
     try {
-      console.log(pro_code);
       return this.productRepo.update(
         { pro_code },
         { invisibleProduct: { invisible_id: undefined } },
       );
     } catch (error) {
-      console.log(`${Date()} Error Something in removeProductInvisible`);
-      console.log(error);
+      this.logger.error('Error Something in removeProductInvisible', error);
       throw new Error('Error Something in removeProductInvisible');
     }
   }
@@ -84,8 +82,7 @@ export class InvisibleProductService {
         order: { invisible_id: 'DESC' },
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in handleGetInvisibleTopics`);
-      console.log(error);
+      this.logger.error('Error Something in handleGetInvisibleTopics', error);
       throw new Error('Error Something in handleGetInvisibleTopics');
     }
   }
@@ -109,8 +106,7 @@ export class InvisibleProductService {
         },
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in handleGetInvisibleProducts`);
-      console.log(error);
+      this.logger.error('Error Something in handleGetInvisibleProducts', error);
       throw new Error('Error Something in handleGetInvisibleProducts');
     }
   }
@@ -133,10 +129,10 @@ export class InvisibleProductService {
         await this.invisibleRepo.delete(invisible.invisible_id);
       }
     } catch (error) {
-      console.log(
-        `${Date()} Error Something in deleteInvisibleTopicWithExpired`,
+      this.logger.error(
+        'Error Something in deleteInvisibleTopicWithExpired',
+        error,
       );
-      console.log(error);
       throw new Error('Error Something in deleteInvisibleTopicWithExpired');
     }
   }
@@ -160,8 +156,7 @@ export class InvisibleProductService {
 
       return await this.invisibleRepo.delete(invisible_id);
     } catch (error) {
-      console.log(`${Date()} Error Something in deleteInvisibleTopic`);
-      console.log(error);
+      this.logger.error('Error Something in deleteInvisibleTopic', error);
       throw new Error('Error Something in deleteInvisibleTopic');
     }
   }

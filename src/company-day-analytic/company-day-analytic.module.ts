@@ -1,9 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { COMPANY_DAY_ANALYTIC_KAFKA_CLIENT } from './company-day-analytic.constants';
 import { CompanyDayAnalyticService } from './company-day-analytic.service';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
+
+const logger = new Logger('CompanyDayAnalyticModule');
 
 @Module({
   imports: [
@@ -33,7 +35,7 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
               configService.get<string>('KAFKA_COMPANY_DAY_CLIENT_ID') ||
               'backend-ecommerce-company-day';
 
-            console.log(`
+            logger.log(`
               Analytics Kafka Config - Brokers: ${brokers.join(',')}, GroupId: ${groupId}`);
             return {
               transport: Transport.KAFKA,
@@ -57,7 +59,7 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
               },
             };
           } catch {
-            console.warn(
+            logger.warn(
               'Analytics Kafka configuration failed, using fallback:',
             );
             // Return minimal configuration that won't break startup

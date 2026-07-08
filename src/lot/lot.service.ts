@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LotEntity } from './lot.entity';
 import { In, Repository } from 'typeorm';
 
 @Injectable()
 export class LotService {
+  private readonly logger = new Logger(LotService.name);
+
   constructor(
     @InjectRepository(LotEntity)
     private readonly lotRepo: Repository<LotEntity>,
@@ -31,8 +33,7 @@ export class LotService {
         return await manager.save(LotEntity, entities);
       });
     } catch (error) {
-      console.log(`${Date()} Error Something in addLots`);
-      console.log(error);
+      this.logger.error('Error Something in addLots', error);
       throw new Error('Error Something in addLots');
     }
   }

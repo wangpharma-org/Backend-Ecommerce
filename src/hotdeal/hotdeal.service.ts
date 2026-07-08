@@ -5,6 +5,7 @@ import {
   HttpException,
   Inject,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -37,6 +38,7 @@ interface HotdealProductUsage {
 
 @Injectable()
 export class HotdealService {
+  private readonly logger = new Logger(HotdealService.name);
   private s3: AWS.S3;
   constructor(
     @InjectRepository(HotdealEntity)
@@ -350,7 +352,6 @@ export class HotdealService {
             product: { pro_code: normalizedInput.pro1_code },
           },
         });
-        console.log('Existing hotdeal:', existingHotdeal);
 
         if (existingHotdeal) {
           await this.shoppingCartService.removeAllCarthotdeal(
@@ -412,7 +413,7 @@ export class HotdealService {
       }
       return { message: 'hotdeal not found' };
     } catch (error) {
-      console.error('Error saving hotdeal:', error);
+      this.logger.error('Error saving hotdeal:', error);
       if (error instanceof HttpException) {
         throw error;
       }
@@ -468,7 +469,7 @@ export class HotdealService {
       await this.hotdealRepo.delete(id);
       return { message: 'Hotdeal deleted successfully' };
     } catch (error) {
-      console.error('Error deleting hotdeal:', error);
+      this.logger.error('Error deleting hotdeal:', error);
       return { message: 'Error deleting hotdeal' };
     }
   }
@@ -739,7 +740,7 @@ export class HotdealService {
 
       return undefined;
     } catch (error) {
-      console.error('Error checking hotdeal match:', error);
+      this.logger.error('Error checking hotdeal match:', error);
       throw error;
     }
   }
@@ -860,7 +861,7 @@ export class HotdealService {
       });
       await this.bannerHotdealRepo.save(bannerHotdeal);
     } catch (error) {
-      console.error('Error uploading banner for hotdeal:', error);
+      this.logger.error('Error uploading banner for hotdeal:', error);
       throw new Error('Something Error in uploadBannerHotdeal');
     }
   }
@@ -892,7 +893,7 @@ export class HotdealService {
         })),
       );
     } catch (error) {
-      console.error('Error fetching hotdeals with banners:', error);
+      this.logger.error('Error fetching hotdeals with banners:', error);
       throw new Error('Something Error in getAllHotdealsWithBanners');
     }
   }
@@ -921,7 +922,7 @@ export class HotdealService {
               };
               await this.s3.deleteObject(params).promise();
             } catch (s3Error) {
-              console.error('Error deleting image from S3:', s3Error);
+              this.logger.error('Error deleting image from S3:', s3Error);
             }
           }
         }
@@ -930,7 +931,7 @@ export class HotdealService {
       await this.bannerHotdealRepo.delete(id);
       return { message: 'Banner hotdeal deleted successfully' };
     } catch (error) {
-      console.error('Error deleting banner hotdeal:', error);
+      this.logger.error('Error deleting banner hotdeal:', error);
       throw new Error('Something Error in deleteBannerHotdeal');
     }
   }

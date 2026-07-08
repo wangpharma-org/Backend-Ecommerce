@@ -1855,7 +1855,7 @@ export class ProductsService {
         totalCount,
       };
     } catch (error) {
-      console.error('Error searching products with Elasticsearch:', error);
+      this.logger.error('Error searching products with Elasticsearch:', error);
       throw new Error('Error searching products with Elasticsearch');
     }
   }
@@ -3039,7 +3039,7 @@ export class ProductsService {
       );
       await this.shoppingCartService.checkHotdealByProCode(mem_code, pro_code);
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Error in createDeleteCartByProcode');
     }
   }

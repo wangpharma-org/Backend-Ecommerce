@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
@@ -9,6 +9,7 @@ type NotificationTokenEventType = 'upsert' | 'remove';
 
 @Injectable()
 export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(NotifyRtService.name);
   private producer: Producer;
 
   constructor(
@@ -154,7 +155,7 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
         };
       }
     } catch (error) {
-      console.error('Error in addTokenForNotification:', error);
+      this.logger.error('Error in addTokenForNotification:', error);
       return {
         success: false,
         message: 'Failed to add notification token',
@@ -210,7 +211,7 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
         message: 'Notification token removed successfully',
       };
     } catch (error) {
-      console.error('Error in removeTokenForNotification:', error);
+      this.logger.error('Error in removeTokenForNotification:', error);
       return {
         success: false,
         message: 'Failed to remove notification token',
@@ -233,8 +234,5 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
       topic: process.env.KAFKA_TOPIC || 'noti_token',
       messages: [{ value: JSON.stringify(payload) }],
     });
-    console.log(
-      `Sent ${event_type} token event for mem_code ${mem_code} token ${token} to Kafka topic ${process.env.KAFKA_TOPIC || 'noti_token'} successfully`,
-    );
   }
 }
