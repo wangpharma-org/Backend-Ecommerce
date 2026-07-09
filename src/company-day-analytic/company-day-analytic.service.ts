@@ -49,20 +49,17 @@ export class CompanyDayAnalyticService {
     context: CompanyDayContextPayload,
   ) {
     try {
-      console.log('emitcalled');
       const isEnabled = await this.featureFlagsService.getFlag('comdayevent');
       if (!isEnabled) {
         this.logger.debug(
           'Company day event disabled by feature flag, skipping emit',
         );
-        console.log('flag is true so not emitting');
         return;
       }
       if (!this.isKafkaAvailable) {
         this.logger.warn('Kafka analytics unavailable, skipping event');
         return;
       }
-      console.log('flag is false so emitting');
       const eventData = {
         ...context,
         mem_code: memCode,

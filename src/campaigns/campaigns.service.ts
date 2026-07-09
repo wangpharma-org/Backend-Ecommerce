@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CampaignEntity } from './campaigns.entity';
@@ -148,6 +148,7 @@ export interface Metadata {
 
 @Injectable()
 export class CampaignsService {
+  private readonly logger = new Logger(CampaignsService.name);
   private s3: AWS.S3;
 
   constructor(
@@ -564,7 +565,7 @@ export class CampaignsService {
         session_cookies,
       )) as GeneratePosterResponse;
     } catch (error) {
-      console.error('Error generating poster via Ideogram:', error);
+      this.logger.error('Error generating poster via Ideogram:', error);
     }
   }
 
@@ -575,7 +576,7 @@ export class CampaignsService {
         session_cookies,
       )) as unknown;
     } catch (error) {
-      console.error('Error fetching all results from Ideogram:', error);
+      this.logger.error('Error fetching all results from Ideogram:', error);
     }
   }
 

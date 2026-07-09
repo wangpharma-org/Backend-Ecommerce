@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ContractLogBanner } from './contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log-person.entity';
@@ -10,6 +10,7 @@ import { ContractLogCompanyDay } from './contract-log-company-day.entity';
 
 @Injectable()
 export class ContractLogService {
+  private readonly logger = new Logger(ContractLogService.name);
   private s3: AWS.S3;
   constructor(
     @InjectRepository(ContractLogBanner)
@@ -88,7 +89,7 @@ export class ContractLogService {
       }
       throw new Error('Something with wrong');
     } catch (error) {
-      console.error('Error creating log banner:', error);
+      this.logger.error('Error creating log banner:', error);
       throw new Error('Failed to create log banner');
     }
   }
@@ -166,7 +167,7 @@ export class ContractLogService {
           .getOne();
       }
     } catch (error) {
-      console.error('Error fetching banner:', error);
+      this.logger.error('Error fetching banner:', error);
       throw new Error('Failed to fetch banner');
     }
   }
@@ -195,7 +196,7 @@ export class ContractLogService {
       // const test = await this.contractLogPerson.find();
       return { type: type, data: result };
     } catch (error) {
-      console.error('Error fetching persons:', error);
+      this.logger.error('Error fetching persons:', error);
       throw new Error('Failed to fetch persons');
     }
   }
@@ -236,7 +237,7 @@ export class ContractLogService {
       }
       return await this.contractLogBanner.save(newLog);
     } catch (error) {
-      console.error('Error creating contract log:', error);
+      this.logger.error('Error creating contract log:', error);
       throw new Error('Failed to create contract log');
     }
   }
@@ -302,7 +303,7 @@ export class ContractLogService {
       }
       throw new Error('Invalid type provided for update');
     } catch (error) {
-      console.error('Error updating contract log :', error);
+      this.logger.error('Error updating contract log :', error);
       throw new Error('Failed to update contract log');
     }
   }
@@ -336,7 +337,7 @@ export class ContractLogService {
       });
       return { urlContract: uploadResult.Location };
     } catch (error) {
-      console.error('Error uploading contract file:', error);
+      this.logger.error('Error uploading contract file:', error);
       throw new Error('Failed to upload contract file');
     }
   }
@@ -410,7 +411,7 @@ export class ContractLogService {
       }
       throw new Error('companyDayId is required to fetch specific company day');
     } catch (error) {
-      console.error('Error fetching contract company days:', error);
+      this.logger.error('Error fetching contract company days:', error);
       throw new Error('Failed to fetch contract company days');
     }
   }
@@ -466,7 +467,7 @@ export class ContractLogService {
       const savedLog = await this.contractLogCompanyDay.save(newLog);
       return savedLog;
     } catch (error) {
-      console.error('Error creating contract log:', error);
+      this.logger.error('Error creating contract log:', error);
       throw new Error('Failed to create contract log');
     }
   }
@@ -499,7 +500,7 @@ export class ContractLogService {
       });
       return { urlContract: uploadResult.Location };
     } catch (error) {
-      console.error('Error uploading contract file:', error);
+      this.logger.error('Error uploading contract file:', error);
       throw new Error('Failed to upload contract file');
     }
   }
@@ -554,7 +555,7 @@ export class ContractLogService {
       }
       throw new Error('Invalid type provided for update');
     } catch (error) {
-      console.error('Error updating contract log :', error);
+      this.logger.error('Error updating contract log :', error);
       throw new Error('Failed to update contract log');
     }
   }

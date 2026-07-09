@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmployeeEntity } from './employees.entity';
 
 @Injectable()
 export class EmployeesService {
+  private readonly logger = new Logger(EmployeesService.name);
+
   constructor(
     @InjectRepository(EmployeeEntity)
     private readonly employeeRepo: Repository<EmployeeEntity>,
@@ -53,13 +55,12 @@ export class EmployeesService {
           if (!updated)
             throw new Error('Updated employee not found (unexpected)');
 
-          console.log('Employee updated successfully:', updated);
           return { message: 'Employee updated successfully', data: updated };
         }
       }
       throw new Error('emp_code and data are required to create an employee');
     } catch (error) {
-      console.error('Error creating employee:', error);
+      this.logger.error('Error creating employee:', error);
       throw new Error(error.message || 'Error creating employee');
     }
   }
@@ -68,10 +69,9 @@ export class EmployeesService {
   async getAllEmployees(): Promise<EmployeeEntity[]> {
     try {
       const employees = await this.employeeRepo.find();
-      console.log(`Found ${employees.length} employees`);
       return employees;
     } catch (error) {
-      console.error('Error getting all employees:', error);
+      this.logger.error('Error getting all employees:', error);
       throw new Error('Error retrieving employees');
     }
   }
@@ -81,10 +81,6 @@ export class EmployeesService {
     data: Partial<EmployeeEntity>,
   ): Promise<EmployeeEntity> {
     try {
-      console.log('=== UPDATE EMPLOYEE DEBUG ===');
-      console.log('emp_code:', emp_code);
-      console.log('data keys:', Object.keys(data || {}));
-
       if (!emp_code) throw new Error('Employee code is required');
 
       const employee = await this.employeeRepo.findOne({
@@ -138,12 +134,11 @@ export class EmployeesService {
       });
       if (!updated) throw new Error('Updated employee not found (unexpected)');
 
-      console.log('Employee updated successfully:', updated);
       return updated;
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Error updating employee';
-      console.error('Error updating employee:', msg);
+      this.logger.error('Error updating employee:', msg);
       throw new Error(msg);
     }
   }
@@ -160,11 +155,10 @@ export class EmployeesService {
       }
 
       await this.employeeRepo.delete({ emp_code });
-      console.log('Employee deleted successfully:', emp_code);
 
       return { message: `Employee ${emp_code} deleted successfully` };
     } catch (error) {
-      console.error('Error deleting employee:', error);
+      this.logger.error('Error deleting employee:', error);
       throw new Error(error.message || 'Error deleting employee');
     }
   }
