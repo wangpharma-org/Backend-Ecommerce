@@ -15,10 +15,10 @@ export const options = {
   scenarios: {
     update_activity: {
       executor: 'constant-arrival-rate',
-      rate: Number(__ENV.RATE) || 4, 
-      timeUnit: '3s',
+      rate: Number(__ENV.RATE) || 30, 
+      timeUnit: '1s',
       duration: __ENV.DURATION || '3m',
-      preAllocatedVUs: 25,
+      preAllocatedVUs: 50,
       maxVUs: 1000,
     },
   },
