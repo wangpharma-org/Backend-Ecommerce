@@ -112,6 +112,11 @@ export interface JwtPayload {
   admin_features?: string[] | null;
 }
 
+// SHA-256 (raw bytes) ของไฟล์ com ที่ห้ามอัปโหลดในหน้าอัปโหลดข้อมูลลูกค้า
+// ไฟล์ com คงที่ไม่เปลี่ยนแล้ว จึงเก็บเป็น hash คงที่แทนการเก็บไฟล์จริง
+const COM_FILE_HASH =
+  '20e8160e6007db04d7aea93aa6f3a819e087b2e3156e44075fbcdf1861201186';
+
 @Controller()
 export class AppController {
   private readonly logger = new Logger(AppController.name);
@@ -1417,6 +1422,13 @@ export class AppController {
     }[],
   ) {
     return this.authService.upsertUser(data);
+  }
+
+  // เช็คว่าไฟล์ที่อัปเข้ามาเป็น "ไฟล์ com" (ไฟล์ต้องห้าม) หรือไม่
+  // frontend คำนวณ SHA-256 ของ bytes ไฟล์แล้วส่ง hash มาเทียบกับ COM_FILE_HASH
+  @Post('/ecom/check-com-file')
+  checkComFile(@Body('hash') hash: string) {
+    return { isComFile: hash === COM_FILE_HASH };
   }
 
   @Get('/ecom/last-sh-running')

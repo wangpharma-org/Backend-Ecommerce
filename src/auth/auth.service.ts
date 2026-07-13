@@ -205,17 +205,20 @@ export class AuthService {
       });
 
       for (const user of data) {
-        if (mem_code_all_map.includes(user.mem_code)) {
-          if (user.emp_id_ref) {
-            const findemp = await this.employeeService.findOneByEmpCode(
-              user.emp_id_ref || '',
-            );
-            if (!findemp) {
-              user.emp_id_ref = null;
-            }
-          } else {
+        // ตรวจ emp_id_ref กับตาราง employee ก่อนเสมอ (ทั้ง create/update)
+        // ถ้าไม่มีจริงต้อง set null ไม่งั้น FK constraint (emp_id_ref -> employee.emp_code) fail
+        if (user.emp_id_ref) {
+          const findemp = await this.employeeService.findOneByEmpCode(
+            user.emp_id_ref || '',
+          );
+          if (!findemp) {
             user.emp_id_ref = null;
           }
+        } else {
+          user.emp_id_ref = null;
+        }
+
+        if (mem_code_all_map.includes(user.mem_code)) {
           await this.userRepo.update(
             { mem_code: user.mem_code },
             {
