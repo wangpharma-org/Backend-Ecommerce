@@ -11,3 +11,9 @@ Format per entry: `### Q-NNN <statement>` then **Why:** / **Example:** / **Sourc
 **Promote to convention when:** seen again in ≥1 more PR by another reviewer.
 **Source:** PR#123 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/123
 **Added:** 2026-05-19  **Status:** quarantined (not team-agreed)
+
+### Q-002  Error message strings should not contain debug-trail numbers
+**Why:** PR#139 — strings like `'Error in Add product Cart22'` and `'Something wrong in checkedProductCart55'` were flagged. Numeric suffixes hint at copy-paste origin and make it hard to locate the right throw site in production logs.
+**Promote to convention when:** seen again in ≥1 more PR by another reviewer.
+**Source:** PR#139 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/139
+**Added:** 2026-07-13  **Status:** quarantined (not team-agreed)
