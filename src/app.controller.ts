@@ -115,6 +115,7 @@ export interface JwtPayload {
 // SHA-256 (raw bytes) ของไฟล์ com ที่ห้ามอัปโหลดในหน้าอัปโหลดข้อมูลลูกค้า
 // ไฟล์ com คงที่ไม่เปลี่ยนแล้ว จึงเก็บเป็น hash คงที่แทนการเก็บไฟล์จริง
 const COM_FILE_HASH =
+  process.env.COM_FILE_HASH ??
   '20e8160e6007db04d7aea93aa6f3a819e087b2e3156e44075fbcdf1861201186';
 
 @Controller()
