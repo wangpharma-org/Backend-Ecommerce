@@ -43,7 +43,6 @@ export class PolicyDocService {
       where: { policyCatagoryId: category },
       relations: ['lastPolicy'], // เพิ่ม relations
     });
-    console.log('Found version info:', findVersion);
 
     const versionLatest = findVersion;
     let newVersion = '1.0.0';
@@ -51,8 +50,6 @@ export class PolicyDocService {
 
     if (!versionLatest?.lastPolicy) {
       // กรณีไม่มี version เก่า - สร้าง version แรก
-      console.log('No existing version, creating 1.0.0');
-
       const createData = this.policyDocRepository.create({
         content,
         category,
@@ -68,22 +65,16 @@ export class PolicyDocService {
       }
     } else {
       // กรณีมี version เก่า - ทำ versioning
-      console.log('Current versionLatest:', versionLatest);
       const splitVersion = versionLatest.lastPolicy.version.split('.');
 
       // คำนวณ version ใหม่
       if (type == 1) {
-        console.log('Incrementing major version');
         newVersion = `${parseInt(splitVersion[0], 10) + 1}.0.0`;
       } else if (type == 2) {
-        console.log('Incrementing minor version');
         newVersion = `${splitVersion[0]}.${parseInt(splitVersion[1], 10) + 1}.0`;
       } else if (type == 3) {
-        console.log('Incrementing patch version');
         newVersion = `${splitVersion[0]}.${splitVersion[1]}.${parseInt(splitVersion[2], 10) + 1}`;
       }
-
-      console.log('Updated version to:', newVersion);
 
       // สร้าง PolicyDoc ใหม่ด้วย version ใหม่
       const createData = this.policyDocRepository.create({
@@ -99,7 +90,6 @@ export class PolicyDocService {
       await this.policyDocCatagoryRepository.save(versionLatest);
     }
 
-    console.log('Final saved PolicyDoc:', savedPolicyDoc);
     return savedPolicyDoc;
   }
 
@@ -121,10 +111,6 @@ export class PolicyDocService {
         policyCategoryId: policyDoc.category,
       },
     });
-
-    console.log('Existing agreement found:', findExistingAgreement);
-
-    console.log('policyDoc.category:', policyDoc.category);
 
     if (findExistingAgreement) {
       await this.policyDocMemberRepository.update(
@@ -154,7 +140,6 @@ export class PolicyDocService {
       latestVersion: string;
     }[]
   > {
-    console.log('Checking policy for member code:', mem_code);
     const user = await this.userService.findOneByMemCode(mem_code);
     if (!user) {
       throw new Error('User not found');
@@ -181,8 +166,6 @@ export class PolicyDocService {
     }[] = [];
     for (const category of policyCategories) {
       // วนลูปผ่านแต่ละหัวข้อของนโยบาย
-      console.log('category:', category);
-
       // ถ้า category ยังไม่มี lastPolicy ให้ข้ามไป
       if (!category.lastPolicy) {
         continue;
@@ -193,12 +176,6 @@ export class PolicyDocService {
           policyMember.policyCategoryId === category.policyCatagoryId &&
           policyMember.policyDoc?.version === category.lastPolicy.version,
       ); // ตรวจสอบว่าผู้ใช้ได้ยอมรับนโยบายล่าสุดหรือไม่ เที่ยบกับ ตาราง PolicyDocMember(นโยบายที่ลูกค้าเคยอ่าน) และ PolicyDocCatagory(นโยบายล่าสุด)
-      console.log(
-        'hasAgreed status for category',
-        category.nameCatagory,
-        ':',
-        hasAgreed,
-      );
       if (!hasAgreed) {
         // ถ้ายังไม่ยอมรับนโยบายล่าสุด ให้เพิ่มข้อมูลในผลลัพธ์
         finalResult.push({
@@ -229,8 +206,6 @@ export class PolicyDocService {
       latestVersion: string;
     }[]
   > {
-    console.log('Getting all policies');
-
     const policyCategories = await this.policyDocCatagoryRepository.find({
       relations: ['lastPolicy'],
       select: ['policyCatagoryId', 'nameCatagory'],
@@ -247,11 +222,7 @@ export class PolicyDocService {
     }[] = [];
 
     for (const category of policyCategories) {
-      console.log('category:', category);
-
       if (!category.lastPolicy) {
-        console.log(`
-          Skipping category ${category.nameCatagory} - no lastPolicy`);
         continue;
       }
       finalResult.push({

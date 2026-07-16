@@ -59,7 +59,7 @@ export class AuthService {
         })
         .promise();
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Something Error in Delete Image User');
     }
   }
@@ -120,7 +120,7 @@ export class AuthService {
         return data.Location;
       }
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Something Error in Upload Image User');
     }
   }
@@ -143,7 +143,7 @@ export class AuthService {
       await this.userRepo.update({ mem_code: data.mem_code }, { ...data });
       await this.updateDataToOldSystem(data);
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Something Error in updateUserData');
     }
   }
@@ -151,7 +151,6 @@ export class AuthService {
   async updateDataToOldSystem(data: UserEntity) {
     // Skip external API call in dev mode
     if (process.env.DISABLE_EXTERNAL_API === 'true') {
-      console.log('[DEV] External API call to wangpharma.com skipped');
       return;
     }
     try {
@@ -557,9 +556,6 @@ export class AuthService {
 
         try {
           const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-          console.log(
-            `Hash length: ${hashedPassword.length} for user: ${user.mem_code}`,
-          );
 
           //Update within transaction แทนที่จะใช้ this.userRepo.update
           await queryRunner.manager.update(
@@ -573,7 +569,7 @@ export class AuthService {
           errors.push(
             `Error updating user ${user.mem_code}: ${updateError.message}`,
           );
-          console.error(
+          this.logger.error(
             `Error updating user ${user.mem_code}:`,
             updateError.message,
           );
@@ -592,7 +588,6 @@ export class AuthService {
 
       //Commit transaction เมื่อสำเร็จทั้งหมด
       await queryRunner.commitTransaction();
-      console.log(`Successfully hashed ${hashCount} passwords`);
       return {
         success: true,
         message: `Hashed ${hashCount} passwords, skipped ${skipCount}`,
@@ -603,7 +598,7 @@ export class AuthService {
     } catch (error) {
       //Rollback เมื่อเกิด error
       await queryRunner.rollbackTransaction();
-      console.error('Transaction failed:', error);
+      this.logger.error('Transaction failed:', error);
 
       return {
         success: false,

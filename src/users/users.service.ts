@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { UserEntity } from './users.entity';
 import { AdminActionLogEntity } from './admin-action-log.entity';
 import { Like, Repository } from 'typeorm';
@@ -12,6 +12,8 @@ export interface AdminActor {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
@@ -41,7 +43,7 @@ export class UsersService {
         }),
       );
     } catch (error) {
-      console.error('Error saving admin action log:', error);
+      this.logger.error('Error saving admin action log:', error);
     }
   }
 
@@ -58,20 +60,18 @@ export class UsersService {
       });
       return { data, total, page, limit };
     } catch (error) {
-      console.error('Error retrieving admin action logs:', error);
+      this.logger.error('Error retrieving admin action logs:', error);
       throw new Error('Error retrieving admin action logs');
     }
   }
 
   async findOne(username: string): Promise<UserEntity> {
-    console.log('Finding user with username:', username);
     try {
       const user = await this.userRepo.findOne({
         where: {
           mem_username: username,
         },
       });
-      console.log('User found:', user?.mem_code);
       if (!user) {
         throw new Error('User not found');
       } else {
@@ -108,7 +108,6 @@ export class UsersService {
       const user = await this.userRepo.findOne({
         where: { mem_code: mem_code },
       });
-      console.log('User found by mem_code:', user?.mem_code);
       if (!user) {
         throw new Error('User not found');
       }
@@ -124,12 +123,6 @@ export class UsersService {
         where: { mem_username: username },
         select: ['mem_email'], // เลือกเฉพาะฟิลด์ mem_email
       });
-      console.log(
-        'Email found for user',
-        username,
-        ':',
-        user ? user.mem_email : null,
-      );
       return user ? user.mem_email : null;
     } catch {
       throw new Error('Error retrieving email');
@@ -144,7 +137,7 @@ export class UsersService {
       const isMatch = await bcrypt.compare(plainPassword, hashedPassword);
       return isMatch;
     } catch (error) {
-      console.error('Error comparing passwords:', error);
+      this.logger.error('Error comparing passwords:', error);
       throw new Error('Error comparing passwords');
     }
   }
@@ -172,12 +165,9 @@ export class UsersService {
           user_VIP: true,
         },
       });
-      console.log('User found for latest purchase check:', user);
       if (user?.user_VIP === true) {
         return 'User is VIP, no purchase check needed';
       }
-      console.log('User latest_purchase:', user);
-
       if (!user || !user.latest_purchase) {
         return 'No purchase history';
       }
@@ -188,23 +178,11 @@ export class UsersService {
       const [day, month, year] = user.latest_purchase.split('/').map(Number);
       const latestPurchaseDate = new Date(year, month - 1, day);
 
-      console.log(
-        'Latest purchase date for user',
-        mem_code,
-        ':',
-        user.latest_purchase,
-      );
-      console.log('Current date:', now);
-      console.log('Parsed purchase date:', latestPurchaseDate);
-
       // คำนวณผลต่างเป็นวัน (now - latestPurchaseDate)
       const diffInMs = now.getTime() - latestPurchaseDate.getTime();
       const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
-      console.log('Difference in days:', diffInDays);
-
       if (diffInDays >= 365) {
-        console.log('More than 1 year ago', user.latest_purchase, diffInDays);
         return {
           message: 'More than 1 year ago',
           employee: user.employee ?? undefined,
@@ -212,7 +190,7 @@ export class UsersService {
       }
       return 'Purchase within 1 year';
     } catch (error) {
-      console.error('Error in checklatestPurchase:', error);
+      this.logger.error('Error in checklatestPurchase:', error);
       throw new Error('Error retrieving latest purchase date');
     }
   }
@@ -233,8 +211,6 @@ export class UsersService {
         where: { mem_code: mem_code },
       });
 
-      console.log('User found for VIP update/delete:', user);
-
       if (!user || user.mem_code !== mem_code) {
         return { mem_code, message: 'User not found' };
       }
@@ -250,9 +226,6 @@ export class UsersService {
             { mem_code: mem_code },
             { user_VIP: true, tagVIP: tagVIP },
           );
-          console.log(
-            `Successfully updated VIP status to true for ${mem_code}`,
-          );
           return {
             mem_code,
             mem_nameSite: user.mem_nameSite,
@@ -263,7 +236,6 @@ export class UsersService {
         }
       } else if (message === 'delete') {
         await this.userRepo.update({ mem_code: mem_code }, { user_VIP: false });
-        console.log(`Successfully updated VIP status to false for ${mem_code}`);
         return {
           mem_code,
           message: 'deleted',
@@ -275,7 +247,7 @@ export class UsersService {
       }
       throw new Error('Unexpected code path');
     } catch (error) {
-      console.error('Error updating user VIP status:', error);
+      this.logger.error('Error updating user VIP status:', error);
       if (error instanceof Error) {
         throw error;
       }
@@ -296,10 +268,9 @@ export class UsersService {
         where: { user_VIP: true },
         select: ['mem_code', 'mem_nameSite', 'emp_id_ref', 'tagVIP'],
       });
-      console.log(`Found ${vipUsers.length} VIP users`);
       return vipUsers;
     } catch (error) {
-      console.error('Error getting all VIP users:', error);
+      this.logger.error('Error getting all VIP users:', error);
       throw new Error('Error retrieving VIP users');
     }
   }
@@ -315,8 +286,6 @@ export class UsersService {
         where: { mem_code: mem_code },
       });
 
-      console.log('User found for role change:', user);
-
       if (!user) {
         throw new Error('User not found');
       }
@@ -331,7 +300,6 @@ export class UsersService {
           ? { role: newRole }
           : { role: newRole, permision_admin: permission },
       );
-      console.log(`Successfully updated role to ${newRole} for ${mem_code}`);
 
       if (actor) {
         await this.logAdminAction(
@@ -345,7 +313,7 @@ export class UsersService {
 
       return this.findOneByMemCode(mem_code);
     } catch (error) {
-      console.error('Error updating user role:', error);
+      this.logger.error('Error updating user role:', error);
       throw new Error('Error updating user role');
     }
   }
@@ -376,7 +344,7 @@ export class UsersService {
         order: { role: 'ASC', mem_code: 'ASC' },
       });
     } catch (error) {
-      console.error('Error retrieving staff users:', error);
+      this.logger.error('Error retrieving staff users:', error);
       throw new Error('Error retrieving staff users');
     }
   }
@@ -407,7 +375,7 @@ export class UsersService {
         ],
       });
     } catch (error) {
-      console.error('Error looking up user by mem_code:', error);
+      this.logger.error('Error looking up user by mem_code:', error);
       throw new Error('Error looking up user by mem_code');
     }
   }
@@ -444,7 +412,7 @@ export class UsersService {
       });
       return users.filter((u) => /^\d{4}$/.test(u.mem_code));
     } catch (error) {
-      console.error('Error searching users by mem_code:', error);
+      this.logger.error('Error searching users by mem_code:', error);
       throw new Error('Error searching users by mem_code');
     }
   }
@@ -463,7 +431,6 @@ export class UsersService {
 
       const oldFeatures = user.admin_features ?? [];
       await this.userRepo.update({ mem_code }, { admin_features: features });
-      console.log(`Successfully updated admin_features for ${mem_code}`);
 
       if (actor) {
         await this.logAdminAction(
@@ -477,7 +444,7 @@ export class UsersService {
 
       return { mem_code, admin_features: features };
     } catch (error) {
-      console.error('Error updating user features:', error);
+      this.logger.error('Error updating user features:', error);
       throw new Error('Error updating user features');
     }
   }
