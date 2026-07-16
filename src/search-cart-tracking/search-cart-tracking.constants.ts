@@ -1,0 +1,4 @@
+export const SEARCH_CART_TRACKING_KAFKA_CLIENT =
+  'SEARCH_CART_TRACKING_KAFKA_CLIENT';
+
+export const SEARCH_CART_TRACKING_TOPIC = 'search_cart_tracking';

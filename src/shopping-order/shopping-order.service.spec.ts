@@ -14,6 +14,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
+import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -67,6 +68,7 @@ describe('ShoppingOrderService — unit helpers', () => {
         { provide: DataSource, useValue: { transaction: jest.fn(), createQueryRunner: jest.fn() } },
         { provide: CompanyDayAnalyticService, useValue: {} },
         { provide: PromotionService, useValue: {} },
+        { provide: HappyHourService, useValue: {} },
       ],
     }).compile();
 
