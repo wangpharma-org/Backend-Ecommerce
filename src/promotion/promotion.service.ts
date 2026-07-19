@@ -1,5 +1,6 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import {
+  BadRequestException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -795,25 +796,17 @@ export class PromotionService {
 
   async createCondition(data: { tier_id: number; product_gcode: string }) {
     try {
-      const tireIsUnit = await this.promotionConditionRepo
-        .createQueryBuilder('condition')
-        .leftJoin('condition.tier', 'tier')
-        .leftJoin('condition.product', 'product')
-        .where('product.pro_code = :pro_code', {
-          pro_code: data.product_gcode,
-        })
-        .andWhere('tier.is_unit = :is_unit', { is_unit: true })
-        .getMany();
-
-      if (tireIsUnit.length > 0)
-        throw new NotFoundException(
-          'Some promotion tire is unit based, cannot add product condition to this tire',
-        );
-
       const tier = await this.promotionTierRepo.findOne({
         where: { tier_id: data.tier_id },
         relations: ['promotion'],
       });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+
+      // เช็คเฉพาะ tier ปลายทางที่จะเพิ่มเข้าไป ไม่ใช่ทั้งระบบจาก product
+      if (tier.is_unit)
+        throw new BadRequestException(
+          'Some promotion tire is unit based, cannot add product condition to this tire',
+        );
 
       const findTierisProduct = await this.promotionTierRepo
         .createQueryBuilder('tier')
@@ -825,7 +818,7 @@ export class PromotionService {
         .getMany();
 
       if (findTierisProduct.length > 0)
-        throw new NotFoundException(
+        throw new BadRequestException(
           'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
         );
 

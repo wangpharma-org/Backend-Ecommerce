@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShoppingHeadEntity } from './shopping-head.entity';
 import { Repository } from 'typeorm';
@@ -21,6 +21,8 @@ export interface ShoppingOrder {
 
 @Injectable()
 export class ShoppingHeadService {
+  private readonly logger = new Logger(ShoppingHeadService.name);
+
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadRepo: Repository<ShoppingHeadEntity>,
@@ -29,7 +31,6 @@ export class ShoppingHeadService {
 
   async AllOrderByMember(mem_code: string): Promise<AllOrderByMemberRes> {
     try {
-      console.log('memcode in AllOrderByMember', mem_code);
       const result = await this.shoppingHeadRepo
         .createQueryBuilder('head')
         .leftJoin('head.details', 'order')
@@ -114,7 +115,7 @@ export class ShoppingHeadService {
 
       return a;
     } catch (error) {
-      console.error('Error get Order fail:', error);
+      this.logger.error('Error get Order fail:', error);
       throw new Error(`Error get Order fail`);
     }
   }
@@ -150,7 +151,7 @@ export class ShoppingHeadService {
 
       return result;
     } catch (error) {
-      console.error('Error get Order fail:', error);
+      this.logger.error('Error get Order fail:', error);
       throw new Error(`Error get Order fail`);
     }
   }
@@ -163,7 +164,7 @@ export class ShoppingHeadService {
       });
       return lastOrder ? lastOrder.soh_running : null;
     } catch (error) {
-      console.error('Error fetching last soh_running:', error);
+      this.logger.error('Error fetching last soh_running:', error);
       throw new Error('Error fetching last soh_running');
     }
   }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Imagedebug } from './imagedebug.entity';
@@ -6,6 +6,7 @@ import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
 @Injectable()
 export class ImagedebugService {
+  private readonly logger = new Logger(ImagedebugService.name);
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
   constructor(
     @InjectRepository(Imagedebug)
@@ -49,7 +50,7 @@ export class ImagedebugService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
+      this.logger.error(
         'Error occurred while upserting image debug:',
         errorMessage,
       );
@@ -61,7 +62,7 @@ export class ImagedebugService {
   async summaryItem(): Promise<Imagedebug[]> {
     // Skip in dev mode
     if (process.env.DISABLE_EXTERNAL_API === 'true') {
-      console.log('[DEV] summaryItem cron job skipped');
+      this.logger.log('[DEV] summaryItem cron job skipped');
       return [];
     }
     try {
@@ -120,7 +121,7 @@ export class ImagedebugService {
       return itemsToReturn;
     } catch (e: any) {
       const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error(
+      this.logger.error(
         'Error occurred while sending Slack summary:',
         errorMessage,
       );
@@ -151,7 +152,7 @@ export class ImagedebugService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
+      this.logger.error(
         'Error occurred while fetching all image debug:',
         errorMessage,
       );

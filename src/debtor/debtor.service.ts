@@ -1,4 +1,4 @@
-import { Injectable, Body } from '@nestjs/common';
+import { Injectable, Body, Logger } from '@nestjs/common';
 import { DebtorEntity } from './debtor.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -43,6 +43,7 @@ export interface ImportDataRequestRT {
 
 @Injectable()
 export class DebtorService {
+  private readonly logger = new Logger(DebtorService.name);
   private readonly slackUrl = process.env.SLACK_WEBHOOK_URL || '';
   constructor(
     @InjectRepository(DebtorEntity)
@@ -172,7 +173,7 @@ export class DebtorService {
       return importedInvoices;
     } catch (error) {
       if (error instanceof Error) {
-        console.log('Error instance:', error); // เพิ่มบรรทัดนี้เพื่อตรวจสอบ error
+        this.logger.error('Error instance:', error);
         const payload = {
           text: `🚨 เกิดข้อผิดพลาดในการนำเข้าข้อมูลใบแจ้งหนี้\n
           🕒 เวลา: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}\n}`,
@@ -187,9 +188,9 @@ export class DebtorService {
         try {
           await axios.post(this.slackUrl, payload);
         } catch (e) {
-          console.error('Failed to notify Slack', e);
+          this.logger.error('Failed to notify Slack', e);
         }
-        console.error('payload', payload);
+        this.logger.error('payload', payload);
         throw new Error(
           `Failed to import reduction invoice: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
@@ -270,7 +271,7 @@ export class DebtorService {
       return importedRTs;
     } catch (error) {
       if (error instanceof Error) {
-        console.log('Error instance:', error); // เพิ่มบรรทัดนี้เพื่อตรวจสอบ error
+        this.logger.error('Error instance:', error);
         const payload = {
           text: `🚨 เกิดข้อผิดพลาดในการนำเข้าข้อมูลใบลดหนี้\n
           🕒 เวลา: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}\n}`,
@@ -285,9 +286,9 @@ export class DebtorService {
         try {
           await axios.post(this.slackUrl, payload);
         } catch (e) {
-          console.error('Failed to notify Slack', e);
+          this.logger.error('Failed to notify Slack', e);
         }
-        console.error('payload', payload);
+        this.logger.error('payload', payload);
         throw new Error(
           `Failed to import reduction invoice: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
@@ -308,7 +309,7 @@ export class DebtorService {
       //console.log('Found reduction invoice:', result);
       return result || 'Error finding reduction invoices';
     } catch (error) {
-      console.error('Error finding reduction invoices:', error);
+      this.logger.error('Error finding reduction invoices:', error);
       return 'Error finding reduction invoices';
     }
   }
@@ -335,7 +336,7 @@ export class DebtorService {
       //console.log('Found reduction RT:', result);
       return result || 'Error finding reduction RT';
     } catch (error) {
-      console.error('Error finding reduction RT:', error);
+      this.logger.error('Error finding reduction RT:', error);
       return 'Error finding reduction RT';
     }
   }
@@ -387,7 +388,7 @@ export class DebtorService {
         // );
       }
     } catch (error) {
-      console.error('Error in daily cleanup:', error);
+      this.logger.error('Error in daily cleanup:', error);
     }
   }
 
@@ -435,7 +436,7 @@ export class DebtorService {
         // );
       }
     } catch (error) {
-      console.error('Error in daily cleanup of Reduction RTs:', error);
+      this.logger.error('Error in daily cleanup of Reduction RTs:', error);
     }
   }
 }

@@ -218,6 +218,15 @@ interface HotdealSyncContext {
   hotdeals: HotdealEntity[];
 }
 
+// prefetch แบบ batch สำหรับ getProductCart — กัน N+1 ในการคำนวณแต้ม/ของแถม
+interface HotdealPointsContext {
+  allHotdeals: Awaited<ReturnType<HotdealService['getHotdealByProCode']>>;
+  freebiesByMain: Map<string, ShoppingCartEntity[]>;
+  mainInCartByMain: Map<string, ShoppingCartEntity[]>;
+  unitsMap: Map<string, { level: number; unit_name: string; ratio: number }[]>;
+  usedPointsMap?: Map<string, number>;
+}
+
 // Define a DTO for the return type
 export interface CartSummary {
   cart: any[];
@@ -305,10 +314,28 @@ export class ShoppingCartService {
     product: ProductEntity,
   ): '1' | '2' | '3' {
     const units: ProductUnitEntity[] = product.units ?? [];
-    const foundUnit = units.find((u) => u.unit_name === unitName);
+    const normalizedUnitName = unitName?.trim() ?? '';
+    if (!normalizedUnitName) {
+      const fallbackUnit = [...units]
+        .filter((u) => {
+          const level = Number(u.level);
+          return u.unit_name.trim().length > 0 && level >= 1 && level <= 3;
+        })
+        .sort((a, b) => Number(a.level) - Number(b.level))[0];
+
+      if (!fallbackUnit) {
+        throw new BadRequestException(
+          `ไม่พบหน่วยสินค้าสำหรับสินค้า '${product?.pro_code}'`,
+        );
+      }
+
+      return String(fallbackUnit.level) as '1' | '2' | '3';
+    }
+
+    const foundUnit = units.find((u) => u.unit_name === normalizedUnitName);
     if (!foundUnit) {
       throw new BadRequestException(
-        `หน่วย '${unitName}' ไม่ถูกต้องสำหรับสินค้า '${product?.pro_code}'`,
+        `หน่วย '${normalizedUnitName}' ไม่ถูกต้องสำหรับสินค้า '${product?.pro_code}'`,
       );
     }
     const level = Number(foundUnit.level);
@@ -335,6 +362,7 @@ export class ShoppingCartService {
 
   private async transformProductWithUnits<T extends { pro_code: string }>(
     product: T,
+    units?: { level: number; unit_name: string; ratio: number }[],
   ): Promise<
     T & {
       pro_unit1: string;
@@ -345,18 +373,20 @@ export class ShoppingCartService {
       pro_ratio3: number;
     }
   > {
-    return await this.productsService.transformProductWithUnits(product);
+    return await this.productsService.transformProductWithUnits(product, units);
   }
 
   private async calculateSmallestUnitWithTransformed(
     orderItems: Array<{ unit: string; quantity: number; pro_code: string }>,
     pro_code: string,
+    unitsMap?: Map<string, { level: number; unit_name: string; ratio: number }[]>,
   ): Promise<number> {
     let total = 0;
     try {
-      const transformedProduct = await this.transformProductWithUnits({
-        pro_code,
-      });
+      const transformedProduct = await this.transformProductWithUnits(
+        { pro_code },
+        unitsMap?.get(pro_code),
+      );
 
       const units = [
         {
@@ -1721,30 +1751,92 @@ export class ShoppingCartService {
         ...raw.find((r) => r.pro_code === pro_code),
       }));
 
-      const transformedProductsMap = new Map<string, any>();
-      for (const product of uniqueProducts) {
-        const transformed = await this.transformProductWithUnits(product);
-        transformedProductsMap.set(product.pro_code, transformed);
+      // Prefetch แบบ batch (freebies + main-in-cart) กัน N+1 ในการคำนวณแต้ม/ของแถม
+      const [freebiesAll, mainInCartAll] = await Promise.all([
+        this.shoppingCartRepo.find({
+          where: {
+            mem_code,
+            hotdeal_promain: In(allProCodes),
+            hotdeal_free: true,
+            spc_checked: true,
+          },
+          relations: { product: true },
+        }),
+        this.shoppingCartRepo.find({
+          where: {
+            mem_code,
+            pro_code: In(allProCodes),
+            hotdeal_free: false,
+            spc_checked: true,
+          },
+          relations: { product: { units: true } },
+        }),
+      ]);
+
+      const freebiesByMain = new Map<string, ShoppingCartEntity[]>();
+      for (const freebie of freebiesAll) {
+        const mainCode = freebie.hotdeal_promain ?? '';
+        const list = freebiesByMain.get(mainCode);
+        if (list) list.push(freebie);
+        else freebiesByMain.set(mainCode, [freebie]);
       }
-      // คำนวณ used points สำหรับแต่ละสินค้า
-      const usedPointsPromises = allProCodes.map((proCode) =>
-        this.calculateUsedHotdealPoints(mem_code, proCode),
-      );
-      const usedPointsResults = await Promise.all(usedPointsPromises);
-      const usedPointsMap = new Map(
-        allProCodes.map((proCode, index) => [
-          proCode,
-          usedPointsResults[index],
+
+      const mainInCartByMain = new Map<string, ShoppingCartEntity[]>();
+      for (const item of mainInCartAll) {
+        const list = mainInCartByMain.get(item.pro_code);
+        if (list) list.push(item);
+        else mainInCartByMain.set(item.pro_code, [item]);
+      }
+
+      // units ของสินค้าหลัก + สินค้าของแถม ดึงครั้งเดียว
+      const unitsMap = await this.productsService.getUnitsMapByProCodes([
+        ...new Set([
+          ...allProCodes,
+          ...freebiesAll.map((freebie) => freebie.pro_code),
         ]),
+      ]);
+
+      const hotdealPointsContext: HotdealPointsContext = {
+        allHotdeals,
+        freebiesByMain,
+        mainInCartByMain,
+        unitsMap,
+      };
+
+      // Transform units ของทุก product (ใช้ unitsMap ไม่ query ใน loop)
+      const transformedProductsMap = new Map<string, TransformedProductCart>();
+      for (const product of uniqueProducts) {
+        const transformed = await this.transformProductWithUnits(
+          product,
+          unitsMap.get(product.pro_code) ?? [],
+        );
+        transformedProductsMap.set(
+          product.pro_code,
+          transformed as unknown as TransformedProductCart,
+        );
+      }
+
+      // คำนวณ used points สำหรับแต่ละสินค้า (อ่านจาก context ที่ prefetch แล้ว)
+      const usedPointsResults = await Promise.all(
+        allProCodes.map((proCode) =>
+          this.calculateUsedHotdealPoints(
+            mem_code,
+            proCode,
+            hotdealPointsContext,
+          ),
+        ),
       );
+      const usedPointsMap = new Map(
+        allProCodes.map((proCode, index) => [proCode, usedPointsResults[index]]),
+      );
+      // getHotdealPointsInfo reuse ค่านี้ ไม่คำนวณ used points ซ้ำ
+      hotdealPointsContext.usedPointsMap = usedPointsMap;
 
       // คำนวณ hotdeal points info แบบละเอียด (แต้มที่เหลือหลังหักของแถม)
-      const hotdealPointsInfoPromises = allProCodes.map(async (proCode) => {
-        // getHotdealPointsInfo คืนค่า remainingPoints (แต้มที่เหลือ)
-        return this.getHotdealPointsInfo(mem_code, proCode);
-      });
       const hotdealPointsInfoResults = await Promise.all(
-        hotdealPointsInfoPromises,
+        allProCodes.map((proCode) =>
+          this.getHotdealPointsInfo(mem_code, proCode, hotdealPointsContext),
+        ),
       );
       const hotdealPointsInfoMap = new Map(
         allProCodes.map((proCode, index) => [
@@ -2863,25 +2955,30 @@ export class ShoppingCartService {
   async calculateUsedHotdealPoints(
     mem_code: string,
     pro_code: string,
+    ctx?: HotdealPointsContext,
   ): Promise<number> {
     try {
       // ดึงรายการของแถม (hotdeal_free = true) ที่เกิดจากสินค้าหลัก pro_code
-      const freebies = await this.shoppingCartRepo.find({
-        where: {
-          mem_code,
-          hotdeal_promain: pro_code,
-          hotdeal_free: true,
-          spc_checked: true,
-        },
-        relations: { product: true },
-      });
+      // มี ctx (มาจาก getProductCart) → อ่านจาก map ที่ prefetch ไว้ กัน N+1
+      const freebies = ctx
+        ? (ctx.freebiesByMain.get(pro_code) ?? [])
+        : await this.shoppingCartRepo.find({
+            where: {
+              mem_code,
+              hotdeal_promain: pro_code,
+              hotdeal_free: true,
+              spc_checked: true,
+            },
+            relations: { product: true },
+          });
       if (freebies.length === 0) {
         return 0;
       }
 
-      // ดึงข้อมูล hotdeal สำหรับสินค้าหลัก
-      const hotdeals: HotdealEntity[] | null =
-        await this.hotdealService.getHotdealByProCode([pro_code]);
+      // ดึงข้อมูล hotdeal สำหรับสินค้าหลัก — reuse allHotdeals ที่ batch มาแล้วถ้ามี ctx
+      const hotdeals = ctx
+        ? ctx.allHotdeals.filter((hd) => hd.product?.pro_code === pro_code)
+        : await this.hotdealService.getHotdealByProCode([pro_code]);
       if (!hotdeals || hotdeals.length === 0) {
         return 0;
       }
@@ -2895,6 +2992,7 @@ export class ShoppingCartService {
         if (freebie.product) {
           const transformedProduct = await this.transformProductWithUnits(
             freebie.product,
+            ctx?.unitsMap.get(freebie.pro_code),
           );
           freebieUnitName = this.convertEnumToUnitName(
             freebie.spc_unit_enum,
@@ -2931,6 +3029,7 @@ export class ShoppingCartService {
             await this.calculateSmallestUnitWithTransformed(
               requiredItems,
               pro_code,
+              ctx?.unitsMap,
             );
 
           // คำนวณแต้มรวมที่ใช้ = จำนวนของแถม × แต้มต่อหน่วย
@@ -2949,27 +3048,31 @@ export class ShoppingCartService {
   async getHotdealPointsInfo(
     mem_code: string,
     pro_code: string,
+    ctx?: HotdealPointsContext,
   ): Promise<number> {
     try {
-      // คำนวณแต้มทั้งหมดที่มีในตะกร้า
-      const mainProductsInCart = await this.shoppingCartRepo.find({
-        where: {
-          mem_code,
-          pro_code,
-          hotdeal_free: false,
-          spc_checked: true,
-        },
-        relations: { product: { units: true } },
-      });
+      // คำนวณแต้มทั้งหมดที่มีในตะกร้า — อ่านจาก map ที่ prefetch ไว้ถ้ามี ctx
+      const mainProductsInCart = ctx
+        ? (ctx.mainInCartByMain.get(pro_code) ?? [])
+        : await this.shoppingCartRepo.find({
+            where: {
+              mem_code,
+              pro_code,
+              hotdeal_free: false,
+              spc_checked: true,
+            },
+            relations: { product: { units: true } },
+          });
 
       if (mainProductsInCart.length === 0) {
         return 0;
       }
 
       // แปลง spc_unit_enum เป็น unit name สำหรับการคำนวณ
-      const transformedProduct = await this.transformProductWithUnits({
-        pro_code,
-      });
+      const transformedProduct = await this.transformProductWithUnits(
+        { pro_code },
+        ctx?.unitsMap.get(pro_code),
+      );
       const cartItemsWithUnitNames = mainProductsInCart.map((item) => {
         const unitName = this.convertEnumToUnitName(
           item.spc_unit_enum,
@@ -2987,11 +3090,12 @@ export class ShoppingCartService {
       const totalPoints = await this.calculateSmallestUnitWithTransformed(
         cartItemsWithUnitNames,
         pro_code,
+        ctx?.unitsMap,
       );
-      const usedPoints = await this.calculateUsedHotdealPoints(
-        mem_code,
-        pro_code,
-      );
+      // reuse usedPointsMap ที่คำนวณไว้แล้วใน getProductCart ไม่คำนวณซ้ำ
+      const usedPoints = ctx
+        ? (ctx.usedPointsMap?.get(pro_code) ?? 0)
+        : await this.calculateUsedHotdealPoints(mem_code, pro_code);
       const remainingPoints = Math.max(0, totalPoints - usedPoints);
 
       return remainingPoints;

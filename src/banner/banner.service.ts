@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   BannerEntity,
   BannerLocation,
@@ -41,6 +41,7 @@ export interface UploadBannerDto {
 
 @Injectable()
 export class BannerService {
+  private readonly logger = new Logger(BannerService.name);
   private s3: AWS.S3;
   constructor(
     @InjectRepository(BannerEntity)
@@ -97,13 +98,6 @@ export class BannerService {
    * Upload banner with all fields
    */
   async UploadImage(file: Express.Multer.File | null, data: UploadBannerDto) {
-    console.log('=== UploadImage START ===');
-    console.log(
-      'File received:',
-      file ? `${file.originalname} (${file.size} bytes)` : 'No file',
-    );
-    console.log('Data received:', JSON.stringify(data, null, 2));
-
     try {
       let imageUrl: string | undefined = undefined;
 
@@ -116,7 +110,6 @@ export class BannerService {
           process.env.DO_SPACES_SECRET !== 'placeholder';
 
         if (hasValidCredentials) {
-          console.log('Uploading to S3...');
           const params = {
             Bucket: 'wang-storage',
             Key: `banners/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file?.originalname}`,
@@ -127,20 +120,17 @@ export class BannerService {
 
           const uploadResult = await this.s3.upload(params).promise();
           imageUrl = uploadResult.Location;
-          console.log('S3 upload success:', imageUrl);
         } else {
           // Local testing mode - use random placeholder image from picsum
-          console.log(
-            '⚠️ S3 credentials not configured, using placeholder image',
+          this.logger.warn(
+            'S3 credentials not configured, using placeholder image',
           );
           const randomSeed = Date.now();
           imageUrl = `https://picsum.photos/seed/${randomSeed}/1200/400`;
-          console.log('Placeholder URL:', imageUrl);
         }
       }
 
       // Create banner entity with all fields
-      console.log('Creating banner entity...');
       const banner = this.bannerRepo.create({
         banner_image: imageUrl,
         banner_name: data.banner_name,
@@ -165,23 +155,20 @@ export class BannerService {
         creditor: data.creditor,
         product_list: data.product_list,
       });
-      console.log('Banner entity created:', JSON.stringify(banner, null, 2));
 
-      console.log('Saving to database...');
       const savedBanner = await this.bannerRepo.save(banner);
-      console.log('Saved successfully, ID:', savedBanner.banner_id);
 
       return {
         Location: imageUrl,
         banner: savedBanner,
       };
     } catch (error) {
-      console.error('=== Upload Banner Error ===');
-      console.error(
+      this.logger.error('=== Upload Banner Error ===');
+      this.logger.error(
         'Error message:',
         error instanceof Error ? error.message : error,
       );
-      console.error('Full error:', error);
+      this.logger.error('Full error:', error);
       throw new Error(
         `Upload Banner failed: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -196,7 +183,7 @@ export class BannerService {
       await this.bannerRepo.update(bannerId, data);
       return this.bannerRepo.findOne({ where: { banner_id: bannerId } });
     } catch (error) {
-      console.error('Update Banner Error:', error);
+      this.logger.error('Update Banner Error:', error);
       throw new Error('Error updating banner');
     }
   }
@@ -224,16 +211,15 @@ export class BannerService {
               Bucket: 'wang-storage',
               Key: key,
             }).promise();
-            console.log('S3 file deleted:', key);
           } catch (s3Error) {
-            console.warn('Failed to delete S3 file (continuing with DB delete):', s3Error);
+            this.logger.warn('Failed to delete S3 file (continuing with DB delete):', s3Error);
           }
         }
       }
 
       return this.bannerRepo.delete(bannerId);
     } catch (error) {
-      console.error('Delete Banner Error:', error);
+      this.logger.error('Delete Banner Error:', error);
       throw new Error('Error deleting banner');
     }
   }

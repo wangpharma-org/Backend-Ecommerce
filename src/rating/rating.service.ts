@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import * as AWS from 'aws-sdk';
 import { RatingEntity } from './rating.entity';
 import { ImageReviewEntity } from './image-review.entity';
@@ -41,6 +41,7 @@ export interface BatchRatingResult {
 export interface CreateQuestionnaireAnswerDto {
   question_id: number;
   rating_point: number;
+  text_answer?: string;
 }
 
 export interface CreateSelectConfigDto {
@@ -58,11 +59,13 @@ export interface UpdateSelectConfigDto {
 export interface CreateQuestionnaireConfigDto {
   question: string;
   status?: boolean;
+  input_type?: 'star' | 'text';
 }
 
 export interface UpdateQuestionnaireConfigDto {
   question?: string;
   status?: boolean;
+  input_type?: 'star' | 'text';
 }
 
 interface RatingStatsSummary {
@@ -191,12 +194,21 @@ export class RatingService {
       });
       if (!rating) throw new NotFoundException(`Rating ${rating_id} not found`);
 
+      const questionIds = answers.map((a) => a.question_id).filter(Boolean) as number[];
+      const configs = await this.questionnaireConfigRepo.find({
+        where: { id: In(questionIds) },
+        select: { id: true, question: true },
+      });
+      const configMap = new Map(configs.map((c) => [c.id, c.question]));
+
       const saved: QuestionnaireEntity[] = [];
       for (const answer of answers) {
         const q = this.questionnaireRepo.create({
           rating_id,
           question_id: answer.question_id,
           rating_point: answer.rating_point,
+          text_answer: answer.text_answer ?? null,
+          question_text: configMap.get(answer.question_id) ?? null,
         });
         saved.push(await this.questionnaireRepo.save(q));
       }
@@ -451,6 +463,13 @@ export class RatingService {
       });
       if (!config)
         throw new NotFoundException(`QuestionnaireConfig ${id} not found`);
+
+      // backfill snapshot สำหรับ answer เก่าที่ยังไม่มี question_text
+      await this.questionnaireRepo.update(
+        { question_id: id, question_text: IsNull() },
+        { question_text: config.question },
+      );
+
       await this.questionnaireConfigRepo.delete(id);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
