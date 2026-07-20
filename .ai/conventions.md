@@ -15,3 +15,14 @@ if (!Number.isInteger(page) || page < 1) throw new BadRequestException('current_
 ```
 **Source:** PR#148 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/148
 **Added:** 2026-05-19  **Confidence:** medium (single occurrence)
+
+### C-002  A PR that adds, removes, or renames schema elements must include the TypeORM migration file in the same PR
+**Why:** PR#176 — added `happy_hour_slot_reward` table and new columns but shipped no migration file. With `SYNCHRONIZE=false` in production the schema change never lands, making the feature broken on deploy.
+**Example:**
+```bash
+# After adding or changing an @Entity column, generate and commit the migration:
+npm run migration:generate -- src/migrations/AddHappyHourSlotReward
+# Then include src/migrations/<timestamp>-AddHappyHourSlotReward.ts in the same PR
+```
+**Source:** PR#176 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/176
+**Added:** 2026-07-20  **Confidence:** medium (single occurrence)
