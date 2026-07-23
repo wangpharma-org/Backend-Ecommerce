@@ -1521,6 +1521,42 @@ export class ProductsService {
   //   }
   // }
 
+  // ES filter เอง cover ไม่ถึง external/enter fallback (search_auto.php, search_enter.php)
+  // ต้องกรองซ้ำหลัง fetch จาก DB กัน fallback หลุด filter เดียวกันเข้ามา
+  private isSearchExcludedProduct(product: {
+    pro_name: string;
+    pro_priceA: number;
+    pro_priceB: number;
+    pro_priceC: number;
+  }): boolean {
+    const name = product.pro_name ?? '';
+    const excludedPrefixes = [
+      'ฟรี',
+      '@',
+      'ส่งเสริม',
+      'รีเบท',
+      '-',
+      '/',
+      'ค่า',
+      '.',
+    ];
+    const excludedContains = ['บัตรโลตัส', 'สนับสนุน', 'ชดเชย'];
+    const excludedPrices = [0, 1, 10000000];
+
+    if (excludedPrefixes.some((prefix) => name.startsWith(prefix))) {
+      return true;
+    }
+    if (name.endsWith('ฟรี')) {
+      return true;
+    }
+    if (excludedContains.some((word) => name.includes(word))) {
+      return true;
+    }
+    return [product.pro_priceA, product.pro_priceB, product.pro_priceC].some(
+      (price) => excludedPrices.includes(Number(price)),
+    );
+  }
+
   async searchProductsElastic(data: {
     keyword: string;
     offset: number;
@@ -1586,6 +1622,22 @@ export class ProductsService {
                   { prefix: { 'pro_name.keyword': '-' } },
                   { prefix: { 'pro_name.keyword': '/' } },
                   { prefix: { 'pro_name.keyword': 'ค่า' } },
+                  { prefix: { 'pro_name.keyword': '.' } },
+                  { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+                  {
+                    wildcard: {
+                      'pro_name.keyword': { value: '*บัตรโลตัส*' },
+                    },
+                  },
+                  {
+                    wildcard: {
+                      'pro_name.keyword': { value: '*สนับสนุน*' },
+                    },
+                  },
+                  { wildcard: { 'pro_name.keyword': { value: '*ชดเชย*' } } },
+                  { terms: { pro_priceA: [1, 10000000] } },
+                  { terms: { pro_priceB: [1, 10000000] } },
+                  { terms: { pro_priceC: [1, 10000000] } },
                   { exists: { field: 'invisible_id' } },
                   ...(isL16
                     ? []
@@ -1837,7 +1889,14 @@ export class ProductsService {
           'fs.date',
         ]);
 
-      const products = await qb.getMany();
+      const rawProducts = await qb.getMany();
+      const products = rawProducts.filter(
+        (product) => !this.isSearchExcludedProduct(product),
+      );
+      totalCount = Math.max(
+        0,
+        totalCount - (rawProducts.length - products.length),
+      );
 
       const productMap = new Map(products.map((p) => [p.pro_code, p]));
 
