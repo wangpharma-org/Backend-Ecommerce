@@ -40,10 +40,6 @@ export class EditAddressService {
       const user = await this.userService.findOneByMemCode(
         addressData.mem_code,
       );
-      console.log('Address Data:', addressData);
-      console.log('Address Data:', addressData.mem_code);
-
-      console.log('Found user:', user);
 
       if (!user) {
         throw new Error(`User with mem_code ${addressData.mem_code} not found`);
@@ -89,8 +85,6 @@ export class EditAddressService {
     address: Partial<EditAddress>,
   ): Promise<EditAddress> {
     // ถ้า defaults เป็น true ให้หา user ของ address นี้แล้วเซ็ตที่อยู่อื่นๆ เป็น false ก่อน
-    console.log('Updating address with ID:', id);
-    console.log('New address data:', address);
     if (address.defaults === true) {
       const existingAddress = await this.editAddressRepository.findOne({
         where: { id },
@@ -123,7 +117,6 @@ export class EditAddressService {
   }
 
   async getAddressById(id: number): Promise<EditAddress | null> {
-    console.log('Getting address by ID:', id);
     return this.editAddressRepository.findOne({
       where: { id },
     });

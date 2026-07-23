@@ -59,7 +59,7 @@ export class AuthService {
         })
         .promise();
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       throw new Error('Something Error in Delete Image User');
     }
   }
@@ -120,7 +120,7 @@ export class AuthService {
         return data.Location;
       }
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Something Error in Upload Image User');
     }
   }
@@ -143,7 +143,7 @@ export class AuthService {
       await this.userRepo.update({ mem_code: data.mem_code }, { ...data });
       await this.updateDataToOldSystem(data);
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Something Error in updateUserData');
     }
   }
@@ -151,7 +151,6 @@ export class AuthService {
   async updateDataToOldSystem(data: UserEntity) {
     // Skip external API call in dev mode
     if (process.env.DISABLE_EXTERNAL_API === 'true') {
-      console.log('[DEV] External API call to wangpharma.com skipped');
       return;
     }
     try {
@@ -205,17 +204,20 @@ export class AuthService {
       });
 
       for (const user of data) {
-        if (mem_code_all_map.includes(user.mem_code)) {
-          if (user.emp_id_ref) {
-            const findemp = await this.employeeService.findOneByEmpCode(
-              user.emp_id_ref || '',
-            );
-            if (!findemp) {
-              user.emp_id_ref = null;
-            }
-          } else {
+        // ตรวจ emp_id_ref กับตาราง employee ก่อนเสมอ (ทั้ง create/update)
+        // ถ้าไม่มีจริงต้อง set null ไม่งั้น FK constraint (emp_id_ref -> employee.emp_code) fail
+        if (user.emp_id_ref) {
+          const findemp = await this.employeeService.findOneByEmpCode(
+            user.emp_id_ref || '',
+          );
+          if (!findemp) {
             user.emp_id_ref = null;
           }
+        } else {
+          user.emp_id_ref = null;
+        }
+
+        if (mem_code_all_map.includes(user.mem_code)) {
           await this.userRepo.update(
             { mem_code: user.mem_code },
             {
@@ -223,6 +225,7 @@ export class AuthService {
               emp_saleoffice: user.emp_saleoffice,
               latest_purchase: user.latest_purchase,
               emp_id_ref: user?.emp_id_ref ?? null,
+              file_upload_type: 'pass',
             },
           );
         } else {
@@ -239,12 +242,16 @@ export class AuthService {
             emp_saleoffice: user.emp_saleoffice,
             latest_purchase: user.latest_purchase,
             emp_id_ref: user?.emp_id_ref ?? null,
+            file_upload_type: 'pass',
           });
           await this.userRepo.save(newUser);
         }
       }
     } catch (error) {
-      console.log(error);
+      this.logger.error(
+        'Something Error in upsertUser',
+        error instanceof Error ? error.stack : String(error),
+      );
       throw new Error('Something Error in upsertUser');
     }
   }
@@ -549,9 +556,6 @@ export class AuthService {
 
         try {
           const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-          console.log(
-            `Hash length: ${hashedPassword.length} for user: ${user.mem_code}`,
-          );
 
           //Update within transaction แทนที่จะใช้ this.userRepo.update
           await queryRunner.manager.update(
@@ -565,7 +569,7 @@ export class AuthService {
           errors.push(
             `Error updating user ${user.mem_code}: ${updateError.message}`,
           );
-          console.error(
+          this.logger.error(
             `Error updating user ${user.mem_code}:`,
             updateError.message,
           );
@@ -584,7 +588,6 @@ export class AuthService {
 
       //Commit transaction เมื่อสำเร็จทั้งหมด
       await queryRunner.commitTransaction();
-      console.log(`Successfully hashed ${hashCount} passwords`);
       return {
         success: true,
         message: `Hashed ${hashCount} passwords, skipped ${skipCount}`,
@@ -595,7 +598,7 @@ export class AuthService {
     } catch (error) {
       //Rollback เมื่อเกิด error
       await queryRunner.rollbackTransaction();
-      console.error('Transaction failed:', error);
+      this.logger.error('Transaction failed:', error);
 
       return {
         success: false,

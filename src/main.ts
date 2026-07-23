@@ -1,10 +1,13 @@
 import './tracing';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import * as bodyParser from 'body-parser';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+
+const logger = new Logger('Bootstrap');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -40,26 +43,24 @@ async function bootstrap() {
     });
   }
 
-  console.log('Analytics Kafka will be handled by dedicated service');
-
   if (enableKafka) {
     try {
       await app.startAllMicroservices();
-      console.log('Core microservices started successfully');
+      logger.log('Core microservices started successfully');
     } catch (error) {
-      console.error('Failed to start core microservices:', error);
-      throw error; 
+      logger.error('Failed to start core microservices:', error);
+      throw error;
     }
   } else {
-    console.log('Kafka is disabled for local development');
+    logger.log('Kafka is disabled for local development');
   }
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`Application is running on: http://localhost:${port}`);
 }
 
 bootstrap().catch((error) => {
-  console.error('Failed to start application:', error);
+  logger.error('Failed to start application:', error);
   process.exit(1);
 });

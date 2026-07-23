@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecommendEntity } from './recommend.entity';
 import { Repository, Not, IsNull } from 'typeorm';
@@ -8,6 +8,8 @@ import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class RecommendService {
+  private readonly logger = new Logger(RecommendService.name);
+
   constructor(
     @InjectRepository(RecommendEntity)
     private readonly recommendEntity: Repository<RecommendEntity>,
@@ -113,7 +115,6 @@ export class RecommendService {
 
   async DeleteTagFromProduct(pro_code: string) {
     try {
-      console.log('Deleting tag from product with code:', pro_code);
       return this.productEntity.update(
         { pro_code },
         { recommend: { id: undefined }, recommend_rank: undefined },
@@ -383,8 +384,6 @@ export class RecommendService {
           skip: (page - 1) * limit,
           take: limit,
         });
-      console.log('Products with replace:', productsWithReplace);
-      console.log('Total:', total);
       return {
         productsWithReplace,
         pagination: {
@@ -412,7 +411,7 @@ export class RecommendService {
         .where('replace_date_exp < :now', { now })
         .execute();
     } catch (error) {
-      console.error(`Failed to clear expired replacements: ${error}`);
+      this.logger.error(`Failed to clear expired replacements: ${error}`);
     }
   }
 }

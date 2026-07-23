@@ -5,12 +5,16 @@ import { UserSessionsEntity } from './sessions.entity';
 import { Cron } from '@nestjs/schedule';
 import * as dayjs from 'dayjs';
 import { ExpireSessionResponse } from '../auth/auth.service';
+import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+
+const UPDATE_LAST_ACTIVITY_FLAG = 'session_update_last_activity';
 
 @Injectable()
 export class SessionsService {
   constructor(
     @InjectRepository(UserSessionsEntity)
     private readonly sessionsRepository: Repository<UserSessionsEntity>,
+    private readonly featureFlagsService: FeatureFlagsService,
   ) {}
 
   async createSession(
@@ -59,6 +63,13 @@ export class SessionsService {
   }
 
   async updateLastActivity(sessionToken: string): Promise<void> {
+    const isEnabled = await this.featureFlagsService.getFlag(
+      UPDATE_LAST_ACTIVITY_FLAG,
+    );
+    if (!isEnabled) {
+      return;
+    }
+
     await this.sessionsRepository.update(
       { session_token: sessionToken, is_active: true },
       { last_activity: new Date() },

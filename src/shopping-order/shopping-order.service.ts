@@ -287,7 +287,6 @@ export class ShoppingOrderService {
         mem_code: data.mem_code,
         body: JSON.stringify(data),
       });
-      console.log('submitOrder data:', data);
       const numberOfMonth = new Date().getMonth() + 1;
       runningNumbers = [];
       const allIdCartForDelete: number[] = [];
@@ -447,7 +446,6 @@ export class ShoppingOrderService {
               ),
             );
 
-            console.log('Freebie check:', { isFreebie, item, checkFreebies });
             if (isFreebie) {
               price = 0.0;
             }
@@ -507,8 +505,6 @@ export class ShoppingOrderService {
               where: { giftProduct: { pro_code: item.pro_code } },
               relations: ['giftProduct'],
             });
-
-            console.log('limitItem:', limitItem);
 
             const limitData = limitItem.find(
               (l) =>
@@ -865,7 +861,7 @@ export class ShoppingOrderService {
         basket_snapshot: basketSnapshot,
         basket_snapshot_error: basketSnapshotError,
       });
-      console.error('Error: ', error);
+      this.logger.error('Error: ', error);
       const payload = {
         text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${totalsummaryfromCart.total}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
         attachments: [
@@ -877,10 +873,9 @@ export class ShoppingOrderService {
         ],
       };
       try {
-        console.log('Slack Url: ', this.slackUrl);
         await axios.post(this.slackUrl, payload);
       } catch (e) {
-        console.error('Failed to notify Slack', e);
+        this.logger.error('Failed to notify Slack', e);
       }
       throw new Error('Failed to submit order. ' + error);
     }
@@ -1027,7 +1022,7 @@ export class ShoppingOrderService {
           };
         }); //ส่งไปแค่ 6 อัน
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Failed to fetch order data.');
     }
   }
@@ -1113,16 +1108,10 @@ export class ShoppingOrderService {
       });
 
       if (!dataOrder) {
-        console.log(
-          `No order found for sh_running: ${sh_running} and pro_code: ${pro_code}`,
-        );
         return { status: true };
       }
 
       if (!dataOrder.promotion_id || !dataOrder.tier_id) {
-        console.log(
-          `Order ${dataOrder.spo_id} does not have promotion_id or tier_id, skipping reward check.`,
-        );
         return { status: true };
       }
 
@@ -1180,13 +1169,9 @@ export class ShoppingOrderService {
           ),
         };
       }
-      console.log(
-        `Order ${dataOrder.spo_id} with promotion_id ${dataOrder.promotion_id} and tier_id ${dataOrder.tier_id} meets the minimum amount requirement. Total: ${totalAmount}, Min: ${minAmount?.minAmount}`,
-      );
-      console.log(typeof totalAmount, typeof minAmount?.minAmount);
       return { status: true };
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
       throw new Error('Failed to check order turn back reward. ' + error);
     }
   }

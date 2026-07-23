@@ -17,11 +17,17 @@ export class QuestionnaireEntity {
   @Column({ type: 'int' })
   rating_point!: number;
 
+  @Column({ type: 'text', nullable: true, default: null })
+  text_answer!: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
+  question_text!: string | null;
+
   @Column()
   rating_id!: number;
 
-  @Column()
-  question_id!: number;
+  @Column({ nullable: true, default: null })
+  question_id!: number | null;
 
   @ManyToOne(() => RatingEntity, (rating) => rating.questionnaires, {
     onDelete: 'CASCADE',
@@ -29,7 +35,7 @@ export class QuestionnaireEntity {
   @JoinColumn({ name: 'rating_id' })
   rating?: Relation<RatingEntity>;
 
-  @ManyToOne(() => QuestionnaireConfigEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => QuestionnaireConfigEntity, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'question_id' })
-  question?: Relation<QuestionnaireConfigEntity>;
+  question?: Relation<QuestionnaireConfigEntity> | null;
 }
