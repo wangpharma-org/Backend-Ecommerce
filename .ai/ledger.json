@@ -1,6 +1,6 @@
 {
   "repo": "wangpharma-org/Backend-Ecommerce",
-  "last_run": "2026-05-19",
+  "last_run": "2026-07-06",
   "approvers": [
     "62theories"
   ],
@@ -12,14 +12,16 @@
       "status": "proposed",
       "source_prs": [
         121,
-        137
+        137,
+        178
       ],
       "reviewers": [
-        "MossOcelot"
+        "MossOcelot",
+        "Sasit-Nine"
       ],
       "confidence": "high",
       "first_seen": "2026-05-19",
-      "last_seen": "2026-05-19",
+      "last_seen": "2026-05-25",
       "approved_by": null,
       "approved_at": null,
       "promoted_from": "preference"
@@ -89,6 +91,114 @@
       "confidence": "low",
       "first_seen": "2026-05-19",
       "last_seen": "2026-05-19",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "G-002",
+      "kind": "gotcha",
+      "file": ".ai/gotchas.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        205
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "R-003",
+      "kind": "rule",
+      "file": ".ai/rules.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "C-002",
+      "kind": "convention",
+      "file": ".ai/conventions.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "medium",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "G-003",
+      "kind": "gotcha",
+      "file": ".ai/gotchas.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "medium",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "Q-002",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "Q-003",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
       "approved_by": null,
       "approved_at": null
     }
