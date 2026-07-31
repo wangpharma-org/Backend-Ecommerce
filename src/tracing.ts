@@ -1,7 +1,25 @@
+import 'dotenv/config'; 
+import * as Sentry from '@sentry/node';
+import { eventLoopBlockIntegration } from '@sentry/node-native';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
+
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.SENTRY_ENVIRONMENT ?? 'development',
+  tracesSampleRate: 0,
+  integrations: [
+    eventLoopBlockIntegration({
+      threshold: Number(process.env.SENTRY_EVENT_LOOP_BLOCK_THRESHOLD_MS ?? 1000),
+      maxEventsPerHour: Number(
+        process.env.SENTRY_EVENT_LOOP_BLOCK_MAX_PER_HOUR ?? 10,
+      ),
+    }),
+  ],
+});
 
 const traceExporter = new OTLPTraceExporter({
   url:

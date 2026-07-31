@@ -164,6 +164,8 @@ export class AppController {
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
 
+  
+
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
