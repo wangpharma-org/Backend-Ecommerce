@@ -164,6 +164,18 @@ export class AppController {
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
 
+  // ทดสอบ Sentry Event Loop Block Detection — synchronous busy-loop ตั้งใจ block event loop
+  // ลบออกหลังทดสอบเสร็จ ไม่ใช่ endpoint ที่จะใช้จริง
+  @Get('/debug/block-event-loop')
+  blockEventLoop(@Query('ms') ms?: string) {
+    const durationMs = Number(ms) || 2000;
+    const start = Date.now();
+    while (Date.now() - start < durationMs) {
+      // จงใจ block main thread แบบ synchronous
+    }
+    return { blockedMs: durationMs };
+  }
+
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
