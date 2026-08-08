@@ -1,6 +1,6 @@
 {
   "repo": "wangpharma-org/Backend-Ecommerce",
-  "last_run": "2026-05-19",
+  "last_run": "2026-07-20",
   "approvers": [
     "62theories"
   ],
@@ -10,25 +10,30 @@
       "kind": "rule",
       "file": ".ai/rules.md",
       "status": "proposed",
+      "origin": "human",
       "source_prs": [
         121,
-        137
+        137,
+        178
       ],
       "reviewers": [
-        "MossOcelot"
+        "MossOcelot",
+        "Sasit-Nine"
       ],
       "confidence": "high",
       "first_seen": "2026-05-19",
-      "last_seen": "2026-05-19",
+      "last_seen": "2026-07-20",
       "approved_by": null,
       "approved_at": null,
-      "promoted_from": "preference"
+      "promoted_from": "preference",
+      "notes": "PR#178 Sasit-Nine added 3 more 'เอา console.log ออก' inline comments, further corroborating this rule"
     },
     {
       "id": "D-001",
       "kind": "domain",
       "file": ".ai/domain.md",
       "status": "proposed",
+      "origin": "human",
       "source_prs": [
         143
       ],
@@ -46,6 +51,7 @@
       "kind": "convention",
       "file": ".ai/conventions.md",
       "status": "proposed",
+      "origin": "human",
       "source_prs": [
         148
       ],
@@ -63,6 +69,7 @@
       "kind": "gotcha",
       "file": ".ai/gotchas.md",
       "status": "proposed",
+      "origin": "human",
       "source_prs": [
         143
       ],
@@ -80,6 +87,7 @@
       "kind": "preference",
       "file": ".ai/quarantine.md",
       "status": "quarantined",
+      "origin": "human",
       "source_prs": [
         123
       ],
@@ -91,6 +99,141 @@
       "last_seen": "2026-05-19",
       "approved_by": null,
       "approved_at": null
+    },
+    {
+      "id": "R-003",
+      "kind": "rule",
+      "file": ".ai/rules.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        176,
+        154
+      ],
+      "reviewers": [
+        "Sasit-Nine",
+        "MossOcelot"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "PR#176 Sasit-Nine: missing @UseGuards on endpoint entirely. PR#154 MossOcelot: inline role check in controller → move to Guard/Decorator"
+    },
+    {
+      "id": "C-002",
+      "kind": "convention",
+      "file": ".ai/conventions.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "medium",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "PR#176: migration file not included in PR alongside schema-changing entity/table additions"
+    },
+    {
+      "id": "G-002",
+      "kind": "gotcha",
+      "file": ".ai/gotchas.md",
+      "status": "proposed",
+      "origin": "human",
+      "source_prs": [
+        205
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "high",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "PR#205: 'ห้ามแก้ Entity เนื่องจาก Column จะโดน Drop ทิ้ง และสร้างใหม่' — factual TypeORM DROP+recreate behavior"
+    },
+    {
+      "id": "Q-002",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "Object-style TypeORM select. Single reviewer — needs corroboration to promote"
+    },
+    {
+      "id": "Q-003",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [
+        176
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "Domain endpoints in domain controller, not AppController. Single reviewer — needs corroboration"
+    },
+    {
+      "id": "Q-004",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [
+        226
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "Config constants in env vars, not hardcoded. Single reviewer — needs corroboration"
+    },
+    {
+      "id": "Q-005",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [
+        205
+      ],
+      "reviewers": [
+        "Sasit-Nine"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-07-20",
+      "last_seen": "2026-07-20",
+      "approved_by": null,
+      "approved_at": null,
+      "notes": "Check for duplicate Kafka listeners before adding new ones. Single reviewer — needs corroboration"
     }
   ]
 }
