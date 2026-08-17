@@ -10,3 +10,17 @@ Format per entry: `### G-NNN <statement>` then **Why:** / **Example:** / **Sourc
 **Why:** PR#143 P2 — getHotdealFromproCode (src/hotdeal/hotdeal.service.ts:660-667) converts the freebie's pro2_amount/pro2_unit using the MAIN product's unit ratio. If product2 (the freebie) uses different units, the freebie data returned by the API is wrong. Either don't convert here, or use product2's own unit ratio.
 **Source:** PR#143 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/143
 **Added:** 2026-05-19
+
+### G-002  Modifying a TypeORM Entity column directly (without a migration) can cause column DROP + recreate, losing data
+**Why:** PR#205 — a column was edited in `creditor.entity.ts` without a corresponding migration. When SYNCHRONIZE is on (e.g. a dev env accidentally set to true, or a future accident), TypeORM will DROP the old column and recreate it, destroying the data. Always create a migration for any schema change; never rely on SYNCHRONIZE=true to apply entity changes.
+**Example:**
+```ts
+// ✗ dangerous — changing column definition without a migration
+@Column({ type: 'int' })   // was 'varchar' — TypeORM drops & recreates if SYNCHRONIZE=true
+creditor_address: string
+
+// ✓ leave entity as-is, generate a migration instead
+// npm run migration:generate -- src/migrations/AlterCreditorAddressToVarchar
+```
+**Source:** PR#205 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/205
+**Added:** 2026-08-17
