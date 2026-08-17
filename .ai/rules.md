@@ -37,3 +37,16 @@ this.logger.error('failed to fetch products', err)
 ```
 **Source:** ECWC-282 session 2026-05-30
 **Added:** 2026-05-30
+
+### R-003  Never hardcode configuration values or secrets in source code; store them in environment variables
+**Why:** PR#226 — `COM_FILE_HASH` was hardcoded directly in `src/app.controller.ts`. Hardcoded config values are hard to rotate, differ between environments, and risk leaking into version history if they are secrets.
+**Example:**
+```ts
+// ✗ no
+const COM_FILE_HASH = 'abc123...'
+
+// ✓ read from env
+const COM_FILE_HASH = process.env.COM_FILE_HASH
+```
+**Source:** PR#226 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/226
+**Added:** 2026-08-17  **Enforce:** code review / env-var audit
