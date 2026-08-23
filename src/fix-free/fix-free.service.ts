@@ -2,6 +2,10 @@ import { Repository } from 'typeorm';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ProductEntity } from 'src/products/products.entity';
 import { InjectRepository } from '@nestjs/typeorm';
+import {
+  buildRedeemCandidateWhere,
+  isRedeemProductVisible,
+} from 'src/products/redeem-product.criteria';
 
 @Injectable()
 export class FixFreeService {
@@ -53,7 +57,9 @@ export class FixFreeService {
           pro_code: pro_code,
         },
         {
+          // เคลียร์แต้มด้วย ไม่งั้นสินค้า product_type = '00' ยังโผล่หน้าแลกแต้มอยู่
           pro_free: false,
+          pro_point: 0,
         },
       );
     } catch {
@@ -76,20 +82,27 @@ export class FixFreeService {
     }
   }
 
+  // หน้าแอดมิน — คืนสินค้ากลุ่มแลกแต้มครบทุกตัว แม้แต้มหรือสต็อกจะยังไม่พร้อม
+  // แล้วแนบ is_visible บอกว่าตอนนี้ลูกค้าเห็นไหม
   async getAllProductFree() {
     try {
-      return await this.productEntity.find({
-        where: {
-          pro_free: true,
-        },
+      const products = await this.productEntity.find({
+        where: buildRedeemCandidateWhere(),
         select: {
           pro_code: true,
           pro_name: true,
           pro_point: true,
           pro_imgmain: true,
           pro_stock: true,
+          pro_free: true,
+          product_type: true,
         },
       });
+
+      return products.map((product) => ({
+        ...product,
+        is_visible: isRedeemProductVisible(product),
+      }));
     } catch {
       throw new Error('Something Error get All Product Free');
     }
