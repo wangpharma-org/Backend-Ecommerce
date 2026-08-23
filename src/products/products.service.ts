@@ -6,7 +6,15 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
+import {
+  Brackets,
+  In,
+  IsNull,
+  LessThanOrEqual,
+  MoreThan,
+  Not,
+  Repository,
+} from 'typeorm';
 import { ProductEntity } from './products.entity';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
@@ -28,7 +36,12 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
-import { applyRedeemProductFilter } from './redeem-product.criteria';
+import {
+  applyRedeemProductFilter,
+  buildRedeemCandidateWhere,
+  buildRedeemProductWhere,
+  isRedeemProductVisible,
+} from './redeem-product.criteria';
 import { LineSupportService } from 'src/line-support/line-support.service';
 
 interface OrderItem {
@@ -1183,9 +1196,7 @@ export class ProductsService {
         .innerJoinAndSelect('product.units', 'units');
 
       if (data.category === 8) {
-        qb.where('product.pro_free = :free', { free: true })
-          .andWhere('product.pro_point > :point', { point: 0 })
-          .andWhere('product.pro_stock > :stock', { stock: 0 });
+        applyRedeemProductFilter(qb, 'product');
       } else {
         qb.where('product.pro_priceA != 0')
           .andWhere(
@@ -1889,16 +1900,13 @@ export class ProductsService {
 
       const isL16 = await this.isL16Member(mem_code, mem_route);
       const data = await this.productRepo.find({
-        where: {
-          pro_free: true,
-          pro_stock: MoreThan(0),
-          pro_point: MoreThan(0),
-          ...(isL16
+        where: buildRedeemProductWhere(
+          isL16
             ? {
                 pro_l16_only: In([0, null]),
               }
-            : {}),
-        },
+            : {},
+        ),
         relations: ['units'],
         select: {
           pro_code: true,
@@ -2334,13 +2342,15 @@ export class ProductsService {
 
       for (let i = 0; i < zeroStockCodes.length; i += chunkSize) {
         const chunk = zeroStockCodes.slice(i, i + chunkSize);
-        const qb = this.productRepo
-          .createQueryBuilder('product')
-          .select(['product.pro_code', 'product.pro_name'])
-          .where('product.pro_code IN (:...codes)', { codes: chunk })
-          .andWhere('product.pro_stock <= 0');
-        applyRedeemProductFilter(qb, 'product');
-        const found = await qb.getMany();
+        // buildRedeemCandidateWhere = กลุ่มแลกแต้มทั้งหมด ไม่กรอง point/stock
+        // เพราะเคสนี้ต้องการตัวที่ stock หมดพอดี
+        const found = await this.productRepo.find({
+          where: buildRedeemCandidateWhere({
+            pro_code: In(chunk),
+            pro_stock: LessThanOrEqual(0),
+          }),
+          select: { pro_code: true, pro_name: true },
+        });
         for (const product of found) {
           items.push({
             pro_code: product.pro_code,
@@ -2544,17 +2554,34 @@ export class ProductsService {
     }
   }
 
+  // หน้าแอดมิน — คืนสินค้ากลุ่มแลกแต้มครบทุกตัว พร้อม is_visible บอกสถานะแสดงผล
   async findProductFree(): Promise<
-    { pro_code: string; pro_name: string; pro_point: number }[]
+    {
+      pro_code: string;
+      pro_name: string;
+      pro_point: number;
+      pro_stock: number;
+      is_visible: boolean;
+    }[]
   > {
     try {
       const products = await this.productRepo.find({
-        where: { pro_free: true },
+        where: buildRedeemCandidateWhere(),
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_point: true,
+          pro_stock: true,
+          pro_free: true,
+          product_type: true,
+        },
       });
       return products.map((product) => ({
         pro_code: product.pro_code,
         pro_name: product.pro_name,
         pro_point: product.pro_point,
+        pro_stock: product.pro_stock,
+        is_visible: isRedeemProductVisible(product),
       }));
     } catch (error) {
       this.logger.error('Error finding free products:', error);

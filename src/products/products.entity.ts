@@ -97,6 +97,10 @@ export class ProductEntity {
   @Column({ default: false })
   pro_free!: boolean;
 
+  // '00' = สินค้าแลกแต้ม, '01' = สินค้าขายปกติ (ECWC-444)
+  @Column({ length: 10, default: '01' })
+  product_type!: string;
+
   @Column({ length: 120, nullable: true })
   pro_drugregister!: string;
 
