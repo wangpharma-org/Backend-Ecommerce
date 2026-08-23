@@ -11,6 +11,7 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { LineSupportService } from 'src/line-support/line-support.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -47,6 +48,7 @@ const UNITS_3_LEVELS = [
 
 describe('ProductsService — unit helpers', () => {
   let service: ProductsService;
+  const lineSupportMock = { notifyRedeemStockOut: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -62,6 +64,7 @@ describe('ProductsService — unit helpers', () => {
         { provide: BackendService, useValue: {} },
         { provide: ElasticsearchService, useValue: {} },
         { provide: ShoppingCartService, useValue: {} },
+        { provide: LineSupportService, useValue: lineSupportMock },
       ],
     }).compile();
 
@@ -169,6 +172,96 @@ describe('ProductsService — unit helpers', () => {
         { level: 3, unit_name: 'กล่อง', ratio: 1000 },
       ];
       expect((service as any).getRatioFromUnits(3, units)).toBe(1000);
+    });
+  });
+  // ─── ECWC-477: notifyRedeemStockOut ───────────────────────────────────────
+
+  describe('notifyRedeemStockOut', () => {
+    type RedeemNotifyInternals = {
+      productRepo: { createQueryBuilder: unknown };
+      notifyRedeemStockOut(body: {
+        group: { pro_code: string; stock: number }[];
+        filename: string;
+      }): Promise<void>;
+    };
+    const internals = () => service as unknown as RedeemNotifyInternals;
+
+    const buildQb = (found: { pro_code: string; pro_name: string }[]) => ({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(found),
+    });
+
+    beforeEach(() => {
+      lineSupportMock.notifyRedeemStockOut.mockClear();
+    });
+
+    it('sends one message with all zero-stock redeem products', async () => {
+      const qb = buildQb([
+        { pro_code: 'P0001', pro_name: 'สินค้า A' },
+        { pro_code: 'P0002', pro_name: 'สินค้า B' },
+      ]);
+      internals().productRepo.createQueryBuilder = jest.fn(() => qb);
+
+      await internals().notifyRedeemStockOut({
+        group: [
+          { pro_code: 'P0001', stock: 0 },
+          { pro_code: 'P0002', stock: 0 },
+          { pro_code: 'P0003', stock: 5 },
+        ],
+        filename: 'stock_20260822.xlsx',
+      });
+
+      expect(qb.where).toHaveBeenCalledWith('product.pro_code IN (:...codes)', {
+        codes: ['P0001', 'P0002'],
+      });
+      expect(lineSupportMock.notifyRedeemStockOut).toHaveBeenCalledTimes(1);
+      expect(lineSupportMock.notifyRedeemStockOut).toHaveBeenCalledWith({
+        file_name: 'stock_20260822.xlsx',
+        items: [
+          { pro_code: 'P0001', pro_name: 'สินค้า A' },
+          { pro_code: 'P0002', pro_name: 'สินค้า B' },
+        ],
+      });
+    });
+
+    it('does not send when no product in the file hit zero stock', async () => {
+      const createQueryBuilder = jest.fn(() => buildQb([]));
+      internals().productRepo.createQueryBuilder = createQueryBuilder;
+
+      await internals().notifyRedeemStockOut({
+        group: [{ pro_code: 'P0003', stock: 5 }],
+        filename: 'stock.xlsx',
+      });
+
+      expect(createQueryBuilder).not.toHaveBeenCalled();
+      expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
+    });
+
+    it('does not send when zero-stock products are not redeem products', async () => {
+      internals().productRepo.createQueryBuilder = jest.fn(() => buildQb([]));
+
+      await internals().notifyRedeemStockOut({
+        group: [{ pro_code: 'P0009', stock: 0 }],
+        filename: 'stock.xlsx',
+      });
+
+      expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
+    });
+
+    it('swallows query errors so update stock keeps working', async () => {
+      internals().productRepo.createQueryBuilder = jest.fn(() => {
+        throw new Error('db down');
+      });
+
+      await expect(
+        internals().notifyRedeemStockOut({
+          group: [{ pro_code: 'P0001', stock: 0 }],
+          filename: 'stock.xlsx',
+        }),
+      ).resolves.toBeUndefined();
+      expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
     });
   });
 });

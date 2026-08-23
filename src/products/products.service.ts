@@ -28,6 +28,8 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import { applyRedeemProductFilter } from './redeem-product.criteria';
+import { LineSupportService } from 'src/line-support/line-support.service';
 
 interface OrderItem {
   pro_code: string;
@@ -100,6 +102,7 @@ export class ProductsService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    private readonly lineSupportService: LineSupportService,
   ) {}
 
   private convertEnumToUnitName(
@@ -2296,10 +2299,69 @@ export class ProductsService {
         { feature: 'UpdateStock' },
         { filename: body.filename, uploadedAt: new Date() },
       );
+      await this.notifyRedeemStockOut(body);
       return 'Stock updated successfully';
     } catch (error) {
       this.logger.error('Error updating stock:', error);
       throw new Error('Error updating stock');
+    }
+  }
+
+  /**
+   * ECWC-477: หลังอัปเดต stock จาก back office เช็คว่ามีสินค้าแลกแต้มตัวไหน stock กลายเป็น 0
+   * แล้วส่งแจ้งเตือน LINE รวมเป็น 1 ข้อความต่อ 1 ไฟล์
+   * ไม่ปิด flag pro_free อัตโนมัติ และห้าม throw ออกไปทำให้ update stock พัง
+   */
+  private async notifyRedeemStockOut(body: {
+    group: { pro_code: string; stock: number }[];
+    filename: string;
+  }): Promise<void> {
+    try {
+      const zeroStockCodes = Array.from(
+        new Set(
+          (body.group || [])
+            .filter((item) => Number(item.stock) <= 0)
+            .map((item) => item.pro_code),
+        ),
+      );
+
+      if (zeroStockCodes.length === 0) {
+        return;
+      }
+
+      const items: { pro_code: string; pro_name: string }[] = [];
+      const chunkSize = 1000;
+
+      for (let i = 0; i < zeroStockCodes.length; i += chunkSize) {
+        const chunk = zeroStockCodes.slice(i, i + chunkSize);
+        const qb = this.productRepo
+          .createQueryBuilder('product')
+          .select(['product.pro_code', 'product.pro_name'])
+          .where('product.pro_code IN (:...codes)', { codes: chunk })
+          .andWhere('product.pro_stock <= 0');
+        applyRedeemProductFilter(qb, 'product');
+        const found = await qb.getMany();
+        for (const product of found) {
+          items.push({
+            pro_code: product.pro_code,
+            pro_name: product.pro_name ?? '',
+          });
+        }
+      }
+
+      if (items.length === 0) {
+        return;
+      }
+
+      await this.lineSupportService.notifyRedeemStockOut({
+        file_name: body.filename,
+        items,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error checking redeem stock-out after update stock (file=${body.filename})`,
+        error instanceof Error ? error.stack : String(error),
+      );
     }
   }
 
