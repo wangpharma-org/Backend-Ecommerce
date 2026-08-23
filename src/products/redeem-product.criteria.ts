@@ -38,6 +38,16 @@ export function buildRedeemProductWhere(
   ];
 }
 
+// ใช้กับหน้าแอดมิน — คืนสินค้าในกลุ่มแลกแต้มทั้งหมด ไม่กรองแต้ม/สต็อก
+export function buildRedeemCandidateWhere(
+  extra: FindOptionsWhere<ProductEntity> = {},
+): FindOptionsWhere<ProductEntity>[] {
+  return [
+    { ...extra, pro_free: true },
+    { ...extra, product_type: REDEEM_PRODUCT_TYPE },
+  ];
+}
+
 // สินค้าอยู่ในกลุ่มแลกแต้มไหม (ไม่สนใจแต้ม/สต็อก)
 export function isRedeemProductType(
   product?: Pick<ProductEntity, 'pro_free' | 'product_type'> | null,
@@ -45,6 +55,19 @@ export function isRedeemProductType(
   if (!product) return false;
   return (
     product.pro_free === true || product.product_type === REDEEM_PRODUCT_TYPE
+  );
+}
+
+// สินค้าโชว์ในหน้าแลกแต้มลูกค้าไหม — ใช้ทำ flag สถานะให้แอดมิน
+export function isRedeemProductVisible(
+  product?: Pick<
+    ProductEntity,
+    'pro_free' | 'product_type' | 'pro_point' | 'pro_stock'
+  > | null,
+): boolean {
+  if (!isRedeemProductType(product)) return false;
+  return (
+    Number(product?.pro_point ?? 0) > 0 && Number(product?.pro_stock ?? 0) > 0
   );
 }
 

@@ -30,7 +30,9 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
 import {
   applyRedeemProductFilter,
+  buildRedeemCandidateWhere,
   buildRedeemProductWhere,
+  isRedeemProductVisible,
 } from './redeem-product.criteria';
 
 interface OrderItem {
@@ -2481,17 +2483,34 @@ export class ProductsService {
     }
   }
 
+  // หน้าแอดมิน — คืนสินค้ากลุ่มแลกแต้มครบทุกตัว พร้อม is_visible บอกสถานะแสดงผล
   async findProductFree(): Promise<
-    { pro_code: string; pro_name: string; pro_point: number }[]
+    {
+      pro_code: string;
+      pro_name: string;
+      pro_point: number;
+      pro_stock: number;
+      is_visible: boolean;
+    }[]
   > {
     try {
       const products = await this.productRepo.find({
-        where: buildRedeemProductWhere(),
+        where: buildRedeemCandidateWhere(),
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_point: true,
+          pro_stock: true,
+          pro_free: true,
+          product_type: true,
+        },
       });
       return products.map((product) => ({
         pro_code: product.pro_code,
         pro_name: product.pro_name,
         pro_point: product.pro_point,
+        pro_stock: product.pro_stock,
+        is_visible: isRedeemProductVisible(product),
       }));
     } catch (error) {
       this.logger.error('Error finding free products:', error);
