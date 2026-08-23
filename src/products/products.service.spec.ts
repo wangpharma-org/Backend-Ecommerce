@@ -55,11 +55,20 @@ describe('ProductsService — unit helpers', () => {
       providers: [
         ProductsService,
         { provide: getRepositoryToken(ProductEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ProductPharmaEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ProductPharmaEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(CreditorEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ProductUnitEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ProductUnitEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(UserEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ShoppingCartEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ShoppingCartEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(DeleteCartEntity), useValue: mockRepo() },
         { provide: BackendService, useValue: {} },
         { provide: ElasticsearchService, useValue: {} },
@@ -79,27 +88,39 @@ describe('ProductsService — unit helpers', () => {
 
   describe('convertEnumToUnitName', () => {
     it('returns unit_name for level 1 (number input)', () => {
-      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('returns unit_name for level 2', () => {
-      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('returns unit_name for level 3', () => {
-      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('accepts string enum "1"', () => {
-      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('accepts string enum "2"', () => {
-      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('accepts string enum "3"', () => {
-      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('falls back to string enum when units array is empty', () => {
@@ -112,11 +133,15 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('returns empty string when unitEnum is undefined', () => {
-      expect((service as any).convertEnumToUnitName(undefined, UNITS_3_LEVELS)).toBe('');
+      expect(
+        (service as any).convertEnumToUnitName(undefined, UNITS_3_LEVELS),
+      ).toBe('');
     });
 
     it('returns empty string for level not found (e.g. 9)', () => {
-      expect((service as any).convertEnumToUnitName(9, UNITS_3_LEVELS)).toBe('');
+      expect((service as any).convertEnumToUnitName(9, UNITS_3_LEVELS)).toBe(
+        '',
+      );
     });
 
     it('returns empty string when product has only level 1 and level 2 is requested', () => {
@@ -158,7 +183,9 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('returns 1 when unitEnum is undefined', () => {
-      expect((service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS)).toBe(1);
+      expect(
+        (service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS),
+      ).toBe(1);
     });
 
     it('returns 1 for level not found in array', () => {
@@ -178,7 +205,7 @@ describe('ProductsService — unit helpers', () => {
 
   describe('notifyRedeemStockOut', () => {
     type RedeemNotifyInternals = {
-      productRepo: { createQueryBuilder: unknown };
+      productRepo: { find: jest.Mock };
       notifyRedeemStockOut(body: {
         group: { pro_code: string; stock: number }[];
         filename: string;
@@ -186,23 +213,16 @@ describe('ProductsService — unit helpers', () => {
     };
     const internals = () => service as unknown as RedeemNotifyInternals;
 
-    const buildQb = (found: { pro_code: string; pro_name: string }[]) => ({
-      select: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      getMany: jest.fn().mockResolvedValue(found),
-    });
-
     beforeEach(() => {
       lineSupportMock.notifyRedeemStockOut.mockClear();
     });
 
     it('sends one message with all zero-stock redeem products', async () => {
-      const qb = buildQb([
+      const find = jest.fn().mockResolvedValue([
         { pro_code: 'P0001', pro_name: 'สินค้า A' },
         { pro_code: 'P0002', pro_name: 'สินค้า B' },
       ]);
-      internals().productRepo.createQueryBuilder = jest.fn(() => qb);
+      internals().productRepo.find = find;
 
       await internals().notifyRedeemStockOut({
         group: [
@@ -213,9 +233,12 @@ describe('ProductsService — unit helpers', () => {
         filename: 'stock_20260822.xlsx',
       });
 
-      expect(qb.where).toHaveBeenCalledWith('product.pro_code IN (:...codes)', {
-        codes: ['P0001', 'P0002'],
-      });
+      // เงื่อนไขเป็น array = OR (pro_free = 1 หรือ product_type = '00')
+      const where = find.mock.calls[0][0].where as Record<string, unknown>[];
+      expect(where).toHaveLength(2);
+      expect(where[0]).toMatchObject({ pro_free: true });
+      expect(where[1]).toMatchObject({ product_type: '00' });
+
       expect(lineSupportMock.notifyRedeemStockOut).toHaveBeenCalledTimes(1);
       expect(lineSupportMock.notifyRedeemStockOut).toHaveBeenCalledWith({
         file_name: 'stock_20260822.xlsx',
@@ -227,20 +250,20 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('does not send when no product in the file hit zero stock', async () => {
-      const createQueryBuilder = jest.fn(() => buildQb([]));
-      internals().productRepo.createQueryBuilder = createQueryBuilder;
+      const find = jest.fn().mockResolvedValue([]);
+      internals().productRepo.find = find;
 
       await internals().notifyRedeemStockOut({
         group: [{ pro_code: 'P0003', stock: 5 }],
         filename: 'stock.xlsx',
       });
 
-      expect(createQueryBuilder).not.toHaveBeenCalled();
+      expect(find).not.toHaveBeenCalled();
       expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
     });
 
     it('does not send when zero-stock products are not redeem products', async () => {
-      internals().productRepo.createQueryBuilder = jest.fn(() => buildQb([]));
+      internals().productRepo.find = jest.fn().mockResolvedValue([]);
 
       await internals().notifyRedeemStockOut({
         group: [{ pro_code: 'P0009', stock: 0 }],
@@ -251,9 +274,9 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('swallows query errors so update stock keeps working', async () => {
-      internals().productRepo.createQueryBuilder = jest.fn(() => {
-        throw new Error('db down');
-      });
+      internals().productRepo.find = jest
+        .fn()
+        .mockRejectedValue(new Error('db down'));
 
       await expect(
         internals().notifyRedeemStockOut({
