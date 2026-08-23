@@ -12,6 +12,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
+import { canRedeemProduct } from '../products/redeem-product.criteria';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
@@ -597,7 +598,7 @@ export class ShoppingOrderService {
               );
 
               const sumpoint = listFree.reduce((total, order, index) => {
-                if (!order?.pro_free) {
+                if (!order || !canRedeemProduct(order)) {
                   orderContext = {
                     memberCode: data.mem_code,
                     priceOption: data.priceOption,
@@ -613,7 +614,7 @@ export class ShoppingOrderService {
                     })),
                   };
                   submitLogContext.push({
-                    freebieError: 'No pro_free defined',
+                    freebieError: 'Product is not redeemable',
                     forProCode: data.listFree?.[index].pro_code,
                   });
                   throw new Error('Point Error');

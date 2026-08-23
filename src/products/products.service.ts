@@ -28,6 +28,10 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import {
+  applyRedeemProductFilter,
+  buildRedeemProductWhere,
+} from './redeem-product.criteria';
 
 interface OrderItem {
   pro_code: string;
@@ -1180,9 +1184,7 @@ export class ProductsService {
         .innerJoinAndSelect('product.units', 'units');
 
       if (data.category === 8) {
-        qb.where('product.pro_free = :free', { free: true })
-          .andWhere('product.pro_point > :point', { point: 0 })
-          .andWhere('product.pro_stock > :stock', { stock: 0 });
+        applyRedeemProductFilter(qb, 'product');
       } else {
         qb.where('product.pro_priceA != 0')
           .andWhere(
@@ -1886,16 +1888,13 @@ export class ProductsService {
 
       const isL16 = await this.isL16Member(mem_code, mem_route);
       const data = await this.productRepo.find({
-        where: {
-          pro_free: true,
-          pro_stock: MoreThan(0),
-          pro_point: MoreThan(0),
-          ...(isL16
+        where: buildRedeemProductWhere(
+          isL16
             ? {
                 pro_l16_only: In([0, null]),
               }
-            : {}),
-        },
+            : {},
+        ),
         relations: ['units'],
         select: {
           pro_code: true,
@@ -2487,7 +2486,7 @@ export class ProductsService {
   > {
     try {
       const products = await this.productRepo.find({
-        where: { pro_free: true },
+        where: buildRedeemProductWhere(),
       });
       return products.map((product) => ({
         pro_code: product.pro_code,

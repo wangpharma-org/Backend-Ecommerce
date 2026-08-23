@@ -2,6 +2,7 @@ import { Repository } from 'typeorm';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ProductEntity } from 'src/products/products.entity';
 import { InjectRepository } from '@nestjs/typeorm';
+import { buildRedeemProductWhere } from 'src/products/redeem-product.criteria';
 
 @Injectable()
 export class FixFreeService {
@@ -53,7 +54,9 @@ export class FixFreeService {
           pro_code: pro_code,
         },
         {
+          // เคลียร์แต้มด้วย ไม่งั้นสินค้า product_type = '00' ยังโผล่หน้าแลกแต้มอยู่
           pro_free: false,
+          pro_point: 0,
         },
       );
     } catch {
@@ -79,9 +82,7 @@ export class FixFreeService {
   async getAllProductFree() {
     try {
       return await this.productEntity.find({
-        where: {
-          pro_free: true,
-        },
+        where: buildRedeemProductWhere(),
         select: {
           pro_code: true,
           pro_name: true,
