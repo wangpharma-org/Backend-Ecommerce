@@ -37,3 +37,19 @@ this.logger.error('failed to fetch products', err)
 ```
 **Source:** ECWC-282 session 2026-05-30
 **Added:** 2026-05-30
+
+### R-003  State-changing endpoints must have `@UseGuards(JwtAuthGuard)` — never ship an unguarded mutation endpoint
+**Why:** PR#176 — `/ecom/check-happy-hour-reward` was a POST endpoint with no JWT guard, allowing any anonymous caller to inject `sh_running` and alter order rewards. Reviewer flagged it as "ต้องแก้ก่อน merge" (critical security issue).
+**Example:**
+```ts
+// ✗ no — unguarded mutation endpoint
+@Post('/ecom/check-happy-hour-reward')
+async checkHappyHourReward(@Body() body: { sh_running: string }) { ... }
+
+// ✓ guard every endpoint that creates/updates/deletes data
+@UseGuards(JwtAuthGuard)
+@Post('/ecom/check-happy-hour-reward')
+async checkHappyHourReward(@Body() body: { sh_running: string }) { ... }
+```
+**Source:** PR#176 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/176
+**Added:** 2026-08-24  **Enforce:** code review gate; consider a lint rule flagging `@Post`/`@Put`/`@Patch`/`@Delete` without `@UseGuards`
