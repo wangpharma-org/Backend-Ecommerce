@@ -32,7 +32,10 @@ import {
   applyRedeemProductFilter,
   buildRedeemCandidateWhere,
   buildRedeemProductWhere,
+  getRedeemDisplayQuantity,
   isRedeemProductVisible,
+  REDEEM_PRODUCT_SUPPLIER,
+  sortRedeemProductsByRank,
 } from './redeem-product.criteria';
 
 interface OrderItem {
@@ -1905,11 +1908,16 @@ export class ProductsService {
           pro_imgmain: true,
           pro_sale_amount: true,
           pro_stock: true,
+          pro_redeem_display_quantity: true,
+          pro_redeem_rank: true,
         },
         order,
       });
 
-      return data;
+      return sortRedeemProductsByRank(data).map((product) => ({
+        ...product,
+        pro_redeem_display_quantity: getRedeemDisplayQuantity(product),
+      }));
     } catch (error) {
       this.logger.error('Error free products:', error);
       throw new Error('Error free products');
@@ -2490,6 +2498,11 @@ export class ProductsService {
       pro_name: string;
       pro_point: number;
       pro_stock: number;
+      pro_supplier: string;
+      pro_free: boolean;
+      pro_redeem_display_quantity: number;
+      pro_redeem_rank: number | null;
+      source: 'pro_free' | 'supplier_00';
       is_visible: boolean;
     }[]
   > {
@@ -2502,14 +2515,25 @@ export class ProductsService {
           pro_point: true,
           pro_stock: true,
           pro_free: true,
-          product_type: true,
+          pro_supplier: true,
+          pro_redeem_display_quantity: true,
+          pro_redeem_rank: true,
         },
+        order: { pro_name: 'ASC' },
       });
-      return products.map((product) => ({
+      return sortRedeemProductsByRank(products).map((product) => ({
         pro_code: product.pro_code,
         pro_name: product.pro_name,
-        pro_point: product.pro_point,
+        pro_point: Number(product.pro_point ?? 0),
         pro_stock: product.pro_stock,
+        pro_supplier: product.pro_supplier,
+        pro_free: product.pro_free,
+        pro_redeem_display_quantity: getRedeemDisplayQuantity(product),
+        pro_redeem_rank: product.pro_redeem_rank,
+        source:
+          product.pro_supplier === REDEEM_PRODUCT_SUPPLIER
+            ? 'supplier_00'
+            : 'pro_free',
         is_visible: isRedeemProductVisible(product),
       }));
     } catch (error) {
@@ -2930,18 +2954,30 @@ export class ProductsService {
       );
 
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
-      if (data.product_name !== undefined) esFields.pro_name = data.product_name ?? null;
-      if (data.product_nameEN !== undefined) esFields.pro_nameEN = data.product_nameEN ?? null;
-      if (data.product_nameSale !== undefined) esFields.pro_nameSale = data.product_nameSale ?? null;
-      if (data.product_genericname !== undefined) esFields.pro_genericname = data.product_genericname ?? null;
-      if (data.product_keysearch !== undefined) esFields.pro_keysearch = data.product_keysearch ?? null;
-      if (data.product_barcode !== undefined) esFields.pro_barcode1 = data.product_barcode ?? null;
-      if (data.product_barcode2 !== undefined) esFields.pro_barcode2 = data.product_barcode2 ?? null;
-      if (data.product_barcode3 !== undefined) esFields.pro_barcode3 = data.product_barcode3 ?? null;
-      if (data.product_price_a !== undefined) esFields.pro_priceA = data.product_price_a ?? null;
-      if (data.product_price_b !== undefined) esFields.pro_priceB = data.product_price_b ?? null;
-      if (data.product_price_c !== undefined) esFields.pro_priceC = data.product_price_c ?? null;
-      if (data.creditor_code !== undefined) esFields.creditor_code = data.creditor_code ?? null;
+      if (data.product_name !== undefined)
+        esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameEN !== undefined)
+        esFields.pro_nameEN = data.product_nameEN ?? null;
+      if (data.product_nameSale !== undefined)
+        esFields.pro_nameSale = data.product_nameSale ?? null;
+      if (data.product_genericname !== undefined)
+        esFields.pro_genericname = data.product_genericname ?? null;
+      if (data.product_keysearch !== undefined)
+        esFields.pro_keysearch = data.product_keysearch ?? null;
+      if (data.product_barcode !== undefined)
+        esFields.pro_barcode1 = data.product_barcode ?? null;
+      if (data.product_barcode2 !== undefined)
+        esFields.pro_barcode2 = data.product_barcode2 ?? null;
+      if (data.product_barcode3 !== undefined)
+        esFields.pro_barcode3 = data.product_barcode3 ?? null;
+      if (data.product_price_a !== undefined)
+        esFields.pro_priceA = data.product_price_a ?? null;
+      if (data.product_price_b !== undefined)
+        esFields.pro_priceB = data.product_price_b ?? null;
+      if (data.product_price_c !== undefined)
+        esFields.pro_priceC = data.product_price_c ?? null;
+      if (data.creditor_code !== undefined)
+        esFields.creditor_code = data.creditor_code ?? null;
 
       if (Object.keys(esFields).length > 0) {
         void this.elasticsearchService

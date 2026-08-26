@@ -1749,7 +1749,14 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/add')
-  async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
+  async addProductFree(
+    @Body()
+    data: {
+      pro_code: string;
+      pro_point: number;
+      pro_redeem_display_quantity?: number;
+    },
+  ) {
     return await this.fixFreeService.addProductFree(data);
   }
 
@@ -1761,8 +1768,24 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/edit')
-  async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
-    return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
+  async editProductFree(
+    @Body()
+    data: {
+      pro_code: string;
+      pro_point: number;
+      pro_redeem_display_quantity?: number;
+    },
+  ) {
+    return await this.fixFreeService.editProduct(data.pro_code, {
+      pro_point: data.pro_point,
+      pro_redeem_display_quantity: data.pro_redeem_display_quantity,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/reorder')
+  async reorderProductFree(@Body() data: { pro_codes: string[] }) {
+    return await this.fixFreeService.reorderProducts(data.pro_codes);
   }
 
   // @Get('/ip')
@@ -2038,6 +2061,11 @@ export class AppController {
       pro_name: string;
       pro_point: number;
       pro_stock: number;
+      pro_supplier: string;
+      pro_free: boolean;
+      pro_redeem_display_quantity: number;
+      pro_redeem_rank: number | null;
+      source: 'pro_free' | 'supplier_00';
       is_visible: boolean;
     }[]
   > {
