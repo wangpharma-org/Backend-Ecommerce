@@ -70,44 +70,40 @@ export class OrderStatusV2Service {
       'https://warehouse.wangpharma.com';
   }
 
-  // ECWC-398/406: รายการ order พร้อม filter ช่วงวันที่ — endpoint ใหม่ ไม่แตะ AllOrderByMember เดิม
-  // ไม่ระบุช่วงวันที่มา = default โชว์เฉพาะ "วันล่าสุด" ที่มีออเดอร์เท่านั้น ไม่ใช่ทั้งหมด
+  // ECWC-398/406: รายการ order พร้อม filter วันที่ (เลือกได้ทีละวัน) — endpoint ใหม่ ไม่แตะ AllOrderByMember เดิม
+  // ไม่ระบุวันที่มา = default โชว์ 10 รายการล่าสุด (ไม่จำกัดวัน)
   async getOrderList(
     mem_code: string,
     dateFrom?: string,
     dateTo?: string,
   ): Promise<EcomOrderListV2Res> {
     try {
-      let effectiveDateFrom = dateFrom;
-      let effectiveDateTo = dateTo;
-
-      if (!dateFrom && !dateTo) {
-        const latest = await this.shoppingHeadRepo
-          .createQueryBuilder('head')
-          .select('DATE(MAX(head.soh_datetime))', 'latestDate')
-          .where('head.mem_code = :mem_code', { mem_code })
-          .getRawOne<{ latestDate: string | null }>();
-
-        if (latest?.latestDate) {
-          effectiveDateFrom = `${latest.latestDate} 00:00:00`;
-          effectiveDateTo = `${latest.latestDate} 23:59:59`;
-        }
-      }
-
       const query = this.shoppingHeadRepo
         .createQueryBuilder('head')
         .leftJoin('head.details', 'order')
         .leftJoin('order.product', 'product')
         .where('head.mem_code = :mem_code', { mem_code });
 
-      if (effectiveDateFrom) {
-        query.andWhere('head.soh_datetime >= :dateFrom', {
-          dateFrom: effectiveDateFrom,
-        });
+      if (dateFrom) {
+        query.andWhere('head.soh_datetime >= :dateFrom', { dateFrom });
       }
-      if (effectiveDateTo) {
-        query.andWhere('head.soh_datetime <= :dateTo', {
-          dateTo: effectiveDateTo,
+      if (dateTo) {
+        query.andWhere('head.soh_datetime <= :dateTo', { dateTo });
+      }
+
+      if (!dateFrom && !dateTo) {
+        // LIMIT ตรงๆ ใช้กับ query ที่ join แบบ one-to-many ไม่ได้ (จำกัดแค่จำนวน row
+        // ที่ join ออกมา ไม่ใช่จำนวน head) ต้องหา 10 sh_running ล่าสุดแยกก่อน
+        const recentHeads = await this.shoppingHeadRepo
+          .createQueryBuilder('head')
+          .where('head.mem_code = :mem_code', { mem_code })
+          .select(['head.soh_running'])
+          .orderBy('head.soh_datetime', 'DESC')
+          .limit(10)
+          .getMany();
+        if (recentHeads.length === 0) return [];
+        query.andWhere('head.soh_running IN (:...recentRunnings)', {
+          recentRunnings: recentHeads.map((h) => h.soh_running),
         });
       }
 
