@@ -89,6 +89,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
+import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
@@ -160,6 +161,7 @@ export class AppController {
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
+    private readonly orderStatusV2Service: OrderStatusV2Service,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
@@ -876,6 +878,43 @@ export class AppController {
       });
     }
     return result;
+  }
+
+  // ECWC-398/406: เหมือน all-order-member เดิม แต่รองรับ filter ช่วงวันที่ — endpoint ใหม่ ไม่แก้ของเดิม
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-list/:memCode')
+  async AllOrderByMemberV2(
+    @Param('memCode') memCode: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+  ) {
+    const result = await this.orderStatusV2Service.getOrderList(
+      memCode,
+      date_from,
+      date_to,
+    );
+    for (const order of result) {
+      for (const orderItem of order.Newdetails) {
+        await this.imagedebugService.UpsercetImg({
+          pro_code: orderItem.product.pro_code,
+          imageUrl: orderItem.product.pro_imgmain,
+        });
+      }
+    }
+    return result;
+  }
+
+  // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-status/:soh_running')
+  async getOrderStatusV2(
+    @Param('soh_running') soh_running: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.orderStatusV2Service.getOrderStatus(
+      soh_running,
+      req.user.mem_code,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
