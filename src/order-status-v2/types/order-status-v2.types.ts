@@ -69,6 +69,8 @@ export interface EcomOrderStatusV2Item {
   so_price_unit: number | null;
   so_price_total: number | null;
   qc_price_total: number | null;
+  // so_already_qc = 'RT' ฝั่ง Order Picking Service → ลูกค้าจะไม่ได้สินค้าตัวนี้ (สินค้าหมดชั่วคราว)
+  is_rt: boolean;
 }
 
 export interface EcomOrderStatusV2Checkpoint {
