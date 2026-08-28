@@ -28,6 +28,8 @@ export interface EcomOrderListV2Order {
   details: number;
   totalSmallestUnit: EcomOrderListV2TotalSmallestUnit[];
   Newdetails: EcomOrderListV2Detail[];
+  status: EcomOrderTimelineStatus;
+  status_label: string;
 }
 
 export type EcomOrderListV2Res = EcomOrderListV2Order[];
@@ -41,7 +43,8 @@ export type EcomOrderTimelineStatus =
   | 'delivering' // กำลังส่งออเดอร์
   | 'done' // ขอบคุณค่ะสั่งออเดอร์ใหม่ได้ทันทีนะคะ
   | 'blocked' // ติดปัญหา QC ต้องติดต่อร้าน
-  | 'returned'; // ตีกลับ
+  | 'returned' // ตีกลับ
+  | 'cancelled'; // ลูกค้ายกเลิก
 
 export const ECOM_ORDER_TIMELINE_LABEL: Record<EcomOrderTimelineStatus, string> = {
   opened: 'เปิดบิล',
@@ -52,6 +55,7 @@ export const ECOM_ORDER_TIMELINE_LABEL: Record<EcomOrderTimelineStatus, string> 
   done: 'ขอบคุณค่ะสั่งออเดอร์ใหม่ได้ทันทีนะคะ',
   blocked: 'ออเดอร์ติดปัญหา กรุณาติดต่อร้านค้า',
   returned: 'จัดส่งไม่สำเร็จ (ตีกลับ)',
+  cancelled: 'ยกเลิกออเดอร์แล้ว',
 };
 
 export interface EcomOrderStatusV2Item {

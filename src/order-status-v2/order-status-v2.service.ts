@@ -40,6 +40,9 @@ interface LogisticTrackingV2Res {
   evidence: EcomOrderStatusV2Evidence | null;
 }
 
+type PickingBatchStatus = 'picking' | 'checking' | 'ready' | 'blocked';
+type DeliveryBatchStatus = 'DELIVERING' | 'DONE' | 'BACK' | 'CANCELLED';
+
 @Injectable()
 export class OrderStatusV2Service {
   private readonly logger = new Logger(OrderStatusV2Service.name);
@@ -65,23 +68,44 @@ export class OrderStatusV2Service {
   }
 
   // ECWC-398/406: รายการ order พร้อม filter ช่วงวันที่ — endpoint ใหม่ ไม่แตะ AllOrderByMember เดิม
+  // ไม่ระบุช่วงวันที่มา = default โชว์เฉพาะ "วันล่าสุด" ที่มีออเดอร์เท่านั้น ไม่ใช่ทั้งหมด
   async getOrderList(
     mem_code: string,
     dateFrom?: string,
     dateTo?: string,
   ): Promise<EcomOrderListV2Res> {
     try {
+      let effectiveDateFrom = dateFrom;
+      let effectiveDateTo = dateTo;
+
+      if (!dateFrom && !dateTo) {
+        const latest = await this.shoppingHeadRepo
+          .createQueryBuilder('head')
+          .select('DATE(MAX(head.soh_datetime))', 'latestDate')
+          .where('head.mem_code = :mem_code', { mem_code })
+          .getRawOne<{ latestDate: string | null }>();
+
+        if (latest?.latestDate) {
+          effectiveDateFrom = `${latest.latestDate} 00:00:00`;
+          effectiveDateTo = `${latest.latestDate} 23:59:59`;
+        }
+      }
+
       const query = this.shoppingHeadRepo
         .createQueryBuilder('head')
         .leftJoin('head.details', 'order')
         .leftJoin('order.product', 'product')
         .where('head.mem_code = :mem_code', { mem_code });
 
-      if (dateFrom) {
-        query.andWhere('head.soh_datetime >= :dateFrom', { dateFrom });
+      if (effectiveDateFrom) {
+        query.andWhere('head.soh_datetime >= :dateFrom', {
+          dateFrom: effectiveDateFrom,
+        });
       }
-      if (dateTo) {
-        query.andWhere('head.soh_datetime <= :dateTo', { dateTo });
+      if (effectiveDateTo) {
+        query.andWhere('head.soh_datetime <= :dateTo', {
+          dateTo: effectiveDateTo,
+        });
       }
 
       const result = await query
@@ -99,60 +123,78 @@ export class OrderStatusV2Service {
         .orderBy('head.soh_datetime', 'DESC')
         .getMany();
 
-      return await Promise.all(
-        result.map(async (item) => {
-          const groupedDetails: Record<
-            string,
-            {
-              pro_code: string;
-              product: { pro_code: string; pro_imgmain: string };
-              items: { spo_id: number; spo_qty: number; spo_unit: string }[];
+      const shRunnings = result.map((item) => item.soh_running);
+
+      const [orders, pickingBatch, deliveryBatch] = await Promise.all([
+        Promise.all(
+          result.map(async (item) => {
+            const groupedDetails: Record<
+              string,
+              {
+                pro_code: string;
+                product: { pro_code: string; pro_imgmain: string };
+                items: { spo_id: number; spo_qty: number; spo_unit: string }[];
+              }
+            > = {};
+
+            for (const detail of item.details) {
+              const proCode = detail.product.pro_code;
+              if (!groupedDetails[proCode]) {
+                groupedDetails[proCode] = {
+                  pro_code: proCode,
+                  product: detail.product,
+                  items: [],
+                };
+              }
+              groupedDetails[proCode].items.push({
+                spo_id: detail.spo_id,
+                spo_qty: detail.spo_qty,
+                spo_unit: detail.spo_unit,
+              });
             }
-          > = {};
 
-          for (const detail of item.details) {
-            const proCode = detail.product.pro_code;
-            if (!groupedDetails[proCode]) {
-              groupedDetails[proCode] = {
-                pro_code: proCode,
-                product: detail.product,
-                items: [],
-              };
-            }
-            groupedDetails[proCode].items.push({
-              spo_id: detail.spo_id,
-              spo_qty: detail.spo_qty,
-              spo_unit: detail.spo_unit,
-            });
-          }
-
-          const totalSmallestUnit = await Promise.all(
-            Object.values(groupedDetails).map((group) => {
-              const orderItems = group.items.map((line) => ({
-                unit: line.spo_unit,
-                quantity: parseFloat(String(line.spo_qty)),
-                pro_code: group.pro_code,
-              }));
-              return this.productService.calculateSmallestUnit(orderItems);
-            }),
-          );
-
-          return {
-            soh_running: item.soh_running,
-            soh_datetime: item.soh_datetime,
-            soh_sumprice: item.soh_sumprice,
-            soh_coin_recieve: item.soh_coin_recieve,
-            details: item.details.length,
-            totalSmallestUnit: Object.values(groupedDetails).map(
-              (group, index) => ({
-                pro_code: group.pro_code,
-                totalSmallestUnit: totalSmallestUnit[index],
+            const totalSmallestUnit = await Promise.all(
+              Object.values(groupedDetails).map((group) => {
+                const orderItems = group.items.map((line) => ({
+                  unit: line.spo_unit,
+                  quantity: parseFloat(String(line.spo_qty)),
+                  pro_code: group.pro_code,
+                }));
+                return this.productService.calculateSmallestUnit(orderItems);
               }),
-            ),
-            Newdetails: Object.values(groupedDetails),
-          };
-        }),
-      );
+            );
+
+            return {
+              soh_running: item.soh_running,
+              soh_datetime: item.soh_datetime,
+              soh_sumprice: item.soh_sumprice,
+              soh_coin_recieve: item.soh_coin_recieve,
+              details: item.details.length,
+              totalSmallestUnit: Object.values(groupedDetails).map(
+                (group, index) => ({
+                  pro_code: group.pro_code,
+                  totalSmallestUnit: totalSmallestUnit[index],
+                }),
+              ),
+              Newdetails: Object.values(groupedDetails),
+            };
+          }),
+        ),
+        this.fetchPickingStatusBatch(shRunnings, mem_code),
+        this.fetchDeliveryStatusBatch(shRunnings, mem_code),
+      ]);
+
+      return orders.map((order) => {
+        const status = this.resolveStatusFromParts(
+          pickingBatch[order.soh_running] ?? null,
+          deliveryBatch[order.soh_running] ?? null,
+        );
+        return {
+          ...order,
+          status,
+          status_label: ECOM_ORDER_TIMELINE_LABEL[status],
+        };
+      });
     } catch (error: unknown) {
       this.logger.error('Error get order list v2', error);
       throw new Error('Error get order list v2');
@@ -210,15 +252,64 @@ export class OrderStatusV2Service {
     picking: OrderPickingStatusRes | null,
     delivery: LogisticTrackingV2Res | null,
   ): EcomOrderTimelineStatus {
-    if (!picking) return 'opened';
-    if (picking.status === 'blocked') return 'blocked';
-    if (picking.status === 'picking') return 'picking';
-    if (picking.status === 'checking') return 'checking';
-    // picking.status === 'ready' — QC ผ่านแล้ว รอ handoff ไป logistics
-    if (!delivery) return 'waiting_load';
-    if (delivery.status === 'DONE') return 'done';
-    if (delivery.status === 'BACK') return 'returned';
+    return this.resolveStatusFromParts(
+      picking?.status ?? null,
+      delivery?.status ?? null,
+    );
+  }
+
+  private resolveStatusFromParts(
+    pickingStatus: PickingBatchStatus | null,
+    deliveryStatus: DeliveryBatchStatus | null,
+  ): EcomOrderTimelineStatus {
+    if (!pickingStatus) return 'opened';
+    if (pickingStatus === 'blocked') return 'blocked';
+    if (pickingStatus === 'picking') return 'picking';
+    if (pickingStatus === 'checking') return 'checking';
+    // pickingStatus === 'ready' — QC ผ่านแล้ว รอ handoff ไป logistics
+    if (!deliveryStatus) return 'waiting_load';
+    if (deliveryStatus === 'DONE') return 'done';
+    if (deliveryStatus === 'BACK') return 'returned';
+    if (deliveryStatus === 'CANCELLED') return 'cancelled';
     return 'delivering';
+  }
+
+  private async fetchPickingStatusBatch(
+    sh_running: string[],
+    mem_code: string,
+  ): Promise<Record<string, PickingBatchStatus>> {
+    if (sh_running.length === 0) return {};
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<Record<string, PickingBatchStatus>>(
+          `${this.orderPickingUrl}/api/ecom/order-status/batch`,
+          { sh_running, mem_code },
+        ),
+      );
+      return response.data;
+    } catch (error: unknown) {
+      this.logger.error('Error fetch picking status batch', error);
+      return {};
+    }
+  }
+
+  private async fetchDeliveryStatusBatch(
+    sh_running: string[],
+    mem_code: string,
+  ): Promise<Record<string, DeliveryBatchStatus>> {
+    if (sh_running.length === 0) return {};
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<Record<string, DeliveryBatchStatus>>(
+          `${this.logisticUrl}/api/logistic/tracking/batch-by-bill`,
+          { sh_running, mem_code },
+        ),
+      );
+      return response.data;
+    } catch (error: unknown) {
+      this.logger.error('Error fetch delivery status batch', error);
+      return {};
+    }
   }
 
   private async fetchPickingStatus(
