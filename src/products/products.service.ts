@@ -44,6 +44,19 @@ export interface ProductEntityWithUnitEntity extends ProductEntity {
   pro_ratio3?: number;
 }
 
+type ProductKafkaPayload = ProductEntityWithUnitEntity & {
+  creditor_code?: string | null;
+};
+
+const toCreditorReference = (
+  creditorCode: string | null,
+): CreditorEntity | null => {
+  const normalizedCode = creditorCode?.trim();
+  return normalizedCode
+    ? ({ creditor_code: normalizedCode } as CreditorEntity)
+    : null;
+};
+
 // interface UpdateProductInput {
 //   pro_code: string;
 //   pro_name: string;
@@ -733,18 +746,10 @@ export class ProductsService {
     }
   }
 
-  async createProduct(
-    product: ProductEntity & {
-      pro_unit1?: string;
-      pro_unit2?: string;
-      pro_unit3?: string;
-      pro_ratio1?: number;
-      pro_ratio2?: number;
-      pro_ratio3?: number;
-    },
-  ) {
+  async createProduct(product: ProductKafkaPayload) {
     try {
       const {
+        creditor_code,
         pro_unit1,
         pro_unit2,
         pro_unit3,
@@ -756,6 +761,9 @@ export class ProductsService {
 
       const newProduct = this.productRepo.create({
         ...productData,
+        ...(creditor_code !== undefined && {
+          creditor: toCreditorReference(creditor_code),
+        }),
         pro_keysearch: Array.isArray(productData.pro_keysearch)
           ? (productData.pro_keysearch as string[]).join(',')
           : productData.pro_keysearch,
@@ -838,18 +846,11 @@ export class ProductsService {
     }
   }
 
-  async updateProduct(
-    product: ProductEntity & {
-      pro_unit1?: string;
-      pro_unit2?: string;
-      pro_unit3?: string;
-      pro_ratio1?: number;
-      pro_ratio2?: number;
-      pro_ratio3?: number;
-    },
-  ) {
+  async updateProduct(product: ProductKafkaPayload) {
     try {
       const {
+        pro_code,
+        creditor_code,
         pro_unit1,
         pro_unit2,
         pro_unit3,
@@ -859,15 +860,34 @@ export class ProductsService {
         ...productData
       } = product;
 
-      await this.productRepo.update(
-        { pro_code: product.pro_code },
-        {
-          ...productData,
+      const updateData: Partial<ProductEntity> = {
+        ...productData,
+        ...(productData.pro_keysearch !== undefined && {
           pro_keysearch: Array.isArray(productData.pro_keysearch)
             ? (productData.pro_keysearch as string[]).join(',')
             : productData.pro_keysearch,
-        },
-      );
+        }),
+      };
+      if (creditor_code !== undefined) {
+        updateData.creditor = toCreditorReference(creditor_code);
+      }
+
+      await this.productRepo.update({ pro_code }, updateData);
+
+      if (creditor_code !== undefined) {
+        const normalizedCreditorCode =
+          updateData.creditor?.creditor_code ?? null;
+        void this.elasticsearchService
+          .updateProductDoc(pro_code, {
+            creditor_code: normalizedCreditorCode,
+          })
+          .catch((err: unknown) =>
+            this.logger.error(
+              `Failed to sync creditor for product ${pro_code} in ES`,
+              err,
+            ),
+          );
+      }
 
       const hasUnitData =
         pro_unit1 !== undefined ||
@@ -2890,9 +2910,7 @@ export class ProductsService {
       if (data.product_lowest_stock !== undefined)
         productData.pro_lowest_stock = data.product_lowest_stock as number;
       if (data.creditor_code !== undefined)
-        productData.creditor = data.creditor_code
-          ? ({ creditor_code: data.creditor_code } as CreditorEntity)
-          : null;
+        productData.creditor = toCreditorReference(data.creditor_code);
       if (data.product_price_a !== undefined)
         productData.pro_priceA = data.product_price_a as number;
       if (data.product_price_b !== undefined)
