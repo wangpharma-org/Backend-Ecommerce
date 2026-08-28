@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
+import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { ProductsService } from '../products/products.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
@@ -52,6 +53,8 @@ export class OrderStatusV2Service {
   constructor(
     @InjectRepository(ShoppingHeadEntity)
     private readonly shoppingHeadRepo: Repository<ShoppingHeadEntity>,
+    @InjectRepository(ShoppingOrderEntity)
+    private readonly shoppingOrderRepo: Repository<ShoppingOrderEntity>,
     private readonly productService: ProductsService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -216,10 +219,14 @@ export class OrderStatusV2Service {
       throw new NotFoundException(`Order ${soh_running} not found`);
     }
 
-    const [picking, delivery] = await Promise.all([
+    const [pickingRaw, delivery] = await Promise.all([
       this.fetchPickingStatus(soh_running, mem_code),
       this.fetchDeliveryStatus(soh_running, mem_code),
     ]);
+
+    const picking = pickingRaw
+      ? await this.fillFallbackPrices(pickingRaw, soh_running)
+      : pickingRaw;
 
     const status = this.resolveTimelineStatus(picking, delivery);
 
@@ -245,6 +252,69 @@ export class OrderStatusV2Service {
             evidence: delivery.evidence,
           }
         : null,
+    };
+  }
+
+  // order-picking-service อาจไม่มีราคาให้ (โดยเฉพาะบิลเก่าที่ archive ไป
+  // shopping_order_backup ซึ่งไม่มีคอลัมน์ราคาเลย) — fallback ไปใช้ราคาที่
+  // ecommerce เก็บไว้เองตอน checkout (spo_price_unit/spo_total_decimal) แทน
+  private async fillFallbackPrices(
+    picking: OrderPickingStatusRes,
+    soh_running: string,
+  ): Promise<OrderPickingStatusRes> {
+    const needsFallback =
+      picking.price_before_qc === null ||
+      picking.price_after_qc === null ||
+      picking.items.some(
+        (i) => i.so_price_total === null || i.so_price_unit === null,
+      );
+    if (!needsFallback) return picking;
+
+    const ecomOrders = await this.shoppingOrderRepo.find({
+      where: { orderHeader: { soh_running } },
+      relations: { product: true },
+    });
+    if (ecomOrders.length === 0) return picking;
+
+    const priceByProCode = new Map<string, { total: number; unit: number }>();
+    for (const o of ecomOrders) {
+      const total = Number(o.spo_total_decimal ?? 0);
+      const unit = Number(o.spo_price_unit ?? 0);
+      const existing = priceByProCode.get(o.pro_code);
+      if (existing) {
+        existing.total += total;
+      } else {
+        priceByProCode.set(o.pro_code, { total, unit });
+      }
+    }
+
+    const items = picking.items.map((item) => {
+      if (item.so_price_total !== null && item.so_price_unit !== null) {
+        return item;
+      }
+      const fallback = priceByProCode.get(item.so_procode);
+      if (!fallback) return item;
+
+      const priceTotal = item.so_price_total ?? fallback.total;
+      const priceUnit = item.so_price_unit ?? fallback.unit;
+      return {
+        ...item,
+        so_price_total: priceTotal,
+        so_price_unit: priceUnit,
+        qc_price_total: item.qc_price_total ?? (item.is_rt ? 0 : priceTotal),
+      };
+    });
+
+    const ecomOrderTotal = ecomOrders.reduce(
+      (sum, o) => sum + Number(o.spo_total_decimal ?? 0),
+      0,
+    );
+
+    return {
+      ...picking,
+      items,
+      price_before_qc: picking.price_before_qc ?? ecomOrderTotal,
+      price_after_qc: picking.price_after_qc ?? ecomOrderTotal,
     };
   }
 
