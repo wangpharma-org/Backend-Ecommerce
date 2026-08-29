@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
 import { CreateProductLabelRuleDto } from './dto/create-product-label-rule.dto';
 import { UpdateProductLabelRuleDto } from './dto/update-product-label-rule.dto';
+import { ProductLabelMatchType } from './product-label-match-type';
 import { ProductLabelRuleEntity } from './product-label-rule.entity';
+import { matchesProductLabelRule } from './product-label-rule.matcher';
 
 type LabelableProduct = {
   pro_name?: string | null;
@@ -29,6 +31,7 @@ export class ProductLabelRulesService {
       this.productLabelRuleRepository.create({
         label: data.label,
         keyword: data.keyword,
+        matchType: data.matchType ?? ProductLabelMatchType.CONTAINS,
         isActive: data.isActive ?? true,
       }),
     );
@@ -47,7 +50,9 @@ export class ProductLabelRulesService {
     await this.productLabelRuleRepository.delete(id);
   }
 
-  async attachToProducts<T extends LabelableProduct>(products: T[]): Promise<T[]> {
+  async attachToProducts<T extends LabelableProduct>(
+    products: T[],
+  ): Promise<T[]> {
     if (products.length === 0) {
       return products;
     }
@@ -55,13 +60,15 @@ export class ProductLabelRulesService {
     const rules = await this.productLabelRuleRepository.find({
       where: { isActive: true },
       order: { createdAt: 'ASC', id: 'ASC' },
-      select: { label: true, keyword: true },
+      select: { label: true, keyword: true, matchType: true },
     });
 
     products.forEach((product) => {
-      const productName = product.pro_name?.toLocaleLowerCase() ?? '';
+      const productName = product.pro_name ?? '';
       product.productLabels = rules
-        .filter((rule) => productName.includes(rule.keyword.toLocaleLowerCase()))
+        .filter((rule) =>
+          matchesProductLabelRule(productName, rule.keyword, rule.matchType),
+        )
         .map((rule) => rule.label);
     });
 
