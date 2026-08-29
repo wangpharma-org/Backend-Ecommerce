@@ -16,6 +16,7 @@ import { ElasticsearchModule } from 'src/elasticsearch/elasticsearch.module';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import { ProductLabelRulesModule } from 'src/product-label-rules/product-label-rules.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ProductUnitEntity } from './product-unit.entity';
     BackendModule,
     ImagedebugModule,
     ElasticsearchModule,
+    ProductLabelRulesModule,
     forwardRef(() => ShoppingCartModule),
   ],
   providers: [ProductsService],
