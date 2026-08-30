@@ -12,10 +12,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
-import {
-  canRedeemProduct,
-  getRedeemDisplayQuantity,
-} from '../products/redeem-product.criteria';
+import { RedeemProductSetService } from '../fix-free/redeem-product-set.service';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
@@ -70,6 +67,7 @@ export class ShoppingOrderService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
     private readonly happyHourService: HappyHourService,
+    private readonly redeemProductSetService: RedeemProductSetService,
     @Inject('ECOMMERCE_KAFKA_SERVICE')
     private readonly clientKafka: ClientKafka,
   ) {}
@@ -609,16 +607,18 @@ export class ShoppingOrderService {
                 );
               }
 
-              const listFree = await Promise.all(
-                data.listFree.map((order) =>
-                  manager.findOne(ProductEntity, {
-                    where: { pro_code: order.pro_code },
-                  }),
-                ),
+              const redeemSet =
+                await this.redeemProductSetService.getCustomerSet(manager);
+              const redeemSetByDisplayCode = new Map(
+                redeemSet
+                  .filter(
+                    (item) => !isL16 || item.displayProduct.pro_l16_only !== 1,
+                  )
+                  .map((item) => [item.displayProduct.pro_code, item]),
               );
-
-              const sumpoint = listFree.reduce((total, order, index) => {
-                if (!order || !canRedeemProduct(order)) {
+              const listFree = data.listFree.map((order) => {
+                const redeemItem = redeemSetByDisplayCode.get(order.pro_code);
+                if (!redeemItem) {
                   orderContext = {
                     memberCode: data.mem_code,
                     priceOption: data.priceOption,
@@ -635,20 +635,26 @@ export class ShoppingOrderService {
                   };
                   submitLogContext.push({
                     freebieError: 'Product is not redeemable',
-                    forProCode: data.listFree?.[index].pro_code,
+                    forProCode: order.pro_code,
                   });
                   throw new Error('Point Error');
                 }
-                const amount = data.listFree?.[index].amount ?? 0;
-                const displayQuantity = getRedeemDisplayQuantity(order);
+                return { order, redeemItem };
+              });
+
+              const sumpoint = listFree.reduce((total, item) => {
+                const { order, redeemItem } = item;
+                const amount = order.amount;
                 const requestedQuantity =
-                  requestedQuantityByProduct.get(order.pro_code) ?? 0;
-                if (requestedQuantity > displayQuantity) {
+                  requestedQuantityByProduct.get(
+                    redeemItem.displayProduct.pro_code,
+                  ) ?? 0;
+                if (requestedQuantity > redeemItem.displayQuantity) {
                   throw new BadRequestException(
-                    `สินค้า ${order.pro_code} เลือกได้ไม่เกิน ${displayQuantity} ชิ้น`,
+                    `สินค้า ${order.pro_code} เลือกได้ไม่เกิน ${redeemItem.displayQuantity} ชิ้น`,
                   );
                 }
-                const point = order?.pro_point ?? 0;
+                const point = Number(redeemItem.redeemProduct.pro_point ?? 0);
                 submitLogContext.push({
                   calculatingPoint: point * amount,
                   forProCode: order.pro_code,

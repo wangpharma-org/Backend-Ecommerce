@@ -37,6 +37,7 @@ import {
   REDEEM_PRODUCT_SUPPLIER,
   sortRedeemProductsByRank,
 } from './redeem-product.criteria';
+import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 
 interface OrderItem {
   pro_code: string;
@@ -109,6 +110,7 @@ export class ProductsService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    private readonly redeemProductSetService: RedeemProductSetService,
   ) {}
 
   private convertEnumToUnitName(
@@ -1869,55 +1871,38 @@ export class ProductsService {
 
   async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
     try {
-      let order: Record<string, 'ASC' | 'DESC'>;
-
-      switch (sort_by) {
-        case '1':
-          order = { pro_stock: 'DESC' };
-          break;
-        case '2':
-          order = { pro_stock: 'ASC' };
-          break;
-        case '3':
-          order = { pro_point: 'DESC' };
-          break;
-        case '4':
-          order = { pro_point: 'ASC' };
-          break;
-        case '5':
-          order = { pro_sale_amount: 'DESC' };
-          break;
-        default:
-          order = { pro_name: 'ASC' };
-      }
-
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      const data = await this.productRepo.find({
-        where: buildRedeemProductWhere(
-          isL16
-            ? {
-                pro_l16_only: In([0, null]),
-              }
-            : {},
-        ),
-        relations: ['units'],
-        select: {
-          pro_code: true,
-          pro_name: true,
-          pro_point: true,
-          pro_imgmain: true,
-          pro_sale_amount: true,
-          pro_stock: true,
-          pro_redeem_display_quantity: true,
-          pro_redeem_rank: true,
-        },
-        order,
-      });
+      const setItems = await this.redeemProductSetService.getCustomerSet();
+      const products = setItems
+        .filter((item) => !isL16 || item.displayProduct.pro_l16_only !== 1)
+        .map((item) => ({
+          ...item.displayProduct,
+          pro_point: Number(item.redeemProduct.pro_point ?? 0),
+          pro_redeem_display_quantity: item.displayQuantity,
+          redeem_main_code: item.redeemProduct.pro_code,
+        }));
 
-      return sortRedeemProductsByRank(data).map((product) => ({
-        ...product,
-        pro_redeem_display_quantity: getRedeemDisplayQuantity(product),
-      }));
+      const compare = (
+        left: (typeof products)[number],
+        right: (typeof products)[number],
+      ): number => {
+        switch (sort_by) {
+          case '1':
+            return right.pro_stock - left.pro_stock;
+          case '2':
+            return left.pro_stock - right.pro_stock;
+          case '3':
+            return Number(right.pro_point) - Number(left.pro_point);
+          case '4':
+            return Number(left.pro_point) - Number(right.pro_point);
+          case '5':
+            return right.pro_sale_amount - left.pro_sale_amount;
+          default:
+            return 0;
+        }
+      };
+
+      return [...products].sort(compare);
     } catch (error) {
       this.logger.error('Error free products:', error);
       throw new Error('Error free products');

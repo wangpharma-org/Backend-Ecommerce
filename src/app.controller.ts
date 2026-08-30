@@ -1755,6 +1755,7 @@ export class AppController {
       pro_code: string;
       pro_point: number;
       pro_redeem_display_quantity?: number;
+      pin_to_set?: boolean;
     },
   ) {
     return await this.fixFreeService.addProductFree(data);
@@ -1786,6 +1787,33 @@ export class AppController {
   @Post('/ecom/product-free/reorder')
   async reorderProductFree(@Body() data: { pro_codes: string[] }) {
     return await this.fixFreeService.reorderProducts(data.pro_codes);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/clear-ranks')
+  async clearProductFreeRanks() {
+    return await this.fixFreeService.clearRanks();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/settings')
+  async updateProductFreeSettings(@Body() data: { display_limit: number }) {
+    return await this.fixFreeService.updateDisplayLimit(data.display_limit);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/backup')
+  async setProductFreeBackup(
+    @Body()
+    data: {
+      redeem_product_code: string;
+      backup_product_code: string | null;
+    },
+  ) {
+    return await this.fixFreeService.setBackup(
+      data.redeem_product_code,
+      data.backup_product_code,
+    );
   }
 
   // @Get('/ip')

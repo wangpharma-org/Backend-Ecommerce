@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   BadRequestException,
   Injectable,
@@ -8,11 +8,12 @@ import { ProductEntity } from 'src/products/products.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   buildRedeemCandidateWhere,
-  getRedeemDisplayQuantity,
-  isRedeemProductVisible,
   REDEEM_PRODUCT_SUPPLIER,
-  sortRedeemProductsByRank,
 } from 'src/products/redeem-product.criteria';
+import {
+  RedeemAdminOverview,
+  RedeemProductSetService,
+} from './redeem-product-set.service';
 
 export interface RedeemProductUpdate {
   pro_point: number;
@@ -24,6 +25,7 @@ export class FixFreeService {
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productEntity: Repository<ProductEntity>,
+    private readonly redeemProductSetService: RedeemProductSetService,
   ) {}
 
   private validatePoint(pro_point: number): void {
@@ -49,7 +51,7 @@ export class FixFreeService {
   }
 
   async addProductFree(
-    data: { pro_code: string } & RedeemProductUpdate,
+    data: { pro_code: string; pin_to_set?: boolean } & RedeemProductUpdate,
   ): Promise<void> {
     try {
       const product = await this.productEntity.findOne({
@@ -65,6 +67,18 @@ export class FixFreeService {
         data.pro_redeem_display_quantity ?? Math.max(0, product.pro_stock);
       this.validateDisplayQuantity(displayQuantity, product.pro_stock);
 
+      const maxRank = data.pin_to_set
+        ? Math.max(
+            0,
+            ...(
+              await this.productEntity.find({
+                where: buildRedeemCandidateWhere(),
+                select: { pro_redeem_rank: true },
+              })
+            ).map((candidate) => candidate.pro_redeem_rank ?? 0),
+          )
+        : null;
+
       await this.productEntity.update(
         {
           pro_code: data.pro_code,
@@ -73,6 +87,7 @@ export class FixFreeService {
           pro_free: true,
           pro_point: data.pro_point,
           pro_redeem_display_quantity: displayQuantity,
+          ...(maxRank === null ? {} : { pro_redeem_rank: maxRank + 1 }),
         },
       );
     } catch (error) {
@@ -98,6 +113,7 @@ export class FixFreeService {
           'สินค้าที่มาจาก supplier 00 ไม่สามารถลบออกจากรายการได้',
         );
       }
+      await this.redeemProductSetService.removeBackupForRedeemProduct(pro_code);
       await this.productEntity.update(
         {
           pro_code: pro_code,
@@ -159,6 +175,18 @@ export class FixFreeService {
     });
   }
 
+  async clearRanks(): Promise<void> {
+    const candidates = await this.productEntity.find({
+      where: buildRedeemCandidateWhere(),
+      select: { pro_code: true },
+    });
+    if (candidates.length === 0) return;
+    await this.productEntity.update(
+      { pro_code: In(candidates.map((candidate) => candidate.pro_code)) },
+      { pro_redeem_rank: null },
+    );
+  }
+
   async editProduct(
     pro_code: string,
     data: RedeemProductUpdate,
@@ -202,38 +230,21 @@ export class FixFreeService {
     }
   }
 
-  // หน้าแอดมิน — คืนสินค้ากลุ่มแลกแต้มครบทุกตัว แม้แต้มหรือสต็อกจะยังไม่พร้อม
-  // แล้วแนบ is_visible บอกว่าตอนนี้ลูกค้าเห็นไหม
-  async getAllProductFree() {
-    try {
-      const products = await this.productEntity.find({
-        where: buildRedeemCandidateWhere(),
-        select: {
-          pro_code: true,
-          pro_name: true,
-          pro_point: true,
-          pro_imgmain: true,
-          pro_stock: true,
-          pro_free: true,
-          pro_supplier: true,
-          pro_redeem_display_quantity: true,
-          pro_redeem_rank: true,
-        },
-        order: { pro_name: 'ASC' },
-      });
+  async getAllProductFree(): Promise<RedeemAdminOverview> {
+    return this.redeemProductSetService.getAdminOverview();
+  }
 
-      return sortRedeemProductsByRank(products).map((product) => ({
-        ...product,
-        pro_point: Number(product.pro_point ?? 0),
-        pro_redeem_display_quantity: getRedeemDisplayQuantity(product),
-        source:
-          product.pro_supplier === REDEEM_PRODUCT_SUPPLIER
-            ? 'supplier_00'
-            : 'pro_free',
-        is_visible: isRedeemProductVisible(product),
-      }));
-    } catch {
-      throw new Error('Something Error get All Product Free');
-    }
+  async updateDisplayLimit(displayLimit: number): Promise<void> {
+    await this.redeemProductSetService.updateDisplayLimit(displayLimit);
+  }
+
+  async setBackup(
+    redeemProductCode: string,
+    backupProductCode: string | null,
+  ): Promise<void> {
+    await this.redeemProductSetService.setBackup(
+      redeemProductCode,
+      backupProductCode,
+    );
   }
 }
