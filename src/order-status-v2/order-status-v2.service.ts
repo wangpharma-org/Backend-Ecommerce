@@ -306,11 +306,21 @@ export class OrderStatusV2Service {
       0,
     );
 
+    // คำนวณยอดใหม่จาก items หลังเติม fallback แล้ว — ห้ามใช้ picking.price_before_qc/
+    // price_after_qc เดิมต่อ เพราะเป็นยอดที่ order-picking-service sum มาก่อนเติม fallback
+    // (รายการที่ตอนนั้นราคายัง null จะถูกนับเป็น 0 ปนอยู่ในยอดเดิม ทำให้ยอดขาดไปโดยไม่รู้ตัว)
+    const price_before_qc = items.every((i) => i.so_price_total === null)
+      ? null
+      : items.reduce((sum, i) => sum + (i.so_price_total ?? 0), 0);
+    const price_after_qc = items.every((i) => i.qc_price_total === null)
+      ? null
+      : items.reduce((sum, i) => sum + (i.qc_price_total ?? 0), 0);
+
     return {
       ...picking,
       items,
-      price_before_qc: picking.price_before_qc ?? ecomOrderTotal,
-      price_after_qc: picking.price_after_qc ?? ecomOrderTotal,
+      price_before_qc: price_before_qc ?? ecomOrderTotal,
+      price_after_qc: price_after_qc ?? ecomOrderTotal,
     };
   }
 
