@@ -2869,8 +2869,17 @@ export class ProductsService {
         }
       }
 
-      if (data.product_name !== undefined)
+      if (data.product_nameTH !== undefined) {
+        const productNameTH = data.product_nameTH?.trim() || null;
+        productData.pro_nameTH = productNameTH;
+        if (productNameTH) {
+          productData.pro_name = productNameTH;
+        } else if (data.product_name !== undefined) {
+          productData.pro_name = data.product_name;
+        }
+      } else if (data.product_name !== undefined) {
         productData.pro_name = data.product_name;
+      }
       if (data.product_nameEN !== undefined)
         productData.pro_nameEN = data.product_nameEN as string;
       if (data.product_nameSale !== undefined)
@@ -2912,18 +2921,34 @@ export class ProductsService {
       );
 
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
-      if (data.product_name !== undefined) esFields.pro_name = data.product_name ?? null;
-      if (data.product_nameEN !== undefined) esFields.pro_nameEN = data.product_nameEN ?? null;
-      if (data.product_nameSale !== undefined) esFields.pro_nameSale = data.product_nameSale ?? null;
-      if (data.product_genericname !== undefined) esFields.pro_genericname = data.product_genericname ?? null;
-      if (data.product_keysearch !== undefined) esFields.pro_keysearch = data.product_keysearch ?? null;
-      if (data.product_barcode !== undefined) esFields.pro_barcode1 = data.product_barcode ?? null;
-      if (data.product_barcode2 !== undefined) esFields.pro_barcode2 = data.product_barcode2 ?? null;
-      if (data.product_barcode3 !== undefined) esFields.pro_barcode3 = data.product_barcode3 ?? null;
-      if (data.product_price_a !== undefined) esFields.pro_priceA = data.product_price_a ?? null;
-      if (data.product_price_b !== undefined) esFields.pro_priceB = data.product_price_b ?? null;
-      if (data.product_price_c !== undefined) esFields.pro_priceC = data.product_price_c ?? null;
-      if (data.creditor_code !== undefined) esFields.creditor_code = data.creditor_code ?? null;
+      if (data.product_name !== undefined)
+        esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameTH !== undefined) {
+        esFields.pro_nameTH = data.product_nameTH?.trim() || null;
+        if (esFields.pro_nameTH) esFields.pro_name = esFields.pro_nameTH;
+      }
+      if (data.product_nameEN !== undefined)
+        esFields.pro_nameEN = data.product_nameEN ?? null;
+      if (data.product_nameSale !== undefined)
+        esFields.pro_nameSale = data.product_nameSale ?? null;
+      if (data.product_genericname !== undefined)
+        esFields.pro_genericname = data.product_genericname ?? null;
+      if (data.product_keysearch !== undefined)
+        esFields.pro_keysearch = data.product_keysearch ?? null;
+      if (data.product_barcode !== undefined)
+        esFields.pro_barcode1 = data.product_barcode ?? null;
+      if (data.product_barcode2 !== undefined)
+        esFields.pro_barcode2 = data.product_barcode2 ?? null;
+      if (data.product_barcode3 !== undefined)
+        esFields.pro_barcode3 = data.product_barcode3 ?? null;
+      if (data.product_price_a !== undefined)
+        esFields.pro_priceA = data.product_price_a ?? null;
+      if (data.product_price_b !== undefined)
+        esFields.pro_priceB = data.product_price_b ?? null;
+      if (data.product_price_c !== undefined)
+        esFields.pro_priceC = data.product_price_c ?? null;
+      if (data.creditor_code !== undefined)
+        esFields.creditor_code = data.creditor_code ?? null;
 
       if (Object.keys(esFields).length > 0) {
         void this.elasticsearchService
