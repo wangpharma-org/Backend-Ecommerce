@@ -94,6 +94,7 @@ export interface EcomOrderStatusV2Res {
   status: EcomOrderTimelineStatus;
   status_label: string;
   picking: {
+    picking_time: string | null;
     picked_time: string | null;
     qc_time: string | null;
     price_before_qc: number | null;
@@ -101,9 +102,12 @@ export interface EcomOrderStatusV2Res {
     items: EcomOrderStatusV2Item[];
   } | null;
   delivery: {
+    store_name: string;
     driver_name: string | null;
     driver_tel: string | null;
     checkpoint: EcomOrderStatusV2Checkpoint | null;
+    store_latitude: string | null;
+    store_longitude: string | null;
     finished_at: string | null;
     evidence: EcomOrderStatusV2Evidence | null;
   } | null;
