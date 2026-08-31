@@ -78,6 +78,21 @@ interface ApiResponse {
   }[];
 }
 
+type L16VisibilityFilter = 'all' | 'hidden' | 'visible';
+
+interface ProductL16StatusQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  visibility?: L16VisibilityFilter;
+}
+
+export interface ProductL16Status {
+  pro_code: string;
+  pro_name: string;
+  pro_l16_only: number;
+}
+
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -2402,9 +2417,7 @@ export class ProductsService {
     }
   }
 
-  async getProductL16Status(): Promise<
-    { pro_code: string; pro_name: string; pro_l16_only: number }[]
-  > {
+  private createProductL16StatusQuery() {
     return this.productRepo
       .createQueryBuilder('product')
       .select(['product.pro_code', 'product.pro_name', 'product.pro_l16_only'])
@@ -2418,8 +2431,146 @@ export class ProductsService {
       .andWhere('product.pro_code NOT LIKE :p8', { p8: '@%' })
       .andWhere('product.pro_priceA > 0')
       .andWhere('product.pro_priceB > 0')
-      .andWhere('product.pro_priceC > 0')
-      .getMany();
+      .andWhere('product.pro_priceC > 0');
+  }
+
+  async getProductL16Status(): Promise<ProductL16Status[]> {
+    return this.createProductL16StatusQuery().getMany();
+  }
+
+  async getPaginatedProductL16Status(query: ProductL16StatusQuery): Promise<{
+    data: ProductL16Status[];
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 50));
+    const qb = this.createProductL16StatusQuery();
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) =>
+          where
+            .where('product.pro_code LIKE :search', { search })
+            .orWhere('product.pro_name LIKE :search', { search }),
+        ),
+      );
+    }
+
+    if (query.visibility === 'hidden') {
+      qb.andWhere('product.pro_l16_only = :hiddenStatus', {
+        hiddenStatus: 1,
+      });
+    } else if (query.visibility === 'visible') {
+      qb.andWhere('product.pro_l16_only = :visibleStatus', {
+        visibleStatus: 0,
+      });
+    }
+
+    const [data, total] = await qb
+      .orderBy('product.pro_code', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit),
+    };
+  }
+
+  async updateProductL16OnlyStatus(
+    products: { pro_code: string; status: number }[],
+  ): Promise<{ message: string; total: number }> {
+    const statusesByCode = new Map<string, number>();
+
+    for (const product of products) {
+      const proCode = String(product.pro_code ?? '').trim();
+      if (proCode.length > 0) {
+        statusesByCode.set(proCode, Number(product.status) === 1 ? 1 : 0);
+      }
+    }
+
+    if (statusesByCode.size === 0) {
+      throw new BadRequestException('ไม่พบรายการสินค้าที่ต้องการอัปเดต');
+    }
+
+    const productCodes = Array.from(statusesByCode.keys());
+    const existingCodes = new Set<string>();
+    const chunkSize = 1000;
+
+    for (let i = 0; i < productCodes.length; i += chunkSize) {
+      const productCodeChunk = productCodes.slice(i, i + chunkSize);
+      const foundProducts = await this.productRepo.find({
+        where: { pro_code: In(productCodeChunk) },
+        select: { pro_code: true },
+      });
+      for (const foundProduct of foundProducts) {
+        existingCodes.add(foundProduct.pro_code);
+      }
+    }
+
+    const missingCodes = productCodes.filter(
+      (productCode) => !existingCodes.has(productCode),
+    );
+    if (missingCodes.length > 0) {
+      throw new BadRequestException({
+        message: 'พบรหัสสินค้าที่ไม่อยู่ในระบบ',
+        missingCodes,
+        totalMissing: missingCodes.length,
+      });
+    }
+
+    const codesToHide = productCodes.filter(
+      (productCode) => statusesByCode.get(productCode) === 1,
+    );
+    const codesToShow = productCodes.filter(
+      (productCode) => statusesByCode.get(productCode) === 0,
+    );
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      if (codesToHide.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 1 })
+          .where('pro_code IN (:...codes)', { codes: codesToHide })
+          .execute();
+      }
+
+      if (codesToShow.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 0 })
+          .where('pro_code IN (:...codes)', { codes: codesToShow })
+          .execute();
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        message: 'L16 visibility updated',
+        total: productCodes.length,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        'Error updating L16 visibility from admin table:',
+        error,
+      );
+      throw new Error('Error updating L16 visibility');
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async keySearchProducts(mem_code?: string, mem_route?: string) {
@@ -2912,18 +3063,30 @@ export class ProductsService {
       );
 
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
-      if (data.product_name !== undefined) esFields.pro_name = data.product_name ?? null;
-      if (data.product_nameEN !== undefined) esFields.pro_nameEN = data.product_nameEN ?? null;
-      if (data.product_nameSale !== undefined) esFields.pro_nameSale = data.product_nameSale ?? null;
-      if (data.product_genericname !== undefined) esFields.pro_genericname = data.product_genericname ?? null;
-      if (data.product_keysearch !== undefined) esFields.pro_keysearch = data.product_keysearch ?? null;
-      if (data.product_barcode !== undefined) esFields.pro_barcode1 = data.product_barcode ?? null;
-      if (data.product_barcode2 !== undefined) esFields.pro_barcode2 = data.product_barcode2 ?? null;
-      if (data.product_barcode3 !== undefined) esFields.pro_barcode3 = data.product_barcode3 ?? null;
-      if (data.product_price_a !== undefined) esFields.pro_priceA = data.product_price_a ?? null;
-      if (data.product_price_b !== undefined) esFields.pro_priceB = data.product_price_b ?? null;
-      if (data.product_price_c !== undefined) esFields.pro_priceC = data.product_price_c ?? null;
-      if (data.creditor_code !== undefined) esFields.creditor_code = data.creditor_code ?? null;
+      if (data.product_name !== undefined)
+        esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameEN !== undefined)
+        esFields.pro_nameEN = data.product_nameEN ?? null;
+      if (data.product_nameSale !== undefined)
+        esFields.pro_nameSale = data.product_nameSale ?? null;
+      if (data.product_genericname !== undefined)
+        esFields.pro_genericname = data.product_genericname ?? null;
+      if (data.product_keysearch !== undefined)
+        esFields.pro_keysearch = data.product_keysearch ?? null;
+      if (data.product_barcode !== undefined)
+        esFields.pro_barcode1 = data.product_barcode ?? null;
+      if (data.product_barcode2 !== undefined)
+        esFields.pro_barcode2 = data.product_barcode2 ?? null;
+      if (data.product_barcode3 !== undefined)
+        esFields.pro_barcode3 = data.product_barcode3 ?? null;
+      if (data.product_price_a !== undefined)
+        esFields.pro_priceA = data.product_price_a ?? null;
+      if (data.product_price_b !== undefined)
+        esFields.pro_priceB = data.product_price_b ?? null;
+      if (data.product_price_c !== undefined)
+        esFields.pro_priceC = data.product_price_c ?? null;
+      if (data.creditor_code !== undefined)
+        esFields.creditor_code = data.creditor_code ?? null;
 
       if (Object.keys(esFields).length > 0) {
         void this.elasticsearchService
