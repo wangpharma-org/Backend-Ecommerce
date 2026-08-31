@@ -20,6 +20,7 @@ import {
 interface OrderPickingStatusRes {
   sh_running: string;
   status: 'picking' | 'checking' | 'ready' | 'blocked';
+  picking_time: string | null;
   picked_time: string | null;
   qc_time: string | null;
   items: EcomOrderStatusV2Item[];
@@ -29,6 +30,7 @@ interface OrderPickingStatusRes {
 
 interface LogisticTrackingV2Res {
   status: 'DELIVERING' | 'DONE' | 'BACK';
+  store_name: string;
   driver_name: string;
   driver_tel: string | null;
   finished_at: string | null;
@@ -38,6 +40,8 @@ interface LogisticTrackingV2Res {
     longitude: string;
     time: string | null;
   } | null;
+  store_latitude: string | null;
+  store_longitude: string | null;
   evidence: EcomOrderStatusV2Evidence | null;
 }
 
@@ -232,6 +236,7 @@ export class OrderStatusV2Service {
       status_label: ECOM_ORDER_TIMELINE_LABEL[status],
       picking: picking
         ? {
+            picking_time: picking.picking_time,
             picked_time: picking.picked_time,
             qc_time: picking.qc_time,
             price_before_qc: picking.price_before_qc,
@@ -241,9 +246,12 @@ export class OrderStatusV2Service {
         : null,
       delivery: delivery
         ? {
+            store_name: delivery.store_name,
             driver_name: delivery.driver_name || null,
             driver_tel: delivery.driver_tel,
             checkpoint: delivery.checkpoint,
+            store_latitude: delivery.store_latitude,
+            store_longitude: delivery.store_longitude,
             finished_at: delivery.finished_at,
             evidence: delivery.evidence,
           }
