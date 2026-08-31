@@ -247,4 +247,16 @@ export class FixFreeService {
       backupProductCode,
     );
   }
+
+  async updateDisplayStatus(
+    redeemProductCode: string,
+    isHidden: boolean,
+    isComingSoon: boolean,
+  ): Promise<void> {
+    await this.redeemProductSetService.updateDisplayStatus(
+      redeemProductCode,
+      isHidden,
+      isComingSoon,
+    );
+  }
 }

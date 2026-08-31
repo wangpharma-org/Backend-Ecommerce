@@ -612,7 +612,9 @@ export class ShoppingOrderService {
               const redeemSetByDisplayCode = new Map(
                 redeemSet
                   .filter(
-                    (item) => !isL16 || item.displayProduct.pro_l16_only !== 1,
+                    (item) =>
+                      item.isComingSoon !== true &&
+                      (!isL16 || item.displayProduct.pro_l16_only !== 1),
                   )
                   .map((item) => [item.displayProduct.pro_code, item]),
               );

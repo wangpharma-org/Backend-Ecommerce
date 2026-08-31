@@ -106,6 +106,14 @@ export class ProductEntity {
   @Column({ type: 'int', nullable: true, default: null })
   pro_redeem_rank!: number | null;
 
+  // ซ่อนเฉพาะสินค้าหลักจากหน้าแลกแต้ม โดยยังเก็บค่าตั้งค่า/สินค้าสำรองเดิมไว้
+  @Column({ default: false })
+  pro_redeem_hidden!: boolean;
+
+  // Coming Soon เป็นสถานะแยกจาก stock และมีลำดับสูงกว่าการแสดงสินค้าสำรอง
+  @Column({ default: false })
+  pro_redeem_coming_soon!: boolean;
+
   // '00' = สินค้าแลกแต้ม, '01' = สินค้าขายปกติ (ECWC-444)
   @Column({ length: 10, default: '01' })
   product_type!: string;

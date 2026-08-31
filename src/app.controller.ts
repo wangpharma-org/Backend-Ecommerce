@@ -164,6 +164,14 @@ export class AppController {
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
 
+  private requireRedeemAdmin(req: Request & { user: JwtPayload }): void {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException(
+        'You do not have permission to access this resource',
+      );
+    }
+  }
+
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
     return this.shoppingOrderService.sendDataToOldSystem(soh_running);
@@ -1739,7 +1747,8 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-free/all')
-  async getAllProductFree() {
+  async getAllProductFree(@Req() req: Request & { user: JwtPayload }) {
+    this.requireRedeemAdmin(req);
     try {
       return await this.fixFreeService.getAllProductFree();
     } catch {
@@ -1750,6 +1759,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/add')
   async addProductFree(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       pro_code: string;
@@ -1758,18 +1768,24 @@ export class AppController {
       pin_to_set?: boolean;
     },
   ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.addProductFree(data);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/product-free/delete')
-  async deleteProductFree(@Body() data: { pro_code: string }) {
+  async deleteProductFree(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_code: string },
+  ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.removeProductFree(data.pro_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/edit')
   async editProductFree(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       pro_code: string;
@@ -1777,6 +1793,7 @@ export class AppController {
       pro_redeem_display_quantity?: number;
     },
   ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.editProduct(data.pro_code, {
       pro_point: data.pro_point,
       pro_redeem_display_quantity: data.pro_redeem_display_quantity,
@@ -1785,34 +1802,64 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/reorder')
-  async reorderProductFree(@Body() data: { pro_codes: string[] }) {
+  async reorderProductFree(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_codes: string[] },
+  ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.reorderProducts(data.pro_codes);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/clear-ranks')
-  async clearProductFreeRanks() {
+  async clearProductFreeRanks(@Req() req: Request & { user: JwtPayload }) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.clearRanks();
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/settings')
-  async updateProductFreeSettings(@Body() data: { display_limit: number }) {
+  async updateProductFreeSettings(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { display_limit: number },
+  ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.updateDisplayLimit(data.display_limit);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/backup')
   async setProductFreeBackup(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       redeem_product_code: string;
       backup_product_code: string | null;
     },
   ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.setBackup(
       data.redeem_product_code,
       data.backup_product_code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/status')
+  async updateProductFreeStatus(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      redeem_product_code: string;
+      is_redeem_hidden: boolean;
+      is_redeem_coming_soon: boolean;
+    },
+  ) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.updateDisplayStatus(
+      data.redeem_product_code,
+      data.is_redeem_hidden,
+      data.is_redeem_coming_soon,
     );
   }
 

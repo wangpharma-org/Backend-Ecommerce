@@ -1880,6 +1880,7 @@ export class ProductsService {
           pro_point: Number(item.redeemProduct.pro_point ?? 0),
           pro_redeem_display_quantity: item.displayQuantity,
           redeem_main_code: item.redeemProduct.pro_code,
+          is_redeem_coming_soon: item.isComingSoon,
         }));
 
       const compare = (

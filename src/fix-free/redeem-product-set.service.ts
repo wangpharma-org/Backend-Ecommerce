@@ -14,6 +14,7 @@ export interface RedeemSetItem {
   redeemProduct: ProductEntity;
   displayProduct: ProductEntity;
   displayQuantity: number;
+  isComingSoon: boolean;
 }
 
 export interface RedeemProductBackupSummary {
@@ -21,6 +22,7 @@ export interface RedeemProductBackupSummary {
   pro_name: string | null;
   pro_imgmain: string | null;
   pro_stock: number;
+  pro_redeem_display_quantity: number | null;
 }
 
 export interface RedeemAdminProduct extends ProductEntity {
@@ -29,7 +31,7 @@ export interface RedeemAdminProduct extends ProductEntity {
   is_visible: boolean;
   is_in_set: boolean;
   display_order: number | null;
-  excluded_reason: 'no_point' | 'out_of_stock' | 'over_limit' | null;
+  excluded_reason: 'hidden' | 'no_point' | 'out_of_stock' | 'over_limit' | null;
 }
 
 export interface RedeemAdminOverview {
@@ -100,7 +102,10 @@ export class RedeemProductSetService {
   }
 
   private isAvailable(product: ProductEntity): boolean {
-    return getRedeemDisplayQuantity(product) > 0;
+    return (
+      product.pro_redeem_coming_soon !== true &&
+      getRedeemDisplayQuantity(product) > 0
+    );
   }
 
   async getDisplayLimit(manager?: EntityManager): Promise<number> {
@@ -154,6 +159,23 @@ export class RedeemProductSetService {
     for (const redeemProduct of this.sortCandidates(candidates)) {
       if (Number(redeemProduct.pro_point ?? 0) <= 0) continue;
 
+      // Coming Soon ต้องแสดงสินค้าหลักเสมอ แม้มี stock หรือสินค้าสำรองพร้อมอยู่
+      if (redeemProduct.pro_redeem_coming_soon === true) {
+        if (usedDisplayCodes.has(redeemProduct.pro_code)) continue;
+        selected.push({
+          redeemProduct,
+          displayProduct: redeemProduct,
+          displayQuantity: 0,
+          isComingSoon: true,
+        });
+        usedDisplayCodes.add(redeemProduct.pro_code);
+        if (selected.length === displayLimit) break;
+        continue;
+      }
+
+      // ซ่อนเฉพาะ main product: ไม่ใช้สินค้าสำรองของรายการที่ถูกซ่อน
+      if (redeemProduct.pro_redeem_hidden === true) continue;
+
       const backupCode = backupByPrimaryCode.get(redeemProduct.pro_code);
       const backupProduct = backupCode
         ? productByCode.get(backupCode)
@@ -171,6 +193,7 @@ export class RedeemProductSetService {
         redeemProduct,
         displayProduct,
         displayQuantity: getRedeemDisplayQuantity(displayProduct),
+        isComingSoon: false,
       });
       usedDisplayCodes.add(displayProduct.pro_code);
       if (selected.length === displayLimit) break;
@@ -193,6 +216,8 @@ export class RedeemProductSetService {
             pro_name: true,
             pro_imgmain: true,
             pro_stock: true,
+            pro_redeem_display_quantity: true,
+            pro_redeem_coming_soon: true,
           },
         })
       : [];
@@ -226,11 +251,13 @@ export class RedeemProductSetService {
           backupProduct !== undefined && this.isAvailable(backupProduct);
         const excludedReason = displayOrder
           ? null
-          : Number(product.pro_point ?? 0) <= 0
-            ? 'no_point'
-            : !this.isAvailable(product) && !hasAvailableBackup
-              ? 'out_of_stock'
-              : 'over_limit';
+          : product.pro_redeem_hidden === true
+            ? 'hidden'
+            : Number(product.pro_point ?? 0) <= 0
+              ? 'no_point'
+              : !this.isAvailable(product) && !hasAvailableBackup
+                ? 'out_of_stock'
+                : 'over_limit';
 
         return {
           ...product,
@@ -242,6 +269,8 @@ export class RedeemProductSetService {
                 pro_name: backupProduct.pro_name,
                 pro_imgmain: backupProduct.pro_imgmain,
                 pro_stock: backupProduct.pro_stock,
+                pro_redeem_display_quantity:
+                  backupProduct.pro_redeem_display_quantity,
               }
             : null,
           display_product: selectedItem
@@ -250,6 +279,8 @@ export class RedeemProductSetService {
                 pro_name: selectedItem.displayProduct.pro_name,
                 pro_imgmain: selectedItem.displayProduct.pro_imgmain,
                 pro_stock: selectedItem.displayProduct.pro_stock,
+                pro_redeem_display_quantity:
+                  selectedItem.displayProduct.pro_redeem_display_quantity,
               }
             : null,
           is_visible: displayOrder !== null,
@@ -291,6 +322,15 @@ export class RedeemProductSetService {
       throw new BadRequestException('ไม่พบสินค้าสำรอง');
     }
 
+    const backupOwner = await this.backupRepository.findOne({
+      where: { backupProductCode },
+    });
+    if (backupOwner && backupOwner.redeemProductCode !== redeemProductCode) {
+      throw new BadRequestException(
+        'สินค้าสำรองนี้ถูกกำหนดให้สินค้าหลักรายการอื่นแล้ว',
+      );
+    }
+
     await this.backupRepository.save({
       redeemProductCode,
       backupProductCode,
@@ -299,5 +339,31 @@ export class RedeemProductSetService {
 
   async removeBackupForRedeemProduct(redeemProductCode: string): Promise<void> {
     await this.backupRepository.delete({ redeemProductCode });
+  }
+
+  async updateDisplayStatus(
+    redeemProductCode: string,
+    isHidden: boolean,
+    isComingSoon: boolean,
+  ): Promise<void> {
+    if (typeof isHidden !== 'boolean' || typeof isComingSoon !== 'boolean') {
+      throw new BadRequestException('สถานะการแสดงผลไม่ถูกต้อง');
+    }
+
+    const product = await this.productRepository.findOne({
+      where: { pro_code: redeemProductCode },
+      select: { pro_code: true, pro_free: true, pro_supplier: true },
+    });
+    if (!product || !isRedeemProductType(product)) {
+      throw new BadRequestException('ไม่พบสินค้าหลักในรายการแลกแต้ม');
+    }
+
+    await this.productRepository.update(
+      { pro_code: redeemProductCode },
+      {
+        pro_redeem_hidden: isHidden,
+        pro_redeem_coming_soon: isComingSoon,
+      },
+    );
   }
 }
