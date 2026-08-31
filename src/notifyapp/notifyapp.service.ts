@@ -1,9 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
+import { In, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
+import { RefreshTokenEntity } from 'src/auth/refresh-token.entity';
 import { NotificationTokenEntity } from './notification-token.entity';
-import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
 type NotificationTokenEventType = 'upsert' | 'remove';
 
@@ -17,6 +24,9 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     private readonly shoppingOrderRepository: Repository<ShoppingOrderEntity>,
     @InjectRepository(NotificationTokenEntity)
     private readonly notificationTokenRepository: Repository<NotificationTokenEntity>,
+    @InjectRepository(RefreshTokenEntity)
+    private readonly refreshTokenRepository: Repository<RefreshTokenEntity>,
+    private readonly jwtService: JwtService,
   ) {
     const kafka = new Kafka({
       clientId: process.env.KAFKA_CLIENT_ID || 'notifyapp',
@@ -32,6 +42,159 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await this.producer.disconnect();
+  }
+
+  @Cron('30 1 * * *', { timeZone: 'Asia/Bangkok' })
+  async removeExpiredNotificationTokens(): Promise<void> {
+    const runStartedAt = new Date();
+
+    try {
+      const notificationTokens = await this.notificationTokenRepository.find({
+        where: { is_active: true },
+        select: {
+          id: true,
+          mem_code: true,
+          token: true,
+          updated_at: true,
+        },
+      });
+
+      if (notificationTokens.length === 0) {
+        return;
+      }
+
+      const memberCodes = [
+        ...new Set(notificationTokens.map(({ mem_code }) => mem_code)),
+      ];
+      const refreshTokens = await this.refreshTokenRepository.find({
+        where: { mem_code: In(memberCodes) },
+        select: {
+          id: true,
+          mem_code: true,
+          refresh_token: true,
+        },
+      });
+      const refreshTokensByMember =
+        this.groupRefreshTokensByMember(refreshTokens);
+
+      let deactivatedCount = 0;
+      let skippedWithValidRefreshCount = 0;
+      let skippedWithoutRefreshCount = 0;
+      let failedCount = 0;
+
+      for (const notificationToken of notificationTokens) {
+        const memberRefreshTokens = refreshTokensByMember.get(
+          notificationToken.mem_code,
+        );
+
+        if (!memberRefreshTokens || memberRefreshTokens.length === 0) {
+          skippedWithoutRefreshCount += 1;
+          continue;
+        }
+
+        if (
+          await this.hasValidRefreshToken(
+            notificationToken.mem_code,
+            memberRefreshTokens,
+          )
+        ) {
+          skippedWithValidRefreshCount += 1;
+          continue;
+        }
+
+        const claimedToken = await this.notificationTokenRepository.update(
+          {
+            id: notificationToken.id,
+            token: notificationToken.token,
+            is_active: true,
+            updated_at: LessThanOrEqual(runStartedAt),
+          },
+          {
+            is_active: false,
+            updated_at: new Date(),
+          },
+        );
+
+        if (!claimedToken.affected) {
+          continue;
+        }
+
+        try {
+          await this.sendTokenToKafka(
+            notificationToken.mem_code,
+            notificationToken.token,
+            'remove',
+          );
+          deactivatedCount += 1;
+        } catch (error: unknown) {
+          failedCount += 1;
+          await this.notificationTokenRepository.update(
+            {
+              id: notificationToken.id,
+              token: notificationToken.token,
+              is_active: false,
+            },
+            {
+              is_active: true,
+              updated_at: new Date(),
+            },
+          );
+          this.logger.error(
+            `Failed to publish expired notification-token removal for member ${notificationToken.mem_code}`,
+            error instanceof Error ? error.stack : String(error),
+          );
+        }
+      }
+
+      this.logger.log(
+        `Expired notification-token cleanup completed: deactivated=${deactivatedCount}, valid_refresh=${skippedWithValidRefreshCount}, no_refresh_record=${skippedWithoutRefreshCount}, failed=${failedCount}`,
+      );
+    } catch (error: unknown) {
+      this.logger.error(
+        'Expired notification-token cleanup failed',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  private groupRefreshTokensByMember(
+    refreshTokens: RefreshTokenEntity[],
+  ): Map<string, RefreshTokenEntity[]> {
+    const refreshTokensByMember = new Map<string, RefreshTokenEntity[]>();
+
+    for (const refreshToken of refreshTokens) {
+      const memberRefreshTokens = refreshTokensByMember.get(
+        refreshToken.mem_code,
+      );
+      if (memberRefreshTokens) {
+        memberRefreshTokens.push(refreshToken);
+      } else {
+        refreshTokensByMember.set(refreshToken.mem_code, [refreshToken]);
+      }
+    }
+
+    return refreshTokensByMember;
+  }
+
+  private async hasValidRefreshToken(
+    memCode: string,
+    refreshTokens: RefreshTokenEntity[],
+  ): Promise<boolean> {
+    for (const refreshToken of refreshTokens) {
+      try {
+        const payload = await this.jwtService.verifyAsync<{ mem_code: string }>(
+          refreshToken.refresh_token,
+          { secret: process.env.ACCESS_TOKEN_SECRET },
+        );
+        if (payload.mem_code === memCode) {
+          return true;
+        }
+      } catch {
+        // Invalid or expired refresh tokens are eligible for cleanup.
+      }
+    }
+
+    return false;
   }
 
   async getRTOrdersInTheLast3Days(
@@ -223,7 +386,7 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     mem_code: string,
     token: string,
     event_type: NotificationTokenEventType = 'upsert',
-  ) {
+  ): Promise<void> {
     const payload = {
       event_type,
       mem_code,
