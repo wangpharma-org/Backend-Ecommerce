@@ -1,5 +1,6 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
+  BadRequestException,
   BadGatewayException,
   Body,
   Controller,
@@ -337,6 +338,37 @@ export class AppController {
     } else {
       throw new Error('You not have Permission to Accesss');
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/product-l16/list')
+  async listProductL16Status(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('visibility') visibility?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You not have Permission to Accesss');
+    }
+
+    if (
+      visibility !== undefined &&
+      visibility !== 'all' &&
+      visibility !== 'hidden' &&
+      visibility !== 'visible'
+    ) {
+      throw new BadRequestException('สถานะตัวกรองไม่ถูกต้อง');
+    }
+
+    return this.productsService.getPaginatedProductL16Status({
+      page,
+      limit,
+      search,
+      visibility,
+    });
   }
 
   @UseGuards(JwtAuthGuard)

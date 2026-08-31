@@ -78,6 +78,21 @@ interface ApiResponse {
   }[];
 }
 
+type L16VisibilityFilter = 'all' | 'hidden' | 'visible';
+
+interface ProductL16StatusQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  visibility?: L16VisibilityFilter;
+}
+
+export interface ProductL16Status {
+  pro_code: string;
+  pro_name: string;
+  pro_l16_only: number;
+}
+
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -2402,9 +2417,7 @@ export class ProductsService {
     }
   }
 
-  async getProductL16Status(): Promise<
-    { pro_code: string; pro_name: string; pro_l16_only: number }[]
-  > {
+  private createProductL16StatusQuery() {
     return this.productRepo
       .createQueryBuilder('product')
       .select(['product.pro_code', 'product.pro_name', 'product.pro_l16_only'])
@@ -2418,8 +2431,58 @@ export class ProductsService {
       .andWhere('product.pro_code NOT LIKE :p8', { p8: '@%' })
       .andWhere('product.pro_priceA > 0')
       .andWhere('product.pro_priceB > 0')
-      .andWhere('product.pro_priceC > 0')
-      .getMany();
+      .andWhere('product.pro_priceC > 0');
+  }
+
+  async getProductL16Status(): Promise<ProductL16Status[]> {
+    return this.createProductL16StatusQuery().getMany();
+  }
+
+  async getPaginatedProductL16Status(query: ProductL16StatusQuery): Promise<{
+    data: ProductL16Status[];
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 50));
+    const qb = this.createProductL16StatusQuery();
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) =>
+          where
+            .where('product.pro_code LIKE :search', { search })
+            .orWhere('product.pro_name LIKE :search', { search }),
+        ),
+      );
+    }
+
+    if (query.visibility === 'hidden') {
+      qb.andWhere('product.pro_l16_only = :hiddenStatus', {
+        hiddenStatus: 1,
+      });
+    } else if (query.visibility === 'visible') {
+      qb.andWhere('product.pro_l16_only = :visibleStatus', {
+        visibleStatus: 0,
+      });
+    }
+
+    const [data, total] = await qb
+      .orderBy('product.pro_code', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit),
+    };
   }
 
   async updateProductL16OnlyStatus(
