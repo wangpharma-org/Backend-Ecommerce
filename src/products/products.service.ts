@@ -28,6 +28,16 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import {
+  applyRedeemProductFilter,
+  buildRedeemCandidateWhere,
+  buildRedeemProductWhere,
+  getRedeemDisplayQuantity,
+  isRedeemProductVisible,
+  REDEEM_PRODUCT_SUPPLIER,
+  sortRedeemProductsByRank,
+} from './redeem-product.criteria';
+import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 
 interface OrderItem {
   pro_code: string;
@@ -100,6 +110,7 @@ export class ProductsService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    private readonly redeemProductSetService: RedeemProductSetService,
   ) {}
 
   private convertEnumToUnitName(
@@ -1180,9 +1191,7 @@ export class ProductsService {
         .innerJoinAndSelect('product.units', 'units');
 
       if (data.category === 8) {
-        qb.where('product.pro_free = :free', { free: true })
-          .andWhere('product.pro_point > :point', { point: 0 })
-          .andWhere('product.pro_stock > :stock', { stock: 0 });
+        applyRedeemProductFilter(qb, 'product');
       } else {
         qb.where('product.pro_priceA != 0')
           .andWhere(
@@ -1862,53 +1871,49 @@ export class ProductsService {
 
   async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
     try {
-      let order: Record<string, 'ASC' | 'DESC'>;
-
-      switch (sort_by) {
-        case '1':
-          order = { pro_stock: 'DESC' };
-          break;
-        case '2':
-          order = { pro_stock: 'ASC' };
-          break;
-        case '3':
-          order = { pro_point: 'DESC' };
-          break;
-        case '4':
-          order = { pro_point: 'ASC' };
-          break;
-        case '5':
-          order = { pro_sale_amount: 'DESC' };
-          break;
-        default:
-          order = { pro_name: 'ASC' };
-      }
-
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      const data = await this.productRepo.find({
-        where: {
-          pro_free: true,
-          pro_stock: MoreThan(0),
-          pro_point: MoreThan(0),
-          ...(isL16
-            ? {
-                pro_l16_only: In([0, null]),
-              }
-            : {}),
-        },
-        relations: ['units'],
-        select: {
-          pro_code: true,
-          pro_name: true,
-          pro_point: true,
-          pro_imgmain: true,
-          pro_sale_amount: true,
-          pro_stock: true,
-        },
-        order,
-      });
+      const setItems = await this.redeemProductSetService.getCustomerSet();
+      const products = setItems
+        .filter((item) => !isL16 || item.displayProduct.pro_l16_only !== 1)
+        .map((item) => ({
+          ...item.displayProduct,
+          pro_point: Number(item.redeemProduct.pro_point ?? 0),
+          pro_redeem_display_quantity: item.displayQuantity,
+          redeem_main_code: item.redeemProduct.pro_code,
+          is_redeem_backup:
+            item.displayProduct.pro_code !== item.redeemProduct.pro_code,
+          is_redeem_coming_soon: item.isComingSoon,
+        }));
 
-      return data;
+      const compare = (
+        left: (typeof products)[number],
+        right: (typeof products)[number],
+      ): number => {
+        switch (sort_by) {
+          case '1':
+            return right.pro_stock - left.pro_stock;
+          case '2':
+            return left.pro_stock - right.pro_stock;
+          case '3':
+            return Number(right.pro_point) - Number(left.pro_point);
+          case '4':
+            return Number(left.pro_point) - Number(right.pro_point);
+          case '5':
+            return right.pro_sale_amount - left.pro_sale_amount;
+          default:
+            return 0;
+        }
+      };
+
+      const sortedProducts = [...products].sort(compare);
+      return [
+        ...sortedProducts.filter(
+          (product) => product.is_redeem_coming_soon !== true,
+        ),
+        ...sortedProducts.filter(
+          (product) => product.is_redeem_coming_soon === true,
+        ),
+      ];
     } catch (error) {
       this.logger.error('Error free products:', error);
       throw new Error('Error free products');
@@ -2482,17 +2487,50 @@ export class ProductsService {
     }
   }
 
+  // หน้าแอดมิน — คืนสินค้ากลุ่มแลกแต้มครบทุกตัว พร้อม is_visible บอกสถานะแสดงผล
   async findProductFree(): Promise<
-    { pro_code: string; pro_name: string; pro_point: number }[]
+    {
+      pro_code: string;
+      pro_name: string;
+      pro_point: number;
+      pro_stock: number;
+      pro_supplier: string;
+      pro_free: boolean;
+      pro_redeem_display_quantity: number;
+      pro_redeem_rank: number | null;
+      source: 'pro_free' | 'supplier_00';
+      is_visible: boolean;
+    }[]
   > {
     try {
       const products = await this.productRepo.find({
-        where: { pro_free: true },
+        where: buildRedeemCandidateWhere(),
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_point: true,
+          pro_stock: true,
+          pro_free: true,
+          pro_supplier: true,
+          pro_redeem_display_quantity: true,
+          pro_redeem_rank: true,
+        },
+        order: { pro_name: 'ASC' },
       });
-      return products.map((product) => ({
+      return sortRedeemProductsByRank(products).map((product) => ({
         pro_code: product.pro_code,
         pro_name: product.pro_name,
-        pro_point: product.pro_point,
+        pro_point: Number(product.pro_point ?? 0),
+        pro_stock: product.pro_stock,
+        pro_supplier: product.pro_supplier,
+        pro_free: product.pro_free,
+        pro_redeem_display_quantity: getRedeemDisplayQuantity(product),
+        pro_redeem_rank: product.pro_redeem_rank,
+        source:
+          product.pro_supplier === REDEEM_PRODUCT_SUPPLIER
+            ? 'supplier_00'
+            : 'pro_free',
+        is_visible: isRedeemProductVisible(product),
       }));
     } catch (error) {
       this.logger.error('Error finding free products:', error);
@@ -2912,18 +2950,30 @@ export class ProductsService {
       );
 
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
-      if (data.product_name !== undefined) esFields.pro_name = data.product_name ?? null;
-      if (data.product_nameEN !== undefined) esFields.pro_nameEN = data.product_nameEN ?? null;
-      if (data.product_nameSale !== undefined) esFields.pro_nameSale = data.product_nameSale ?? null;
-      if (data.product_genericname !== undefined) esFields.pro_genericname = data.product_genericname ?? null;
-      if (data.product_keysearch !== undefined) esFields.pro_keysearch = data.product_keysearch ?? null;
-      if (data.product_barcode !== undefined) esFields.pro_barcode1 = data.product_barcode ?? null;
-      if (data.product_barcode2 !== undefined) esFields.pro_barcode2 = data.product_barcode2 ?? null;
-      if (data.product_barcode3 !== undefined) esFields.pro_barcode3 = data.product_barcode3 ?? null;
-      if (data.product_price_a !== undefined) esFields.pro_priceA = data.product_price_a ?? null;
-      if (data.product_price_b !== undefined) esFields.pro_priceB = data.product_price_b ?? null;
-      if (data.product_price_c !== undefined) esFields.pro_priceC = data.product_price_c ?? null;
-      if (data.creditor_code !== undefined) esFields.creditor_code = data.creditor_code ?? null;
+      if (data.product_name !== undefined)
+        esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameEN !== undefined)
+        esFields.pro_nameEN = data.product_nameEN ?? null;
+      if (data.product_nameSale !== undefined)
+        esFields.pro_nameSale = data.product_nameSale ?? null;
+      if (data.product_genericname !== undefined)
+        esFields.pro_genericname = data.product_genericname ?? null;
+      if (data.product_keysearch !== undefined)
+        esFields.pro_keysearch = data.product_keysearch ?? null;
+      if (data.product_barcode !== undefined)
+        esFields.pro_barcode1 = data.product_barcode ?? null;
+      if (data.product_barcode2 !== undefined)
+        esFields.pro_barcode2 = data.product_barcode2 ?? null;
+      if (data.product_barcode3 !== undefined)
+        esFields.pro_barcode3 = data.product_barcode3 ?? null;
+      if (data.product_price_a !== undefined)
+        esFields.pro_priceA = data.product_price_a ?? null;
+      if (data.product_price_b !== undefined)
+        esFields.pro_priceB = data.product_price_b ?? null;
+      if (data.product_price_c !== undefined)
+        esFields.pro_priceC = data.product_price_c ?? null;
+      if (data.creditor_code !== undefined)
+        esFields.creditor_code = data.creditor_code ?? null;
 
       if (Object.keys(esFields).length > 0) {
         void this.elasticsearchService

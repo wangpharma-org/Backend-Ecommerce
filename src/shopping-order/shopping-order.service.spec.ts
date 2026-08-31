@@ -15,6 +15,7 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
+import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -55,20 +56,40 @@ describe('ShoppingOrderService — unit helpers', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ShoppingOrderService,
-        { provide: getRepositoryToken(ShoppingHeadEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ShoppingOrderEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ShoppingHeadEntity),
+          useValue: mockRepo(),
+        },
+        {
+          provide: getRepositoryToken(ShoppingOrderEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(FailedEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(ProductEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(SaleLogEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(PromotionRewardEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(PromotionRewardEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(UserEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(PromotionTierEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(PromotionTierEntity),
+          useValue: mockRepo(),
+        },
         { provide: ShoppingCartService, useValue: {} },
         { provide: HttpService, useValue: {} },
-        { provide: DataSource, useValue: { transaction: jest.fn(), createQueryRunner: jest.fn() } },
+        {
+          provide: DataSource,
+          useValue: { transaction: jest.fn(), createQueryRunner: jest.fn() },
+        },
         { provide: CompanyDayAnalyticService, useValue: {} },
         { provide: PromotionService, useValue: {} },
         { provide: HappyHourService, useValue: {} },
+        {
+          provide: RedeemProductSetService,
+          useValue: { getCustomerSet: jest.fn() },
+        },
+        { provide: 'ECOMMERCE_KAFKA_SERVICE', useValue: {} },
       ],
     }).compile();
 
@@ -83,27 +104,39 @@ describe('ShoppingOrderService — unit helpers', () => {
 
   describe('convertEnumToUnitName', () => {
     it('returns unit_name for level 1', () => {
-      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('returns unit_name for level 2', () => {
-      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('returns unit_name for level 3', () => {
-      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('accepts string enum "1"', () => {
-      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('accepts string enum "2"', () => {
-      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('accepts string enum "3"', () => {
-      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('returns empty string when units array is empty', () => {
@@ -116,9 +149,11 @@ describe('ShoppingOrderService — unit helpers', () => {
 
     it('falls back to string of enum when level not found', () => {
       // shopping-order: returns String(unitEnum) as fallback (not empty string)
-      expect((service as any).convertEnumToUnitName('2', [
-        { level: 1, unit_name: 'ชิ้น', ratio: 1 },
-      ])).toBe('2');
+      expect(
+        (service as any).convertEnumToUnitName('2', [
+          { level: 1, unit_name: 'ชิ้น', ratio: 1 },
+        ]),
+      ).toBe('2');
     });
   });
 
@@ -154,7 +189,9 @@ describe('ShoppingOrderService — unit helpers', () => {
     });
 
     it('returns 1 when unitEnum is undefined', () => {
-      expect((service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS)).toBe(1);
+      expect(
+        (service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS),
+      ).toBe(1);
     });
 
     it('handles ratio conversion: 1 ลัง = 144 ชิ้น correctly', () => {

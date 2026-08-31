@@ -12,6 +12,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
+import { RedeemProductSetService } from '../fix-free/redeem-product-set.service';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
@@ -66,6 +67,7 @@ export class ShoppingOrderService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
     private readonly happyHourService: HappyHourService,
+    private readonly redeemProductSetService: RedeemProductSetService,
     @Inject('ECOMMERCE_KAFKA_SERVICE')
     private readonly clientKafka: ClientKafka,
   ) {}
@@ -588,16 +590,37 @@ export class ShoppingOrderService {
 
           if (groupIndex === groupCartArray.length - 1) {
             if (data.listFree && data.listFree.length > 0) {
-              const listFree = await Promise.all(
-                data.listFree.map((order) =>
-                  manager.findOne(ProductEntity, {
-                    where: { pro_code: order.pro_code },
-                  }),
-                ),
-              );
+              const requestedQuantityByProduct = new Map<string, number>();
+              for (const requested of data.listFree) {
+                if (
+                  !Number.isInteger(requested.amount) ||
+                  requested.amount < 1
+                ) {
+                  throw new BadRequestException(
+                    'จำนวนสินค้าแลกแต้มต้องเป็นจำนวนเต็มมากกว่า 0',
+                  );
+                }
+                requestedQuantityByProduct.set(
+                  requested.pro_code,
+                  (requestedQuantityByProduct.get(requested.pro_code) ?? 0) +
+                    requested.amount,
+                );
+              }
 
-              const sumpoint = listFree.reduce((total, order, index) => {
-                if (!order?.pro_free) {
+              const redeemSet =
+                await this.redeemProductSetService.getCustomerSet(manager);
+              const redeemSetByDisplayCode = new Map(
+                redeemSet
+                  .filter(
+                    (item) =>
+                      item.isComingSoon !== true &&
+                      (!isL16 || item.displayProduct.pro_l16_only !== 1),
+                  )
+                  .map((item) => [item.displayProduct.pro_code, item]),
+              );
+              const listFree = data.listFree.map((order) => {
+                const redeemItem = redeemSetByDisplayCode.get(order.pro_code);
+                if (!redeemItem) {
                   orderContext = {
                     memberCode: data.mem_code,
                     priceOption: data.priceOption,
@@ -613,13 +636,27 @@ export class ShoppingOrderService {
                     })),
                   };
                   submitLogContext.push({
-                    freebieError: 'No pro_free defined',
-                    forProCode: data.listFree?.[index].pro_code,
+                    freebieError: 'Product is not redeemable',
+                    forProCode: order.pro_code,
                   });
                   throw new Error('Point Error');
                 }
-                const amount = data.listFree?.[index].amount ?? 0;
-                const point = order?.pro_point ?? 0;
+                return { order, redeemItem };
+              });
+
+              const sumpoint = listFree.reduce((total, item) => {
+                const { order, redeemItem } = item;
+                const amount = order.amount;
+                const requestedQuantity =
+                  requestedQuantityByProduct.get(
+                    redeemItem.displayProduct.pro_code,
+                  ) ?? 0;
+                if (requestedQuantity > redeemItem.displayQuantity) {
+                  throw new BadRequestException(
+                    `สินค้า ${order.pro_code} เลือกได้ไม่เกิน ${redeemItem.displayQuantity} ชิ้น`,
+                  );
+                }
+                const point = Number(redeemItem.redeemProduct.pro_point ?? 0);
                 submitLogContext.push({
                   calculatingPoint: point * amount,
                   forProCode: order.pro_code,
@@ -694,11 +731,11 @@ export class ShoppingOrderService {
 
           // สร้าง order items สำหรับ Happy Hour scope filtering
           const happyHourItems = orderSales.map((os) => ({
-            pro_code: os.pro_code!,
+            pro_code: os.pro_code,
             amount: Number(os.spo_total_decimal),
-            vendor_code: normalItems
-              .find((n) => n.pro_code === os.pro_code)
-              ?.product?.creditor?.creditor_code ?? undefined,
+            vendor_code:
+              normalItems.find((n) => n.pro_code === os.pro_code)?.product
+                ?.creditor?.creditor_code ?? undefined,
           }));
 
           submitLogContext.push({
@@ -711,8 +748,10 @@ export class ShoppingOrderService {
 
           // Happy Hour: คำนวณและบันทึก reward / excess discount
           let happyHourDiscount = 0;
-          const happyReward =
-            await this.happyHourService.calcHappyHourReward(currentGroupTotal, happyHourItems);
+          const happyReward = await this.happyHourService.calcHappyHourReward(
+            currentGroupTotal,
+            happyHourItems,
+          );
 
           if (happyReward) {
             submitLogContext.push({
@@ -736,7 +775,8 @@ export class ShoppingOrderService {
                   spo_unit: rewardEntry?.unit ?? 'ใบ',
                   spo_unit_enum: '1', // happy hour reward ใช้ smallest unit เสมอ
                   spo_qty:
-                    happyReward.numCards * (rewardEntry?.amount ?? happyReward.slot.reward_amount),
+                    happyReward.numCards *
+                    (rewardEntry?.amount ?? happyReward.slot.reward_amount),
                   spo_price_unit: 0,
                   spo_total_decimal: 0,
                   is_happy_hour: true,
@@ -876,6 +916,9 @@ export class ShoppingOrderService {
         await axios.post(this.slackUrl, payload);
       } catch (e) {
         this.logger.error('Failed to notify Slack', e);
+      }
+      if (error instanceof BadRequestException) {
+        throw error;
       }
       throw new Error('Failed to submit order. ' + error);
     }
