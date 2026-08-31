@@ -95,6 +95,34 @@ describe('RedeemProductSetService', () => {
     ]);
   });
 
+  it('puts Coming Soon after the redeem set without consuming its display limit', async () => {
+    settingsRepository.findOne.mockResolvedValue({ displayLimit: 1 });
+    const comingSoon = createProduct({
+      pro_code: 'COMING_SOON',
+      pro_point: 100,
+      pro_stock: 10,
+      pro_redeem_coming_soon: true,
+    });
+    const redeemable = createProduct({
+      pro_code: 'REDEEMABLE',
+      pro_point: 200,
+      pro_stock: 10,
+    });
+    productRepository.find.mockResolvedValue([comingSoon, redeemable]);
+    backupRepository.find.mockResolvedValue([]);
+
+    await expect(service.getCustomerSet()).resolves.toEqual([
+      expect.objectContaining({
+        redeemProduct: redeemable,
+        isComingSoon: false,
+      }),
+      expect.objectContaining({
+        redeemProduct: comingSoon,
+        isComingSoon: true,
+      }),
+    ]);
+  });
+
   it('shows the available backup when the non-Coming-Soon main product is out of stock', async () => {
     const main = createProduct({
       pro_code: 'MAIN',

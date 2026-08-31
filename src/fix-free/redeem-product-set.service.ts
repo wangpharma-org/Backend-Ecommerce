@@ -155,23 +155,25 @@ export class RedeemProductSetService {
     );
     const usedDisplayCodes = new Set<string>();
     const selected: RedeemSetItem[] = [];
+    const comingSoonProducts: RedeemSetItem[] = [];
 
     for (const redeemProduct of this.sortCandidates(candidates)) {
       if (Number(redeemProduct.pro_point ?? 0) <= 0) continue;
 
-      // Coming Soon ต้องแสดงสินค้าหลักเสมอ แม้มี stock หรือสินค้าสำรองพร้อมอยู่
+      // Coming Soon แยกออกจาก set หลัก จึงไม่กินจำนวนรายการที่ลูกค้าแลกได้
       if (redeemProduct.pro_redeem_coming_soon === true) {
         if (usedDisplayCodes.has(redeemProduct.pro_code)) continue;
-        selected.push({
+        comingSoonProducts.push({
           redeemProduct,
           displayProduct: redeemProduct,
           displayQuantity: 0,
           isComingSoon: true,
         });
         usedDisplayCodes.add(redeemProduct.pro_code);
-        if (selected.length === displayLimit) break;
         continue;
       }
+
+      if (selected.length >= displayLimit) continue;
 
       // ซ่อนเฉพาะ main product: ไม่ใช้สินค้าสำรองของรายการที่ถูกซ่อน
       if (redeemProduct.pro_redeem_hidden === true) continue;
@@ -196,10 +198,9 @@ export class RedeemProductSetService {
         isComingSoon: false,
       });
       usedDisplayCodes.add(displayProduct.pro_code);
-      if (selected.length === displayLimit) break;
     }
 
-    return selected;
+    return [...selected, ...comingSoonProducts];
   }
 
   async getAdminOverview(): Promise<RedeemAdminOverview> {
@@ -231,11 +232,17 @@ export class RedeemProductSetService {
       backupProducts.map((product) => [product.pro_code, product]),
     );
     const selected = await this.getCustomerSet();
+    let displayOrder = 0;
     const selectedByPrimaryCode = new Map(
-      selected.map((item, index) => [
-        item.redeemProduct.pro_code,
-        { displayOrder: index + 1, displayProduct: item.displayProduct },
-      ]),
+      selected
+        .filter((item) => item.isComingSoon !== true)
+        .map((item) => [
+          item.redeemProduct.pro_code,
+          {
+            displayOrder: (displayOrder += 1),
+            displayProduct: item.displayProduct,
+          },
+        ]),
     );
     const displayLimit = await this.getDisplayLimit();
 

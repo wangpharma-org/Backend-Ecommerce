@@ -1880,6 +1880,8 @@ export class ProductsService {
           pro_point: Number(item.redeemProduct.pro_point ?? 0),
           pro_redeem_display_quantity: item.displayQuantity,
           redeem_main_code: item.redeemProduct.pro_code,
+          is_redeem_backup:
+            item.displayProduct.pro_code !== item.redeemProduct.pro_code,
           is_redeem_coming_soon: item.isComingSoon,
         }));
 
@@ -1903,7 +1905,15 @@ export class ProductsService {
         }
       };
 
-      return [...products].sort(compare);
+      const sortedProducts = [...products].sort(compare);
+      return [
+        ...sortedProducts.filter(
+          (product) => product.is_redeem_coming_soon !== true,
+        ),
+        ...sortedProducts.filter(
+          (product) => product.is_redeem_coming_soon === true,
+        ),
+      ];
     } catch (error) {
       this.logger.error('Error free products:', error);
       throw new Error('Error free products');
