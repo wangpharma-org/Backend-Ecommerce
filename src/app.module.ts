@@ -56,6 +56,7 @@ import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
+import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 
 @Module({
   imports: [
@@ -125,6 +126,7 @@ import { DeliveryPreferenceModule } from './delivery-preference/delivery-prefere
     ElasticsearchModule,
     HappyHourModule,
     DeliveryPreferenceModule,
+    DhlTrackingModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
