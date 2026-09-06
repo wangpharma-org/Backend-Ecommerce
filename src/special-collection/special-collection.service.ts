@@ -24,6 +24,10 @@ import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import { UserEntity } from '../users/users.entity';
 import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
+import {
+  BundleSetService,
+  type PriceOption,
+} from '../bundle-set/bundle-set.service';
 
 /** ร้านค้าแบบย่อ สำหรับ picker ฝั่งแอดมิน */
 export interface ShopOption {
@@ -68,6 +72,7 @@ export class SpecialCollectionService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(BundleSetEntity)
     private readonly bundleSetRepo: Repository<BundleSetEntity>,
+    private readonly bundleSetService: BundleSetService,
   ) {}
 
   // ---------------------------------------------------------------- helpers
@@ -164,7 +169,10 @@ export class SpecialCollectionService {
     });
   }
 
-  async getCollection(collectionId: number): Promise<{
+  async getCollection(
+    collectionId: number,
+    option: PriceOption = 'C',
+  ): Promise<{
     collection: SpecialCollectionEntity;
     items: ResolvedCollectionItem[];
   }> {
@@ -181,7 +189,7 @@ export class SpecialCollectionService {
       order: { sort_order: 'ASC', item_id: 'ASC' },
     });
 
-    return { collection, items: await this.resolveItems(items) };
+    return { collection, items: await this.resolveItems(items, option) };
   }
 
   async createCollection(
@@ -385,6 +393,7 @@ export class SpecialCollectionService {
   /** ดึง payload ของทุก item แบบ batch ต่อชนิด — กัน N+1 */
   private async resolveItems(
     items: SpecialCollectionItemEntity[],
+    option: PriceOption,
   ): Promise<ResolvedCollectionItem[]> {
     if (items.length === 0) return [];
 
@@ -403,7 +412,7 @@ export class SpecialCollectionService {
         this.loadProducts(idsOf('product')),
         this.loadHotdeals(numericIds('hotdeal')),
         this.loadFlashsales(numericIds('flashsale')),
-        this.loadBundleSets(idsOf('bundle_set')),
+        this.loadBundleSets(idsOf('bundle_set'), option),
       ]);
 
     const lookup: Record<string, Map<string, unknown>> = {
@@ -526,7 +535,10 @@ export class SpecialCollectionService {
     return map;
   }
 
-  private async loadBundleSets(codes: string[]): Promise<Map<string, unknown>> {
+  private async loadBundleSets(
+    codes: string[],
+    option: PriceOption,
+  ): Promise<Map<string, unknown>> {
     const map = new Map<string, unknown>();
     if (codes.length === 0) return map;
 
@@ -534,7 +546,7 @@ export class SpecialCollectionService {
     const now = new Date();
     const rows = await this.bundleSetRepo
       .createQueryBuilder('bundle')
-      .leftJoinAndSelect('bundle.items', 'items')
+      .select('bundle.set_code')
       .where('bundle.set_code IN (:...codes)', { codes })
       .andWhere('bundle.status = :status', { status: true })
       .andWhere('(bundle.start_date IS NULL OR bundle.start_date <= :now)', {
@@ -542,9 +554,14 @@ export class SpecialCollectionService {
       })
       .andWhere('(bundle.end_date IS NULL OR bundle.end_date >= :now)', { now })
       .getMany();
-    for (const set of rows) {
-      map.set(set.set_code, set);
-    }
+
+    // ต้องคืน view ที่คำนวณแล้ว (ราคารวม/ส่วนลด/จำนวนชุดที่สั่งได้)
+    // ไม่ใช่ entity ดิบ ไม่งั้นหน้าบ้านไม่มีข้อมูลพอจะ render
+    // N+1 ยอมรับได้เพราะกระเช้าในคอลเลกชันหนึ่งมีไม่กี่ชุด
+    const views = await Promise.all(
+      rows.map((row) => this.bundleSetService.getSetView(row.set_code, option)),
+    );
+    views.forEach((view) => map.set(view.set_code, view));
     return map;
   }
 
@@ -597,7 +614,10 @@ export class SpecialCollectionService {
       .addOrderBy('collection.collection_id', 'ASC');
   }
 
-  async getForMember(memCode: string): Promise<{
+  async getForMember(
+    memCode: string,
+    option: PriceOption = 'C',
+  ): Promise<{
     collections: Array<{
       collection_id: number;
       name: string;
@@ -617,7 +637,7 @@ export class SpecialCollectionService {
       where: { collection_id: In(collections.map((c) => c.collection_id)) },
       order: { sort_order: 'ASC', item_id: 'ASC' },
     });
-    const resolved = await this.resolveItems(allItems);
+    const resolved = await this.resolveItems(allItems, option);
 
     const byCollection = new Map<number, ResolvedCollectionItem[]>();
     allItems.forEach((item, index) => {
@@ -647,8 +667,11 @@ export class SpecialCollectionService {
   }
 
   /** ตัวเลขบน badge ข้างไอคอนของขวัญ */
-  async getBadgeCount(memCode: string): Promise<{ count: number }> {
-    const { total_items } = await this.getForMember(memCode);
+  async getBadgeCount(
+    memCode: string,
+    option: PriceOption = 'C',
+  ): Promise<{ count: number }> {
+    const { total_items } = await this.getForMember(memCode, option);
     return { count: total_items };
   }
 }

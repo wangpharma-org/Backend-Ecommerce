@@ -16,6 +16,7 @@ import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
 import { AuthModule } from 'src/auth/auth.module';
 // JwtAuthGuard inject FeatureFlagsService — ต้อง import module นี้ ไม่งั้น guard สร้างไม่ได้ (500)
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
+import { BundleSetModule } from 'src/bundle-set/bundle-set.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
     ]),
     AuthModule,
     FeatureFlagsModule,
+    BundleSetModule,
   ],
   providers: [SpecialCollectionService],
   controllers: [

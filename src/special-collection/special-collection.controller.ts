@@ -27,6 +27,7 @@ interface JwtUser {
   username: string;
   mem_code: string;
   permission?: boolean;
+  price_option?: string;
 }
 
 /** หลังบ้าน — จัดคอลเลกชัน "ชุดสินค้าพิเศษ" */
@@ -63,8 +64,13 @@ export class SpecialCollectionController {
   }
 
   @Get(':collectionId')
-  getOne(@Param('collectionId', ParseIntPipe) collectionId: number) {
-    return this.specialCollectionService.getCollection(collectionId);
+  getOne(
+    @Param('collectionId', ParseIntPipe) collectionId: number,
+    @Req() req: { user: JwtUser },
+  ) {
+    const raw = (req.user.price_option ?? '').toUpperCase();
+    const option = raw === 'A' || raw === 'B' || raw === 'C' ? raw : 'C';
+    return this.specialCollectionService.getCollection(collectionId, option);
   }
 
   @Post()

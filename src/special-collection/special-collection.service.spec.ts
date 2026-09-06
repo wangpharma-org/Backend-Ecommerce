@@ -12,6 +12,7 @@ import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import { UserEntity } from '../users/users.entity';
 import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
+import { BundleSetService } from '../bundle-set/bundle-set.service';
 
 /**
  * SpecialCollectionService unit tests
@@ -55,6 +56,7 @@ describe('SpecialCollectionService', () => {
   let flashsaleRepo: ReturnType<typeof buildRepoMock>;
   let userRepo: ReturnType<typeof buildRepoMock>;
   let bundleSetRepo: ReturnType<typeof buildRepoMock>;
+  let bundleSetService: { getSetView: jest.Mock };
 
   beforeEach(async () => {
     collectionRepo = buildRepoMock();
@@ -67,6 +69,7 @@ describe('SpecialCollectionService', () => {
     flashsaleRepo = buildRepoMock();
     userRepo = buildRepoMock();
     bundleSetRepo = buildRepoMock();
+    bundleSetService = { getSetView: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -102,6 +105,7 @@ describe('SpecialCollectionService', () => {
           provide: getRepositoryToken(BundleSetEntity),
           useValue: bundleSetRepo,
         },
+        { provide: BundleSetService, useValue: bundleSetService },
       ],
     }).compile();
 
@@ -286,6 +290,47 @@ describe('SpecialCollectionService', () => {
       expect((first.payload as { pro_code: string }).pro_code).toBe('P-001');
       expect(second.ref_type).toBe('promotion');
       expect((second.payload as { promo_id: number }).promo_id).toBe(184);
+    });
+
+    it('กระเช้าต้องคืน view ที่คำนวณแล้ว ไม่ใช่ entity ดิบ (กันหน้าขาว)', async () => {
+      mockVisibleCollections([{ collection_id: 1, name: 'รวมโปร' }]);
+      itemRepo.find.mockResolvedValue([
+        buildItem({
+          item_id: 1,
+          ref_type: 'bundle_set',
+          ref_id: 'SET-DEMO-01',
+        }),
+      ]);
+      bundleSetRepo.createQueryBuilder.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([{ set_code: 'SET-DEMO-01' }]),
+      });
+      bundleSetService.getSetView.mockResolvedValue({
+        set_code: 'SET-DEMO-01',
+        set_name: 'กระเช้าทดสอบ',
+        price: 89,
+        list_total: 110,
+        savings: 21,
+        items: [],
+        gifts: [],
+        availability: { available_sets: 30, limiting_pro_code: 'P-001' },
+      });
+
+      const { collections } = await service.getForMember('CUST-00123', 'C');
+      const payload = collections[0].items[0].payload as {
+        availability?: { available_sets: number };
+        savings?: number;
+      };
+
+      // ฟิลด์พวกนี้มีเฉพาะใน view — ถ้าคืน entity ดิบจะ undefined แล้วหน้าบ้านพัง
+      expect(payload.availability?.available_sets).toBe(30);
+      expect(payload.savings).toBe(21);
+      expect(bundleSetService.getSetView).toHaveBeenCalledWith(
+        'SET-DEMO-01',
+        'C',
+      );
     });
 
     it('ตัดโปรที่หมดอายุ/ปิดอยู่ออก — query คืนค่าว่างจะได้ไม่โชว์ของกดไม่ได้', async () => {
