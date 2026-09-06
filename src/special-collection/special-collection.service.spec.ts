@@ -1,0 +1,275 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { SpecialCollectionService } from './special-collection.service';
+import { SpecialCollectionEntity } from './special-collection.entity';
+import { SpecialCollectionItemEntity } from './special-collection-item.entity';
+import { SpecialCollectionAudienceEntity } from './special-collection-audience.entity';
+import { PromotionEntity } from '../promotion/promotion.entity';
+import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
+import { ProductEntity } from '../products/products.entity';
+import { HotdealEntity } from '../hotdeal/hotdeal.entity';
+import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+
+/**
+ * SpecialCollectionService unit tests
+ * เน้นจุดที่พังเงียบได้: การ validate ref, ลำดับรายการ, และการกรองของที่ถูกลบ
+ */
+
+const buildRepoMock = () => ({
+  find: jest.fn(),
+  findOne: jest.fn(),
+  save: jest.fn(),
+  create: jest.fn((row: unknown) => row),
+  delete: jest.fn(),
+  update: jest.fn(),
+  softDelete: jest.fn(),
+  createQueryBuilder: jest.fn(),
+});
+
+const buildItem = (
+  overrides: Partial<SpecialCollectionItemEntity> = {},
+): SpecialCollectionItemEntity =>
+  ({
+    item_id: 1,
+    collection_id: 1,
+    ref_type: 'product',
+    ref_id: 'P-001',
+    title_override: null,
+    sort_order: 0,
+    created_at: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  }) as SpecialCollectionItemEntity;
+
+describe('SpecialCollectionService', () => {
+  let service: SpecialCollectionService;
+  let collectionRepo: ReturnType<typeof buildRepoMock>;
+  let itemRepo: ReturnType<typeof buildRepoMock>;
+  let audienceRepo: ReturnType<typeof buildRepoMock>;
+  let promotionRepo: ReturnType<typeof buildRepoMock>;
+  let tierRepo: ReturnType<typeof buildRepoMock>;
+  let productRepo: ReturnType<typeof buildRepoMock>;
+  let hotdealRepo: ReturnType<typeof buildRepoMock>;
+  let flashsaleRepo: ReturnType<typeof buildRepoMock>;
+
+  beforeEach(async () => {
+    collectionRepo = buildRepoMock();
+    itemRepo = buildRepoMock();
+    audienceRepo = buildRepoMock();
+    promotionRepo = buildRepoMock();
+    tierRepo = buildRepoMock();
+    productRepo = buildRepoMock();
+    hotdealRepo = buildRepoMock();
+    flashsaleRepo = buildRepoMock();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SpecialCollectionService,
+        {
+          provide: getRepositoryToken(SpecialCollectionEntity),
+          useValue: collectionRepo,
+        },
+        {
+          provide: getRepositoryToken(SpecialCollectionItemEntity),
+          useValue: itemRepo,
+        },
+        {
+          provide: getRepositoryToken(SpecialCollectionAudienceEntity),
+          useValue: audienceRepo,
+        },
+        {
+          provide: getRepositoryToken(PromotionEntity),
+          useValue: promotionRepo,
+        },
+        {
+          provide: getRepositoryToken(PromotionTierEntity),
+          useValue: tierRepo,
+        },
+        { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
+        { provide: getRepositoryToken(HotdealEntity), useValue: hotdealRepo },
+        {
+          provide: getRepositoryToken(FlashSaleEntity),
+          useValue: flashsaleRepo,
+        },
+      ],
+    }).compile();
+
+    service = module.get<SpecialCollectionService>(SpecialCollectionService);
+  });
+
+  describe('addItem', () => {
+    beforeEach(() => {
+      collectionRepo.findOne.mockResolvedValue({ collection_id: 1 });
+    });
+
+    it('ปฏิเสธ ref_id ที่ไม่ใช่ตัวเลขสำหรับ promotion', async () => {
+      await expect(
+        service.addItem(1, { ref_type: 'promotion', ref_id: '2a0 ' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(promotionRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('ปฏิเสธเมื่อ ref ที่อ้างถึงไม่มีอยู่จริง', async () => {
+      promotionRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.addItem(1, { ref_type: 'promotion', ref_id: '184' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('ปฏิเสธรายการซ้ำในคอลเลกชันเดียวกัน', async () => {
+      promotionRepo.findOne.mockResolvedValue({ promo_id: 184 });
+      itemRepo.findOne.mockResolvedValue(buildItem());
+
+      await expect(
+        service.addItem(1, { ref_type: 'promotion', ref_id: '184' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(itemRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('ปฏิเสธ bundle_set เพราะยังไม่เปิดใช้งาน', async () => {
+      await expect(
+        service.addItem(1, { ref_type: 'bundle_set', ref_id: 'SET-DIA-X' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('ต่อ sort_order จากรายการสุดท้ายเมื่อไม่ได้ระบุมา', async () => {
+      promotionRepo.findOne.mockResolvedValue({ promo_id: 184 });
+      itemRepo.findOne
+        .mockResolvedValueOnce(null) // duplicate check
+        .mockResolvedValueOnce(buildItem({ sort_order: 4 })); // last item
+      itemRepo.save.mockImplementation((row: unknown) => row);
+
+      const saved = await service.addItem(1, {
+        ref_type: 'promotion',
+        ref_id: '184',
+      });
+
+      expect(saved.sort_order).toBe(5);
+    });
+  });
+
+  describe('reorderItems', () => {
+    it('ปฏิเสธเมื่อมี item_id ที่ไม่ได้อยู่ในคอลเลกชัน', async () => {
+      itemRepo.find.mockResolvedValue([buildItem({ item_id: 1 })]);
+
+      await expect(
+        service.reorderItems(1, { item_ids: [1, 99] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(itemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('ปฏิเสธเมื่อส่ง item_ids มาไม่ครบ — กันรายการตกหล่นเงียบ', async () => {
+      itemRepo.find.mockResolvedValue([
+        buildItem({ item_id: 1 }),
+        buildItem({ item_id: 2 }),
+      ]);
+
+      await expect(
+        service.reorderItems(1, { item_ids: [1] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('เขียน sort_order ตามลำดับที่ส่งมา', async () => {
+      itemRepo.find.mockResolvedValue([
+        buildItem({ item_id: 1 }),
+        buildItem({ item_id: 2 }),
+      ]);
+      itemRepo.update.mockResolvedValue(undefined);
+
+      await service.reorderItems(1, { item_ids: [2, 1] });
+
+      expect(itemRepo.update).toHaveBeenCalledWith(
+        { item_id: 2 },
+        { sort_order: 0 },
+      );
+      expect(itemRepo.update).toHaveBeenCalledWith(
+        { item_id: 1 },
+        { sort_order: 1 },
+      );
+    });
+  });
+
+  describe('getForMember', () => {
+    const mockVisibleCollections = (
+      rows: Array<Partial<SpecialCollectionEntity>>,
+    ) => {
+      collectionRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(rows),
+      });
+    };
+
+    it('คืนค่าว่างเมื่อร้านนี้ไม่เห็นคอลเลกชันใดเลย', async () => {
+      mockVisibleCollections([]);
+
+      const result = await service.getForMember('CUST-00123');
+
+      expect(result).toEqual({ collections: [], total_items: 0 });
+      expect(itemRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('ตัดรายการที่ของถูกลบไปแล้วออก และนับ total_items เฉพาะที่เหลือ', async () => {
+      mockVisibleCollections([{ collection_id: 1, name: 'ชุดสินค้าพิเศษ' }]);
+      itemRepo.find.mockResolvedValue([
+        buildItem({ item_id: 1, ref_id: 'P-001', sort_order: 0 }),
+        buildItem({ item_id: 2, ref_id: 'P-GONE', sort_order: 1 }),
+      ]);
+      // P-GONE ไม่ถูกคืนมาจาก repo = ถูกลบไปแล้ว
+      productRepo.find.mockResolvedValue([
+        { pro_code: 'P-001', pro_name: 'สินค้าทดสอบ' },
+      ]);
+
+      const result = await service.getForMember('CUST-00123');
+
+      expect(result.total_items).toBe(1);
+      expect(result.collections[0].items).toHaveLength(1);
+      expect(result.collections[0].items[0].ref_id).toBe('P-001');
+    });
+
+    it('จับคู่ payload กับ item ให้ถูกตัวเมื่อมีหลายชนิดปนกัน', async () => {
+      mockVisibleCollections([{ collection_id: 1, name: 'รวมโปร' }]);
+      itemRepo.find.mockResolvedValue([
+        buildItem({ item_id: 1, ref_type: 'product', ref_id: 'P-001' }),
+        buildItem({ item_id: 2, ref_type: 'promotion', ref_id: '184' }),
+      ]);
+      productRepo.find.mockResolvedValue([
+        { pro_code: 'P-001', pro_name: 'สินค้าทดสอบ' },
+      ]);
+      promotionRepo.find.mockResolvedValue([
+        { promo_id: 184, promo_name: 'Bangkok Payday', tiers: [] },
+      ]);
+
+      const { collections } = await service.getForMember('CUST-00123');
+      const [first, second] = collections[0].items;
+
+      expect(first.ref_type).toBe('product');
+      expect((first.payload as { pro_code: string }).pro_code).toBe('P-001');
+      expect(second.ref_type).toBe('promotion');
+      expect((second.payload as { promo_id: number }).promo_id).toBe(184);
+    });
+  });
+
+  describe('getBadgeCount', () => {
+    it('นับเฉพาะรายการที่ยังใช้งานได้', async () => {
+      collectionRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([{ collection_id: 1, name: 'x' }]),
+      });
+      itemRepo.find.mockResolvedValue([
+        buildItem({ item_id: 1, ref_id: 'P-001' }),
+        buildItem({ item_id: 2, ref_id: 'P-GONE' }),
+      ]);
+      productRepo.find.mockResolvedValue([{ pro_code: 'P-001' }]);
+
+      await expect(service.getBadgeCount('CUST-00123')).resolves.toEqual({
+        count: 1,
+      });
+    });
+  });
+});
