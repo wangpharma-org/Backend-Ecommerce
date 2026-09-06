@@ -58,6 +58,10 @@ export class ShoppingCartEntity {
   @Column({ default: false })
   hotdeal_free!: boolean;
 
+  /** แถวที่มี basket_id เดียวกันคือกระเช้าเดียวกัน — null = สินค้าเดี่ยวปกติ */
+  @Column({ type: 'int', nullable: true, default: null })
+  basket_id!: number | null;
+
   @ManyToOne(() => UserEntity, (member) => member.shoppingCartItems)
   @JoinColumn({ name: 'mem_code' }) // Using ID for relation
   member!: UserEntity;

@@ -1,14 +1,22 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
+  Post,
+  Query,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { SpecialCollectionService } from './special-collection.service';
 import { PromoBoardService } from './promo-board.service';
+import { CartBasketService } from './cart-basket.service';
+import { CreateBasketDto } from './dto/create-basket.dto';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
 
 interface JwtUser {
@@ -33,7 +41,69 @@ export class SpecialCollectionCustomerController {
   constructor(
     private readonly specialCollectionService: SpecialCollectionService,
     private readonly promoBoardService: PromoBoardService,
+    private readonly cartBasketService: CartBasketService,
   ) {}
+
+  /** กระเช้าที่อยู่ในตะกร้าแล้ว — ส่ง promo_id มาเพื่อกรองเฉพาะโปรนั้น */
+  @Get('basket')
+  listBaskets(
+    @Req() req: { user: JwtUser },
+    @Query('promo_id') promoId?: string,
+  ) {
+    const parsed = Number(promoId);
+    return this.cartBasketService.listBaskets(
+      req.user.mem_code,
+      toPriceOption(req.user.price_option),
+      Number.isInteger(parsed) && parsed > 0 ? parsed : undefined,
+    );
+  }
+
+  /** ยืนยันกระเช้าจากหน้า board เข้าตะกร้าทั้งก้อน */
+  @Post('basket')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  )
+  createBasket(@Body() dto: CreateBasketDto, @Req() req: { user: JwtUser }) {
+    return this.cartBasketService.createBasket(
+      req.user.mem_code,
+      dto.promo_id,
+      dto.lines,
+      toPriceOption(req.user.price_option),
+    );
+  }
+
+  /**
+   * เอาสินค้าออกจากกระเช้า 1 รายการ
+   * ถ้าเอาออกแล้วต่ำกว่าเกณฑ์จะยังไม่ลบ แต่คืน needs_confirm ให้หน้าบ้านถามก่อน
+   * แล้วเรียกซ้ำด้วย confirm=true เพื่อยกออกทั้งกระเช้า
+   */
+  @Delete('basket/:basketId/line/:spcId')
+  removeBasketLine(
+    @Param('basketId', ParseIntPipe) basketId: number,
+    @Param('spcId', ParseIntPipe) spcId: number,
+    @Req() req: { user: JwtUser },
+    @Query('confirm') confirm?: string,
+  ) {
+    return this.cartBasketService.removeLine(
+      req.user.mem_code,
+      basketId,
+      spcId,
+      confirm === 'true',
+      toPriceOption(req.user.price_option),
+    );
+  }
+
+  @Delete('basket/:basketId')
+  deleteBasket(
+    @Param('basketId', ParseIntPipe) basketId: number,
+    @Req() req: { user: JwtUser },
+  ) {
+    return this.cartBasketService.deleteBasket(req.user.mem_code, basketId);
+  }
 
   /**
    * ข้อมูลทั้งหมดของโปรหนึ่งตัวในครั้งเดียว สำหรับหน้า board

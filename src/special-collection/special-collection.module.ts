@@ -18,6 +18,8 @@ import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { PromoBoardService } from './promo-board.service';
+import { CartBasketService } from './cart-basket.service';
+import { CartBasketEntity } from './cart-basket.entity';
 import { AuthModule } from 'src/auth/auth.module';
 // JwtAuthGuard inject FeatureFlagsService — ต้อง import module นี้ ไม่งั้น guard สร้างไม่ได้ (500)
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
@@ -40,16 +42,17 @@ import { BundleSetModule } from 'src/bundle-set/bundle-set.module';
       PromotionRewardEntity,
       ProductUnitEntity,
       ShoppingCartEntity,
+      CartBasketEntity,
     ]),
     AuthModule,
     FeatureFlagsModule,
     BundleSetModule,
   ],
-  providers: [SpecialCollectionService, PromoBoardService],
+  providers: [SpecialCollectionService, PromoBoardService, CartBasketService],
   controllers: [
     SpecialCollectionController,
     SpecialCollectionCustomerController,
   ],
-  exports: [SpecialCollectionService, PromoBoardService],
+  exports: [SpecialCollectionService, PromoBoardService, CartBasketService],
 })
 export class SpecialCollectionModule {}
