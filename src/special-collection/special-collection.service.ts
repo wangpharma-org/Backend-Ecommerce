@@ -433,10 +433,17 @@ export class SpecialCollectionService {
     const map = new Map<string, unknown>();
     if (ids.length === 0) return map;
 
-    const rows = await this.promotionRepo.find({
-      where: { promo_id: In(ids) },
-      relations: ['tiers', 'creditor'],
-    });
+    // โปรที่ปิดหรือหมดอายุแล้วให้ resolve ไม่เจอ → ขึ้น unavailable
+    // ไม่งั้นหน้ารวมโปรจะโชว์โปรที่กดเข้าไปแล้วเจอหน้าว่าง
+    const rows = await this.promotionRepo
+      .createQueryBuilder('promo')
+      .leftJoinAndSelect('promo.tiers', 'tiers')
+      .leftJoinAndSelect('promo.creditor', 'creditor')
+      .where('promo.promo_id IN (:...ids)', { ids })
+      .andWhere('promo.status = :status', { status: true })
+      .andWhere('promo.start_date <= :now', { now: new Date() })
+      .andWhere('promo.end_date >= :now', { now: new Date() })
+      .getMany();
     for (const promo of rows) {
       map.set(String(promo.promo_id), {
         promo_id: promo.promo_id,
@@ -456,10 +463,15 @@ export class SpecialCollectionService {
     const map = new Map<string, unknown>();
     if (ids.length === 0) return map;
 
-    const rows = await this.tierRepo.find({
-      where: { tier_id: In(ids) },
-      relations: ['promotion'],
-    });
+    // tier ผูกกับโปร ถ้าโปรแม่ปิด/หมดอายุ tier ก็ใช้ไม่ได้เหมือนกัน
+    const rows = await this.tierRepo
+      .createQueryBuilder('tier')
+      .innerJoinAndSelect('tier.promotion', 'promo')
+      .where('tier.tier_id IN (:...ids)', { ids })
+      .andWhere('promo.status = :status', { status: true })
+      .andWhere('promo.start_date <= :now', { now: new Date() })
+      .andWhere('promo.end_date >= :now', { now: new Date() })
+      .getMany();
     for (const tier of rows) {
       map.set(String(tier.tier_id), {
         ...this.toTierSummary(tier),
@@ -518,10 +530,18 @@ export class SpecialCollectionService {
     const map = new Map<string, unknown>();
     if (codes.length === 0) return map;
 
-    const rows = await this.bundleSetRepo.find({
-      where: { set_code: In(codes) },
-      relations: ['items'],
-    });
+    // กระเช้าที่ปิดหรือหมดช่วงเวลาก็ไม่ควรโชว์เช่นกัน
+    const now = new Date();
+    const rows = await this.bundleSetRepo
+      .createQueryBuilder('bundle')
+      .leftJoinAndSelect('bundle.items', 'items')
+      .where('bundle.set_code IN (:...codes)', { codes })
+      .andWhere('bundle.status = :status', { status: true })
+      .andWhere('(bundle.start_date IS NULL OR bundle.start_date <= :now)', {
+        now,
+      })
+      .andWhere('(bundle.end_date IS NULL OR bundle.end_date >= :now)', { now })
+      .getMany();
     for (const set of rows) {
       map.set(set.set_code, set);
     }

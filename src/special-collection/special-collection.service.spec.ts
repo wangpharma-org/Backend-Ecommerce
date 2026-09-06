@@ -216,6 +216,16 @@ describe('SpecialCollectionService', () => {
     });
   });
 
+  /** loadPromotions ใช้ query builder เพราะต้องกรอง status + ช่วงวันที่ */
+  const mockPromotionQuery = (rows: Array<Record<string, unknown>>) => {
+    promotionRepo.createQueryBuilder.mockReturnValue({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(rows),
+    });
+  };
+
   describe('getForMember', () => {
     const mockVisibleCollections = (
       rows: Array<Partial<SpecialCollectionEntity>>,
@@ -265,7 +275,7 @@ describe('SpecialCollectionService', () => {
       productRepo.find.mockResolvedValue([
         { pro_code: 'P-001', pro_name: 'สินค้าทดสอบ' },
       ]);
-      promotionRepo.find.mockResolvedValue([
+      mockPromotionQuery([
         { promo_id: 184, promo_name: 'Bangkok Payday', tiers: [] },
       ]);
 
@@ -276,6 +286,20 @@ describe('SpecialCollectionService', () => {
       expect((first.payload as { pro_code: string }).pro_code).toBe('P-001');
       expect(second.ref_type).toBe('promotion');
       expect((second.payload as { promo_id: number }).promo_id).toBe(184);
+    });
+
+    it('ตัดโปรที่หมดอายุ/ปิดอยู่ออก — query คืนค่าว่างจะได้ไม่โชว์ของกดไม่ได้', async () => {
+      mockVisibleCollections([{ collection_id: 1, name: 'รวมโปร' }]);
+      itemRepo.find.mockResolvedValue([
+        buildItem({ item_id: 1, ref_type: 'promotion', ref_id: '184' }),
+      ]);
+      // โปรหมดอายุ → query กรองออก คืนอาร์เรย์ว่าง
+      mockPromotionQuery([]);
+
+      const result = await service.getForMember('CUST-00123');
+
+      expect(result.total_items).toBe(0);
+      expect(result.collections[0].items).toHaveLength(0);
     });
   });
 
