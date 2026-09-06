@@ -11,6 +11,7 @@ import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import { UserEntity } from '../users/users.entity';
+import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
 
 /**
  * SpecialCollectionService unit tests
@@ -53,6 +54,7 @@ describe('SpecialCollectionService', () => {
   let hotdealRepo: ReturnType<typeof buildRepoMock>;
   let flashsaleRepo: ReturnType<typeof buildRepoMock>;
   let userRepo: ReturnType<typeof buildRepoMock>;
+  let bundleSetRepo: ReturnType<typeof buildRepoMock>;
 
   beforeEach(async () => {
     collectionRepo = buildRepoMock();
@@ -64,6 +66,7 @@ describe('SpecialCollectionService', () => {
     hotdealRepo = buildRepoMock();
     flashsaleRepo = buildRepoMock();
     userRepo = buildRepoMock();
+    bundleSetRepo = buildRepoMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -95,6 +98,10 @@ describe('SpecialCollectionService', () => {
           useValue: flashsaleRepo,
         },
         { provide: getRepositoryToken(UserEntity), useValue: userRepo },
+        {
+          provide: getRepositoryToken(BundleSetEntity),
+          useValue: bundleSetRepo,
+        },
       ],
     }).compile();
 
@@ -130,10 +137,26 @@ describe('SpecialCollectionService', () => {
       expect(itemRepo.save).not.toHaveBeenCalled();
     });
 
-    it('ปฏิเสธ bundle_set เพราะยังไม่เปิดใช้งาน', async () => {
+    it('รับ bundle_set ที่มีอยู่จริงได้ (ref_id เป็น set_code ไม่ใช่ตัวเลข)', async () => {
+      bundleSetRepo.findOne.mockResolvedValue({ set_code: 'SET-DIA-X' });
+      itemRepo.findOne.mockResolvedValue(null);
+      itemRepo.save.mockImplementation((row: unknown) => row);
+
+      const saved = await service.addItem(1, {
+        ref_type: 'bundle_set',
+        ref_id: 'SET-DIA-X',
+      });
+
+      expect(saved.ref_id).toBe('SET-DIA-X');
+      expect(bundleSetRepo.findOne).toHaveBeenCalled();
+    });
+
+    it('ปฏิเสธ bundle_set ที่ไม่มีอยู่จริง', async () => {
+      bundleSetRepo.findOne.mockResolvedValue(null);
+
       await expect(
-        service.addItem(1, { ref_type: 'bundle_set', ref_id: 'SET-DIA-X' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+        service.addItem(1, { ref_type: 'bundle_set', ref_id: 'SET-GONE' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('ต่อ sort_order จากรายการสุดท้ายเมื่อไม่ได้ระบุมา', async () => {

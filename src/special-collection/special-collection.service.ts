@@ -23,6 +23,7 @@ import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import { UserEntity } from '../users/users.entity';
+import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
 
 /** ร้านค้าแบบย่อ สำหรับ picker ฝั่งแอดมิน */
 export interface ShopOption {
@@ -65,6 +66,8 @@ export class SpecialCollectionService {
     private readonly flashsaleRepo: Repository<FlashSaleEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(BundleSetEntity)
+    private readonly bundleSetRepo: Repository<BundleSetEntity>,
   ) {}
 
   // ---------------------------------------------------------------- helpers
@@ -113,9 +116,10 @@ export class SpecialCollectionService {
         });
         break;
       case 'bundle_set':
-        throw new BadRequestException(
-          'กระเช้า/ชุดสำเร็จยังไม่เปิดใช้งาน (อยู่ระหว่างพัฒนา)',
-        );
+        found = await this.bundleSetRepo.findOne({
+          where: { set_code: refId },
+        });
+        break;
     }
 
     if (!found) {
@@ -392,13 +396,14 @@ export class SpecialCollectionService {
         .map((id) => Number(id))
         .filter((id) => Number.isInteger(id) && id > 0);
 
-    const [promotions, tiers, products, hotdeals, flashsales] =
+    const [promotions, tiers, products, hotdeals, flashsales, bundleSets] =
       await Promise.all([
         this.loadPromotions(numericIds('promotion')),
         this.loadTiers(numericIds('tier')),
         this.loadProducts(idsOf('product')),
         this.loadHotdeals(numericIds('hotdeal')),
         this.loadFlashsales(numericIds('flashsale')),
+        this.loadBundleSets(idsOf('bundle_set')),
       ]);
 
     const lookup: Record<string, Map<string, unknown>> = {
@@ -407,7 +412,7 @@ export class SpecialCollectionService {
       product: products,
       hotdeal: hotdeals,
       flashsale: flashsales,
-      bundle_set: new Map<string, unknown>(),
+      bundle_set: bundleSets,
     };
 
     return items.map((item) => {
@@ -505,6 +510,20 @@ export class SpecialCollectionService {
     const rows = await this.hotdealRepo.find({ where: { id: In(ids) } });
     for (const hotdeal of rows) {
       map.set(String(hotdeal.id), hotdeal);
+    }
+    return map;
+  }
+
+  private async loadBundleSets(codes: string[]): Promise<Map<string, unknown>> {
+    const map = new Map<string, unknown>();
+    if (codes.length === 0) return map;
+
+    const rows = await this.bundleSetRepo.find({
+      where: { set_code: In(codes) },
+      relations: ['items'],
+    });
+    for (const set of rows) {
+      map.set(set.set_code, set);
     }
     return map;
   }
