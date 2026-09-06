@@ -130,7 +130,9 @@ export class PromoBoardService {
         ? Promise.resolve([] as PromotionConditionEntity[])
         : this.conditionRepo.find({
             where: { tier: { tier_id: In(tierIds) } },
-            relations: ['tier'],
+            // ต้องโหลด product ด้วย ไม่งั้น cond.product เป็น undefined
+            // แล้วรายการสินค้าร่วมรายการจะว่างทั้งหมด
+            relations: ['tier', 'product'],
           }),
       this.rewardRepo.find({
         where: { tier: { tier_id: In(tierIds) } },
