@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { CartBasketEntity } from './cart-basket.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
+import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { PromotionEntity } from '../promotion/promotion.entity';
 import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
@@ -65,6 +66,7 @@ export class CartBasketService {
     @InjectRepository(ProductUnitEntity)
     private readonly unitRepo: Repository<ProductUnitEntity>,
     private readonly dataSource: DataSource,
+    private readonly shoppingCartService: ShoppingCartService,
   ) {}
 
   private priceOf(product: ProductEntity, option: PriceOption): number {
@@ -190,7 +192,7 @@ export class CartBasketService {
       );
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const created = await this.dataSource.transaction(async (manager) => {
       const basket = await manager.save(
         manager.create(CartBasketEntity, {
           mem_code: memCode,
@@ -222,6 +224,11 @@ export class CartBasketService {
       );
       return { basket_id: basket.basket_id };
     });
+
+    // แถวของกระเช้าเป็นสินค้าในตะกร้าจริง engine ของแถมต้องคิดใหม่ทันที
+    // ไม่งั้นของแถมจะโผล่/หายก็ต่อเมื่อลูกค้าแตะตะกร้าครั้งถัดไป
+    await this.shoppingCartService.checkPromotionReward(memCode, option);
+    return created;
   }
 
   // -------------------------------------------------------------------- read
@@ -395,6 +402,7 @@ export class CartBasketService {
     // เอาออกแล้วยังถึงเกณฑ์ — ลบรายการเดียวพอ
     if (remainingRows.length > 0 && progress >= threshold) {
       await this.cartRepo.delete({ spc_id: spcId });
+      await this.shoppingCartService.checkPromotionReward(memCode, option);
       return { removed: 'line' };
     }
 
@@ -409,19 +417,21 @@ export class CartBasketService {
       };
     }
 
-    await this.deleteBasket(memCode, basketId);
+    await this.deleteBasket(memCode, basketId, option);
     return { removed: 'basket' };
   }
 
   async deleteBasket(
     memCode: string,
     basketId: number,
+    option: PriceOption,
   ): Promise<{ deleted: boolean }> {
     await this.findBasketOrFail(memCode, basketId);
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(ShoppingCartEntity, { basket_id: basketId });
       await manager.delete(CartBasketEntity, { basket_id: basketId });
     });
+    await this.shoppingCartService.checkPromotionReward(memCode, option);
     this.logger.log(`deleted cart basket ${basketId} for ${memCode}`);
     return { deleted: true };
   }

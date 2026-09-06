@@ -42,6 +42,7 @@ interface Board {
 interface BasketLine {
   spc_id: number;
   pro_code: string;
+  qty: number;
 }
 interface Basket {
   basket_id: number;
@@ -58,8 +59,13 @@ interface ApiResult<T = unknown> {
   status: number;
   body: T;
 }
+interface CartItem {
+  pro_code: string;
+  shopping_cart: Array<{ is_reward: boolean }>;
+}
 
 let token = '';
+let memCode = '';
 
 async function call<T = unknown>(
   method: string,
@@ -98,6 +104,7 @@ async function clearBaskets(): Promise<void> {
 describe('กระเช้าโปรโมชั่น (e2e)', () => {
   let threshold = 0;
   let bigLine: { pro_code: string; unit_level: number; qty: number };
+  let bigUnitName = '';
   let smallLine: { pro_code: string; unit_level: number; qty: number };
 
   beforeAll(async () => {
@@ -111,6 +118,13 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
       );
     }
     token = login.body.token;
+    memCode = String(
+      (
+        JSON.parse(
+          Buffer.from(token.split('.')[1], 'base64').toString('utf8'),
+        ) as { mem_code?: string }
+      ).mem_code ?? '',
+    );
 
     const board = await call<Board>(
       'GET',
@@ -135,6 +149,7 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
       // ให้บรรทัดเดียวเกินเกณฑ์ เพื่อให้ลบบรรทัดเล็กแล้วยังผ่านเกณฑ์อยู่
       qty: Math.ceil((threshold * 1.2) / big.units[0].price),
     };
+    bigUnitName = big.units[0].unit_name;
     smallLine = {
       pro_code: small.pro_code,
       unit_level: small.units[0].level,
@@ -259,6 +274,31 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
     expect(after.body).toHaveLength(0);
   });
 
+  it('ของแถมถูกคิดใหม่ทันทีเมื่อกระเช้าเข้าและออกจากตะกร้า', async () => {
+    const rewardRows = async () => {
+      const res = await call<{ cart: CartItem[] }>(
+        'GET',
+        `/ecom/product-cart/${memCode}`,
+      );
+      return res.body.cart.filter((item) =>
+        item.shopping_cart.some((sc) => sc.is_reward),
+      );
+    };
+
+    const created = await call<{ basket_id: number }>(
+      'POST',
+      '/ecom/special-collection/basket',
+      { promo_id: PROMO_ID, lines: [bigLine] },
+    );
+    expect(created.status).toBe(201);
+    // ถึงเกณฑ์แล้ว engine ต้องแจกของแถมโดยไม่ต้องรอให้ลูกค้าแตะตะกร้าอีกครั้ง
+    expect((await rewardRows()).length).toBeGreaterThan(0);
+
+    await call('DELETE', `/ecom/special-collection/basket/${created.body.basket_id}`);
+    // กระเช้าหาย ของแถมต้องหายตาม ไม่ค้างเป็นแถวลอยๆ
+    expect(await rewardRows()).toHaveLength(0);
+  });
+
   it('ลบกระเช้าทั้งก้อนได้โดยตรง', async () => {
     const created = await call<{ basket_id: number }>(
       'POST',
@@ -272,6 +312,52 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
     );
 
     expect(res.body.deleted).toBe(true);
+  });
+
+  it('สินค้าเดี่ยวกับแถวในกระเช้าไม่ปนกัน แม้เป็นสินค้าตัวเดียวกัน', async () => {
+    const created = await call<{ basket_id: number }>(
+      'POST',
+      '/ecom/special-collection/basket',
+      { promo_id: PROMO_ID, lines: [bigLine] },
+    );
+    expect(created.status).toBe(201);
+    const before = await call<Basket[]>(
+      'GET',
+      `/ecom/special-collection/basket?promo_id=${PROMO_ID}`,
+    );
+    const lineBefore = before.body[0].lines[0];
+
+    // ใส่สินค้าตัวเดียวกัน หน่วยเดียวกัน แบบเดี่ยว — ต้องไม่ไปบวกเข้าบรรทัดของกระเช้า
+    const added = await call('POST', '/ecom/product-add-cart', {
+      mem_code: memCode,
+      pro_code: bigLine.pro_code,
+      pro_unit: bigUnitName,
+      amount: 1,
+    });
+    expect(added.status).toBeLessThan(400);
+
+    const afterAdd = await call<Basket[]>(
+      'GET',
+      `/ecom/special-collection/basket?promo_id=${PROMO_ID}`,
+    );
+    expect(afterAdd.body[0].lines).toHaveLength(1);
+    expect(afterAdd.body[0].lines[0].qty).toBe(lineBefore.qty);
+
+    // ลบสินค้าเดี่ยวตัวนั้นออกจากตะกร้า — แถวในกระเช้าต้องยังอยู่ครบ
+    const deleted = await call('POST', '/ecom/product-delete-cart', {
+      mem_code: memCode,
+      pro_code: bigLine.pro_code,
+    });
+    expect(deleted.status).toBeLessThan(400);
+
+    const afterDelete = await call<Basket[]>(
+      'GET',
+      `/ecom/special-collection/basket?promo_id=${PROMO_ID}`,
+    );
+    expect(afterDelete.body).toHaveLength(1);
+    expect(afterDelete.body[0].basket_id).toBe(created.body.basket_id);
+    expect(afterDelete.body[0].lines).toHaveLength(1);
+    expect(afterDelete.body[0].lines[0].qty).toBe(lineBefore.qty);
   });
 
   it('ปฏิเสธเมื่อสั่งเกินสต็อกที่มี', async () => {

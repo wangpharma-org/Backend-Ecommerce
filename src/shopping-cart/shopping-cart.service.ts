@@ -9,6 +9,7 @@ import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   In,
+  IsNull,
   Repository,
   Not,
   Brackets,
@@ -921,6 +922,7 @@ export class ShoppingCartService {
       const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
       // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
 
+      // แถวของกระเช้าโปร (basket_id) แยกจากสินค้าเดี่ยวเสมอ ห้ามรวมจำนวนเข้าไป
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -928,6 +930,7 @@ export class ShoppingCartService {
           spc_unit_enum: unitEnum,
           hotdeal_free: false,
           is_reward: false,
+          basket_id: IsNull(),
         },
       });
 
@@ -1464,6 +1467,7 @@ export class ShoppingCartService {
             mem_code: data.mem_code,
             is_reward: false,
             hotdeal_free: false,
+            basket_id: IsNull(),
           },
           { spc_checked: false },
         );
@@ -1539,10 +1543,12 @@ export class ShoppingCartService {
         });
       }
 
+      // ลบเฉพาะสินค้าเดี่ยว — แถวในกระเช้าโปรต้องออกผ่าน CartBasketService เท่านั้น
       await this.shoppingCartRepo.delete({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
         hotdeal_free: false,
+        basket_id: IsNull(),
       });
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
       const cart = await this.getProductCart(data.mem_code);
@@ -1601,7 +1607,7 @@ export class ShoppingCartService {
         );
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          { mem_code: data.mem_code, is_reward: false },
+          { mem_code: data.mem_code, is_reward: false, basket_id: IsNull() },
           { spc_checked: false },
         );
       } else {

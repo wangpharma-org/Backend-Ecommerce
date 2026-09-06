@@ -102,7 +102,11 @@ export class SpecialCollectionCustomerController {
     @Param('basketId', ParseIntPipe) basketId: number,
     @Req() req: { user: JwtUser },
   ) {
-    return this.cartBasketService.deleteBasket(req.user.mem_code, basketId);
+    return this.cartBasketService.deleteBasket(
+      req.user.mem_code,
+      basketId,
+      toPriceOption(req.user.price_option),
+    );
   }
 
   /**

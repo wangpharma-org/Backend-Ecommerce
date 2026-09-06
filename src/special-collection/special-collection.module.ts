@@ -24,6 +24,8 @@ import { AuthModule } from 'src/auth/auth.module';
 // JwtAuthGuard inject FeatureFlagsService — ต้อง import module นี้ ไม่งั้น guard สร้างไม่ได้ (500)
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 import { BundleSetModule } from 'src/bundle-set/bundle-set.module';
+// กระเช้าเปลี่ยนแล้วต้องให้ engine ของแถมคิดใหม่ (checkPromotionReward)
+import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 
 @Module({
   imports: [
@@ -47,6 +49,7 @@ import { BundleSetModule } from 'src/bundle-set/bundle-set.module';
     AuthModule,
     FeatureFlagsModule,
     BundleSetModule,
+    ShoppingCartModule,
   ],
   providers: [SpecialCollectionService, PromoBoardService, CartBasketService],
   controllers: [
