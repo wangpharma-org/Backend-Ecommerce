@@ -1,6 +1,14 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { SpecialCollectionService } from './special-collection.service';
+import { PromoBoardService } from './promo-board.service';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
 
 interface JwtUser {
@@ -24,7 +32,24 @@ const toPriceOption = (raw: string | undefined): PriceOption => {
 export class SpecialCollectionCustomerController {
   constructor(
     private readonly specialCollectionService: SpecialCollectionService,
+    private readonly promoBoardService: PromoBoardService,
   ) {}
+
+  /**
+   * ข้อมูลทั้งหมดของโปรหนึ่งตัวในครั้งเดียว สำหรับหน้า board
+   * โปร + เซต + ของแถม + สินค้าร่วมรายการ (dedupe) + ความคืบหน้าจากตะกร้าจริง
+   */
+  @Get('promo-board/:promoId')
+  getPromoBoard(
+    @Param('promoId', ParseIntPipe) promoId: number,
+    @Req() req: { user: JwtUser },
+  ) {
+    return this.promoBoardService.getBoard(
+      promoId,
+      req.user.mem_code,
+      toPriceOption(req.user.price_option),
+    );
+  }
 
   /** ทุกคอลเลกชัน + รายการที่ resolve แล้ว สำหรับหน้ารวมโปร */
   @Get('my')
