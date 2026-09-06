@@ -14,6 +14,8 @@ import { PromotionEntity } from '../promotion/promotion.entity';
 import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
 import { ProductUnitEntity } from '../products/product-unit.entity';
+import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
+import { BundleSetService } from '../bundle-set/bundle-set.service';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
 
 export interface BasketLineInput {
@@ -32,16 +34,23 @@ export interface BasketLineView {
   qty: number;
   unit_price: number;
   line_total: number;
+  /** ของแถมในกระเช้าสำเร็จรูป (ราคาล็อกไว้ที่ 0) */
+  is_gift: boolean;
 }
 
 export interface BasketView {
   basket_id: number;
-  promo_id: number;
+  /** promo = ลูกค้าประกอบเองจากโปร · set = กระเช้าสำเร็จรูป ยกชุด แบ่งขายไม่ได้ */
+  kind: 'promo' | 'set';
+  promo_id: number | null;
   promo_name: string;
+  set_code: string | null;
+  set_name: string | null;
+  set_qty: number | null;
   lines: BasketLineView[];
   total_amount: number;
   total_units: number;
-  /** เกณฑ์ต่ำสุดของโปร — ต่ำกว่านี้กระเช้าไม่ได้ของแถมอะไรเลย */
+  /** เกณฑ์ต่ำสุดของโปร — ต่ำกว่านี้กระเช้าไม่ได้ของแถมอะไรเลย (set = 0) */
   min_threshold: number;
   min_is_unit: boolean;
   qualifies: boolean;
@@ -65,8 +74,11 @@ export class CartBasketService {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(ProductUnitEntity)
     private readonly unitRepo: Repository<ProductUnitEntity>,
+    @InjectRepository(BundleSetEntity)
+    private readonly setRepo: Repository<BundleSetEntity>,
     private readonly dataSource: DataSource,
     private readonly shoppingCartService: ShoppingCartService,
+    private readonly bundleSetService: BundleSetService,
   ) {}
 
   private priceOf(product: ProductEntity, option: PriceOption): number {
@@ -231,6 +243,71 @@ export class CartBasketService {
     return created;
   }
 
+  /**
+   * กระเช้าสำเร็จรูปเข้าตะกร้าทั้งชุด — ราคาชุดถูกเฉลี่ยลงแต่ละบรรทัด (spc_fixed_total)
+   * เพราะ shopping_cart ไม่มีราคาของตัวเอง ทุกจุดคิดจาก product.pro_price
+   */
+  async createSetBasket(
+    memCode: string,
+    setCode: string,
+    setQty: number,
+    option: PriceOption,
+  ): Promise<{ basket_id: number }> {
+    const set = await this.setRepo.findOne({ where: { set_code: setCode } });
+    if (!set) throw new NotFoundException(`ไม่พบกระเช้ารหัส ${setCode}`);
+    const now = new Date();
+    const inWindow =
+      (!set.start_date || new Date(set.start_date) <= now) &&
+      (!set.end_date || new Date(set.end_date) >= now);
+    if (!set.status || !inWindow) {
+      throw new ConflictException(`กระเช้า ${set.set_name} ยังไม่เปิดขาย`);
+    }
+
+    // ตรวจสต็อกและเฉลี่ยราคาชุด — โยน 409 เองถ้าสั่งเกินที่ประกอบได้
+    const exploded = await this.bundleSetService.explodeForCart(
+      setCode,
+      setQty,
+      option,
+    );
+
+    const created = await this.dataSource.transaction(async (manager) => {
+      const basket = await manager.save(
+        manager.create(CartBasketEntity, {
+          mem_code: memCode,
+          promo_id: null,
+          set_code: setCode,
+          set_qty: setQty,
+        }),
+      );
+
+      await manager.save(
+        exploded.map((line) =>
+          manager.create(ShoppingCartEntity, {
+            mem_code: memCode,
+            pro_code: line.pro_code,
+            spc_amount: line.qty,
+            spc_unit_enum: String(line.unit_level) as '1' | '2' | '3',
+            spc_checked: true,
+            is_reward: false,
+            hotdeal_free: false,
+            basket_id: basket.basket_id,
+            // ของแถมในชุด = 0 · ที่เหลือ = ส่วนแบ่งของราคาชุด รวมกันได้ราคาชุดพอดี
+            spc_fixed_total: line.line_total,
+            spc_datetime: new Date(),
+          }),
+        ),
+      );
+
+      this.logger.log(
+        `created set basket ${basket.basket_id} for ${memCode} set ${setCode} x${setQty}`,
+      );
+      return { basket_id: basket.basket_id };
+    });
+
+    await this.shoppingCartService.checkPromotionReward(memCode, option);
+    return created;
+  }
+
   // -------------------------------------------------------------------- read
 
   async listBaskets(
@@ -253,15 +330,28 @@ export class CartBasketService {
     });
 
     const codes = Array.from(new Set(rows.map((row) => row.pro_code)));
-    const [promotions, units] = await Promise.all([
-      this.promotionRepo.find({
-        where: { promo_id: In(baskets.map((b) => b.promo_id)) },
-      }),
+    const promoIds = baskets
+      .map((b) => b.promo_id)
+      .filter((id): id is number => id !== null);
+    const setCodes = baskets
+      .map((b) => b.set_code)
+      .filter((code): code is string => code !== null);
+    const [promotions, sets, units] = await Promise.all([
+      promoIds.length > 0
+        ? this.promotionRepo.find({ where: { promo_id: In(promoIds) } })
+        : Promise.resolve([] as PromotionEntity[]),
+      setCodes.length > 0
+        ? this.setRepo.find({
+            where: { set_code: In(setCodes) },
+            withDeleted: true,
+          })
+        : Promise.resolve([] as BundleSetEntity[]),
       codes.length > 0
         ? this.unitRepo.find({ where: { pro_code: In(codes) } })
         : Promise.resolve([] as ProductUnitEntity[]),
     ]);
     const promoMap = new Map(promotions.map((p) => [p.promo_id, p]));
+    const setMap = new Map(sets.map((s) => [s.set_code, s]));
 
     const unitOf = (proCode: string, level: number) =>
       units.find((u) => u.pro_code === proCode && u.level === level);
@@ -271,9 +361,14 @@ export class CartBasketService {
       const basketRows = rows.filter(
         (row) => row.basket_id === basket.basket_id,
       );
-      const { threshold, is_unit, tiers } = await this.lowestTier(
-        basket.promo_id,
-      );
+
+      if (basket.set_code !== null) {
+        views.push(this.buildSetView(basket, basketRows, setMap, unitOf));
+        continue;
+      }
+
+      const promoId = basket.promo_id as number;
+      const { threshold, is_unit, tiers } = await this.lowestTier(promoId);
 
       let amount = 0;
       let unitCount = 0;
@@ -296,14 +391,19 @@ export class CartBasketService {
           qty,
           unit_price: unitPrice,
           line_total: this.round2(unitPrice * qty),
+          is_gift: false,
         };
       });
 
       const progress = is_unit ? unitCount : this.round2(amount);
       views.push({
         basket_id: basket.basket_id,
-        promo_id: basket.promo_id,
-        promo_name: promoMap.get(basket.promo_id)?.promo_name ?? '',
+        kind: 'promo',
+        promo_id: promoId,
+        promo_name: promoMap.get(promoId)?.promo_name ?? '',
+        set_code: null,
+        set_name: null,
+        set_qty: null,
         lines,
         total_amount: this.round2(amount),
         total_units: unitCount,
@@ -317,6 +417,56 @@ export class CartBasketService {
       });
     }
     return views;
+  }
+
+  /** กระเช้าสำเร็จรูป: ราคาอ่านจากที่ล็อกไว้ต่อบรรทัด ไม่มีเกณฑ์ให้ถึง */
+  private buildSetView(
+    basket: CartBasketEntity,
+    basketRows: ShoppingCartEntity[],
+    setMap: Map<string, BundleSetEntity>,
+    unitOf: (proCode: string, level: number) => ProductUnitEntity | undefined,
+  ): BasketView {
+    let amount = 0;
+    let unitCount = 0;
+    const lines: BasketLineView[] = basketRows.map((row) => {
+      const level = Number(row.spc_unit_enum ?? 1);
+      const unit = unitOf(row.pro_code, level);
+      const ratio = Number(unit?.ratio) || 1;
+      const qty = Number(row.spc_amount);
+      const lineTotal = this.round2(Number(row.spc_fixed_total ?? 0));
+      amount += lineTotal;
+      unitCount += ratio * qty;
+      return {
+        spc_id: row.spc_id,
+        pro_code: row.pro_code,
+        pro_name: row.product?.pro_name ?? row.pro_code,
+        pro_imgmain: row.product?.pro_imgmain ?? null,
+        unit_name: unit?.unit_name ?? '',
+        unit_level: level,
+        qty,
+        unit_price: qty > 0 ? this.round2(lineTotal / qty) : 0,
+        line_total: lineTotal,
+        is_gift: lineTotal === 0,
+      };
+    });
+
+    const setCode = basket.set_code as string;
+    return {
+      basket_id: basket.basket_id,
+      kind: 'set',
+      promo_id: null,
+      promo_name: '',
+      set_code: setCode,
+      set_name: setMap.get(setCode)?.set_name ?? setCode,
+      set_qty: basket.set_qty,
+      lines,
+      total_amount: this.round2(amount),
+      total_units: unitCount,
+      min_threshold: 0,
+      min_is_unit: false,
+      qualifies: true,
+      reached_tier_count: 0,
+    };
   }
 
   // ------------------------------------------------------------------ mutate
@@ -357,6 +507,11 @@ export class CartBasketService {
       }
   > {
     const basket = await this.findBasketOrFail(memCode, basketId);
+    if (basket.set_code !== null) {
+      throw new ConflictException(
+        'กระเช้าสำเร็จรูปแบ่งขายไม่ได้ ต้องยกออกทั้งชุด',
+      );
+    }
     const rows = await this.cartRepo.find({
       where: { basket_id: basketId },
       relations: ['product'],
@@ -366,7 +521,9 @@ export class CartBasketService {
       throw new NotFoundException(`ไม่พบรายการรหัส ${spcId} ในกระเช้านี้`);
     }
 
-    const { threshold, is_unit } = await this.lowestTier(basket.promo_id);
+    const { threshold, is_unit } = await this.lowestTier(
+      basket.promo_id as number,
+    );
     const codes = Array.from(new Set(rows.map((row) => row.pro_code)));
     const units = await this.unitRepo.find({ where: { pro_code: In(codes) } });
 

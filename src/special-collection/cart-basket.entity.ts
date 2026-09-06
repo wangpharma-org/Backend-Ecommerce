@@ -22,8 +22,17 @@ export class CartBasketEntity {
   mem_code!: string;
 
   @Index()
-  @Column({ type: 'int' })
-  promo_id!: number;
+  /** กระเช้าที่ลูกค้าประกอบเองจากโปร — null เมื่อเป็นกระเช้าสำเร็จรูป */
+  @Column({ type: 'int', nullable: true, default: null })
+  promo_id!: number | null;
+
+  /** กระเช้าสำเร็จรูป (bundle_set) — null เมื่อเป็นกระเช้าโปร */
+  // union type ทำให้ reflect-metadata ได้ "Object" — ต้องบอก type เอง ไม่งั้น TypeORM ล้มตอน boot
+  @Column({ type: 'varchar', length: 30, nullable: true, default: null })
+  set_code!: string | null;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  set_qty!: number | null;
 
   @CreateDateColumn()
   created_at!: Date;

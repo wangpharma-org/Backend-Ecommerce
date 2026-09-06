@@ -198,10 +198,16 @@ export class PromoBoardService {
         if (codes && !codes.has(line.pro_code)) continue;
         const product = line.product ?? productMap.get(line.pro_code);
         if (!product) continue;
+        const fixed =
+          line.spc_fixed_total === null || line.spc_fixed_total === undefined
+            ? null
+            : Number(line.spc_fixed_total);
+        // ของแถมในกระเช้าสำเร็จรูปไม่นับ ส่วนที่จ่ายจริงนับที่ราคาชุด
+        if (fixed === 0) continue;
         const ratio = ratioOf(line.pro_code, Number(line.spc_unit_enum ?? 1));
         const qty = Number(line.spc_amount) * ratio;
         unitCount += qty;
-        amount += qty * this.priceOf(product, option);
+        amount += fixed ?? qty * this.priceOf(product, option);
       }
       return { amount: this.round2(amount), units: unitCount };
     };

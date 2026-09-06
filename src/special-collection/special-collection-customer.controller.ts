@@ -17,6 +17,7 @@ import { SpecialCollectionService } from './special-collection.service';
 import { PromoBoardService } from './promo-board.service';
 import { CartBasketService } from './cart-basket.service';
 import { CreateBasketDto } from './dto/create-basket.dto';
+import { CreateSetBasketDto } from './dto/create-set-basket.dto';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
 
 interface JwtUser {
@@ -72,6 +73,27 @@ export class SpecialCollectionCustomerController {
       req.user.mem_code,
       dto.promo_id,
       dto.lines,
+      toPriceOption(req.user.price_option),
+    );
+  }
+
+  /** กระเช้าสำเร็จรูป (bundle_set) เข้าตะกร้าทั้งชุดในราคาชุด */
+  @Post('basket/set')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  )
+  createSetBasket(
+    @Body() dto: CreateSetBasketDto,
+    @Req() req: { user: JwtUser },
+  ) {
+    return this.cartBasketService.createSetBasket(
+      req.user.mem_code,
+      dto.set_code,
+      dto.qty,
       toPriceOption(req.user.price_option),
     );
   }

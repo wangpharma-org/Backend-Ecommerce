@@ -628,6 +628,16 @@ export class ShoppingCartService {
     }
   }
 
+  /** บรรทัดที่ราคาถูกล็อกไว้ (กระเช้าสำเร็จรูป) — ห้ามคิดจาก product.pro_price */
+  hasFixedTotal(line: { spc_fixed_total?: string | number | null }): boolean {
+    return line.spc_fixed_total !== null && line.spc_fixed_total !== undefined;
+  }
+
+  /** ของแถมในกระเช้าสำเร็จรูป = ล็อกราคาไว้ที่ 0 */
+  isSetGiftLine(line: { spc_fixed_total?: string | number | null }): boolean {
+    return this.hasFixedTotal(line) && Number(line.spc_fixed_total) === 0;
+  }
+
   private async incrementCartVersion(
     mem_code: string,
   ): Promise<CartVersionState> {
@@ -1109,8 +1119,14 @@ export class ShoppingCartService {
     await this.removeExpiredUseCodeRewards(cart, mem_code, priceOption);
 
     // ─── 3. baseEligibleCart + perProductTotalUnits ───────────────────────────
+    // ของแถมในกระเช้าสำเร็จรูป (fixed = 0) ไม่นับเข้าเกณฑ์ เหมือน hotdeal_free
     const baseEligibleCart = cart.filter(
-      (l) => l.product && l.spc_checked && !l.is_reward && !l.hotdeal_free,
+      (l) =>
+        l.product &&
+        l.spc_checked &&
+        !l.is_reward &&
+        !l.hotdeal_free &&
+        !this.isSetGiftLine(l),
     );
 
     const perProductTotalUnits = new Map<string, number>();
@@ -1156,6 +1172,8 @@ export class ShoppingCartService {
 
     // ─── helper: คำนวณ line value ─────────────────────────────────────────────
     const getLineValue = (line: ShoppingCartEntity): number => {
+      // กระเช้าสำเร็จรูปนับที่ราคาชุดที่จ่ายจริง (เจ้าของงานเคาะ 2026-09-06)
+      if (this.hasFixedTotal(line)) return Number(line.spc_fixed_total);
       const p = line.product;
       const ratio = this.getUnitRatio(p, line.spc_unit_enum);
       const totalUnits = perProductTotalUnits.get(line.pro_code) ?? 0;
@@ -2576,6 +2594,7 @@ export class ShoppingCartService {
           'cart.pro_code',
           'cart.mem_code',
           'cart.flashsale_end',
+          'cart.spc_fixed_total',
           'product.pro_code',
           'product.pro_priceA',
           'product.pro_priceB',
@@ -2685,6 +2704,10 @@ export class ShoppingCartService {
 
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
+            // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
+            if (this.hasFixedTotal(item)) {
+              return sum + Number(item.spc_fixed_total);
+            }
             let ratio = 0;
             const matchedUnit = item.product.units?.find(
               (u) =>
