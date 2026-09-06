@@ -10,6 +10,7 @@ import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+import { UserEntity } from '../users/users.entity';
 
 /**
  * SpecialCollectionService unit tests
@@ -51,6 +52,7 @@ describe('SpecialCollectionService', () => {
   let productRepo: ReturnType<typeof buildRepoMock>;
   let hotdealRepo: ReturnType<typeof buildRepoMock>;
   let flashsaleRepo: ReturnType<typeof buildRepoMock>;
+  let userRepo: ReturnType<typeof buildRepoMock>;
 
   beforeEach(async () => {
     collectionRepo = buildRepoMock();
@@ -61,6 +63,7 @@ describe('SpecialCollectionService', () => {
     productRepo = buildRepoMock();
     hotdealRepo = buildRepoMock();
     flashsaleRepo = buildRepoMock();
+    userRepo = buildRepoMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -91,6 +94,7 @@ describe('SpecialCollectionService', () => {
           provide: getRepositoryToken(FlashSaleEntity),
           useValue: flashsaleRepo,
         },
+        { provide: getRepositoryToken(UserEntity), useValue: userRepo },
       ],
     }).compile();
 
@@ -270,6 +274,51 @@ describe('SpecialCollectionService', () => {
       await expect(service.getBadgeCount('CUST-00123')).resolves.toEqual({
         count: 1,
       });
+    });
+  });
+
+  describe('searchShops', () => {
+    it('ปฏิเสธคำค้นที่สั้นเกินไป — กันดึงทั้งตาราง', async () => {
+      await expect(service.searchShops('ก')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(userRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('คืนรหัสร้านพร้อมชื่อร้าน', async () => {
+      userRepo.createQueryBuilder.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest
+          .fn()
+          .mockResolvedValue([
+            { mem_code: '0131', mem_nameSite: 'ร้านขายยาโชคชัยเภสัช' },
+          ]),
+      });
+
+      await expect(service.searchShops('โชคชัย')).resolves.toEqual([
+        { mem_code: '0131', shop_name: 'ร้านขายยาโชคชัยเภสัช' },
+      ]);
+    });
+  });
+
+  describe('resolveShops', () => {
+    it('คง mem_code ที่หาไม่เจอไว้ เพื่อให้แอดมินเห็นว่าร้านหายไปแล้ว', async () => {
+      userRepo.find.mockResolvedValue([
+        { mem_code: '0131', mem_nameSite: 'ร้านขายยาโชคชัยเภสัช' },
+      ]);
+
+      await expect(service.resolveShops(['0131', '9999'])).resolves.toEqual([
+        { mem_code: '0131', shop_name: 'ร้านขายยาโชคชัยเภสัช' },
+        { mem_code: '9999', shop_name: null },
+      ]);
+    });
+
+    it('ไม่ยิง query เมื่อไม่มี mem_code', async () => {
+      await expect(service.resolveShops([])).resolves.toEqual([]);
+      expect(userRepo.find).not.toHaveBeenCalled();
     });
   });
 });

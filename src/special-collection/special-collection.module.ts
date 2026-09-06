@@ -11,6 +11,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from 'src/flashsale/flashsale.entity';
+import { UserEntity } from 'src/users/users.entity';
 import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { AuthModule } from 'src/auth/auth.module';
       ProductEntity,
       HotdealEntity,
       FlashSaleEntity,
+      UserEntity,
     ]),
     AuthModule,
   ],

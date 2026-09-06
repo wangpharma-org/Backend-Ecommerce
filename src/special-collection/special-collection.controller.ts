@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
   UsePipes,
@@ -48,6 +49,17 @@ export class SpecialCollectionController {
   @Get()
   list() {
     return this.specialCollectionService.listCollections();
+  }
+
+  /** ค้นร้านสำหรับ picker กลุ่มเป้าหมาย — ต้องมาก่อน :collectionId ไม่งั้นถูก route ทับ */
+  @Get('shop/search')
+  searchShops(@Query('q') keyword: string) {
+    return this.specialCollectionService.searchShops(keyword);
+  }
+
+  @Post('shop/resolve')
+  resolveShops(@Body() dto: SetAudienceDto) {
+    return this.specialCollectionService.resolveShops(dto.mem_codes);
   }
 
   @Get(':collectionId')

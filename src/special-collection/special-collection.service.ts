@@ -22,6 +22,13 @@ import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+import { UserEntity } from '../users/users.entity';
+
+/** ร้านค้าแบบย่อ สำหรับ picker ฝั่งแอดมิน */
+export interface ShopOption {
+  mem_code: string;
+  shop_name: string | null;
+}
 
 /** รายการที่ resolve payload แล้ว พร้อมส่งให้หน้าบ้าน */
 export interface ResolvedCollectionItem {
@@ -56,6 +63,8 @@ export class SpecialCollectionService {
     private readonly hotdealRepo: Repository<HotdealEntity>,
     @InjectRepository(FlashSaleEntity)
     private readonly flashsaleRepo: Repository<FlashSaleEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
 
   // ---------------------------------------------------------------- helpers
@@ -320,6 +329,51 @@ export class SpecialCollectionService {
       where: { collection_id: collectionId },
     });
     return { mem_codes: saved.map((row) => row.mem_code) };
+  }
+
+  // ------------------------------------------------------------- shop picker
+
+  /** ค้นร้านด้วยรหัสหรือชื่อ สำหรับให้แอดมินเลือกกลุ่มเป้าหมาย */
+  async searchShops(keyword: string): Promise<ShopOption[]> {
+    const query = (keyword ?? '').trim();
+    if (query.length < 2) {
+      throw new BadRequestException('กรุณาพิมพ์อย่างน้อย 2 ตัวอักษร');
+    }
+
+    const rows = await this.userRepo
+      .createQueryBuilder('user')
+      .select(['user.mem_code', 'user.mem_nameSite'])
+      .where('user.mem_code LIKE :query OR user.mem_nameSite LIKE :query', {
+        query: `%${query}%`,
+      })
+      .orderBy('user.mem_code', 'ASC')
+      .limit(20)
+      .getMany();
+
+    return rows.map((row) => ({
+      mem_code: row.mem_code,
+      shop_name: row.mem_nameSite ?? null,
+    }));
+  }
+
+  /** เติมชื่อร้านให้ mem_code ที่บันทึกไว้แล้ว เพื่อไม่ให้หน้าแก้ไขโชว์แต่รหัสเปล่า */
+  async resolveShops(memCodes: string[]): Promise<ShopOption[]> {
+    const unique = Array.from(
+      new Set((memCodes ?? []).map((code) => code.trim()).filter(Boolean)),
+    );
+    if (unique.length === 0) return [];
+
+    const rows = await this.userRepo.find({
+      where: { mem_code: In(unique) },
+      select: ['mem_code', 'mem_nameSite'],
+    });
+    const found = new Map(rows.map((row) => [row.mem_code, row.mem_nameSite]));
+
+    // คง mem_code ที่หาไม่เจอไว้ด้วย จะได้เห็นว่าร้านนั้นหายไปจากระบบแล้ว
+    return unique.map((mem_code) => ({
+      mem_code,
+      shop_name: found.get(mem_code) ?? null,
+    }));
   }
 
   // ------------------------------------------------------------- ref resolve
