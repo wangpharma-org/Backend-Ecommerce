@@ -57,6 +57,7 @@ import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
+import { BundleSetModule } from './bundle-set/bundle-set.module';
 
 @Module({
   imports: [
@@ -127,6 +128,7 @@ import { SpecialCollectionModule } from './special-collection/special-collection
     HappyHourModule,
     DeliveryPreferenceModule,
     SpecialCollectionModule,
+    BundleSetModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

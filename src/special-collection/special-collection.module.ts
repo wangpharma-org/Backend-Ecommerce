@@ -13,6 +13,8 @@ import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from 'src/flashsale/flashsale.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { AuthModule } from 'src/auth/auth.module';
+// JwtAuthGuard inject FeatureFlagsService — ต้อง import module นี้ ไม่งั้น guard สร้างไม่ได้ (500)
+import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { AuthModule } from 'src/auth/auth.module';
       UserEntity,
     ]),
     AuthModule,
+    FeatureFlagsModule,
   ],
   providers: [SpecialCollectionService],
   controllers: [
