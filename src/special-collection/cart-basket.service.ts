@@ -143,6 +143,31 @@ export class CartBasketService {
       }
     }
 
+    // รวมจำนวนต่อสินค้าก่อนเทียบสต็อก — สินค้าเดียวกันอาจถูกเลือกหลายหน่วยในกระเช้าเดียว
+    const neededUnits = new Map<string, number>();
+    for (const line of lines) {
+      const ratio =
+        Number(
+          units.find(
+            (u) => u.pro_code === line.pro_code && u.level === line.unit_level,
+          )?.ratio,
+        ) || 1;
+      neededUnits.set(
+        line.pro_code,
+        (neededUnits.get(line.pro_code) ?? 0) + ratio * line.qty,
+      );
+    }
+    for (const [proCode, needed] of neededUnits) {
+      const stock = Number(
+        (productMap.get(proCode) as ProductEntity).pro_stock ?? 0,
+      );
+      if (needed > stock) {
+        throw new ConflictException(
+          `${proCode} มีไม่พอ (ต้องการ ${needed} มีอยู่ ${stock})`,
+        );
+      }
+    }
+
     // ตรวจว่ากระเช้าถึงเกณฑ์ก่อนบันทึก — ไม่ให้สร้างกระเช้าที่ไม่ได้อะไรเลย
     const { threshold, is_unit } = await this.lowestTier(promoId);
     let amount = 0;
