@@ -42,9 +42,16 @@ export interface BoardProduct {
   pro_code: string;
   pro_name: string;
   pro_imgmain: string | null;
+  /** ราคาต่อหน่วยเล็กสุด — ราคาของหน่วยอื่นอยู่ใน units[].price */
   price: number;
   pro_stock: number;
-  units: Array<{ level: number; unit_name: string; ratio: number }>;
+  units: Array<{
+    level: number;
+    unit_name: string;
+    ratio: number;
+    /** ราคาต่อ 1 หน่วยนี้ = ราคาหน่วยเล็กสุด x ratio */
+    price: number;
+  }>;
   /** จำนวนที่ลูกค้ามีอยู่ในตะกร้าแล้ว (หน่วยเล็กสุด) */
   in_cart_units: number;
 }
@@ -263,22 +270,29 @@ export class PromoBoardService {
     const boardProducts: BoardProduct[] = participatingCodes
       .map((code) => productMap.get(code))
       .filter((product): product is ProductEntity => Boolean(product))
-      .map((product) => ({
-        pro_code: product.pro_code,
-        pro_name: product.pro_name,
-        pro_imgmain: product.pro_imgmain ?? null,
-        price: this.priceOf(product, option),
-        pro_stock: Number(product.pro_stock ?? 0),
-        units: (unitsByCode.get(product.pro_code) ?? [])
-          .slice()
-          .sort((a, b) => a.level - b.level)
-          .map((unit) => ({
-            level: unit.level,
-            unit_name: unit.unit_name,
-            ratio: Number(unit.ratio) || 1,
-          })),
-        in_cart_units: inCartUnits.get(product.pro_code) ?? 0,
-      }))
+      .map((product) => {
+        const basePrice = this.priceOf(product, option);
+        return {
+          pro_code: product.pro_code,
+          pro_name: product.pro_name,
+          pro_imgmain: product.pro_imgmain ?? null,
+          price: basePrice,
+          pro_stock: Number(product.pro_stock ?? 0),
+          units: (unitsByCode.get(product.pro_code) ?? [])
+            .slice()
+            .sort((a, b) => a.level - b.level)
+            .map((unit) => {
+              const ratio = Number(unit.ratio) || 1;
+              return {
+                level: unit.level,
+                unit_name: unit.unit_name,
+                ratio,
+                price: this.round2(basePrice * ratio),
+              };
+            }),
+          in_cart_units: inCartUnits.get(product.pro_code) ?? 0,
+        };
+      })
       .sort((a, b) => a.pro_name.localeCompare(b.pro_name, 'th'));
 
     const notReached = boardTiers.filter((tier) => !tier.reached);
