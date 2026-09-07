@@ -694,7 +694,7 @@ export class ShoppingOrderService {
 
           // สร้าง order items สำหรับ Happy Hour scope filtering
           const happyHourItems = orderSales.map((os) => ({
-            pro_code: os.pro_code!,
+            pro_code: os.pro_code,
             amount: Number(os.spo_total_decimal),
             vendor_code: normalItems
               .find((n) => n.pro_code === os.pro_code)

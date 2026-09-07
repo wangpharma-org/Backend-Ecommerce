@@ -30,6 +30,7 @@ describe('HappyHourController', () => {
   beforeEach(async () => {
     const serviceMock: Partial<jest.Mocked<HappyHourService>> = {
       getConfig: jest.fn(),
+      getConfigResponse: jest.fn(),
       toggle: jest.fn(),
       getSlots: jest.fn(),
       createSlot: jest.fn(),
@@ -76,7 +77,7 @@ describe('HappyHourController', () => {
   describe('GET /admin/happy-hour/config', () => {
     it('returns config from service', async () => {
       const config = { id: 1, is_enabled: true } as any;
-      service.getConfig.mockResolvedValueOnce(config);
+      service.getConfigResponse.mockResolvedValueOnce(config);
 
       await request(app.getHttpServer())
         .get('/admin/happy-hour/config')
@@ -123,8 +124,10 @@ describe('HappyHourController', () => {
         .post('/admin/happy-hour/slots')
         .send(validBody)
         .expect(201);
+      // controller ส่ง username ของผู้กดไปด้วยเพื่อลง audit log
       expect(service.createSlot).toHaveBeenCalledWith(
         expect.objectContaining(validBody),
+        'admin1',
       );
     });
 
@@ -194,6 +197,7 @@ describe('HappyHourController', () => {
       expect(service.updateSlot).toHaveBeenCalledWith(
         5,
         expect.objectContaining(validBody),
+        'admin1',
       );
     });
 
@@ -224,7 +228,7 @@ describe('HappyHourController', () => {
       await request(app.getHttpServer())
         .delete('/admin/happy-hour/slots/5')
         .expect(204);
-      expect(service.deleteSlot).toHaveBeenCalledWith(5);
+      expect(service.deleteSlot).toHaveBeenCalledWith(5, 'admin1');
     });
 
     it('returns 400 for non-integer id', async () => {
