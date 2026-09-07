@@ -18,12 +18,14 @@ import { PromoBoardService } from './promo-board.service';
 import { CartBasketService } from './cart-basket.service';
 import { CreateBasketDto } from './dto/create-basket.dto';
 import { CreateSetBasketDto } from './dto/create-set-basket.dto';
+import { FlashsaleService } from '../flashsale/flashsale.service';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
 
 interface JwtUser {
   username: string;
   mem_code: string;
   price_option?: string;
+  mem_route?: string;
 }
 
 /** price_option ในโทเคนอาจเป็นตัวเล็กหรือค่าว่าง — normalize ก่อนใช้ */
@@ -43,6 +45,7 @@ export class SpecialCollectionCustomerController {
     private readonly specialCollectionService: SpecialCollectionService,
     private readonly promoBoardService: PromoBoardService,
     private readonly cartBasketService: CartBasketService,
+    private readonly flashsaleService: FlashsaleService,
   ) {}
 
   /** กระเช้าที่อยู่ในตะกร้าแล้ว — ส่ง promo_id มาเพื่อกรองเฉพาะโปรนั้น */
@@ -144,6 +147,19 @@ export class SpecialCollectionCustomerController {
       promoId,
       req.user.mem_code,
       toPriceOption(req.user.price_option),
+    );
+  }
+
+  /** สินค้าใน flashsale ตัวเดียว สำหรับการ์ดที่กางออกในหน้าคอลเลกชัน (ECWC-523) */
+  @Get('flashsale/:promotionId')
+  getFlashsale(
+    @Param('promotionId', ParseIntPipe) promotionId: number,
+    @Req() req: { user: JwtUser },
+  ) {
+    return this.flashsaleService.getFlashSaleById(
+      promotionId,
+      req.user.mem_code,
+      req.user.mem_route,
     );
   }
 

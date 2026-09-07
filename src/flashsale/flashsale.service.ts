@@ -1,10 +1,47 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { FlashSaleEntity } from './flashsale.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { FlashSaleProductsEntity } from './flashsale-product.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { UserEntity } from 'src/users/users.entity';
+
+export interface FlashsaleClock {
+  /** YYYY-MM-DD */
+  date: string;
+  /** HH:mm:ss */
+  time: string;
+}
+
+/** วัน/เวลาปัจจุบันตาม TZ ของเซิร์ฟเวอร์ ในรูปแบบเดียวกับคอลัมน์ date / time_start / time_end */
+export const flashsaleClock = (): FlashsaleClock => {
+  const now = new Date();
+  return {
+    date: now.toLocaleDateString('sv-SE'),
+    time: now.toTimeString().split(' ')[0],
+  };
+};
+
+/** คอลัมน์ date อาจกลับมาเป็น Date หรือ string แล้วแต่ driver — ให้เป็น YYYY-MM-DD เสมอ */
+export const flashsaleDate = (value: string | Date): string =>
+  value instanceof Date
+    ? value.toLocaleDateString('sv-SE')
+    : String(value).slice(0, 10);
+
+/** กำลังลดอยู่ตอนนี้ไหม — เปิดใช้ + วันนี้ + อยู่ในช่วงเวลา */
+export const isFlashsaleLive = (
+  flash: Pick<FlashSaleEntity, 'date' | 'time_start' | 'time_end' | 'is_active'>,
+  clock: FlashsaleClock = flashsaleClock(),
+): boolean =>
+  flash.is_active &&
+  flashsaleDate(flash.date) === clock.date &&
+  flash.time_start <= clock.time &&
+  clock.time <= flash.time_end;
 
 @Injectable()
 export class FlashsaleService {
@@ -223,88 +260,113 @@ export class FlashsaleService {
     }
   }
 
+  /** query สินค้าใน flashsale พร้อมหน่วย + จำนวนที่ร้านนี้มีในตะกร้า — ใช้ร่วมกันทั้งหน้าแรกและคอลเลกชันพิเศษ */
+  private flashsaleQuery(mem_code: string, isL16: boolean) {
+    return this.flashSaleRepo
+      .createQueryBuilder('flash')
+      .leftJoinAndSelect('flash.flashsaleProducts', 'fsp')
+      .leftJoinAndSelect('fsp.product', 'product')
+      .leftJoinAndSelect('product.units', 'units')
+      .leftJoinAndSelect(
+        'product.inCarts',
+        'cart',
+        'cart.mem_code = :memCode AND cart.is_reward = false',
+      )
+      .setParameter('memCode', mem_code)
+      .where(
+        isL16
+          ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
+          : '1=1',
+      )
+      .select([
+        'flash.promotion_id',
+        'flash.promotion_name',
+        'flash.date',
+        'flash.time_start',
+        'flash.time_end',
+        'flash.is_active',
+        'fsp.id',
+        'fsp.limit',
+        'product.pro_code',
+        'product.pro_name',
+        'product.pro_priceA',
+        'product.pro_imgmain',
+        'product.pro_promotion_amount',
+        'product.pro_stock',
+        'product.pro_lowest_stock',
+        'product.order_quantity',
+        'units.id',
+        'units.unit_name',
+        'units.level',
+        'units.ratio',
+        'cart.spc_id',
+        'cart.spc_amount',
+        'cart.spc_unit_enum',
+        'cart.mem_code',
+      ]);
+  }
+
+  /** เติม pro_unit1..3 และชื่อหน่วยในตะกร้า ให้หน้าบ้านใช้ต่อได้เลย */
+  private withUnitNames(flash: FlashSaleEntity) {
+    return {
+      ...flash,
+      flashsaleProducts: flash.flashsaleProducts?.map((fsp) => {
+        const units = fsp.product?.units ?? [];
+        const unit1 = units.find((u) => u.level === 1);
+        const unit2 = units.find((u) => u.level === 2);
+        const unit3 = units.find((u) => u.level === 3);
+        const inCarts = (fsp.product?.inCarts ?? []).map((cart) => ({
+          ...cart,
+          spc_unit:
+            units.find((u) => u.level === Number(cart.spc_unit_enum))
+              ?.unit_name ?? '',
+        }));
+        return {
+          ...fsp,
+          product: {
+            ...fsp.product,
+            pro_unit1: unit1?.unit_name ?? '',
+            pro_unit2: unit2?.unit_name ?? '',
+            pro_unit3: unit3?.unit_name ?? '',
+            inCarts,
+          },
+        };
+      }),
+    };
+  }
+
+  /**
+   * flashsale ตัวเดียวพร้อมสินค้า สำหรับการ์ดที่กางออกในหน้าคอลเลกชันพิเศษ (ECWC-523)
+   * ไม่กรองวัน/เวลา — ส่ง live ให้หน้าบ้านตัดสินว่ากดใส่ตะกร้าได้หรือยัง
+   */
+  async getFlashSaleById(
+    promotion_id: number,
+    mem_code: string,
+    mem_route?: string,
+  ) {
+    const isL16 = await this.isL16Member(mem_code, mem_route);
+    const flash = await this.flashsaleQuery(mem_code, isL16)
+      .andWhere('flash.promotion_id = :id', { id: promotion_id })
+      .getOne();
+    if (!flash) throw new NotFoundException('ไม่พบ flashsale นี้');
+    return { ...this.withUnitNames(flash), live: isFlashsaleLive(flash) };
+  }
+
   async getFlashSale(limit: number, mem_code: string, mem_route?: string) {
     try {
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      const now = new Date();
-      const currentDate = now.toLocaleDateString('sv-SE');
-      const currentTime = now.toTimeString().split(' ')[0];
+      const clock = flashsaleClock();
 
-      const data = await this.flashSaleRepo
-        .createQueryBuilder('flash')
-        .leftJoinAndSelect('flash.flashsaleProducts', 'fsp')
-        .leftJoinAndSelect('fsp.product', 'product')
-        .leftJoinAndSelect('product.units', 'units')
-        .leftJoinAndSelect(
-          'product.inCarts',
-          'cart',
-          'cart.mem_code = :memCode AND cart.is_reward = false',
-        )
-        .setParameter('memCode', mem_code)
-        .where('flash.date = :date', { date: currentDate })
+      const data = await this.flashsaleQuery(mem_code, isL16)
+        .andWhere('flash.date = :date', { date: clock.date })
         .andWhere(':nowTime BETWEEN flash.time_start AND flash.time_end', {
-          nowTime: currentTime,
+          nowTime: clock.time,
         })
         .andWhere('flash.is_active = :active', { active: true })
-        .andWhere(
-          isL16
-            ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
-            : '1=1',
-        )
-        .select([
-          'flash.promotion_id',
-          'flash.promotion_name',
-          'flash.date',
-          'flash.time_start',
-          'flash.time_end',
-          'flash.is_active',
-          'fsp.id',
-          'fsp.limit',
-          'product.pro_code',
-          'product.pro_name',
-          'product.pro_priceA',
-          'product.pro_imgmain',
-          'product.pro_promotion_amount',
-          'product.pro_stock',
-          'product.pro_lowest_stock',
-          'product.order_quantity',
-          'units.id',
-          'units.unit_name',
-          'units.level',
-          'units.ratio',
-          'cart.spc_id',
-          'cart.spc_amount',
-          'cart.spc_unit_enum',
-          'cart.mem_code',
-        ])
         .take(Number(limit))
         .getMany();
 
-      return data.map((flash) => ({
-        ...flash,
-        flashsaleProducts: flash.flashsaleProducts?.map((fsp) => {
-          const units = fsp.product?.units ?? [];
-          const unit1 = units.find((u) => u.level === 1);
-          const unit2 = units.find((u) => u.level === 2);
-          const unit3 = units.find((u) => u.level === 3);
-          const inCarts = (fsp.product?.inCarts ?? []).map((cart) => ({
-            ...cart,
-            spc_unit:
-              units.find((u) => u.level === Number(cart.spc_unit_enum))
-                ?.unit_name ?? '',
-          }));
-          return {
-            ...fsp,
-            product: {
-              ...fsp.product,
-              pro_unit1: unit1?.unit_name ?? '',
-              pro_unit2: unit2?.unit_name ?? '',
-              pro_unit3: unit3?.unit_name ?? '',
-              inCarts,
-            },
-          };
-        }),
-      }));
+      return data.map((flash) => this.withUnitNames(flash));
     } catch (error) {
       this.logger.error(`Error in getFlashSale: ${error}`);
       throw new Error('Error in getFlashSale');

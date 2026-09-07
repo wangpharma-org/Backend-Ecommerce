@@ -22,6 +22,11 @@ import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
+import {
+  flashsaleClock,
+  flashsaleDate,
+  isFlashsaleLive,
+} from '../flashsale/flashsale.service';
 import { UserEntity } from '../users/users.entity';
 import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
 import {
@@ -569,11 +574,32 @@ export class SpecialCollectionService {
     const map = new Map<string, unknown>();
     if (ids.length === 0) return map;
 
-    const rows = await this.flashsaleRepo.find({
-      where: { promotion_id: In(ids) },
-    });
-    for (const flashsale of rows) {
-      map.set(String(flashsale.promotion_id), flashsale);
+    // flashsale เป็นรายวัน — ตัวที่ปิดหรือจบไปแล้วให้ resolve ไม่เจอ (unavailable) เหมือน promotion
+    // ตัวที่ยังไม่ถึงเวลาให้เห็นได้ หน้าบ้านจะโชว์ว่าเริ่มเมื่อไหร่และยังไม่ให้ใส่ตะกร้า
+    const clock = flashsaleClock();
+    const rows = await this.flashsaleRepo
+      .createQueryBuilder('flash')
+      .loadRelationCountAndMap('flash.product_count', 'flash.flashsaleProducts')
+      .where('flash.promotion_id IN (:...ids)', { ids })
+      .andWhere('flash.is_active = :active', { active: true })
+      .andWhere(
+        '(flash.date > :today OR (flash.date = :today AND flash.time_end >= :now))',
+        { today: clock.date, now: clock.time },
+      )
+      .getMany();
+    for (const flash of rows) {
+      map.set(String(flash.promotion_id), {
+        promotion_id: flash.promotion_id,
+        promotion_name: flash.promotion_name,
+        date: flashsaleDate(flash.date),
+        time_start: flash.time_start,
+        time_end: flash.time_end,
+        is_active: flash.is_active,
+        product_count:
+          (flash as FlashSaleEntity & { product_count?: number })
+            .product_count ?? 0,
+        live: isFlashsaleLive(flash, clock),
+      });
     }
     return map;
   }
