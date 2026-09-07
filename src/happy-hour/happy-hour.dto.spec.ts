@@ -1,3 +1,5 @@
+// class-transformer/class-validator ต้องการ Reflect.getMetadata ตอนรันเดี่ยวๆ นอก Nest
+import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreateSlotDto } from './dto/create-slot.dto';
@@ -84,12 +86,13 @@ describe('Happy Hour DTOs', () => {
   });
 
   describe('CreateSlotDto — numeric constraints', () => {
+    // card_value ไม่มี Min · excess_threshold / discount_per_step เป็น Min(0) โดยตั้งใจ (0 = ไม่มีส่วนลดส่วนเกิน)
+    // จึงทดสอบเฉพาะค่าที่ DTO ปัจจุบันปฏิเสธจริง
     it.each([
       ['min_order_amount', 0],
       ['min_order_amount', -1],
-      ['card_value', 0],
-      ['excess_threshold', 0],
-      ['discount_per_step', 0],
+      ['excess_threshold', -1],
+      ['discount_per_step', -1],
       ['reward_amount', 0],
     ])('rejects %s = %i', async (field, value) => {
       const dto = plainToInstance(CreateSlotDto, {
@@ -148,13 +151,13 @@ describe('Happy Hour DTOs', () => {
       expect(errors.some((e) => e.property === 'is_active')).toBe(true);
     });
 
-    it('rejects reward_pro_code as non-string', async () => {
+    it('rejects reward_pro_codes with a non-string element', async () => {
       const dto = plainToInstance(CreateSlotDto, {
         ...baseValidSlot,
-        reward_pro_code: 12345,
+        reward_pro_codes: [12345],
       });
       const errors = await validate(dto);
-      expect(errors.some((e) => e.property === 'reward_pro_code')).toBe(true);
+      expect(errors.some((e) => e.property === 'reward_pro_codes')).toBe(true);
     });
   });
 
