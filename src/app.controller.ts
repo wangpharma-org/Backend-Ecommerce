@@ -231,6 +231,7 @@ export class AppController {
       advertise_code?: string;
       creditor?: string;
       product_list?: string;
+      promo_id?: number | string;
     },
   ) {
     this.logger.log('=== Controller uploadBanner ===');
@@ -250,6 +251,7 @@ export class AppController {
       banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
       date_start: Date;
       date_end: Date;
+      promo_id?: number | null;
     },
   ) {
     const banner = await this.bannerService.createBannerFromUrl(body.img_url, {
@@ -257,6 +259,7 @@ export class AppController {
       date_end: body.date_end,
       banner_name: body.banner_name,
       banner_location: body.banner_location,
+      promo_id: body.promo_id,
     });
     return { success: true, data: banner };
   }
