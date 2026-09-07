@@ -274,6 +274,31 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
     expect(after.body).toHaveLength(0);
   });
 
+  it('กระเช้าเข้า/ออกแล้ว cart_version ต้องขยับ ให้แท็บอื่นรู้ว่าตะกร้าเปลี่ยน', async () => {
+    const versionOf = async () => {
+      const res = await call<{ cartVersion: string | number }>(
+        'GET',
+        `/ecom/product-cart/${memCode}`,
+      );
+      return BigInt(res.body.cartVersion);
+    };
+
+    const v0 = await versionOf();
+    const created = await call<{ basket_id: number; cartVersion: string }>(
+      'POST',
+      '/ecom/special-collection/basket',
+      { promo_id: PROMO_ID, lines: [bigLine] },
+    );
+    expect(created.status).toBe(201);
+    const v1 = await versionOf();
+    expect(v1).toBeGreaterThan(v0);
+    // response ต้องคืน version ใหม่ให้หน้าบ้านเก็บได้เลย
+    expect(BigInt(created.body.cartVersion)).toBe(v1);
+
+    await call('DELETE', `/ecom/special-collection/basket/${created.body.basket_id}`);
+    expect(await versionOf()).toBeGreaterThan(v1);
+  });
+
   it('ของแถมถูกคิดใหม่ทันทีเมื่อกระเช้าเข้าและออกจากตะกร้า', async () => {
     const rewardRows = async () => {
       const res = await call<{ cart: CartItem[] }>(

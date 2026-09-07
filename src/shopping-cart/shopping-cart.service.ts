@@ -638,6 +638,14 @@ export class ShoppingCartService {
     return this.hasFixedTotal(line) && Number(line.spc_fixed_total) === 0;
   }
 
+  /**
+   * ให้ service อื่นที่เขียน shopping_cart ตรง (เช่น CartBasketService) bump version ได้
+   * ไม่งั้นแท็บอื่นส่ง clientVersion เก่ามาแล้วผ่านทั้งที่ตะกร้าเปลี่ยนไปแล้ว
+   */
+  bumpCartVersion(mem_code: string): Promise<CartVersionState> {
+    return this.incrementCartVersion(mem_code);
+  }
+
   private async incrementCartVersion(
     mem_code: string,
   ): Promise<CartVersionState> {

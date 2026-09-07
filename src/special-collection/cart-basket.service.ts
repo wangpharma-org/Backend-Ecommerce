@@ -9,7 +9,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { CartBasketEntity } from './cart-basket.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
-import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
+import {
+  ShoppingCartService,
+  type CartVersionState,
+} from '../shopping-cart/shopping-cart.service';
 import { PromotionEntity } from '../promotion/promotion.entity';
 import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
@@ -118,7 +121,7 @@ export class CartBasketService {
     promoId: number,
     lines: BasketLineInput[],
     option: PriceOption,
-  ): Promise<{ basket_id: number }> {
+  ): Promise<{ basket_id: number } & CartVersionState> {
     if (!lines || lines.length === 0) {
       throw new BadRequestException('กระเช้าต้องมีสินค้าอย่างน้อย 1 รายการ');
     }
@@ -240,7 +243,12 @@ export class CartBasketService {
     // แถวของกระเช้าเป็นสินค้าในตะกร้าจริง engine ของแถมต้องคิดใหม่ทันที
     // ไม่งั้นของแถมจะโผล่/หายก็ต่อเมื่อลูกค้าแตะตะกร้าครั้งถัดไป
     await this.shoppingCartService.checkPromotionReward(memCode, option);
-    return created;
+    return { ...created, ...(await this.bumpVersion(memCode)) };
+  }
+
+  /** ตะกร้าเปลี่ยนแล้วต้อง bump cart_version เหมือน mutation อื่นของ ShoppingCartService */
+  private bumpVersion(memCode: string): Promise<CartVersionState> {
+    return this.shoppingCartService.bumpCartVersion(memCode);
   }
 
   /**
@@ -252,7 +260,7 @@ export class CartBasketService {
     setCode: string,
     setQty: number,
     option: PriceOption,
-  ): Promise<{ basket_id: number }> {
+  ): Promise<{ basket_id: number } & CartVersionState> {
     const set = await this.setRepo.findOne({ where: { set_code: setCode } });
     if (!set) throw new NotFoundException(`ไม่พบกระเช้ารหัส ${setCode}`);
     const now = new Date();
@@ -305,7 +313,7 @@ export class CartBasketService {
     });
 
     await this.shoppingCartService.checkPromotionReward(memCode, option);
-    return created;
+    return { ...created, ...(await this.bumpVersion(memCode)) };
   }
 
   // -------------------------------------------------------------------- read
@@ -496,8 +504,8 @@ export class CartBasketService {
     removeWholeBasket: boolean,
     option: PriceOption,
   ): Promise<
-    | { removed: 'line' }
-    | { removed: 'basket' }
+    | ({ removed: 'line' } & CartVersionState)
+    | ({ removed: 'basket' } & CartVersionState)
     | {
         removed: 'none';
         needs_confirm: true;
@@ -560,7 +568,7 @@ export class CartBasketService {
     if (remainingRows.length > 0 && progress >= threshold) {
       await this.cartRepo.delete({ spc_id: spcId });
       await this.shoppingCartService.checkPromotionReward(memCode, option);
-      return { removed: 'line' };
+      return { removed: 'line', ...(await this.bumpVersion(memCode)) };
     }
 
     // ต่ำกว่าเกณฑ์ (หรือไม่เหลืออะไรเลย) — ต้องยกกระเช้าออกทั้งก้อน
@@ -574,15 +582,19 @@ export class CartBasketService {
       };
     }
 
-    await this.deleteBasket(memCode, basketId, option);
-    return { removed: 'basket' };
+    const { cartVersion, cartSyncedAt } = await this.deleteBasket(
+      memCode,
+      basketId,
+      option,
+    );
+    return { removed: 'basket', cartVersion, cartSyncedAt };
   }
 
   async deleteBasket(
     memCode: string,
     basketId: number,
     option: PriceOption,
-  ): Promise<{ deleted: boolean }> {
+  ): Promise<{ deleted: boolean } & CartVersionState> {
     await this.findBasketOrFail(memCode, basketId);
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(ShoppingCartEntity, { basket_id: basketId });
@@ -590,6 +602,6 @@ export class CartBasketService {
     });
     await this.shoppingCartService.checkPromotionReward(memCode, option);
     this.logger.log(`deleted cart basket ${basketId} for ${memCode}`);
-    return { deleted: true };
+    return { deleted: true, ...(await this.bumpVersion(memCode)) };
   }
 }
