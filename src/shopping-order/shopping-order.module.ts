@@ -17,6 +17,9 @@ import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-a
 import { PromotionModule } from 'src/promotion/promotion.module';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
+import { CartBasketEntity } from 'src/special-collection/cart-basket.entity';
+import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
+import { OrderBasketEntity } from './order-basket.entity';
 
 @Module({
   imports: [
@@ -29,6 +32,9 @@ import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
       PromotionRewardEntity,
       UserEntity,
       PromotionTierEntity,
+      CartBasketEntity,
+      BundleSetEntity,
+      OrderBasketEntity,
     ]),
     ShoppingCartModule,
     HttpModule,
