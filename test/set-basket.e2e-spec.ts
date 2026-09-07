@@ -203,6 +203,33 @@ describe('กระเช้าสำเร็จรูปในตะกร้�
     expect(await summary()).toBe(0);
   });
 
+  it('happy hour preview ใช้ยอดจากตะกร้าจริง ไม่เชื่อตัวเลขที่ client ส่งมา', async () => {
+    await call('POST', '/ecom/special-collection/basket/set', {
+      set_code: set.set_code,
+      qty: 1,
+    });
+    const total = await summary();
+    expect(total).toBe(set.price);
+
+    // ส่งราคาเต็มมาหลอก (list_total) backend ต้องไม่เอาไปใช้
+    const res = await call<{
+      is_happy_hour: boolean;
+      qualifying_amount?: number;
+    }>('POST', '/admin/happy-hour/cart-preview', {
+      order_amount: set.list_total * 10,
+      cart_items: [{ pro_code: set.items[0].pro_code, amount: set.list_total * 10 }],
+    });
+    expect(res.status).toBeLessThan(300);
+    // นอกช่วง happy hour จะได้ is_happy_hour=false — เช็คได้แค่ตอนเปิดอยู่
+    if (res.body.is_happy_hour) {
+      expect(res.body.qualifying_amount).toBeLessThanOrEqual(total);
+    }
+
+    // payload ว่างต้องใช้ได้ (client ใหม่ไม่ส่งอะไรมาแล้ว)
+    const empty = await call('POST', '/admin/happy-hour/cart-preview', {});
+    expect(empty.status).toBeLessThan(300);
+  });
+
   it('ปฏิเสธเมื่อสั่งเกินจำนวนชุดที่ประกอบได้', async () => {
     const res = await call<{ message?: string }>(
       'POST',

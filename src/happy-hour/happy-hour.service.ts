@@ -30,6 +30,7 @@ import { ProductEntity } from 'src/products/products.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { CreditorEntity } from 'src/products/creditor.entity';
 import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
+import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 
 // import * as ให้ type เป็น { default: PluginFunc } แต่ runtime CJS value คือ PluginFunc โดยตรง
 // ต้อง import แบบนี้เพื่อให้ type augmentation ของ .tz() / .utc() ทำงาน
@@ -118,6 +119,7 @@ export class HappyHourService implements OnModuleInit {
     private readonly minProductRepo: Repository<HappyHourSlotMinProductEntity>,
     @InjectRepository(CreditorEntity)
     private readonly creditorRepo: Repository<CreditorEntity>,
+    private readonly shoppingCartService: ShoppingCartService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -678,10 +680,17 @@ export class HappyHourService implements OnModuleInit {
     }));
   }
 
-  async getCartPreview(dto: {
-    order_amount: number;
-    cart_items?: { pro_code: string; amount: number }[];
-  }): Promise<{
+  /**
+   * ถ้ามี memCode จะอ่านตะกร้าจริงและคิดมูลค่าด้วยกติกาเดียวกับ summaryCart
+   * (กระเช้าสำเร็จรูปนับที่ราคาชุด ไม่ใช่ราคาเต็ม) — payload จาก client ใช้แค่ตอนไม่มี memCode
+   */
+  async getCartPreview(
+    dto: {
+      order_amount?: number;
+      cart_items?: { pro_code: string; amount: number }[];
+    },
+    memCode?: string,
+  ): Promise<{
     is_happy_hour: boolean;
     num_cards?: number;
     qualifying_amount?: number;
@@ -721,8 +730,17 @@ export class HappyHourService implements OnModuleInit {
     if (!slot) return { is_happy_hour: false };
 
     // ── Qualifying amount with scope filtering ──
-    let qualifyingAmount = dto.order_amount;
-    const items = dto.cart_items ?? [];
+    let orderAmount = Number(dto.order_amount ?? 0);
+    let items = dto.cart_items ?? [];
+    if (memCode) {
+      const cart = await this.shoppingCartService.summaryCartDetailed(memCode);
+      orderAmount = cart.total;
+      items = cart.lines.map((line) => ({
+        pro_code: line.pro_code,
+        amount: line.amount,
+      }));
+    }
+    let qualifyingAmount = orderAmount;
 
     if (items.length > 0) {
       if (slot.min_order_scope === 'specific') {

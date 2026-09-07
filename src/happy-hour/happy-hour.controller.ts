@@ -120,8 +120,9 @@ export class HappyHourController {
    * Backend คำนวณทุกอย่าง (scope filtering, reward amounts) — frontend display ตรงได้เลย
    */
   @Post('cart-preview')
-  cartPreview(@Body() dto: CartPreviewDto) {
-    return this.happyHourService.getCartPreview(dto);
+  cartPreview(@Body() dto: CartPreviewDto, @Req() req: { user: JwtUser }) {
+    // อ่านตะกร้าจาก mem_code ใน token เสมอ — ตัวเลขจาก client เชื่อไม่ได้และคิดกระเช้าสำเร็จรูปผิด
+    return this.happyHourService.getCartPreview(dto, req.user.mem_code);
   }
 
   @Get('lotus-cards')

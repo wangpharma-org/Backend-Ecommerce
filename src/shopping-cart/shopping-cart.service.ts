@@ -2579,6 +2579,19 @@ export class ShoppingCartService {
   async summaryCart(
     mem_code: string,
   ): Promise<{ total: number; items: { [key: string]: number }[] }> {
+    const { total, items } = await this.summaryCartDetailed(mem_code);
+    return { total, items };
+  }
+
+  /**
+   * ยอดตะกร้า + มูลค่าต่อบรรทัด ด้วยกติกาเดียวกันเป๊ะ (fixed total > promotion/flashsale > price tier)
+   * ใช้โดย summaryCart และ happy hour preview เพื่อไม่ให้สองที่คิดเลขคนละแบบ
+   */
+  async summaryCartDetailed(mem_code: string): Promise<{
+    total: number;
+    items: { [key: string]: number }[];
+    lines: { spc_id: number; pro_code: string; amount: number }[];
+  }> {
     try {
       const result = await this.shoppingCartRepo
         .createQueryBuilder('cart')
@@ -2624,6 +2637,8 @@ export class ShoppingCartService {
 
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
+      const lines: { spc_id: number; pro_code: string; amount: number }[] =
+        [];
 
       for (const [index, dataGroup] of splitData.entries()) {
         const productTotalAmounts = new Map<string, number>();
@@ -2702,23 +2717,29 @@ export class ShoppingCartService {
 
         const tier = result[0]?.member?.mem_price ?? 'C';
 
+        const lineValue = (
+          item: (typeof dataGroup)[number],
+          t: 'A' | 'B' | 'C',
+        ): number => {
+          // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
+          if (this.hasFixedTotal(item)) return Number(item.spc_fixed_total);
+          let ratio = 0;
+          const matchedUnit = item.product.units?.find(
+            (u) =>
+              u.unit_name === item.spc_unit_enum ||
+              String(u.level) === String(item.spc_unit_enum),
+          );
+          if (matchedUnit) ratio = matchedUnit.ratio;
+          const quantity = Number(item.spc_amount) * Number(ratio);
+          const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+          return quantity * price;
+        };
+
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
-            if (this.hasFixedTotal(item)) {
-              return sum + Number(item.spc_fixed_total);
-            }
-            let ratio = 0;
-            const matchedUnit = item.product.units?.find(
-              (u) =>
-                u.unit_name === item.spc_unit_enum ||
-                String(u.level) === String(item.spc_unit_enum),
-            );
-            if (matchedUnit) ratio = matchedUnit.ratio;
-            const quantity = Number(item.spc_amount) * Number(ratio);
-            const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
-
-            return sum + quantity * price;
+            const amount = lineValue(item, t);
+            lines.push({ spc_id: item.spc_id, pro_code: item.pro_code, amount });
+            return sum + amount;
           }, 0);
 
         const promoTotal = totalByTier(split.promo, 'A');
@@ -2732,9 +2753,9 @@ export class ShoppingCartService {
         itemsArray.push({ index: index, grandTotalItems });
       }
 
-      return { total: total, items: itemsArray };
+      return { total: total, items: itemsArray, lines };
     } catch {
-      return { total: 0, items: [] };
+      return { total: 0, items: [], lines: [] };
     }
   }
 

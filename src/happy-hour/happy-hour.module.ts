@@ -13,6 +13,7 @@ import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProductEntity } from 'src/products/products.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 
 @Module({
   imports: [
@@ -29,6 +30,8 @@ import { ProductUnitEntity } from 'src/products/product-unit.entity';
     ]),
     FeatureFlagsModule,
     AuthModule,
+    // cart-preview อ่านตะกร้าผ่าน ShoppingCartService (ShoppingCartModule ไม่ได้ import กลับมา ไม่วน)
+    ShoppingCartModule,
   ],
   providers: [HappyHourService],
   controllers: [HappyHourController],
