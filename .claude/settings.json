@@ -1,4 +1,12 @@
 {
+  "extraKnownMarketplaces": {
+    "wangpharma": {
+      "source": { "source": "github", "repo": "wangpharma-org/claude-plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "vtsls-lsp@wangpharma": true
+  },
   "hooks": {
     "Stop": [
       {
