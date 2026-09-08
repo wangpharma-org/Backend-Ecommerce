@@ -106,6 +106,8 @@ export class FavoriteService {
           product2: {
             pro_code: string;
             pro_name: string;
+            pro_nameTH?: string | null;
+            pro_nameSale?: string | null;
             pro_imgmain: string;
           } | null;
         };
@@ -158,6 +160,8 @@ export class FavoriteService {
         'fav.fav_id',
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_imgmain',
         'product.pro_priceA',
         'product.pro_priceB',
@@ -184,6 +188,8 @@ export class FavoriteService {
         'hotdeal.pro2_unit',
         'hotdealProduct2.pro_code',
         'hotdealProduct2.pro_name',
+        'hotdealProduct2.pro_nameTH',
+        'hotdealProduct2.pro_nameSale',
         'hotdealProduct2.pro_imgmain',
       ]);
 
@@ -229,6 +235,8 @@ export class FavoriteService {
               product2: {
                 pro_code: string;
                 pro_name: string;
+                pro_nameTH?: string | null;
+                pro_nameSale?: string | null;
                 pro_imgmain: string;
               } | null;
             };

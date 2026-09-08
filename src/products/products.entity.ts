@@ -144,7 +144,7 @@ export class ProductEntity {
   pro_drugmain4!: string;
 
   @Column({ nullable: true, type: 'varchar' })
-  pro_nameTH!: string;
+  pro_nameTH!: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
   pro_nameMain!: string;

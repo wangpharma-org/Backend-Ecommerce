@@ -939,6 +939,8 @@ export class ShoppingOrderService {
           'order.spo_id',
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
