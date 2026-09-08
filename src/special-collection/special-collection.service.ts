@@ -50,6 +50,11 @@ export interface ResolvedCollectionItem {
   /** null เมื่อของที่อ้างถึงถูกลบ/ปิดไปแล้ว */
   payload: unknown;
   unavailable: boolean;
+  /**
+   * ชื่อของที่อ้างถึง หามาแบบไม่สนสถานะ/วันหมดอายุ — แอดมินต้องอ่านออกเสมอว่ารายการนี้คืออะไร
+   * ถึงแม้โปรจะถูกปิดหรือหมดอายุจน payload เป็น null (null เมื่อของถูกลบออกจาก DB จริงๆ)
+   */
+  display_name: string | null;
 }
 
 @Injectable()
@@ -429,6 +434,8 @@ export class SpecialCollectionService {
       bundle_set: bundleSets,
     };
 
+    const labels = await this.loadDisplayNames(items);
+
     return items.map((item) => {
       const payload = lookup[item.ref_type]?.get(item.ref_id) ?? null;
       return {
@@ -439,8 +446,104 @@ export class SpecialCollectionService {
         sort_order: item.sort_order,
         payload,
         unavailable: payload === null,
+        display_name: labels.get(`${item.ref_type}:${item.ref_id}`) ?? null,
       };
     });
+  }
+
+  /**
+   * ชื่อของทุกรายการ ไม่กรองสถานะ/ช่วงเวลา ต่างจาก loadXxx ด้านล่างที่ตั้งใจกรอง
+   * หน้าแอดมินเคยโชว์ ref_id เป็นหัวรายการเมื่อของนั้นปิด/หมดอายุ ซึ่งอ่านไม่รู้เรื่อง
+   */
+  private async loadDisplayNames(
+    items: SpecialCollectionItemEntity[],
+  ): Promise<Map<string, string>> {
+    const labels = new Map<string, string>();
+    if (items.length === 0) return labels;
+
+    const idsOf = (refType: SpecialCollectionRefType): string[] => {
+      const ids = items
+        .filter((item) => item.ref_type === refType)
+        .map((item) => item.ref_id);
+      return Array.from(new Set(ids));
+    };
+    const numericIds = (refType: SpecialCollectionRefType): number[] =>
+      idsOf(refType)
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+
+    const promoIds = numericIds('promotion');
+    const tierIds = numericIds('tier');
+    const productCodes = idsOf('product');
+    const hotdealIds = numericIds('hotdeal');
+    const flashsaleIds = numericIds('flashsale');
+    const setCodes = idsOf('bundle_set');
+
+    const [promotions, tiers, products, hotdeals, flashsales, sets] =
+      await Promise.all([
+        promoIds.length
+          ? this.promotionRepo.find({
+              where: { promo_id: In(promoIds) },
+              select: { promo_id: true, promo_name: true },
+            })
+          : [],
+        tierIds.length
+          ? this.tierRepo.find({
+              where: { tier_id: In(tierIds) },
+              select: { tier_id: true, tier_name: true },
+            })
+          : [],
+        productCodes.length
+          ? this.productRepo.find({
+              where: { pro_code: In(productCodes) },
+              select: { pro_code: true, pro_name: true },
+            })
+          : [],
+        hotdealIds.length
+          ? this.hotdealRepo.find({
+              where: { id: In(hotdealIds) },
+              relations: { product: true },
+            })
+          : [],
+        flashsaleIds.length
+          ? this.flashsaleRepo.find({
+              where: { promotion_id: In(flashsaleIds) },
+              select: { promotion_id: true, promotion_name: true },
+            })
+          : [],
+        setCodes.length
+          ? this.bundleSetRepo.find({
+              where: { set_code: In(setCodes) },
+              select: { set_code: true, set_name: true },
+              withDeleted: true,
+            })
+          : [],
+      ]);
+
+    for (const row of promotions) {
+      if (row.promo_name) labels.set(`promotion:${row.promo_id}`, row.promo_name);
+    }
+    for (const row of tiers) {
+      if (row.tier_name) labels.set(`tier:${row.tier_id}`, row.tier_name);
+    }
+    for (const row of products) {
+      if (row.pro_name) labels.set(`product:${row.pro_code}`, row.pro_name);
+    }
+    for (const row of hotdeals) {
+      labels.set(
+        `hotdeal:${row.id}`,
+        row.product?.pro_name ?? row.promo_title ?? `Hot Deal ${row.id}`,
+      );
+    }
+    for (const row of flashsales) {
+      if (row.promotion_name) {
+        labels.set(`flashsale:${row.promotion_id}`, row.promotion_name);
+      }
+    }
+    for (const row of sets) {
+      if (row.set_name) labels.set(`bundle_set:${row.set_code}`, row.set_name);
+    }
+    return labels;
   }
 
   private async loadPromotions(ids: number[]): Promise<Map<string, unknown>> {

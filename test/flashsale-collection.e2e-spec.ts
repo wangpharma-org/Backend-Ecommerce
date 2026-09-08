@@ -40,6 +40,7 @@ interface ResolvedItem {
   ref_id: string;
   payload: FlashsalePayload | null;
   unavailable: boolean;
+  display_name: string | null;
 }
 interface MyCollections {
   collections: Array<{ collection_id: number; items: ResolvedItem[] }>;
@@ -137,6 +138,14 @@ async function pickProduct(): Promise<string> {
 }
 
 async function clearCart(): Promise<void> {
+  // กระเช้าค้างจากชุดอื่นทำให้ inCarts มีแถวเกิน — product-delete-cart ลบเฉพาะสินค้าเดี่ยว
+  const baskets = await call<Array<{ basket_id: number }>>(
+    'GET',
+    '/ecom/special-collection/basket',
+  );
+  for (const basket of baskets.body ?? []) {
+    await call('DELETE', `/ecom/special-collection/basket/${basket.basket_id}`);
+  }
   const cart = await call<{ cart: CartItem[] }>(
     'GET',
     `/ecom/product-cart/${memCode}`,
@@ -260,8 +269,11 @@ describe('flashsale ในคอลเลกชันพิเศษ (e2e)', () 
     expect(detail.status).toBe(200);
     const ended = detail.body.items.find((i) => i.ref_id === String(endedId));
     expect(ended?.unavailable).toBe(true);
+    // แอดมินต้องอ่านออกว่ารายการที่จบไปแล้วคืออะไร ไม่ใช่เห็นแค่ ref_id
+    expect(ended?.display_name).toBe(`${TAG} ended`);
     const live = detail.body.items.find((i) => i.ref_id === String(liveId));
     expect(live?.unavailable).toBe(false);
+    expect(live?.display_name).toBe(`${TAG} live`);
   });
 
   it('endpoint สินค้าใน flashsale คืนหน่วย ราคา A และสถานะ live', async () => {
