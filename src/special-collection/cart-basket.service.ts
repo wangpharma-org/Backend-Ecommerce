@@ -41,6 +41,15 @@ export interface BasketLineView {
   is_gift: boolean;
 }
 
+/** ของแถมที่ตะกร้าได้จากโปรของกระเช้านี้ — engine เป็นคนใส่ให้ ตรงกับแถว is_reward ในตะกร้า */
+export interface BasketRewardView {
+  pro_code: string;
+  pro_name: string;
+  pro_imgmain: string | null;
+  unit_name: string;
+  qty: number;
+}
+
 export interface BasketView {
   basket_id: number;
   /** promo = ลูกค้าประกอบเองจากโปร · set = กระเช้าสำเร็จรูป ยกชุด แบ่งขายไม่ได้ */
@@ -58,6 +67,13 @@ export interface BasketView {
   min_is_unit: boolean;
   qualifies: boolean;
   reached_tier_count: number;
+  /**
+   * ของแถมที่ได้จริงตอนนี้ ไม่ใช่ค่าประมาณ
+   * engine ให้ของแถมระดับโปร ไม่ได้แยกตามกระเช้า ถ้าโปรเดียวมีหลายกระเช้า
+   * รายการจะไปอยู่กับกระเช้าก้อนแรกก้อนเดียว (rewards_shared = true) กันแสดงซ้ำ
+   */
+  rewards: BasketRewardView[];
+  rewards_shared: boolean;
 }
 
 @Injectable()
@@ -422,9 +438,79 @@ export class CartBasketService {
           (tier) =>
             (tier.is_unit ? unitCount : amount) >= Number(tier.min_amount),
         ).length,
+        rewards: [],
+        rewards_shared: false,
       });
     }
+
+    await this.attachRewards(memCode, views);
     return views;
+  }
+
+  /**
+   * ผูกของแถมที่ได้จริงเข้ากับการ์ดกระเช้า (ECWC-496)
+   * แถว is_reward ในตะกร้าผูกกับ promo_id ไม่ได้ผูกกับ basket_id เพราะ engine
+   * คิดของแถมจากยอดรวมของทั้งโปร ถ้าโปรเดียวมีหลายกระเช้าจึงแปะไว้ที่ก้อนแรกก้อนเดียว
+   */
+  private async attachRewards(
+    memCode: string,
+    views: BasketView[],
+  ): Promise<void> {
+    const promoIds = Array.from(
+      new Set(
+        views
+          .filter((view) => view.kind === 'promo' && view.promo_id !== null)
+          .map((view) => view.promo_id as number),
+      ),
+    );
+    if (promoIds.length === 0) return;
+
+    const rows = await this.cartRepo.find({
+      where: {
+        mem_code: memCode,
+        is_reward: true,
+        promo_id: In(promoIds),
+      },
+      relations: ['product'],
+    });
+    if (rows.length === 0) return;
+
+    const codes = Array.from(new Set(rows.map((row) => row.pro_code)));
+    const units = await this.unitRepo.find({
+      where: { pro_code: In(codes) },
+    });
+
+    const byPromo = new Map<number, BasketRewardView[]>();
+    for (const row of rows) {
+      const promoId = row.promo_id;
+      const level = Number(row.spc_unit_enum ?? 1);
+      const unit = units.find(
+        (u) => u.pro_code === row.pro_code && u.level === level,
+      );
+      const bucket = byPromo.get(promoId) ?? [];
+      bucket.push({
+        pro_code: row.pro_code,
+        pro_name: row.product?.pro_name ?? row.pro_code,
+        pro_imgmain: row.product?.pro_imgmain ?? null,
+        unit_name: unit?.unit_name ?? '',
+        qty: Number(row.spc_amount),
+      });
+      byPromo.set(promoId, bucket);
+    }
+
+    const taken = new Set<number>();
+    for (const view of views) {
+      if (view.kind !== 'promo' || view.promo_id === null) continue;
+      const rewards = byPromo.get(view.promo_id);
+      if (!rewards || taken.has(view.promo_id)) continue;
+      taken.add(view.promo_id);
+      view.rewards = rewards;
+      // มีกระเช้าโปรนี้มากกว่าหนึ่งก้อน — บอกหน้าบ้านว่ารายการนี้รวมมาจากทุกก้อน
+      view.rewards_shared =
+        views.filter(
+          (other) => other.kind === 'promo' && other.promo_id === view.promo_id,
+        ).length > 1;
+    }
   }
 
   /** กระเช้าสำเร็จรูป: ราคาอ่านจากที่ล็อกไว้ต่อบรรทัด ไม่มีเกณฑ์ให้ถึง */
@@ -470,6 +556,8 @@ export class CartBasketService {
       lines,
       total_amount: this.round2(amount),
       total_units: unitCount,
+      rewards: [],
+      rewards_shared: false,
       min_threshold: 0,
       min_is_unit: false,
       qualifies: true,
