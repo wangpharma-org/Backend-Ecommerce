@@ -44,11 +44,19 @@ interface BasketLine {
   pro_code: string;
   qty: number;
 }
+interface BasketReward {
+  pro_code: string;
+  pro_name: string;
+  unit_name: string;
+  qty: number;
+}
 interface Basket {
   basket_id: number;
   lines: BasketLine[];
   qualifies: boolean;
   total_amount: number;
+  rewards: BasketReward[];
+  rewards_shared: boolean;
 }
 interface RemoveResult {
   removed?: string;
@@ -61,7 +69,7 @@ interface ApiResult<T = unknown> {
 }
 interface CartItem {
   pro_code: string;
-  shopping_cart: Array<{ is_reward: boolean }>;
+  shopping_cart: Array<{ is_reward: boolean; spc_amount: string | number }>;
 }
 
 let token = '';
@@ -322,6 +330,43 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
     await call('DELETE', `/ecom/special-collection/basket/${created.body.basket_id}`);
     // กระเช้าหาย ของแถมต้องหายตาม ไม่ค้างเป็นแถวลอยๆ
     expect(await rewardRows()).toHaveLength(0);
+  });
+
+  it('การ์ดกระเช้าคืนของแถมที่ได้จริงมาด้วย ไม่ต้องให้หน้าบ้านเดาเอง', async () => {
+    const created = await call<{ basket_id: number }>(
+      'POST',
+      '/ecom/special-collection/basket',
+      { promo_id: PROMO_ID, lines: [bigLine, smallLine] },
+    );
+    expect(created.status).toBe(201);
+
+    const listed = await call<Basket[]>(
+      'GET',
+      `/ecom/special-collection/basket?promo_id=${PROMO_ID}`,
+    );
+    const basket = listed.body.find(
+      (b) => b.basket_id === created.body.basket_id,
+    );
+    expect(basket?.qualifies).toBe(true);
+    expect(basket?.rewards_shared).toBe(false);
+    expect(basket?.rewards.length).toBeGreaterThan(0);
+
+    // ต้องตรงกับแถว is_reward ที่อยู่ในตะกร้าจริง ทั้งชื่อและจำนวน
+    const cart = await call<{ cart: CartItem[] }>(
+      'GET',
+      `/ecom/product-cart/${memCode}`,
+    );
+    const rewardRows = (cart.body?.cart ?? []).flatMap((item) =>
+      item.shopping_cart
+        .filter((sc) => sc.is_reward)
+        .map((sc) => ({ pro_code: item.pro_code, qty: Number(sc.spc_amount) })),
+    );
+    for (const reward of basket!.rewards) {
+      const row = rewardRows.find((r) => r.pro_code === reward.pro_code);
+      expect(row).toBeDefined();
+      expect(reward.qty).toBe(row!.qty);
+      expect(reward.pro_name.length).toBeGreaterThan(0);
+    }
   });
 
   it('ลบกระเช้าทั้งก้อนได้โดยตรง', async () => {
