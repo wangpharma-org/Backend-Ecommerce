@@ -329,7 +329,12 @@ export class DebtorService {
             pro_unit: true,
             pro_price_per_unit: true,
             pro_discount: true,
-            product: { pro_code: true, pro_name: true },
+            product: {
+              pro_code: true,
+              pro_name: true,
+              pro_nameTH: true,
+              pro_nameSale: true,
+            },
           },
         },
       });

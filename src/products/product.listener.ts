@@ -20,6 +20,7 @@ export interface UpdateProductImageEcommercePayload {
 export interface ProductEasyAcc {
   product_code: string;
   product_name?: string;
+  product_nameTH?: string | null;
   product_nameEN?: string | null;
   product_nameSale?: string | null;
   product_genericname?: string | null;

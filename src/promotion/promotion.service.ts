@@ -340,6 +340,8 @@ export class PromotionService {
 
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -479,6 +481,8 @@ export class PromotionService {
           'tier.tier_id',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_imgmain',
         ]);
 
@@ -927,6 +931,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
           'giftProduct.free_product_count',
@@ -998,6 +1004,8 @@ export class PromotionService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_genericname: true,
           },
         },
@@ -1092,6 +1100,8 @@ export class PromotionService {
               product: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_priceA: true,
                 pro_priceB: true,
@@ -1106,6 +1116,8 @@ export class PromotionService {
               giftProduct: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_imgmain: true,
               },
@@ -1218,6 +1230,8 @@ export class PromotionService {
           // ข้อมูล product
           'tier_product.pro_code',
           'tier_product.pro_name',
+          'tier_product.pro_nameTH',
+          'tier_product.pro_nameSale',
           'tier_product.pro_priceA',
           'tier_product.pro_priceB',
           'tier_product.pro_priceC',
@@ -1243,6 +1257,8 @@ export class PromotionService {
           'rewards.unit',
           'gift_product.pro_code',
           'gift_product.pro_name',
+          'gift_product.pro_nameTH',
+          'gift_product.pro_nameSale',
           'gift_product.pro_imgmain',
         ])
         .getMany();
@@ -1367,6 +1383,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
         ]);
