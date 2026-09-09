@@ -354,16 +354,23 @@ async function main() {
     };
   });
 
-  await step('admin ยิง arrivals → จับคู่ได้ 1', async () => {
-    const r = await admin.post('/ecom/admin/preorder/arrivals', {
-      pro_codes: [PRO_CODE],
-    });
-    return {
-      status: r.status,
-      ok: r.status === 201 && r.data?.matched === 1,
-      detail: `notified=${r.data?.notified}`,
-    };
-  });
+  await step(
+    'admin ยิง arrivals → สินค้าของรอบทดสอบถูกตั้ง arrived_at (matched ≥ 1 เพราะรอบอื่นอาจมีสินค้าเดียวกัน)',
+    async () => {
+      const r = await admin.post('/ecom/admin/preorder/arrivals', {
+        pro_codes: [PRO_CODE],
+      });
+      const c = await admin.get(`/ecom/admin/preorder/campaigns/${campaignId}`);
+      const prod = (c.data?.products ?? []).find(
+        (p: any) => p.id === preorderProductId,
+      );
+      return {
+        status: r.status,
+        ok: r.status === 201 && r.data?.matched >= 1 && !!prod?.arrived_at,
+        detail: `matched=${r.data?.matched} notified=${r.data?.notified} arrived_at=${prod?.arrived_at ?? 'null'}`,
+      };
+    },
+  );
 
   await step(
     'admin ดู log ของแถว (create, update, lock, allocate, arrived_notify)',
