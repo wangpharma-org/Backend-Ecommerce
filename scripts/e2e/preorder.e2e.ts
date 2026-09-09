@@ -408,6 +408,350 @@ async function main() {
     };
   });
 
+  // =====================================================================
+  // รอบที่ 2: โหมด aggregation + allow_cancel + นโยบายเพิ่มจำนวน keep/split/grace/reset
+  // =====================================================================
+  let campaignB = 0;
+  let productB = 0;
+  let itemB = 0;
+  let orderedAtB = '';
+  const put = (amount: number, extra: Record<string, unknown> = {}) =>
+    user.put(`/ecom/preorder/campaigns/${campaignB}/products/${PRO_CODE}`, {
+      amount,
+      ...extra,
+    });
+  const lotsOf = (r: any) =>
+    ((r.data?.lots ?? []) as any[])
+      .map((l) => `${l.qty}@${l.position}`)
+      .join(',');
+
+  await step(
+    'B1 admin สร้างรอบ aggregation (allow_cancel=true, keep, ไม่มีเงื่อนไข)',
+    async () => {
+      const r = await admin.post('/ecom/admin/preorder/campaigns', {
+        name: `${tag} B`,
+        mode: 'aggregation',
+        allow_cancel: true,
+        increase_policy: 'keep',
+        increase_grace_hours: null,
+      });
+      campaignB = r.data?.id ?? 0;
+      return {
+        status: r.status,
+        ok: r.status === 201 && campaignB > 0 && r.data?.mode === 'aggregation',
+        detail: `campaign_id=${campaignB}`,
+      };
+    },
+  );
+
+  await step(
+    'B2 admin เพิ่มสินค้า moq 10, ราคาโดยประมาณ 99.5, ETA +20 วัน',
+    async () => {
+      const eta = new Date(Date.now() + 20 * 86400000)
+        .toISOString()
+        .slice(0, 10);
+      const r = await admin.post(
+        `/ecom/admin/preorder/campaigns/${campaignB}/products`,
+        {
+          pro_code: PRO_CODE,
+          moq: 10,
+          estimated_price: 99.5,
+          eta_date: eta,
+          note: 'e2e B',
+        },
+      );
+      productB = r.data?.id ?? 0;
+      return {
+        status: r.status,
+        ok:
+          r.status === 201 &&
+          productB > 0 &&
+          Number(r.data?.estimated_price) === 99.5 &&
+          r.data?.moq === 10 &&
+          String(r.data?.eta_date).startsWith(eta),
+        detail: `preorder_product_id=${productB} eta=${r.data?.eta_date}`,
+      };
+    },
+  );
+
+  await step('B3 admin เปิดรอบ', async () => {
+    const r = await admin.patch(
+      `/ecom/admin/preorder/campaigns/${campaignB}/status`,
+      {
+        status: 'open',
+      },
+    );
+    return {
+      status: r.status,
+      ok: r.status === 200 && r.data?.status === 'open',
+    };
+  });
+
+  await step(
+    'B4 ลูกค้าเห็นราคาโดยประมาณ 99.5, MOQ 10, ETA และไม่มี limit',
+    async () => {
+      const r = await user.get('/ecom/preorder/campaigns');
+      const c = (r.data ?? []).find((x: any) => x.id === campaignB);
+      const p = c?.products?.find((x: any) => x.id === productB);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          p?.estimated_price === 99.5 &&
+          p?.moq === 10 &&
+          !!p?.eta_date &&
+          p?.limit_per_member === null &&
+          c?.allow_cancel === true &&
+          c?.increase_policy === 'keep',
+        detail: `estimated_price=${p?.estimated_price} moq=${p?.moq} eta=${p?.eta_date} policy=${c?.increase_policy}`,
+      };
+    },
+  );
+
+  await step(
+    'B5 ลูกค้าจอง 3 โดยไม่ต้องยอมรับเงื่อนไข (รอบไม่มี terms)',
+    async () => {
+      const r = await put(3);
+      itemB = r.data?.id ?? 0;
+      orderedAtB = r.data?.ordered_at ?? '';
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          itemB > 0 &&
+          r.data?.position === 1 &&
+          lotsOf(r) === '3@1',
+        detail: `item_id=${itemB} lots=${lotsOf(r)}`,
+      };
+    },
+  );
+
+  await step(
+    'B6 keep: เพิ่มเป็น 5 → ยังล็อตเดียว ordered_at เดิม',
+    async () => {
+      const r = await put(5);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.ordered_at === orderedAtB &&
+          lotsOf(r) === '5@1',
+        detail: `lots=${lotsOf(r)}`,
+      };
+    },
+  );
+
+  await step('B7 admin เปลี่ยนนโยบายเป็น split + ผ่อนผัน 1 ชม.', async () => {
+    const r = await admin.patch(`/ecom/admin/preorder/campaigns/${campaignB}`, {
+      increase_policy: 'split',
+      increase_grace_hours: 1,
+    });
+    return {
+      status: r.status,
+      ok:
+        r.status === 200 &&
+        r.data?.increase_policy === 'split' &&
+        r.data?.increase_grace_hours === 1,
+    };
+  });
+
+  await step(
+    'B8 split ภายในช่วงผ่อนผัน: เพิ่มเป็น 7 → ยังล็อตเดียว (ถือเป็น keep)',
+    async () => {
+      const r = await put(7);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.ordered_at === orderedAtB &&
+          lotsOf(r) === '7@1',
+        detail: `lots=${lotsOf(r)}`,
+      };
+    },
+  );
+
+  await step('B9 admin ตัดช่วงผ่อนผันเป็น 0', async () => {
+    const r = await admin.patch(`/ecom/admin/preorder/campaigns/${campaignB}`, {
+      increase_grace_hours: 0,
+    });
+    return {
+      status: r.status,
+      ok: r.status === 200 && r.data?.increase_grace_hours === 0,
+    };
+  });
+
+  await step(
+    'B10 split พ้นช่วงผ่อนผัน: เพิ่มเป็น 8 → ล็อตใหม่ 1 ชิ้นต่อท้าย',
+    async () => {
+      const r = await put(8);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.ordered_at === orderedAtB &&
+          lotsOf(r) === '7@1,1@2',
+        detail: `lots=${lotsOf(r)}`,
+      };
+    },
+  );
+
+  await step('B11 admin เปลี่ยนนโยบายเป็น reset', async () => {
+    const r = await admin.patch(`/ecom/admin/preorder/campaigns/${campaignB}`, {
+      increase_policy: 'reset',
+    });
+    return {
+      status: r.status,
+      ok: r.status === 200 && r.data?.increase_policy === 'reset',
+    };
+  });
+
+  await step(
+    'B12 reset: เพิ่มเป็น 9 → รวมเป็นล็อตเดียว ณ ตอนนี้ ordered_at ใหม่ (ท้ายคิว)',
+    async () => {
+      const r = await put(9);
+      const newer =
+        !!r.data?.ordered_at &&
+        new Date(r.data.ordered_at) > new Date(orderedAtB);
+      return {
+        status: r.status,
+        ok: r.status === 200 && newer && lotsOf(r) === '9@1',
+        detail: `ordered_at moved=${newer} lots=${lotsOf(r)}`,
+      };
+    },
+  );
+
+  await step('B13 MOQ progress 9/10 = 90% ยังไม่ถึงเป้า', async () => {
+    const r = await user.get('/ecom/preorder/campaigns');
+    const p = (r.data ?? [])
+      .find((x: any) => x.id === campaignB)
+      ?.products?.find((x: any) => x.id === productB);
+    const c = await admin.get(`/ecom/admin/preorder/campaigns/${campaignB}`);
+    const ap = (c.data?.products ?? []).find((x: any) => x.id === productB);
+    return {
+      status: r.status,
+      ok:
+        r.status === 200 &&
+        p?.moq_progress === 90 &&
+        p?.total_qty === 9 &&
+        ap?.moq_met === false,
+      detail: `progress=${p?.moq_progress} total=${p?.total_qty} moq_met=${ap?.moq_met}`,
+    };
+  });
+
+  await step('B14 ลดจำนวนเป็น 4 → ล็อตเดียว qty 4 คิวเดิม', async () => {
+    const before = (await user.get('/ecom/preorder/my')).data.find(
+      (i: any) => i.id === itemB,
+    )?.ordered_at;
+    const r = await put(4);
+    return {
+      status: r.status,
+      ok:
+        r.status === 200 &&
+        lotsOf(r) === '4@1' &&
+        r.data?.ordered_at === before,
+      detail: `lots=${lotsOf(r)}`,
+    };
+  });
+
+  await step(
+    'B15 admin เพิ่มให้เป็น 12 (เจ้าหน้าที่แก้ = keep เสมอ) → MOQ ถึงเป้า',
+    async () => {
+      const r = await admin.patch(`/ecom/admin/preorder/items/${itemB}`, {
+        amount: 12,
+        note: 'e2e',
+      });
+      const c = await admin.get(`/ecom/admin/preorder/campaigns/${campaignB}`);
+      const ap = (c.data?.products ?? []).find((x: any) => x.id === productB);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.amount === 12 &&
+          ap?.moq_met === true &&
+          ap?.total_qty === 12,
+        detail: `moq_met=${ap?.moq_met} total=${ap?.total_qty}`,
+      };
+    },
+  );
+
+  await step(
+    'B16 ลูกค้ายกเลิกเอง (allow_cancel=true) → cancelled และหายจากคิว',
+    async () => {
+      const r = await user.delete(`/ecom/preorder/items/${itemB}`);
+      const q = await admin.get(
+        `/ecom/admin/preorder/products/${productB}/queue`,
+      );
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.status === 'cancelled' &&
+          q.data?.total_members === 0,
+        detail: `queue members=${q.data?.total_members}`,
+      };
+    },
+  );
+
+  await step(
+    'B17 จองใหม่หลังยกเลิก 2 → แถวเดิมกลับมา reserved ล็อตใหม่ ordered_at ใหม่',
+    async () => {
+      const r = await put(2);
+      const newer =
+        !!r.data?.ordered_at &&
+        new Date(r.data.ordered_at) > new Date(orderedAtB);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.id === itemB &&
+          r.data?.status === 'reserved' &&
+          newer &&
+          lotsOf(r) === '2@1',
+        detail: `lots=${lotsOf(r)}`,
+      };
+    },
+  );
+
+  await step('B18 admin ปิดรับจอง → รายการถูกล็อคอัตโนมัติ', async () => {
+    const r = await admin.patch(
+      `/ecom/admin/preorder/campaigns/${campaignB}/status`,
+      { status: 'closed' },
+    );
+    const q = await admin.get(
+      `/ecom/admin/preorder/products/${productB}/queue`,
+    );
+    const row = (q.data?.items ?? []).find((i: any) => i.id === itemB);
+    return {
+      status: r.status,
+      ok:
+        r.status === 200 &&
+        r.data?.status === 'closed' &&
+        row?.status === 'locked',
+      detail: `item status=${row?.status}`,
+    };
+  });
+
+  await step('B19 หลังปิดรอบ ลูกค้าแก้จำนวน/ยกเลิกไม่ได้ → 403', async () => {
+    const r1 = await put(3);
+    const r2 = await user.delete(`/ecom/preorder/items/${itemB}`);
+    return {
+      status: r1.status,
+      ok: r1.status === 403 && r2.status === 403,
+      detail: `edit=${r1.status} cancel=${r2.status}`,
+    };
+  });
+
+  await step('B20 admin ยกเลิกรอบ B (cleanup)', async () => {
+    const r = await admin.patch(
+      `/ecom/admin/preorder/campaigns/${campaignB}/status`,
+      { status: 'cancelled' },
+    );
+    return {
+      status: r.status,
+      ok: r.status === 200 && r.data?.status === 'cancelled',
+    };
+  });
+
   const passed = results.filter((r) => r.ok).length;
   const md = [
     `# Pre-order E2E report`,
