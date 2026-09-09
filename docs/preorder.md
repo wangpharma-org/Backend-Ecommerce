@@ -105,6 +105,7 @@ admin (`req.user.permission === true`)
   รายงานติดป้าย environment เสมอ (`local` อัตโนมัติเมื่อ BASE_URL เป็น localhost, อื่นๆ ต้องระบุ E2E_ENV) เขียนลง `docs/e2e/preorder-<env>-<timestamp>.md`
   ผล `local` = ผ่านก่อน merge เท่านั้น ต้องรันซ้ำกับ deployed code หลัง deploy แล้วบันทึกใน Confluence: [E2E Testing Playbook — Backend-Ecommerce](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202407939) → [Test Report — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202440705) + [ทะเบียน E2E Suites](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473473)
 - สคริปต์มี 3 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น · C = กลุ่ม 3 + มติ 9 ก.ย. (reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน + log, ใบสรุปสั่งซื้อ + CSV, เตือนก่อนปิดรอบ + กันเตือนซ้ำ, จัดสรร equal, ส่งเข้าตะกร้าลูกค้า/เจ้าหน้าที่ + กันส่งซ้ำ + ตรวจตะกร้าจริง) 28 ขั้น
+- UAT + บทสาธิตผู้บริหาร + ทะเบียน test case ให้ผู้ใช้จริงเซ็นรับ: [UAT & Demo Guide — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473517) (ผ่าน UAT = DoD ทางธุรกิจ คู่กับ e2e deployed)
 - ผลล่าสุด: local **71/71** (9 ก.ย. 2569 commit 1757f26 บน DB dump ล่าสุด) `docs/e2e/preorder-local-1788939989006.md` · ก่อนหน้า 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน
 
 ## งานค้าง (backlog) — อัปเดต 9 ก.ย. 2569
