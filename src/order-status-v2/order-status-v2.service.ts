@@ -74,44 +74,71 @@ export class OrderStatusV2Service {
       'https://warehouse.wangpharma.com';
   }
 
-  // ECWC-398/406: รายการ order พร้อม filter วันที่ (เลือกได้ทีละวัน) — endpoint ใหม่ ไม่แตะ AllOrderByMember เดิม
-  // ไม่ระบุวันที่มา = default โชว์ 10 รายการล่าสุด (ไม่จำกัดวัน)
+  // ECWC-398/406: รายการ order พร้อม filter วันที่ (เลือกเป็นช่วงได้) + pagination — endpoint ใหม่ ไม่แตะ AllOrderByMember เดิม
+  // ไม่ระบุวันที่มา = ดูได้ทั้งหมด, ไม่ระบุ page/pageSize มา = หน้า 1 หน้าละ 10 รายการ
   async getOrderList(
     mem_code: string,
     dateFrom?: string,
     dateTo?: string,
+    page = 1,
+    pageSize = 10,
+    sortOrder: 'ASC' | 'DESC' = 'DESC',
   ): Promise<EcomOrderListV2Res> {
     try {
-      const query = this.shoppingHeadRepo
+      const safePage = Math.max(1, page);
+      const safePageSize = Math.min(100, Math.max(1, pageSize));
+
+      const baseHeadQuery = this.shoppingHeadRepo
         .createQueryBuilder('head')
-        .leftJoin('head.details', 'order')
-        .leftJoin('order.product', 'product')
         .where('head.mem_code = :mem_code', { mem_code });
 
       if (dateFrom) {
-        query.andWhere('head.soh_datetime >= :dateFrom', { dateFrom });
+        baseHeadQuery.andWhere('head.soh_datetime >= :dateFrom', { dateFrom });
       }
       if (dateTo) {
-        query.andWhere('head.soh_datetime <= :dateTo', { dateTo });
+        baseHeadQuery.andWhere('head.soh_datetime <= :dateTo', { dateTo });
       }
 
-      if (!dateFrom && !dateTo) {
-        // LIMIT ตรงๆ ใช้กับ query ที่ join แบบ one-to-many ไม่ได้ (จำกัดแค่จำนวน row
-        // ที่ join ออกมา ไม่ใช่จำนวน head) ต้องหา 10 sh_running ล่าสุดแยกก่อน
-        const recentHeads = await this.shoppingHeadRepo
-          .createQueryBuilder('head')
-          .where('head.mem_code = :mem_code', { mem_code })
-          .select(['head.soh_running'])
-          .orderBy('head.soh_datetime', 'DESC')
-          .limit(10)
-          .getMany();
-        if (recentHeads.length === 0) return [];
-        query.andWhere('head.soh_running IN (:...recentRunnings)', {
-          recentRunnings: recentHeads.map((h) => h.soh_running),
-        });
+      const total = await baseHeadQuery.getCount();
+      const totalPages = total === 0 ? 0 : Math.ceil(total / safePageSize);
+
+      if (total === 0) {
+        return {
+          data: [],
+          total,
+          page: safePage,
+          pageSize: safePageSize,
+          totalPages,
+        };
       }
 
-      const result = await query
+      // LIMIT ตรงๆ ใช้กับ query ที่ join แบบ one-to-many ไม่ได้ (จำกัดแค่จำนวน row
+      // ที่ join ออกมา ไม่ใช่จำนวน head) ต้องหา soh_running ของหน้านั้นแยกก่อน
+      const pageHeads = await baseHeadQuery
+        .clone()
+        .select(['head.soh_running'])
+        .orderBy('head.soh_datetime', sortOrder)
+        .skip((safePage - 1) * safePageSize)
+        .take(safePageSize)
+        .getMany();
+
+      if (pageHeads.length === 0) {
+        return {
+          data: [],
+          total,
+          page: safePage,
+          pageSize: safePageSize,
+          totalPages,
+        };
+      }
+
+      const result = await this.shoppingHeadRepo
+        .createQueryBuilder('head')
+        .leftJoin('head.details', 'order')
+        .leftJoin('order.product', 'product')
+        .where('head.soh_running IN (:...pageRunnings)', {
+          pageRunnings: pageHeads.map((h) => h.soh_running),
+        })
         .select([
           'head.soh_running',
           'head.soh_sumprice',
@@ -123,7 +150,7 @@ export class OrderStatusV2Service {
           'order.spo_qty',
           'order.spo_unit',
         ])
-        .orderBy('head.soh_datetime', 'DESC')
+        .orderBy('head.soh_datetime', sortOrder)
         .getMany();
 
       const shRunnings = result.map((item) => item.soh_running);
@@ -156,14 +183,26 @@ export class OrderStatusV2Service {
               });
             }
 
+            // สินค้าเก่า/ยกเลิกขายบางตัวไม่มีข้อมูล unit แล้ว calculateSmallestUnit จะ throw
+            // ทั้งบิล — กันไม่ให้บิลอื่นในหน้าเดียวกันแสดงผลไม่ได้ไปด้วย fallback เป็น 0 ต่อรายการ
             const totalSmallestUnit = await Promise.all(
-              Object.values(groupedDetails).map((group) => {
+              Object.values(groupedDetails).map(async (group) => {
                 const orderItems = group.items.map((line) => ({
                   unit: line.spo_unit,
                   quantity: parseFloat(String(line.spo_qty)),
                   pro_code: group.pro_code,
                 }));
-                return this.productService.calculateSmallestUnit(orderItems);
+                try {
+                  return await this.productService.calculateSmallestUnit(
+                    orderItems,
+                  );
+                } catch (error: unknown) {
+                  this.logger.error(
+                    `Error calculating smallest unit for pro_code ${group.pro_code} (soh_running ${item.soh_running})`,
+                    error,
+                  );
+                  return 0;
+                }
               }),
             );
 
@@ -187,7 +226,7 @@ export class OrderStatusV2Service {
         this.fetchDeliveryStatusBatch(shRunnings, mem_code),
       ]);
 
-      return orders.map((order) => {
+      const data = orders.map((order) => {
         const status = this.resolveStatusFromParts(
           pickingBatch[order.soh_running] ?? null,
           deliveryBatch[order.soh_running] ?? null,
@@ -198,6 +237,14 @@ export class OrderStatusV2Service {
           status_label: ECOM_ORDER_TIMELINE_LABEL[status],
         };
       });
+
+      return {
+        data,
+        total,
+        page: safePage,
+        pageSize: safePageSize,
+        totalPages,
+      };
     } catch (error: unknown) {
       this.logger.error('Error get order list v2', error);
       throw new Error('Error get order list v2');

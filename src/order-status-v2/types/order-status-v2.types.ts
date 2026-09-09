@@ -32,7 +32,13 @@ export interface EcomOrderListV2Order {
   status_label: string;
 }
 
-export type EcomOrderListV2Res = EcomOrderListV2Order[];
+export interface EcomOrderListV2Res {
+  data: EcomOrderListV2Order[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
 // สถานะรวมของหน้า order-status — ECWC-403
 export type EcomOrderTimelineStatus =
@@ -46,7 +52,10 @@ export type EcomOrderTimelineStatus =
   | 'returned' // ตีกลับ
   | 'cancelled'; // ลูกค้ายกเลิก
 
-export const ECOM_ORDER_TIMELINE_LABEL: Record<EcomOrderTimelineStatus, string> = {
+export const ECOM_ORDER_TIMELINE_LABEL: Record<
+  EcomOrderTimelineStatus,
+  string
+> = {
   opened: 'เปิดบิล',
   picking: 'กำลังจัดออเดอร์',
   checking: 'กำลังตรวจสอบออเดอร์',
