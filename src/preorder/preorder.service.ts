@@ -51,7 +51,7 @@ const ACTIVE_ITEM_STATUSES = [
   PreorderItemStatus.FULFILLED,
 ];
 
-interface QueueLotRow {
+export interface QueueLotRow {
   lot_id: number;
   item_id: number;
   qty: number;
@@ -63,7 +63,7 @@ interface QueueLotRow {
   ahead_qty: number;
 }
 
-interface QueueRowOut {
+export interface QueueRowOut {
   id: number;
   lot_id: number;
   lot_no: number;
