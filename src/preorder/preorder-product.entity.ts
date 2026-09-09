@@ -13,6 +13,20 @@ import { ProductEntity } from '../products/products.entity';
 import { PreorderCampaignEntity } from './preorder-campaign.entity';
 import { PreorderItemEntity } from './preorder-item.entity';
 
+/** เหตุผลที่เปิดจอง (มติประชุม 9 ก.ย. 69): แสดงเป็น 2 แท็บฝั่งลูกค้า */
+export enum PreorderReason {
+  /** สินค้ากำลังจะเข้า (ขาดสต็อก) */
+  RESTOCK = 'restock',
+  /** สินค้าจะมีการปรับราคา (และขาดสต็อก) จองได้ในราคาเดิมก่อนวันที่มีผล */
+  PRICE_INCREASE = 'price_increase',
+}
+
+export interface PreorderPriceTier {
+  /** ยอดรวมทั้งรอบตั้งแต่เท่านี้ขึ้นไป */
+  min_total_qty: number;
+  price: number;
+}
+
 /** สินค้าที่เปิดจองในรอบหนึ่ง (แทนธง product.pro_pre ของระบบเดิม) */
 @Entity({ name: 'preorder_products' })
 @Index('UQ_preorder_products_campaign_pro', ['campaign_id', 'pro_code'], {
@@ -49,9 +63,32 @@ export class PreorderProductEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   note!: string | null;
 
+  @Column({
+    type: 'enum',
+    enum: PreorderReason,
+    default: PreorderReason.RESTOCK,
+  })
+  reason!: PreorderReason;
+
+  /** ราคาใหม่หลังปรับ (เฉพาะ reason = price_increase) */
+  @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
+  new_price!: string | null;
+
+  /** วันที่ราคาใหม่มีผล */
+  @Column({ type: 'date', nullable: true })
+  price_effective_date!: string | null;
+
   /** โหมด A: จำนวนสูงสุดที่ร้านหนึ่งจองได้ (หน่วยตาม unit ของสินค้า) */
   @Column({ type: 'int', nullable: true })
   limit_per_member!: number | null;
+
+  /** ขั้นต่ำต่อร้าน (null = ไม่กำหนด) */
+  @Column({ type: 'int', nullable: true })
+  min_per_member!: number | null;
+
+  /** ต้องจองเป็นทวีคูณของหีบห่อ เช่น 10 (null = ไม่กำหนด) */
+  @Column({ type: 'int', nullable: true })
+  pack_multiple!: number | null;
 
   /** โหมด A: จำนวนที่จะได้จริงในรอบนี้ ใช้แสดง "จองแล้ว X จาก Y" และตัดเมื่อเต็ม */
   @Column({ type: 'int', nullable: true })
@@ -64,6 +101,10 @@ export class PreorderProductEntity {
   /** ราคาโดยประมาณต่อหน่วย (null = ใช้ราคาตามระดับ A/B/C ปกติ) */
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   estimated_price!: string | null;
+
+  /** ราคาขั้นบันไดตามยอดรวมทั้งรอบ เรียงจากน้อยไปมาก [{ min_total_qty, price }] */
+  @Column({ type: 'json', nullable: true })
+  price_tiers!: PreorderPriceTier[] | null;
 
   /** วันที่คาดว่าของถึงคลัง */
   @Column({ type: 'date', nullable: true })

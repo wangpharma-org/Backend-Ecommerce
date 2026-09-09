@@ -98,6 +98,10 @@ export class PreorderCampaignEntity {
   @Column({ type: 'int', nullable: true })
   increase_grace_hours!: number | null;
 
+  /** เตือนร้านว่าใกล้ปิดรอบไปแล้วเมื่อ (cron วันละครั้ง) */
+  @Column({ type: 'datetime', nullable: true })
+  closing_reminded_at!: Date | null;
+
   @Column({ type: 'varchar', length: 50, nullable: true })
   created_by!: string | null;
 

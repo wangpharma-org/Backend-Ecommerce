@@ -38,6 +38,16 @@ describe('computeAllocation', () => {
     expect(r.reduce((s, x) => s + x.allocated_qty, 0)).toBe(50);
   });
 
+  it('equal: แบ่งเท่ากันวนตามคิว ร้านเล็กได้ครบก่อน', () => {
+    // จอง 10,5,8 supply 12 → รอบละ 1: ได้ 4,4,4
+    const r = computeAllocation(queue, 12, 'equal');
+    expect(r.map((x) => x.allocated_qty)).toEqual([4, 4, 4]);
+    // supply 20 → ร้าน 5 เต็มก่อน ที่เหลือแบ่งกัน: 8,5,7
+    const r2 = computeAllocation(queue, 20, 'equal');
+    expect(r2.map((x) => x.allocated_qty)).toEqual([8, 5, 7]);
+    expect(r2.reduce((s, x) => s + x.allocated_qty, 0)).toBe(20);
+  });
+
   it('supply 0 หรือติดลบ → ทุกคนได้ 0', () => {
     expect(
       computeAllocation(queue, 0, 'fifo').every((x) => x.allocated_qty === 0),

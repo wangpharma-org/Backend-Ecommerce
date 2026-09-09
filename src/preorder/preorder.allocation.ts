@@ -2,7 +2,7 @@
  * ตัวจัดสรรของขาด (โหมด allocation) เป็น pure function เพื่อให้ทดสอบได้
  * input เรียงตามคิว (ordered_at ASC) แล้ว
  */
-export type AllocationStrategy = 'fifo' | 'prorata';
+export type AllocationStrategy = 'fifo' | 'prorata' | 'equal';
 
 export interface AllocationInput {
   id: number;
@@ -18,6 +18,7 @@ export interface AllocationResult {
 /**
  * fifo    : เติมให้เต็มตามคิวจนของหมด คนท้ายคิวได้ 0
  * prorata : ทุกคนได้ตามสัดส่วนที่จอง (ปัดลง) เศษที่เหลือแจกทีละ 1 ตามคิว
+ * equal   : แบ่งเท่ากัน (fair share) วนแจกทีละ 1 ตามคิวจนของหมดหรือครบที่จอง ร้านเล็กไม่ถูกร้านใหญ่กิน
  */
 export function computeAllocation(
   items: AllocationInput[],
@@ -42,6 +43,28 @@ export function computeAllocation(
       remaining -= give;
       return { id: i.id, amount: i.amount, allocated_qty: give };
     });
+  }
+
+  if (strategy === 'equal') {
+    const out = items.map((i) => ({
+      id: i.id,
+      amount: i.amount,
+      allocated_qty: 0,
+    }));
+    let left = safeSupply;
+    let progressed = true;
+    while (left > 0 && progressed) {
+      progressed = false;
+      for (const r of out) {
+        if (left === 0) break;
+        if (r.allocated_qty < r.amount) {
+          r.allocated_qty += 1;
+          left -= 1;
+          progressed = true;
+        }
+      }
+    }
+    return out;
   }
 
   // prorata

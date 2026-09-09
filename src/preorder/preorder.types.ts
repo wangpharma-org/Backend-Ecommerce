@@ -68,12 +68,23 @@ export interface SetCampaignStatusDto {
 export interface AddProductDto {
   pro_code: string;
   note?: string | null;
+  reason?: 'restock' | 'price_increase';
+  new_price?: number | null;
+  price_effective_date?: string | null;
   limit_per_member?: number | null;
+  min_per_member?: number | null;
+  pack_multiple?: number | null;
   supply_qty?: number | null;
   moq?: number | null;
   estimated_price?: number | null;
+  price_tiers?: { min_total_qty: number; price: number }[] | null;
   eta_date?: string | null;
   sort_order?: number;
+}
+
+export interface StaffBookDto {
+  amount: number;
+  note?: string;
 }
 
 export type UpdateProductDto = Partial<Omit<AddProductDto, 'pro_code'>> & {

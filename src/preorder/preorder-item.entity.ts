@@ -79,6 +79,10 @@ export class PreorderItemEntity {
   @Column({ type: 'boolean', default: false })
   is_paid!: boolean;
 
+  /** ส่งจำนวนที่จัดสรรเข้าตะกร้าลูกค้าแล้วเมื่อ */
+  @Column({ type: 'datetime', nullable: true })
+  cart_pushed_at!: Date | null;
+
   @Column({ type: 'datetime', nullable: true })
   accepted_terms_at!: Date | null;
 

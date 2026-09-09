@@ -12,6 +12,8 @@ import { PreorderItemEntity } from './preorder-item.entity';
 import { PreorderItemLogEntity } from './preorder-item-log.entity';
 import { PreorderNotifierService } from './preorder-notifier.service';
 import { ProductEntity } from '../products/products.entity';
+import { UserEntity } from '../users/users.entity';
+import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 
 const repoMock = () => ({
   findOne: jest.fn(),
@@ -51,6 +53,11 @@ describe('PreorderService', () => {
           useValue: repoMock(),
         },
         { provide: getRepositoryToken(ProductEntity), useValue: repoMock() },
+        { provide: getRepositoryToken(UserEntity), useValue: repoMock() },
+        {
+          provide: ShoppingCartService,
+          useValue: { addProductCart: jest.fn() },
+        },
         { provide: DataSource, useValue: { transaction: jest.fn() } },
         {
           provide: PreorderNotifierService,

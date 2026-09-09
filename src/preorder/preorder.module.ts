@@ -11,6 +11,8 @@ import { PreorderController } from './preorder.controller';
 import { PreorderNotifierService } from './preorder-notifier.service';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ProductEntity } from '../products/products.entity';
+import { UserEntity } from '../users/users.entity';
+import { ShoppingCartModule } from '../shopping-cart/shopping-cart.module';
 
 @Module({
   imports: [
@@ -21,9 +23,11 @@ import { ProductEntity } from '../products/products.entity';
       PreorderItemLogEntity,
       PreorderItemLotEntity,
       ProductEntity,
+      UserEntity,
     ]),
     HttpModule,
     FeatureFlagsModule,
+    ShoppingCartModule,
   ],
   providers: [PreorderService, PreorderNotifierService],
   controllers: [PreorderController],

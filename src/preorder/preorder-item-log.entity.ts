@@ -20,6 +20,8 @@ export enum PreorderLogAction {
   CANCEL = 'cancel',
   FULFILL = 'fulfill',
   ARRIVED_NOTIFY = 'arrived_notify',
+  TO_CART = 'to_cart',
+  STAFF_BOOK = 'staff_book',
 }
 
 /** ประวัติการเปลี่ยนแปลงรายการจอง ใครแก้ เมื่อไหร่ จากเท่าไหร่เป็นเท่าไหร่ */
