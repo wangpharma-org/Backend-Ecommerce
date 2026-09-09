@@ -91,6 +91,33 @@ admin (`req.user.permission === true`)
 - สคริปต์มี 2 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น
 - ผลล่าสุด: local **43/43** (9 ก.ย. 2569 รอบ 3 บน DB dump ล่าสุด) `docs/e2e/preorder-local-1788937151417.md` · รอบ 2 23/23 · รอบ 1 22/22 · deployed: ยังไม่ได้รัน
 
+## งานค้าง (backlog) — อัปเดต 9 ก.ย. 2569
+
+### 1. ปิดงานให้ขึ้น production (ทำเมื่อ review)
+- [ ] push frontend + เปิด PR Ecommerce-Frontend (worktree `Ecommerce-Frontend-preorder` branch `feat/preorder`) ประสานลำดับ merge กับ `feature/ECWC-542-rewards`
+- [ ] review/merge PR #261 → deploy dev/prod → `migration:run` (2 ตัว) → เปิด flag `preorder`
+- [ ] รัน e2e กับ deployed (`E2E_ENV=dev|prod`) แล้วเติมช่อง deployed ใน Confluence (Test Report 202440705, ทะเบียน 202473473, Playbook 202407939)
+- [ ] หาคนยิง POST `/ecom/new-arrivals` (ระบบรับของ) และใส่ guard ให้ endpoint นี้
+
+### 2. ต้องพิสูจน์บนของจริง (task ทีม)
+- [ ] แจ้งเตือนจริงผ่าน notification-service → FCM/LINE (`type: 'preorder'`) รวม template ฝั่ง notification-service
+- [ ] จัดสรร prorata กับหลายร้าน และเส้นทาง Kafka `newArrival_insert`
+
+### 3. ฟีเจอร์จาก Blueprint (กำลังทำ 9 ก.ย.)
+- [ ] แจ้งเตือนเมื่อ ETA เลื่อน และเตือนก่อนรอบปิด
+- [ ] ขั้นต่ำต่อร้าน / ทวีคูณหีบห่อ / ราคาขั้นบันไดตามยอดรวม
+- [ ] จัดสรรแบบแบ่งเท่ากัน (fair share) เพิ่มจาก fifo/prorata
+- [ ] สรุปยอดปิดรอบเป็นใบสั่งซื้อ (PO draft) ส่งจัดซื้อ/supplier
+- [ ] เซลล์/เจ้าหน้าที่จองแทนร้าน
+- [ ] แปลงรายการที่จัดสรรแล้วเป็นออเดอร์ใน e-commerce
+- [ ] สคริปต์ย้ายข้อมูลจาก `pre_order` เดิม + กำหนดวันปิดหน้า fmcg.php
+- [ ] backorder จากออเดอร์ปกติ → pre-order (รอ branch ตะกร้า merge ก่อน เลี่ยง conflict)
+
+### 4. เก็บงาน
+- [ ] ปิด backend 3021 / vite 5173 / container เมื่อเลิกใช้ ลบ token file ชั่วคราว
+- [ ] ลบ config `ecommerce-frontend-preorder` ใน rag/.claude/launch.json และลบ worktree ทั้งสองหลัง merge
+- [ ] lint error `any` ใน SiteConfigManage.tsx (มีอยู่ก่อนบน main)
+
 ## ยังไม่ทำในรอบนี้
 
 - สร้างออเดอร์ใน e-commerce จาก allocated_qty อัตโนมัติ (สถานะ `fulfilled` ยังตั้งมือ)
