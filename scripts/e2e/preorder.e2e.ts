@@ -90,7 +90,32 @@ async function step(
   }
 }
 
+/** อ่าน payload ของ JWT โดยไม่ตรวจลายเซ็น เพื่อเช็คว่า token ใส่ถูกช่อง */
+function decodeJwt(token: string): { mem_code?: string; permission?: boolean } {
+  try {
+    const part = token.split('.')[1] ?? '';
+    return JSON.parse(
+      Buffer.from(
+        part.replace(/-/g, '+').replace(/_/g, '/'),
+        'base64',
+      ).toString('utf8'),
+    );
+  } catch {
+    return {};
+  }
+}
+
 async function main() {
+  const adminJwt = decodeJwt(ADMIN_TOKEN);
+  const userJwt = decodeJwt(USER_TOKEN);
+  if (adminJwt.permission !== true || userJwt.permission === true) {
+    console.error(
+      `token ไม่ตรงบทบาท: ADMIN_TOKEN=${adminJwt.mem_code ?? '?'} (permission=${String(adminJwt.permission)}) USER_TOKEN=${userJwt.mem_code ?? '?'} (permission=${String(userJwt.permission)})\n` +
+        'ADMIN_TOKEN ต้องเป็น token ของ user ที่ permission=true และ USER_TOKEN ต้องเป็นร้านธรรมดา (น่าจะใส่สลับกัน)',
+    );
+    process.exit(2);
+  }
+  console.log(`admin=${adminJwt.mem_code}  user=${userJwt.mem_code}`);
   const tag = `E2E ${E2E_ENV} ${new Date().toISOString()}`;
   console.log(
     `env=${E2E_ENV}  base=${BASE_URL}  commit=${GIT_SHA}  product=${PRO_CODE}`,
