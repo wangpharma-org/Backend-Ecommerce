@@ -24,12 +24,15 @@ export class PreorderItemLotEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Index()
+  @Index('IDX_preorder_item_lots_item')
   @Column({ type: 'int' })
   item_id!: number;
 
   @ManyToOne(() => PreorderItemEntity, (i) => i.lots, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'item_id' })
+  @JoinColumn({
+    name: 'item_id',
+    foreignKeyConstraintName: 'FK_preorder_item_lots_item',
+  })
   item!: PreorderItemEntity;
 
   @Column({ type: 'int' })

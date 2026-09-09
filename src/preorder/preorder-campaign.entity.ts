@@ -55,7 +55,7 @@ export class PreorderCampaignEntity {
   })
   mode!: PreorderMode;
 
-  @Index()
+  @Index('IDX_preorder_campaigns_status')
   @Column({
     type: 'enum',
     enum: PreorderCampaignStatus,

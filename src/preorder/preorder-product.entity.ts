@@ -28,14 +28,21 @@ export class PreorderProductEntity {
   @ManyToOne(() => PreorderCampaignEntity, (c) => c.products, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'campaign_id' })
+  @JoinColumn({
+    name: 'campaign_id',
+    foreignKeyConstraintName: 'FK_preorder_products_campaign',
+  })
   campaign!: PreorderCampaignEntity;
 
+  @Index('IDX_preorder_products_pro_code')
   @Column({ type: 'varchar', length: 20 })
   pro_code!: string;
 
   @ManyToOne(() => ProductEntity, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'pro_code' })
+  @JoinColumn({
+    name: 'pro_code',
+    foreignKeyConstraintName: 'FK_preorder_products_product',
+  })
   product!: ProductEntity;
 
   /** ข้อความสั้นบนการ์ด (เดิม peo_Pnew.penn_detial) */

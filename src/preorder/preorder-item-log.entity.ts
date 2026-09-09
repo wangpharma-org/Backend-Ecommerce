@@ -28,12 +28,15 @@ export class PreorderItemLogEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Index()
+  @Index('IDX_preorder_item_logs_item')
   @Column({ type: 'int' })
   item_id!: number;
 
   @ManyToOne(() => PreorderItemEntity, (i) => i.logs, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'item_id' })
+  @JoinColumn({
+    name: 'item_id',
+    foreignKeyConstraintName: 'FK_preorder_item_logs_item',
+  })
   item!: PreorderItemEntity;
 
   /** mem_code ของลูกค้า หรือ username ของ admin */

@@ -46,10 +46,13 @@ export class PreorderItemEntity {
   @ManyToOne(() => PreorderProductEntity, (p) => p.items, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'preorder_product_id' })
+  @JoinColumn({
+    name: 'preorder_product_id',
+    foreignKeyConstraintName: 'FK_preorder_items_product',
+  })
   preorderProduct!: PreorderProductEntity;
 
-  @Index()
+  @Index('IDX_preorder_items_mem_code')
   @Column({ type: 'varchar', length: 30 })
   mem_code!: string;
 
