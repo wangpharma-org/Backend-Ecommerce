@@ -23,6 +23,8 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000/api';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 const USER_TOKEN = process.env.USER_TOKEN ?? '';
 const PRO_CODE = process.env.PRO_CODE ?? '';
+/** ร้านที่สองสำหรับทดสอบ "จองแทนร้าน" (ต้องมีใน users และไม่ใช่ร้านของ USER_TOKEN) */
+const MEM2 = process.env.MEM2 ?? '';
 const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE_URL);
 const E2E_ENV = process.env.E2E_ENV ?? (IS_LOCAL ? 'local' : '');
 const GIT_SHA = (() => {
@@ -115,7 +117,15 @@ async function main() {
     );
     process.exit(2);
   }
-  console.log(`admin=${adminJwt.mem_code}  user=${userJwt.mem_code}`);
+  if (!MEM2 || MEM2 === userJwt.mem_code) {
+    console.error(
+      'ต้องตั้ง MEM2 = รหัสร้านที่สอง (มีใน users และไม่ใช่ร้านของ USER_TOKEN) สำหรับรอบ C "จองแทนร้าน"',
+    );
+    process.exit(2);
+  }
+  console.log(
+    `admin=${adminJwt.mem_code}  user=${userJwt.mem_code}  mem2=${MEM2}`,
+  );
   const tag = `E2E ${E2E_ENV} ${new Date().toISOString()}`;
   console.log(
     `env=${E2E_ENV}  base=${BASE_URL}  commit=${GIT_SHA}  product=${PRO_CODE}`,
@@ -752,6 +762,480 @@ async function main() {
     };
   });
 
+  // =====================================================================
+  // รอบที่ 3: Blueprint กลุ่ม 3 + มติประชุม 9 ก.ย. 69
+  //   reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน, ใบสรุปสั่งซื้อ,
+  //   จัดสรรแบบ equal, ส่งเข้าตะกร้า (ลูกค้า/เจ้าหน้าที่), เตือนก่อนปิดรอบ
+  // =====================================================================
+  let campaignC = 0;
+  let productC = 0;
+  let itemC = 0;
+  const putC = (amount: number) =>
+    user.put(`/ecom/preorder/campaigns/${campaignC}/products/${PRO_CODE}`, {
+      amount,
+    });
+  const myProductC = async () => {
+    const r = await user.get('/ecom/preorder/campaigns');
+    const c = (r.data as any[]).find((x) => x.id === campaignC);
+    return {
+      status: r.status,
+      p: c?.products?.find((x: any) => x.pro_code === PRO_CODE),
+    };
+  };
+  const effective = new Date(Date.now() + 30 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+
+  await step(
+    'C1 admin สร้างรอบ C (aggregation, allow_cancel, ปิดรับใน 12 ชม.)',
+    async () => {
+      const r = await admin.post('/ecom/admin/preorder/campaigns', {
+        name: `${tag} C`,
+        mode: 'aggregation',
+        allow_cancel: true,
+        increase_policy: 'keep',
+        ends_at: new Date(Date.now() + 12 * 3600 * 1000).toISOString(),
+      });
+      campaignC = r.data?.id ?? 0;
+      return {
+        status: r.status,
+        ok: r.status === 201 && campaignC > 0,
+        detail: `campaign_id=${campaignC}`,
+      };
+    },
+  );
+
+  await step(
+    'C2 admin เพิ่มสินค้า reason=price_increase ราคาใหม่ 120 มีผล +30 วัน, min 2, pack 2, limit 10, tiers 4→90 / 8→80',
+    async () => {
+      const r = await admin.post(
+        `/ecom/admin/preorder/campaigns/${campaignC}/products`,
+        {
+          pro_code: PRO_CODE,
+          reason: 'price_increase',
+          new_price: 120,
+          price_effective_date: effective,
+          min_per_member: 2,
+          pack_multiple: 2,
+          limit_per_member: 10,
+          estimated_price: 100,
+          price_tiers: [
+            { min_total_qty: 8, price: 80 },
+            { min_total_qty: 4, price: 90 },
+          ],
+          note: 'e2e C',
+        },
+      );
+      productC = r.data?.id ?? 0;
+      return {
+        status: r.status,
+        ok:
+          r.status === 201 &&
+          productC > 0 &&
+          r.data?.reason === 'price_increase' &&
+          Number(r.data?.new_price) === 120 &&
+          String(r.data?.price_effective_date).startsWith(effective) &&
+          r.data?.min_per_member === 2 &&
+          r.data?.pack_multiple === 2 &&
+          Array.isArray(r.data?.price_tiers) &&
+          r.data.price_tiers.length === 2,
+        detail: `preorder_product_id=${productC}`,
+      };
+    },
+  );
+
+  await step('C3 admin ตั้ง min 20 > limit 10 → 400', async () => {
+    const r = await admin.patch(`/ecom/admin/preorder/products/${productC}`, {
+      min_per_member: 20,
+    });
+    return { status: r.status, ok: r.status === 400 };
+  });
+
+  await step(
+    'C4 admin ตั้ง reason=price_increase โดยไม่มีราคาใหม่ → 400',
+    async () => {
+      const r = await admin.patch(`/ecom/admin/preorder/products/${productC}`, {
+        new_price: null,
+      });
+      return { status: r.status, ok: r.status === 400 };
+    },
+  );
+
+  await step('C5 admin เปิดรอบ', async () => {
+    const r = await admin.patch(
+      `/ecom/admin/preorder/campaigns/${campaignC}/status`,
+      { status: 'open' },
+    );
+    return {
+      status: r.status,
+      ok: r.status === 200 && r.data?.status === 'open',
+    };
+  });
+
+  await step(
+    'C6 ลูกค้าเห็น reason/ราคาใหม่/ขั้นต่ำ/หีบห่อ และขั้นถัดไป 4 (ยังไม่มี tier_price)',
+    async () => {
+      const { status, p } = await myProductC();
+      return {
+        status,
+        ok:
+          status === 200 &&
+          p?.reason === 'price_increase' &&
+          Number(p?.new_price) === 120 &&
+          String(p?.price_effective_date).startsWith(effective) &&
+          p?.min_per_member === 2 &&
+          p?.pack_multiple === 2 &&
+          p?.tier_price === null &&
+          p?.next_tier?.min_total_qty === 4 &&
+          p?.next_tier?.remaining === 4,
+        detail: `tier_price=${p?.tier_price} next=${JSON.stringify(p?.next_tier)}`,
+      };
+    },
+  );
+
+  await step('C7 ลูกค้าจอง 1 < ขั้นต่ำ 2 → 400', async () => {
+    const r = await putC(1);
+    return { status: r.status, ok: r.status === 400, detail: r.data?.message };
+  });
+
+  await step('C8 ลูกค้าจอง 3 ไม่ใช่ทวีคูณของ 2 → 400', async () => {
+    const r = await putC(3);
+    return { status: r.status, ok: r.status === 400, detail: r.data?.message };
+  });
+
+  await step(
+    'C9 ลูกค้าจอง 4 → สำเร็จ ยอดรวม 4 ถึงขั้น 4 ราคา 90, ขั้นถัดไป 8 เหลืออีก 4',
+    async () => {
+      const r = await putC(4);
+      itemC = r.data?.id ?? 0;
+      const { p } = await myProductC();
+      return {
+        status: r.status,
+        ok:
+          (r.status === 200 || r.status === 201) &&
+          itemC > 0 &&
+          r.data?.amount === 4 &&
+          p?.tier_price === 90 &&
+          p?.next_tier?.min_total_qty === 8 &&
+          p?.next_tier?.remaining === 4,
+        detail: `item_id=${itemC} tier_price=${p?.tier_price} next=${JSON.stringify(p?.next_tier)}`,
+      };
+    },
+  );
+
+  await step('C10 ลูกค้าธรรมดาเรียก "จองแทนร้าน" → 403', async () => {
+    const r = await user.put(
+      `/ecom/admin/preorder/campaigns/${campaignC}/products/${PRO_CODE}/members/${MEM2}`,
+      { amount: 2 },
+    );
+    return { status: r.status, ok: r.status === 403 };
+  });
+
+  await step('C11 admin จองแทนร้านที่ไม่มี → 404', async () => {
+    const r = await admin.put(
+      `/ecom/admin/preorder/campaigns/${campaignC}/products/${PRO_CODE}/members/ZZZ-NOPE`,
+      { amount: 2 },
+    );
+    return { status: r.status, ok: r.status === 404 };
+  });
+
+  await step(
+    `C12 admin จองแทนร้าน ${MEM2} 4 → ลำดับ 2, ยอดรวม 8 ราคาลดเป็น 80`,
+    async () => {
+      const r = await admin.put(
+        `/ecom/admin/preorder/campaigns/${campaignC}/products/${PRO_CODE}/members/${MEM2}`,
+        { amount: 4, note: 'e2e staff book' },
+      );
+      const { p } = await myProductC();
+      return {
+        status: r.status,
+        ok:
+          (r.status === 200 || r.status === 201) &&
+          r.data?.amount === 4 &&
+          r.data?.position === 2 &&
+          r.data?.total_qty === 8 &&
+          p?.tier_price === 80 &&
+          p?.next_tier === null,
+        detail: `position=${r.data?.position} total=${r.data?.total_qty} tier_price=${p?.tier_price}`,
+      };
+    },
+  );
+
+  await step('C13 log ของรายการที่จองแทนมี action staff_book', async () => {
+    const q = await admin.get(
+      `/ecom/admin/preorder/products/${productC}/queue`,
+    );
+    const row = (q.data?.items as any[]).find((x) => x.mem_code === MEM2);
+    const r = await admin.get(`/ecom/admin/preorder/items/${row?.id}/logs`);
+    const hit = (r.data as any[]).some((l) => l.action === 'staff_book');
+    return {
+      status: r.status,
+      ok: r.status === 200 && hit,
+      detail: `logs=${(r.data as any[]).map((l) => l.action).join(',')}`,
+    };
+  });
+
+  await step(
+    'C14 admin ใบสรุปสั่งซื้อ: 1 สินค้า ยอด 8 ราคาขาย 80 (tier) มูลค่า 640 จัดกลุ่มตาม supplier',
+    async () => {
+      const r = await admin.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/purchase-summary`,
+      );
+      const row = (r.data?.products as any[])?.find(
+        (x) => x.pro_code === PRO_CODE,
+      );
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.totals?.products === 1 &&
+          r.data?.totals?.total_qty === 8 &&
+          row?.total_members === 2 &&
+          row?.unit_price === 80 &&
+          row?.tier_price === 80 &&
+          row?.est_revenue === 640 &&
+          row?.reason === 'price_increase' &&
+          Array.isArray(r.data?.suppliers) &&
+          r.data.suppliers.length === 1,
+        detail: `supplier=${r.data?.suppliers?.[0]?.supplier} revenue=${row?.est_revenue} cost=${row?.est_cost}`,
+      };
+    },
+  );
+
+  await step('C15 admin ใบสรุปสั่งซื้อ CSV', async () => {
+    const r = await admin.get(
+      `/ecom/admin/preorder/campaigns/${campaignC}/purchase-summary.csv`,
+    );
+    const body = String(r.data);
+    return {
+      status: r.status,
+      ok:
+        r.status === 200 &&
+        String(r.headers['content-type']).includes('text/csv') &&
+        body.includes(PRO_CODE),
+      detail: `${body.split('\n').length} lines`,
+    };
+  });
+
+  await step(
+    'C16 admin รัน reminder ก่อนปิดรอบ → รอบ C ถูกนับ และ closing_reminded_at ถูกตั้ง',
+    async () => {
+      const r = await admin.post('/ecom/admin/preorder/reminders/run');
+      const c = await admin.get(`/ecom/admin/preorder/campaigns/${campaignC}`);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.campaigns >= 1 &&
+          !!c.data?.closing_reminded_at,
+        detail: `campaigns=${r.data?.campaigns} notified=${r.data?.notified} (local ไม่มี notification-service → notified=0 ปกติ) reminded_at=${c.data?.closing_reminded_at}`,
+      };
+    },
+  );
+
+  await step(
+    'C17 admin รัน reminder ซ้ำ → รอบ C ไม่ถูกนับซ้ำ (เวลาเดิม)',
+    async () => {
+      const before = (
+        await admin.get(`/ecom/admin/preorder/campaigns/${campaignC}`)
+      ).data?.closing_reminded_at;
+      const r = await admin.post('/ecom/admin/preorder/reminders/run');
+      const after = (
+        await admin.get(`/ecom/admin/preorder/campaigns/${campaignC}`)
+      ).data?.closing_reminded_at;
+      return {
+        status: r.status,
+        ok: r.status === 200 && before === after,
+        detail: `campaigns=${r.data?.campaigns}`,
+      };
+    },
+  );
+
+  await step(
+    'C18 ลูกค้านำเข้าตะกร้าก่อนจัดสรร → 200 pushed 0 (ยังไม่ allocated)',
+    async () => {
+      const r = await user.post(`/ecom/preorder/items/${itemC}/to-cart`);
+      return {
+        status: r.status,
+        ok: r.status === 200 && r.data?.pushed === 0,
+        detail: JSON.stringify(r.data),
+      };
+    },
+  );
+
+  await step(
+    'C19 admin preview จัดสรร equal supply 6 → 2 ร้าน ได้ 3/3',
+    async () => {
+      const r = await admin.post(
+        `/ecom/admin/preorder/products/${productC}/allocate`,
+        {
+          strategy: 'equal',
+          supply_qty: 6,
+          apply: false,
+        },
+      );
+      const rows = (r.data?.items as any[]) ?? [];
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.applied === false &&
+          r.data?.strategy === 'equal' &&
+          rows.length === 2 &&
+          rows.every((x) => x.allocated_qty === 3) &&
+          r.data?.total_allocated === 6,
+        detail: rows
+          .map((x) => `${x.mem_code}:${x.allocated_qty}/${x.amount}`)
+          .join(' '),
+      };
+    },
+  );
+
+  await step('C20 admin apply จัดสรร equal', async () => {
+    const r = await admin.post(
+      `/ecom/admin/preorder/products/${productC}/allocate`,
+      {
+        strategy: 'equal',
+        supply_qty: 6,
+        apply: true,
+      },
+    );
+    return {
+      status: r.status,
+      ok: r.status === 200 && r.data?.applied === true,
+    };
+  });
+
+  await step(
+    'C21 ลูกค้าเห็น allocated_qty 3 และยังไม่ส่งเข้าตะกร้า',
+    async () => {
+      const { status, p } = await myProductC();
+      const m = p?.my_item;
+      return {
+        status,
+        ok:
+          status === 200 &&
+          m?.status === 'allocated' &&
+          m?.allocated_qty === 3 &&
+          m?.cart_pushed_at === null,
+        detail: `allocated=${m?.allocated_qty} cart_pushed_at=${m?.cart_pushed_at}`,
+      };
+    },
+  );
+
+  await step(
+    'C22 ลูกค้านำเข้าตะกร้า → pushed 1 และ cart_pushed_at ถูกตั้ง',
+    async () => {
+      const r = await user.post(`/ecom/preorder/items/${itemC}/to-cart`);
+      const { p } = await myProductC();
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.pushed === 1 &&
+          !!p?.my_item?.cart_pushed_at,
+        detail: `${JSON.stringify(r.data?.results?.[0])} cart_pushed_at=${p?.my_item?.cart_pushed_at}`,
+      };
+    },
+  );
+
+  await step(
+    'C23 ลูกค้านำเข้าตะกร้าซ้ำ → pushed 0 เหตุผล "ส่งเข้าตะกร้าไปแล้ว"',
+    async () => {
+      const r = await user.post(`/ecom/preorder/items/${itemC}/to-cart`);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.pushed === 0 &&
+          String(r.data?.results?.[0]?.reason).includes('ตะกร้าไปแล้ว'),
+        detail: r.data?.results?.[0]?.reason,
+      };
+    },
+  );
+
+  await step(
+    'C24 ลูกค้าเห็นสินค้าในตะกร้าจริง (GET cart มี pro_code ของรอบ)',
+    async () => {
+      const r = await user.get(`/ecom/product-cart/${userJwt.mem_code}`);
+      const raw = JSON.stringify(r.data ?? '');
+      return {
+        status: r.status,
+        ok: r.status === 200 && raw.includes(PRO_CODE),
+        detail: `cart payload ${raw.length} chars`,
+      };
+    },
+  );
+
+  await step(
+    `C25 admin ส่งทั้งสินค้าเข้าตะกร้า → pushed 1 (${MEM2}) ข้าม 1 (ส่งแล้ว)`,
+    async () => {
+      const r = await admin.post(
+        `/ecom/admin/preorder/products/${productC}/to-cart`,
+      );
+      const rows = (r.data?.results as any[]) ?? [];
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.pushed === 1 &&
+          rows.length === 2 &&
+          rows.find((x) => x.mem_code === MEM2)?.ok === true,
+        detail: rows
+          .map((x) => `${x.mem_code}:${x.ok ? 'ok' : x.reason}`)
+          .join(' '),
+      };
+    },
+  );
+
+  await step(
+    'C26 คิวแสดง cart_pushed_at ทั้ง 2 แถว และ log มี to_cart',
+    async () => {
+      const q = await admin.get(
+        `/ecom/admin/preorder/products/${productC}/queue`,
+      );
+      const rows = (q.data?.items as any[]) ?? [];
+      const logs = await admin.get(`/ecom/admin/preorder/items/${itemC}/logs`);
+      const hit = (logs.data as any[]).some((l) => l.action === 'to_cart');
+      return {
+        status: q.status,
+        ok:
+          q.status === 200 &&
+          rows.length === 2 &&
+          rows.every((x) => !!x.cart_pushed_at) &&
+          hit,
+        detail: rows
+          .map((x) => `${x.mem_code}@${x.cart_pushed_at ? 'pushed' : '-'}`)
+          .join(' '),
+      };
+    },
+  );
+
+  await step(
+    'C27 ลูกค้าลบสินค้าที่ push ออกจากตะกร้า (cleanup ตะกร้าร้านทดสอบ)',
+    async () => {
+      const r = await user.post('/ecom/product-delete-cart', {
+        mem_code: userJwt.mem_code,
+        pro_code: PRO_CODE,
+      });
+      return { status: r.status, ok: r.status === 201 || r.status === 200 };
+    },
+  );
+
+  await step(
+    `C28 admin ยกเลิกรอบ C (cleanup) — ตะกร้าของ ${MEM2} ยังมีสินค้าที่ push ไว้ (ลบมือถ้าต้องการ)`,
+    async () => {
+      const r = await admin.patch(
+        `/ecom/admin/preorder/campaigns/${campaignC}/status`,
+        { status: 'cancelled' },
+      );
+      return {
+        status: r.status,
+        ok: r.status === 200 && r.data?.status === 'cancelled',
+      };
+    },
+  );
+
   const passed = results.filter((r) => r.ok).length;
   const md = [
     `# Pre-order E2E report`,
@@ -761,7 +1245,8 @@ async function main() {
     `- commit: ${GIT_SHA}`,
     `- run at: ${new Date().toISOString()}`,
     `- product: ${PRO_CODE}`,
-    `- campaign_id: ${campaignId}`,
+    `- campaign_id: A=${campaignId} B=${campaignB} C=${campaignC}`,
+    `- rounds: A allocation (23) · B aggregation + นโยบายเพิ่มจำนวน (20) · C Blueprint กลุ่ม 3 + มติ 9 ก.ย. 69 (28)`,
     `- result: **${passed}/${results.length} passed**`,
     ``,
     `| # | step | status | ok | detail |`,

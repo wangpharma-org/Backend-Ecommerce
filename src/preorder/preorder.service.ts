@@ -89,6 +89,7 @@ export interface QueueRowOut {
   allocated_qty: number | null;
   item_allocated_qty: number | null;
   is_paid: boolean;
+  cart_pushed_at: Date | null;
   ordered_at: Date;
   first_ordered_at: Date;
   updated_at: Date;
@@ -1076,6 +1077,14 @@ export class PreorderService {
     if (dto.sort_order !== undefined)
       p.sort_order = toInt(dto.sort_order, 'sort_order', 0);
     if (dto.is_active !== undefined) p.is_active = Boolean(dto.is_active);
+    if (
+      p.reason === PreorderReason.PRICE_INCREASE &&
+      (p.new_price === null || p.new_price === undefined)
+    ) {
+      throw new BadRequestException(
+        'สินค้าที่จะมีการปรับราคา (reason=price_increase) ต้องระบุ new_price',
+      );
+    }
   }
 
   async addProduct(campaignId: number, dto: AddProductDto) {
@@ -1522,6 +1531,7 @@ export class PreorderService {
         allocated_qty: l.allocated_qty,
         item_allocated_qty: i.allocated_qty,
         is_paid: i.is_paid,
+        cart_pushed_at: i.cart_pushed_at,
         ordered_at: l.ordered_at,
         first_ordered_at: i.ordered_at,
         updated_at: i.updated_at,
@@ -1545,6 +1555,7 @@ export class PreorderService {
         allocated_qty: i.allocated_qty,
         item_allocated_qty: i.allocated_qty,
         is_paid: i.is_paid,
+        cart_pushed_at: i.cart_pushed_at,
         ordered_at: i.ordered_at,
         first_ordered_at: i.ordered_at,
         updated_at: i.updated_at,
