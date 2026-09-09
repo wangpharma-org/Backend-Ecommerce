@@ -8,7 +8,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - preorder_campaigns.closing_reminded_at : เตือนก่อนปิดรอบไปแล้วเมื่อ (cron วันละครั้ง)
  * - preorder_items.cart_pushed_at      : ส่งจำนวนที่จัดสรรเข้าตะกร้าลูกค้าแล้วเมื่อ
  * - preorder_products.reason           : เหตุผลที่เปิดจอง (มติประชุม 9 ก.ย. 69) restock = สินค้ากำลังจะเข้า / price_increase = สินค้าจะมีการปรับราคา
- * - preorder_products.new_price / price_effective_date : ราคาใหม่หลังปรับ และวันที่มีผล (ลูกค้าจองได้ในราคาเดิมก่อนวันนั้น)
+ * - preorder_products.new_price / price_effective_date : ราคาใหม่ที่ผู้ผลิตแจ้ง และวันที่มีผล (แสดงให้ลูกค้าเพื่อความโปร่งใส ไม่ล็อคราคา)
  * - preorder_item_logs.action          : เพิ่ม 'to_cart' และ 'staff_book'
  */
 export class PreorderBlueprintExtras1789007200000 implements MigrationInterface {
