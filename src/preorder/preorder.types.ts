@@ -1,5 +1,6 @@
 import {
   PreorderCampaignStatus,
+  PreorderIncreasePolicy,
   PreorderMode,
 } from './preorder-campaign.entity';
 import { PreorderItemStatus } from './preorder-item.entity';
@@ -19,15 +20,28 @@ export interface UpsertItemDto {
   accept_terms?: boolean;
 }
 
-export interface QueueInfo {
-  /** ลำดับคิวของร้าน (1 = คนแรก) */
+export interface QueueLotInfo {
+  id: number;
+  qty: number;
+  ordered_at: Date;
+  allocated_qty: number | null;
+  /** ลำดับของล็อตนี้ในคิว (นับเป็นล็อต) */
   position: number;
-  /** จำนวนรวมของร้านที่อยู่ก่อนหน้า */
+  /** จำนวนรวมของทุกล็อตที่อยู่ก่อนหน้า */
+  ahead_qty: number;
+}
+
+export interface QueueInfo {
+  /** ลำดับคิวของร้าน = ลำดับของล็อตแรก (1 = คนแรก) */
+  position: number;
+  /** จำนวนรวมที่อยู่ก่อนหน้าล็อตแรกของร้าน */
   ahead_qty: number;
   /** จำนวนร้านทั้งหมดที่ยังจองอยู่ */
   total_members: number;
   /** ยอดจองรวมทั้งหมดที่ยังจองอยู่ */
   total_qty: number;
+  /** ล็อตของร้านนี้ (ว่างถ้าไม่มีรายการ) */
+  lots: QueueLotInfo[];
 }
 
 // ---------- admin ----------
@@ -41,6 +55,8 @@ export interface CreateCampaignDto {
   breaking_announcement?: string | null;
   terms?: string | null;
   allow_cancel?: boolean;
+  increase_policy?: PreorderIncreasePolicy;
+  increase_grace_hours?: number | null;
 }
 
 export type UpdateCampaignDto = Partial<CreateCampaignDto>;

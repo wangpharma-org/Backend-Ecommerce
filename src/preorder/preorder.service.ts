@@ -11,8 +11,11 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   PreorderCampaignEntity,
   PreorderCampaignStatus,
+  PreorderIncreasePolicy,
   PreorderMode,
 } from './preorder-campaign.entity';
+import { PreorderItemLotEntity } from './preorder-item-lot.entity';
+import { applyAmountChange, distributeToLots } from './preorder.lots';
 import { PreorderProductEntity } from './preorder-product.entity';
 import { PreorderItemEntity, PreorderItemStatus } from './preorder-item.entity';
 import {
@@ -47,6 +50,43 @@ const ACTIVE_ITEM_STATUSES = [
   PreorderItemStatus.ALLOCATED,
   PreorderItemStatus.FULFILLED,
 ];
+
+interface QueueLotRow {
+  lot_id: number;
+  item_id: number;
+  qty: number;
+  ordered_at: Date;
+  allocated_qty: number | null;
+  mem_code: string;
+  status: PreorderItemStatus;
+  position: number;
+  ahead_qty: number;
+}
+
+interface QueueRowOut {
+  id: number;
+  lot_id: number;
+  lot_no: number;
+  lots_count: number;
+  position: number | null;
+  mem_code: string;
+  mem_name: string | null;
+  mem_phone: string | null;
+  mem_price: string | null;
+  mem_route: string | null;
+  sale_emp: string | null;
+  amount: number;
+  item_amount: number;
+  unit: string | null;
+  cumulative_qty: number | null;
+  status: PreorderItemStatus;
+  allocated_qty: number | null;
+  item_allocated_qty: number | null;
+  is_paid: boolean;
+  ordered_at: Date;
+  first_ordered_at: Date;
+  updated_at: Date;
+}
 
 const STATUS_TRANSITIONS: Record<
   PreorderCampaignStatus,
@@ -139,43 +179,112 @@ export class PreorderService {
     return true;
   }
 
+  /** ล็อตทั้งหมดของสินค้าที่ยังจองอยู่ เรียงตามคิว พร้อมลำดับและยอดสะสมก่อนหน้า */
+  private async loadQueueLots(
+    manager: EntityManager,
+    preorderProductId: number,
+  ): Promise<QueueLotRow[]> {
+    const rows = await manager
+      .createQueryBuilder(PreorderItemLotEntity, 'l')
+      .innerJoin(PreorderItemEntity, 'i', 'i.id = l.item_id')
+      .select('l.id', 'lot_id')
+      .addSelect('l.item_id', 'item_id')
+      .addSelect('l.qty', 'qty')
+      .addSelect('l.ordered_at', 'ordered_at')
+      .addSelect('l.allocated_qty', 'allocated_qty')
+      .addSelect('i.mem_code', 'mem_code')
+      .addSelect('i.status', 'status')
+      .where('i.preorder_product_id = :pid', { pid: preorderProductId })
+      .andWhere('i.status IN (:...st)', { st: ACTIVE_ITEM_STATUSES })
+      .orderBy('l.ordered_at', 'ASC')
+      .addOrderBy('l.id', 'ASC')
+      .getRawMany<{
+        lot_id: number;
+        item_id: number;
+        qty: number;
+        ordered_at: Date | string;
+        allocated_qty: number | null;
+        mem_code: string;
+        status: PreorderItemStatus;
+      }>();
+    let position = 0;
+    let cumulative = 0;
+    return rows.map((r) => {
+      position += 1;
+      const ahead = cumulative;
+      cumulative += Number(r.qty);
+      return {
+        lot_id: Number(r.lot_id),
+        item_id: Number(r.item_id),
+        qty: Number(r.qty),
+        ordered_at: new Date(r.ordered_at),
+        allocated_qty:
+          r.allocated_qty === null ? null : Number(r.allocated_qty),
+        mem_code: r.mem_code,
+        status: r.status,
+        position,
+        ahead_qty: ahead,
+      };
+    });
+  }
+
+  /** เขียนล็อตของรายการให้ตรงกับผล applyAmountChange */
+  private async rewriteLots(
+    manager: EntityManager,
+    itemId: number,
+    result: ReturnType<typeof applyAmountChange>,
+  ) {
+    if (result.removedIds.length) {
+      await manager.delete(PreorderItemLotEntity, {
+        id: In(result.removedIds),
+      });
+    }
+    for (const l of result.lots) {
+      if (l.id !== undefined) {
+        await manager.update(
+          PreorderItemLotEntity,
+          { id: l.id },
+          { qty: l.qty },
+        );
+      } else {
+        await manager.save(
+          manager.create(PreorderItemLotEntity, {
+            item_id: itemId,
+            qty: l.qty,
+            ordered_at: l.ordered_at,
+          }),
+        );
+      }
+    }
+  }
+
   private async queueInfoFor(
     manager: EntityManager,
     preorderProductId: number,
     item: PreorderItemEntity | null,
-  ): Promise<QueueInfo | null> {
-    const totals = await manager
-      .createQueryBuilder(PreorderItemEntity, 'i')
-      .select('COUNT(i.id)', 'members')
-      .addSelect('COALESCE(SUM(i.amount), 0)', 'qty')
-      .where('i.preorder_product_id = :pid', { pid: preorderProductId })
-      .andWhere('i.status IN (:...st)', { st: ACTIVE_ITEM_STATUSES })
-      .getRawOne<{ members: string; qty: string }>();
-
-    const total_members = Number(totals?.members ?? 0);
-    const total_qty = Number(totals?.qty ?? 0);
-
+  ): Promise<QueueInfo> {
+    const lots = await this.loadQueueLots(manager, preorderProductId);
+    const total_members = new Set(lots.map((l) => l.item_id)).size;
+    const total_qty = lots.reduce((s, l) => s + l.qty, 0);
     if (!item || !ACTIVE_ITEM_STATUSES.includes(item.status)) {
-      return { position: 0, ahead_qty: 0, total_members, total_qty };
+      return { position: 0, ahead_qty: 0, total_members, total_qty, lots: [] };
     }
-
-    const ahead = await manager
-      .createQueryBuilder(PreorderItemEntity, 'i')
-      .select('COUNT(i.id)', 'members')
-      .addSelect('COALESCE(SUM(i.amount), 0)', 'qty')
-      .where('i.preorder_product_id = :pid', { pid: preorderProductId })
-      .andWhere('i.status IN (:...st)', { st: ACTIVE_ITEM_STATUSES })
-      .andWhere('(i.ordered_at < :at OR (i.ordered_at = :at AND i.id < :id))', {
-        at: item.ordered_at,
-        id: item.id,
-      })
-      .getRawOne<{ members: string; qty: string }>();
-
+    const mine = lots
+      .filter((l) => l.item_id === item.id)
+      .map((l) => ({
+        id: l.lot_id,
+        qty: l.qty,
+        ordered_at: l.ordered_at,
+        allocated_qty: l.allocated_qty,
+        position: l.position,
+        ahead_qty: l.ahead_qty,
+      }));
     return {
-      position: Number(ahead?.members ?? 0) + 1,
-      ahead_qty: Number(ahead?.qty ?? 0),
+      position: mine[0]?.position ?? 0,
+      ahead_qty: mine[0]?.ahead_qty ?? 0,
       total_members,
       total_qty,
+      lots: mine,
     };
   }
 
@@ -272,6 +381,8 @@ export class PreorderService {
         breaking_announcement: c.breaking_announcement,
         terms: c.terms,
         allow_cancel: c.allow_cancel,
+        increase_policy: c.increase_policy,
+        increase_grace_hours: c.increase_grace_hours,
         products,
       });
     }
@@ -323,6 +434,7 @@ export class PreorderService {
             updated_at: mine.updated_at,
             position: queue?.position ?? 0,
             ahead_qty: queue?.ahead_qty ?? 0,
+            lots: queue?.lots ?? [],
           }
         : null,
     };
@@ -416,6 +528,15 @@ export class PreorderService {
         item.accepted_terms_at =
           item.accepted_terms_at ?? (dto.accept_terms ? now : null);
         item = await manager.save(item);
+        // ล็อตเดียว = จำนวนทั้งหมด ณ เวลาจองครั้งแรก (จองใหม่หลังยกเลิกจะล้างล็อตเก่า)
+        await manager.delete(PreorderItemLotEntity, { item_id: item.id });
+        await manager.save(
+          manager.create(PreorderItemLotEntity, {
+            item_id: item.id,
+            qty: amount,
+            ordered_at: now,
+          }),
+        );
         await this.log(
           manager,
           item.id,
@@ -435,7 +556,24 @@ export class PreorderService {
         }
         if (item.amount !== amount) {
           const from = item.amount;
+          const existing = await manager.find(PreorderItemLotEntity, {
+            where: { item_id: item.id },
+            order: { ordered_at: 'ASC', id: 'ASC' },
+          });
+          const change = applyAmountChange(
+            existing.map((l) => ({
+              id: l.id,
+              qty: l.qty,
+              ordered_at: l.ordered_at,
+            })),
+            amount,
+            campaign.increase_policy,
+            campaign.increase_grace_hours,
+            now,
+          );
+          await this.rewriteLots(manager, item.id, change);
           item.amount = amount;
+          item.ordered_at = change.itemOrderedAt; // เปลี่ยนเฉพาะนโยบาย reset
           item = await manager.save(item);
           await this.log(
             manager,
@@ -444,6 +582,7 @@ export class PreorderService {
             PreorderLogAction.UPDATE,
             from,
             amount,
+            change.note,
           );
         }
       }
@@ -461,6 +600,7 @@ export class PreorderService {
         ahead_qty: queue?.ahead_qty ?? 0,
         total_qty: queue?.total_qty ?? 0,
         total_members: queue?.total_members ?? 0,
+        lots: queue?.lots ?? [],
       };
     });
   }
@@ -539,6 +679,7 @@ export class PreorderService {
         updated_at: i.updated_at,
         position: queue?.position ?? 0,
         ahead_qty: queue?.ahead_qty ?? 0,
+        lots: queue?.lots ?? [],
       });
     }
     return result;
@@ -622,6 +763,23 @@ export class PreorderService {
     if (dto.terms !== undefined) c.terms = dto.terms ?? null;
     if (dto.allow_cancel !== undefined)
       c.allow_cancel = Boolean(dto.allow_cancel);
+    if (dto.increase_policy !== undefined) {
+      if (
+        !Object.values(PreorderIncreasePolicy).includes(dto.increase_policy)
+      ) {
+        throw new BadRequestException(
+          'increase_policy ต้องเป็น keep, split หรือ reset',
+        );
+      }
+      c.increase_policy = dto.increase_policy;
+    }
+    if (dto.increase_grace_hours !== undefined) {
+      c.increase_grace_hours = toIntOrNull(
+        dto.increase_grace_hours,
+        'increase_grace_hours',
+        0,
+      );
+    }
   }
 
   async createCampaign(actor: PreorderActor, dto: CreateCampaignDto) {
@@ -629,6 +787,8 @@ export class PreorderService {
       status: PreorderCampaignStatus.DRAFT,
       mode: PreorderMode.AGGREGATION,
       allow_cancel: false,
+      increase_policy: PreorderIncreasePolicy.KEEP,
+      increase_grace_hours: null,
       created_by: actor.username ?? actor.mem_code,
     });
     this.applyCampaignDto(c, { ...dto, name: dto.name ?? '' });
@@ -796,6 +956,7 @@ export class PreorderService {
   // =====================================================================
 
   /** คิวของสินค้า เรียงเวลาจองครั้งแรก พร้อมข้อมูลร้านและยอดสะสม */
+  /** คิวของสินค้า แถวละ 1 ล็อต เรียงเวลาเข้าคิว พร้อมข้อมูลร้านและยอดสะสม (รายการที่ยกเลิกต่อท้ายไม่มีลำดับ) */
   async getQueue(preorderProductId: number) {
     const p = await this.findProductOrFail(preorderProductId);
     const items = await this.itemRepo
@@ -806,36 +967,76 @@ export class PreorderService {
       .orderBy('i.ordered_at', 'ASC')
       .addOrderBy('i.id', 'ASC')
       .getMany();
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const lots = await this.loadQueueLots(
+      this.itemRepo.manager,
+      preorderProductId,
+    );
+    const lotCount = new Map<number, number>();
+    for (const l of lots)
+      lotCount.set(l.item_id, (lotCount.get(l.item_id) ?? 0) + 1);
+    const lotNo = new Map<number, number>();
 
-    let position = 0;
+    const memberOf = (i: PreorderItemEntity) => ({
+      mem_code: i.mem_code,
+      mem_name: i.member?.mem_nameSite ?? null,
+      mem_phone: i.member?.mem_phone ?? null,
+      mem_price: i.member?.mem_price ?? null,
+      mem_route: i.member?.mem_route ?? null,
+      sale_emp: i.member?.employee
+        ? `${i.member.employee.emp_code ?? ''} ${i.member.employee.emp_nickname ?? ''}`.trim()
+        : null,
+    });
+
     let cumulative = 0;
-    const rows = items.map((i) => {
-      const active = ACTIVE_ITEM_STATUSES.includes(i.status);
-      if (active) {
-        position += 1;
-        cumulative += i.amount;
-      }
+    const rows: QueueRowOut[] = lots.map((l) => {
+      const i = byId.get(l.item_id) as PreorderItemEntity;
+      const no = (lotNo.get(l.item_id) ?? 0) + 1;
+      lotNo.set(l.item_id, no);
+      cumulative += l.qty;
       return {
         id: i.id,
-        position: active ? position : null,
-        mem_code: i.mem_code,
-        mem_name: i.member?.mem_nameSite ?? null,
-        mem_phone: i.member?.mem_phone ?? null,
-        mem_price: i.member?.mem_price ?? null,
-        mem_route: i.member?.mem_route ?? null,
-        sale_emp: i.member?.employee
-          ? `${i.member.employee.emp_code ?? ''} ${i.member.employee.emp_nickname ?? ''}`.trim()
-          : null,
-        amount: i.amount,
+        lot_id: l.lot_id,
+        lot_no: no,
+        lots_count: lotCount.get(l.item_id) ?? 1,
+        position: l.position,
+        ...memberOf(i),
+        amount: l.qty,
+        item_amount: i.amount,
         unit: i.unit,
-        cumulative_qty: active ? cumulative : null,
+        cumulative_qty: cumulative,
         status: i.status,
-        allocated_qty: i.allocated_qty,
+        allocated_qty: l.allocated_qty,
+        item_allocated_qty: i.allocated_qty,
         is_paid: i.is_paid,
-        ordered_at: i.ordered_at,
+        ordered_at: l.ordered_at,
+        first_ordered_at: i.ordered_at,
         updated_at: i.updated_at,
       };
     });
+    // รายการที่ไม่อยู่ในคิว (ยกเลิก) แสดงต่อท้ายเพื่อให้ admin เห็นประวัติ
+    for (const i of items) {
+      if (ACTIVE_ITEM_STATUSES.includes(i.status)) continue;
+      rows.push({
+        id: i.id,
+        lot_id: 0,
+        lot_no: 1,
+        lots_count: 1,
+        position: null,
+        ...memberOf(i),
+        amount: i.amount,
+        item_amount: i.amount,
+        unit: i.unit,
+        cumulative_qty: null,
+        status: i.status,
+        allocated_qty: i.allocated_qty,
+        item_allocated_qty: i.allocated_qty,
+        is_paid: i.is_paid,
+        ordered_at: i.ordered_at,
+        first_ordered_at: i.ordered_at,
+        updated_at: i.updated_at,
+      });
+    }
 
     return {
       product: {
@@ -852,10 +1053,12 @@ export class PreorderService {
           name: p.campaign.name,
           mode: p.campaign.mode,
           status: p.campaign.status,
+          increase_policy: p.campaign.increase_policy,
+          increase_grace_hours: p.campaign.increase_grace_hours,
         },
       },
-      total_qty: cumulative,
-      total_members: position,
+      total_qty: lots.reduce((s, l) => s + l.qty, 0),
+      total_members: new Set(lots.map((l) => l.item_id)).size,
       items: rows,
     };
   }
@@ -877,7 +1080,9 @@ export class PreorderService {
       'ระดับราคา',
       'เส้นทาง',
       'เซลล์',
-      'จำนวน',
+      'ล็อต',
+      'จำนวน (ล็อต)',
+      'รวมทั้งรายการ',
       'หน่วย',
       'สะสม',
       'สถานะ',
@@ -894,7 +1099,9 @@ export class PreorderService {
         r.mem_price,
         r.mem_route,
         r.sale_emp,
+        r.lots_count > 1 ? `${r.lot_no}/${r.lots_count}` : '',
         r.amount,
+        r.item_amount,
         r.unit,
         r.cumulative_qty,
         r.status,
@@ -925,6 +1132,23 @@ export class PreorderService {
       if (dto.amount !== undefined) {
         const amount = toInt(dto.amount, 'amount', 1);
         if (item.amount !== amount) {
+          // เจ้าหน้าที่แก้ = คงคิวเดิมเสมอ (รวมเข้าล็อตแรก / ตัดจากล็อตท้าย)
+          const existing = await manager.find(PreorderItemLotEntity, {
+            where: { item_id: item.id },
+            order: { ordered_at: 'ASC', id: 'ASC' },
+          });
+          const change = applyAmountChange(
+            existing.map((l) => ({
+              id: l.id,
+              qty: l.qty,
+              ordered_at: l.ordered_at,
+            })),
+            amount,
+            'keep',
+            null,
+            new Date(),
+          );
+          await this.rewriteLots(manager, item.id, change);
           await this.log(
             manager,
             item.id,
@@ -932,7 +1156,7 @@ export class PreorderService {
             PreorderLogAction.UPDATE,
             item.amount,
             amount,
-            dto.note,
+            dto.note ? `${dto.note} · ${change.note}` : change.note,
           );
           item.amount = amount;
         }
@@ -1047,17 +1271,54 @@ export class PreorderService {
       },
       order: { ordered_at: 'ASC', id: 'ASC' },
     });
-    const plan = computeAllocation(
-      items.map((i) => ({ id: i.id, amount: i.amount })),
-      supply,
-      strategy,
-    );
     const byId = new Map(items.map((i) => [i.id, i]));
-    const rows = plan.map((r) => ({
-      ...r,
-      mem_code: byId.get(r.id)?.mem_code ?? '',
-      ordered_at: byId.get(r.id)?.ordered_at ?? null,
-    }));
+    const allLots = (
+      await this.loadQueueLots(this.itemRepo.manager, preorderProductId)
+    ).filter((l) => byId.has(l.item_id));
+    const lotsByItem = new Map<number, QueueLotRow[]>();
+    for (const l of allLots) {
+      const arr = lotsByItem.get(l.item_id) ?? [];
+      arr.push(l);
+      lotsByItem.set(l.item_id, arr);
+    }
+    // ผลต่อล็อต: fifo ไล่ตามล็อต (ส่วนที่เพิ่มทีหลังอยู่ท้ายคิวจริง) · prorata แบ่งต่อรายการแล้วเติมล็อตแรกก่อน
+    const lotAlloc = new Map<number, number>();
+    if (strategy === 'fifo') {
+      for (const r of computeAllocation(
+        allLots.map((l) => ({ id: l.lot_id, amount: l.qty })),
+        supply,
+        'fifo',
+      ))
+        lotAlloc.set(r.id, r.allocated_qty);
+    } else {
+      for (const r of computeAllocation(
+        items.map((i) => ({ id: i.id, amount: i.amount })),
+        supply,
+        'prorata',
+      )) {
+        const ls = lotsByItem.get(r.id) ?? [];
+        distributeToLots(ls, r.allocated_qty).forEach((q, idx) =>
+          lotAlloc.set(ls[idx].lot_id, q),
+        );
+      }
+    }
+    const rows = items.map((i) => {
+      const ls = lotsByItem.get(i.id) ?? [];
+      const lots = ls.map((l) => ({
+        lot_id: l.lot_id,
+        qty: l.qty,
+        position: l.position,
+        allocated_qty: lotAlloc.get(l.lot_id) ?? 0,
+      }));
+      return {
+        id: i.id,
+        amount: i.amount,
+        allocated_qty: lots.reduce((s2, l) => s2 + l.allocated_qty, 0),
+        mem_code: i.mem_code,
+        ordered_at: i.ordered_at,
+        lots,
+      };
+    });
     const summary = {
       supply,
       strategy,
@@ -1100,6 +1361,13 @@ export class PreorderService {
               allocated_qty: r.allocated_qty,
               status: PreorderItemStatus.ALLOCATED,
             },
+          );
+        }
+        for (const l of r.lots) {
+          await manager.update(
+            PreorderItemLotEntity,
+            { id: l.lot_id },
+            { allocated_qty: l.allocated_qty },
           );
         }
       }

@@ -22,10 +22,27 @@ pre-order เกิดได้ 2 โหมด กำหนดต่อ "รอ�
 - ทุกการเปลี่ยนแปลงลง `preorder_item_logs` (ใคร เมื่อไหร่ จากเท่าไหร่เป็นเท่าไหร่)
 - ปิดรอบ (`closed`) → ล็อคทุกแถวที่ยัง reserved อัตโนมัติ
 
+### การเพิ่ม/ลดจำนวนหลังจอง (ล็อต + นโยบายต่อรอบ)
+
+รายการจอง 1 แถวมี "ล็อต" (`preorder_item_lots`) อย่างน้อย 1 ล็อต = จำนวน + เวลาที่ก้อนนั้นเข้าคิว ผลรวม qty ทุกล็อต = `amount` เสมอ
+คิวและการจัดสรรแบบ fifo ไล่ตามล็อต (ไม่ใช่ตามรายการ) ลูกค้าเห็นว่าแต่ละส่วนอยู่ลำดับไหน
+
+| การกระทำ | ผล |
+|---|---|
+| ลดจำนวน | ตัดจากล็อตหลังสุดก่อน ส่วนที่จองก่อนคงคิวเดิมเสมอ |
+| เพิ่มจำนวน + `increase_policy = keep` | รวมเข้าล็อตแรก ได้คิวเดิมทั้งหมด (ค่าเริ่มต้น) |
+| เพิ่มจำนวน + `split` | ส่วนที่เพิ่มเป็นล็อตใหม่ ณ เวลาที่เพิ่ม ส่วนเดิมคงคิวเดิม |
+| เพิ่มจำนวน + `reset` | ทั้งรายการรวมเป็นล็อตเดียว ณ เวลาที่เพิ่ม (`ordered_at` ของรายการเปลี่ยน) |
+| `increase_grace_hours = N` | ภายใน N ชม. หลังจองครั้งแรก การเพิ่มถือเป็น keep ไม่ว่านโยบายจะเป็นอะไร (null = ไม่มีช่วงผ่อนผัน) |
+| เจ้าหน้าที่แก้จำนวนให้ | ใช้ keep เสมอ |
+| ยกเลิกแล้วจองใหม่ | ล้างล็อตเก่า ล็อตใหม่ ณ เวลาที่จองใหม่ (ท้ายคิว) |
+
+ตรรกะอยู่ใน `src/preorder/preorder.lots.ts` (pure function มี unit test) การจัดสรร: fifo ไล่ล็อต, prorata แบ่งต่อรายการแล้วเติมล็อตแรกก่อน ผลต่อล็อตเก็บที่ `preorder_item_lots.allocated_qty`
+
 ## ตาราง
 
 `preorder_campaigns` → `preorder_products` (สินค้าในรอบ) → `preorder_items` (รายการจองของร้าน) → `preorder_item_logs`
-migration: `src/migrations/1788998400000-CreatePreorderTables.ts` (สร้าง feature flag `preorder` เป็นปิดไว้ด้วย)
+migration: `src/migrations/1788998400000-CreatePreorderTables.ts` (สร้าง feature flag `preorder` เป็นปิดไว้ด้วย) และ `1789003600000-AddPreorderLotsAndIncreasePolicy.ts` (ล็อต + นโยบายเพิ่มจำนวน backfill 1 ล็อตต่อรายการเดิม)
 
 สถานะรอบ: `draft → open → closed → allocating → fulfilled` และ `cancelled` ได้จากทุกสถานะที่ยังไม่จบ
 สถานะรายการ: `reserved → locked → allocated → fulfilled` และ `cancelled`
@@ -50,7 +67,7 @@ admin (`req.user.permission === true`)
 | PATCH | `/admin/preorder/campaigns/:id/status` | เปลี่ยนสถานะ (ตรวจ transition) |
 | POST | `/admin/preorder/campaigns/:id/products` | เพิ่มสินค้าเข้ารอบ |
 | PATCH/DELETE | `/admin/preorder/products/:id` | แก้ limit/supply/moq/eta/note / ถอดออก (มีคนจองแล้วจะซ่อนแทนลบ) |
-| GET | `/admin/preorder/products/:id/queue` | คิวเรียง ordered_at พร้อมข้อมูลร้าน เซลล์ ยอดสะสม |
+| GET | `/admin/preorder/products/:id/queue` | คิวแถวละ 1 ล็อต เรียงเวลาเข้าคิว พร้อมข้อมูลร้าน เซลล์ ยอดสะสม (`lot_no/lots_count`, `amount` = ล็อต, `item_amount` = ทั้งรายการ) |
 | GET | `/admin/preorder/products/:id/queue.csv` | export CSV |
 | POST | `/admin/preorder/products/:id/allocate` | จัดสรร `{ strategy: fifo/prorata, supply_qty?, apply }` apply=false คือ preview |
 | PATCH/DELETE | `/admin/preorder/items/:id` | ล็อค/ปลดล็อค/แก้จำนวน/ชำระแล้ว/allocated_qty / ยกเลิก |

@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { PreorderProductEntity } from './preorder-product.entity';
 import { PreorderItemLogEntity } from './preorder-item-log.entity';
+import { PreorderItemLotEntity } from './preorder-item-lot.entity';
 import { UserEntity } from '../users/users.entity';
 
 export enum PreorderItemStatus {
@@ -90,4 +91,8 @@ export class PreorderItemEntity {
 
   @OneToMany(() => PreorderItemLogEntity, (l) => l.item)
   logs!: PreorderItemLogEntity[];
+
+  /** ล็อตของจำนวน (ผลรวม qty = amount) เรียงตามเวลาเข้าคิว */
+  @OneToMany(() => PreorderItemLotEntity, (l) => l.item)
+  lots!: PreorderItemLotEntity[];
 }

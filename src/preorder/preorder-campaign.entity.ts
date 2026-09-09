@@ -19,6 +19,18 @@ export enum PreorderMode {
   AGGREGATION = 'aggregation',
 }
 
+/**
+ * นโยบายเมื่อลูกค้า "เพิ่ม" จำนวนหลังจองแล้ว (ลดจำนวนคงคิวเสมอ)
+ * - keep  : ส่วนที่เพิ่มได้คิวเดิม
+ * - split : ส่วนที่เพิ่มนับเป็นคิวใหม่ ณ เวลาที่เพิ่ม ส่วนเดิมคงคิวเดิม
+ * - reset : เพิ่มเมื่อไหร่ ทั้งรายการย้ายไปท้ายคิว
+ */
+export enum PreorderIncreasePolicy {
+  KEEP = 'keep',
+  SPLIT = 'split',
+  RESET = 'reset',
+}
+
 export enum PreorderCampaignStatus {
   DRAFT = 'draft',
   OPEN = 'open',
@@ -74,6 +86,17 @@ export class PreorderCampaignEntity {
   /** ลูกค้ายกเลิกเองได้ไหมระหว่างรอบเปิด (โหมด A ควร false, โหมด B ควร true) */
   @Column({ type: 'boolean', default: false })
   allow_cancel!: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: PreorderIncreasePolicy,
+    default: PreorderIncreasePolicy.KEEP,
+  })
+  increase_policy!: PreorderIncreasePolicy;
+
+  /** ภายใน N ชั่วโมงหลังจองครั้งแรก เพิ่มจำนวนได้โดยไม่เสียคิว (null = ไม่มีช่วงผ่อนผัน) */
+  @Column({ type: 'int', nullable: true })
+  increase_grace_hours!: number | null;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   created_by!: string | null;

@@ -104,6 +104,8 @@ async function main() {
         mode: 'allocation',
         terms: 'เงื่อนไขทดสอบ e2e',
         allow_cancel: false,
+        increase_policy: 'split',
+        increase_grace_hours: 0,
       });
       campaignId = r.data?.id ?? 0;
       return {
@@ -194,18 +196,49 @@ async function main() {
     };
   });
 
-  await step('ลูกค้าแก้จำนวนเป็น 4 → ordered_at ต้องไม่เปลี่ยน', async () => {
-    const r = await user.put(
-      `/ecom/preorder/campaigns/${campaignId}/products/${PRO_CODE}`,
-      { amount: 4 },
-    );
-    return {
-      status: r.status,
-      ok:
+  await step(
+    'ลูกค้าแก้จำนวนเป็น 4 (นโยบาย split) → ordered_at เดิม ส่วนที่เพิ่มเป็นล็อตใหม่ท้ายคิว',
+    async () => {
+      const r = await user.put(
+        `/ecom/preorder/campaigns/${campaignId}/products/${PRO_CODE}`,
+        { amount: 4 },
+      );
+      const lots = r.data?.lots ?? [];
+      const ok =
         r.status === 200 &&
         r.data?.amount === 4 &&
-        r.data?.ordered_at === orderedAt,
-      detail: `ordered_at same=${r.data?.ordered_at === orderedAt}`,
+        r.data?.ordered_at === orderedAt &&
+        lots.length === 2 &&
+        lots[0]?.qty === 2 &&
+        lots[1]?.qty === 2 &&
+        lots[1]?.position > lots[0]?.position;
+      return {
+        status: r.status,
+        ok,
+        detail: `ordered_at same=${r.data?.ordered_at === orderedAt} lots=${lots
+          .map((l: any) => `${l.qty}@${l.position}`)
+          .join(',')}`,
+      };
+    },
+  );
+
+  await step('ลูกค้าลดจำนวนเป็น 3 → ตัดจากล็อตท้าย คิวเดิม', async () => {
+    const r = await user.put(
+      `/ecom/preorder/campaigns/${campaignId}/products/${PRO_CODE}`,
+      { amount: 3 },
+    );
+    const lots = r.data?.lots ?? [];
+    const ok =
+      r.status === 200 &&
+      r.data?.amount === 3 &&
+      r.data?.ordered_at === orderedAt &&
+      lots.length === 2 &&
+      lots[0]?.qty === 2 &&
+      lots[1]?.qty === 1;
+    return {
+      status: r.status,
+      ok,
+      detail: `lots=${lots.map((l: any) => `${l.qty}@${l.position}`).join(',')}`,
     };
   });
 
@@ -229,15 +262,15 @@ async function main() {
     return { status: r.status, ok: r.status === 200 && found };
   });
 
-  await step('admin ดูคิว มีร้านนี้ลำดับ 1', async () => {
+  await step('admin ดูคิว ร้านนี้ลำดับ 1 และมี 2 แถว (2 ล็อต)', async () => {
     const r = await admin.get(
       `/ecom/admin/preorder/products/${preorderProductId}/queue`,
     );
-    const row = r.data?.items?.find((i: any) => i.id === itemId);
+    const rows = (r.data?.items ?? []).filter((i: any) => i.id === itemId);
     return {
       status: r.status,
-      ok: r.status === 200 && row?.position === 1,
-      detail: `total_qty=${r.data?.total_qty}`,
+      ok: r.status === 200 && rows[0]?.position === 1 && rows.length === 2,
+      detail: `total_qty=${r.data?.total_qty} rows=${rows.length}`,
     };
   });
 

@@ -5,6 +5,7 @@ import { PreorderCampaignEntity } from './preorder-campaign.entity';
 import { PreorderProductEntity } from './preorder-product.entity';
 import { PreorderItemEntity } from './preorder-item.entity';
 import { PreorderItemLogEntity } from './preorder-item-log.entity';
+import { PreorderItemLotEntity } from './preorder-item-lot.entity';
 import { PreorderService } from './preorder.service';
 import { PreorderController } from './preorder.controller';
 import { PreorderNotifierService } from './preorder-notifier.service';
@@ -18,6 +19,7 @@ import { ProductEntity } from '../products/products.entity';
       PreorderProductEntity,
       PreorderItemEntity,
       PreorderItemLogEntity,
+      PreorderItemLotEntity,
       ProductEntity,
     ]),
     HttpModule,
