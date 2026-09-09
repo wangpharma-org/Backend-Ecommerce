@@ -88,7 +88,7 @@ admin (`req.user.permission === true`)
 - e2e ยิง API จริง: `BASE_URL=... E2E_ENV=dev|prod ADMIN_TOKEN=... USER_TOKEN=... PRO_CODE=... npx ts-node scripts/e2e/preorder.e2e.ts`
   รายงานติดป้าย environment เสมอ (`local` อัตโนมัติเมื่อ BASE_URL เป็น localhost, อื่นๆ ต้องระบุ E2E_ENV) เขียนลง `docs/e2e/preorder-<env>-<timestamp>.md`
   ผล `local` = ผ่านก่อน merge เท่านั้น ต้องรันซ้ำกับ deployed code หลัง deploy แล้วบันทึกใน Confluence: [E2E Testing Playbook — Backend-Ecommerce](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202407939) → [Test Report — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202440705) + [ทะเบียน E2E Suites](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473473)
-- ผลล่าสุด: local 22/22 (9 ก.ย. 2569) `docs/e2e/preorder-local-1788926680462.md` · deployed: ยังไม่ได้รัน
+- ผลล่าสุด: local **23/23** (9 ก.ย. 2569 รอบ 2 บน DB dump ล่าสุด, commit 260a5d2) `docs/e2e/preorder-local-1788936832547.md` · รอบ 1 22/22 `preorder-local-1788926680462.md` · deployed: ยังไม่ได้รัน
 
 ## ยังไม่ทำในรอบนี้
 
