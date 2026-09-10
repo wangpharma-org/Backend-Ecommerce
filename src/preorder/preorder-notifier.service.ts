@@ -25,7 +25,7 @@ export class PreorderNotifierService {
     try {
       await lastValueFrom(
         this.http.post(
-          `${this.baseUrl}/api/notifications/dispatch`,
+          `${this.baseUrl}/api/notifications/notifications/dispatch`,
           {
             memCode: n.memCode,
             type: 'preorder',

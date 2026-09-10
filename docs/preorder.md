@@ -94,7 +94,7 @@ admin (`req.user.permission === true`)
 ## ของเข้าแล้ว → แจ้งร้านที่จอง
 
 `NewArrivalsService.addNewArrival` (POST `/ecom/new-arrivals` จากระบบรับของ) เรียก `PreorderService.handleArrivals(pro_codes)` หลัง commit
-ระบบจะตั้ง `arrived_at` บนสินค้าในรอบที่ยังไม่จบ แล้วส่งแจ้งเตือนผ่าน notification-service (`POST /api/notifications/dispatch`, channels FCM+LINE)
+ระบบจะตั้ง `arrived_at` บนสินค้าในรอบที่ยังไม่จบ แล้วส่งแจ้งเตือนผ่าน notification-service (`POST /api/notifications/notifications/dispatch`, channels FCM+LINE)
 ให้ทุกร้านที่ยังจองอยู่ ครั้งเดียวต่อสินค้าต่อรอบ การแจ้งล้มเหลวจะ log อย่างเดียว ไม่ทำให้การรับของล้ม
 
 แจ้งเตือนอื่น: ผลจัดสรร (หลัง allocate apply), ยกเลิกรอบ, ETA เลื่อน (เมื่อ admin แก้ `eta_date` ของสินค้าที่มีคนจอง), เตือนก่อนปิดรอบ (cron 09:00), เจ้าหน้าที่จองแทนให้
