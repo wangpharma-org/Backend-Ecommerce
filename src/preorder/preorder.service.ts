@@ -45,8 +45,15 @@ import { PreorderPriceType, PreorderReason } from './preorder-product.entity';
 import type { PreorderPriceTier } from './preorder-product.entity';
 
 /** ชื่อหน่วยเล็กสุด (level 1) จากตาราง product_unit */
-function unit1Of(product?: ProductEntity | null): string | null {
-  return product?.units?.find((u) => u.level === 1)?.unit_name ?? null;
+/**
+ * หน่วยเล็กสุดของสินค้า = level ต่ำสุดที่มีชื่อหน่วย (วิธีเดียวกับตะกร้า) ไม่ยึด level 1 ตายตัว
+ * เพราะ catalog มีสินค้าบางตัวที่มีหน่วยเฉพาะ level 2/3
+ */
+export function unit1Of(product?: ProductEntity | null): string | null {
+  const units = (product?.units ?? [])
+    .filter((u) => (u.unit_name ?? '').trim().length > 0 && u.level >= 1)
+    .sort((a, b) => a.level - b.level);
+  return units[0]?.unit_name ?? null;
 }
 
 /** สถานะที่ถือว่า "ยังจองอยู่" นับเข้าคิวและยอดรวม */
@@ -554,9 +561,13 @@ export class PreorderService {
         );
       }
 
-      const unit1 = await manager.findOne(ProductUnitEntity, {
-        where: { pro_code: proCode, level: 1 },
-      });
+      // หน่วยเล็กสุด = level ต่ำสุดที่มีชื่อหน่วย (เหมือนตะกร้า) ไม่ยึด level 1 ตายตัว
+      const unit1 = (
+        await manager.find(ProductUnitEntity, {
+          where: { pro_code: proCode },
+          order: { level: 'ASC' },
+        })
+      ).find((u) => (u.unit_name ?? '').trim().length > 0);
 
       let item = await manager.findOne(PreorderItemEntity, {
         where: { preorder_product_id: pp.id, mem_code: memCode },

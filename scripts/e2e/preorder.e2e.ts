@@ -25,6 +25,8 @@ const USER_TOKEN = process.env.USER_TOKEN ?? '';
 const PRO_CODE = process.env.PRO_CODE ?? '';
 /** ร้านที่สองสำหรับทดสอบ "จองแทนร้าน" (ต้องมีใน users และไม่ใช่ร้านของ USER_TOKEN) */
 const MEM2 = process.env.MEM2 ?? '';
+/** (ไม่บังคับ) สินค้าที่มีหน่วยแต่ไม่มี level 1 เช่น 03091086 → ต้องได้หน่วย level ต่ำสุดที่มี */
+const PRO_CODE_NO_L1 = process.env.PRO_CODE_NO_L1 ?? '';
 const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE_URL);
 const E2E_ENV = process.env.E2E_ENV ?? (IS_LOCAL ? 'local' : '');
 const GIT_SHA = (() => {
@@ -1061,6 +1063,25 @@ async function main() {
       };
     },
   );
+
+  if (PRO_CODE_NO_L1) {
+    await step(
+      `C15b2 สินค้าที่ไม่มีหน่วย level 1 (${PRO_CODE_NO_L1}) → lookup คืนหน่วย level ต่ำสุดที่มี ไม่ใช่ null`,
+      async () => {
+        const r = await admin.get('/ecom/admin/preorder/product-lookup', {
+          params: { q: PRO_CODE_NO_L1 },
+        });
+        return {
+          status: r.status,
+          ok:
+            r.status === 200 &&
+            typeof r.data?.unit === 'string' &&
+            r.data.unit.length > 0,
+          detail: `unit=${r.data?.unit}`,
+        };
+      },
+    );
+  }
 
   await step('C15c admin ค้นรหัส/บาร์โค้ดที่ไม่มี → 404', async () => {
     const r = await admin.get('/ecom/admin/preorder/product-lookup', {
