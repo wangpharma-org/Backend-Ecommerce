@@ -87,6 +87,12 @@ admin (`req.user.permission === true`)
 | GET | `/admin/preorder/campaigns/:id/purchase-summary` (+ `.csv`) | ใบสรุปยอดสั่งซื้อของรอบ จัดกลุ่มตาม supplier (creditor_name ?? pro_supplier) ราคาขาย (tier/ประมาณ/ปกติ) ต้นทุน มูลค่า MOQ ขาดเท่าไร |
 | PUT | `/admin/preorder/campaigns/:id/products/:proCode/members/:memCode` | เจ้าหน้าที่/เซลล์ (`permission` หรือ `role=Sales`) จองแทนร้าน `{ amount, note? }` ข้ามการยอมรับเงื่อนไข log `staff_book` และแจ้งร้าน |
 | POST | `/admin/preorder/items/:id/to-cart` · `/admin/preorder/products/:id/to-cart` | ส่งจำนวนที่จัดสรรเข้าตะกร้าร้าน รายแถว / ทุกร้านของสินค้า (ข้ามที่ส่งแล้ว/ไม่ได้รับจัดสรร) |
+| — | **เซลล์ (`role=Sales`; admin เรียกได้ด้วย = ไม่จำกัดขอบเขต)** ขอบเขต = ร้านที่ `users.emp_id_ref` ตรงกับรหัสเซลล์ (`emp_id_ref` ของบัญชีเซลล์ หรือ `mem_code` ถ้าไม่ได้ผูก) บังคับที่ service ทั้ง endpoint เซลล์และ endpoint admin | |
+| GET | `/sales/preorder/campaigns` | รอบที่เปิดอยู่ + สินค้า (ไม่มี `my_item`) + `my_stores {members, qty, allocated}` ของร้านในความดูแล + `sales_code` |
+| GET | `/sales/preorder/stores?q=` | ร้านในความดูแล (ค้นรหัส/ชื่อ) สำหรับ picker จองแทน |
+| GET | `/sales/preorder/products/:id/queue` | คิวเฉพาะร้านในความดูแล (`total_*` ยังนับทุกร้าน, `scope.my_qty/my_members`) |
+| PUT | `/sales/preorder/campaigns/:id/products/:proCode/members/:memCode` | จองแทนร้านในความดูแล (นอกขอบเขต → 403) |
+| POST | `/sales/preorder/items/:id/to-cart` | ส่งจำนวนที่จัดสรรของร้านในความดูแลเข้าตะกร้า (นอกขอบเขต → 403; endpoint admin "ทั้งสินค้า" เมื่อเซลล์เรียกจะกรองเหลือร้านของตน) |
 | POST | `/admin/preorder/reminders/run` | รัน cron เตือนก่อนปิดรอบด้วยมือ (ปกติ 09:00 ทุกวัน: รอบ open ที่ `ends_at` ภายใน 24 ชม. และยังไม่เคยเตือน) |
 | PATCH/DELETE | `/admin/preorder/items/:id` | ล็อค/ปลดล็อค/แก้จำนวน/ชำระแล้ว/allocated_qty / ยกเลิก |
 | GET | `/admin/preorder/items/:id/logs` | ประวัติแถว |
@@ -109,6 +115,7 @@ admin (`req.user.permission === true`)
   (`MEM2` = รหัสร้านที่มีใน `users` และไม่ใช่ร้านของ USER_TOKEN ใช้ทดสอบจองแทนร้าน · access token อายุ 15 นาที ต่ออายุด้วย `POST /ecom/refresh_token {token: refresh_token}`)
   รายงานติดป้าย environment เสมอ (`local` อัตโนมัติเมื่อ BASE_URL เป็น localhost, อื่นๆ ต้องระบุ E2E_ENV) เขียนลง `docs/e2e/preorder-<env>-<timestamp>.md`
   ผล `local` = ผ่านก่อน merge เท่านั้น ต้องรันซ้ำกับ deployed code หลัง deploy แล้วบันทึกใน Confluence: [E2E Testing Playbook — Backend-Ecommerce](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202407939) → [Test Report — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202440705) + [ทะเบียน E2E Suites](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473473)
+- รอบ D หน้าเซลล์ (15 ขั้น) รันเมื่อตั้ง `SALES_TOKEN` = token ของบัญชี role=Sales ที่ดูแลร้านของ USER_TOKEN แต่ไม่ดูแล MEM2 (local: บัญชี `E2ESALES` emp_id_ref 0743, ร้าน 0582 ถูกตั้ง emp_id_ref=0743 ใน DB ทดสอบ)
 - สคริปต์มี 3 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น · C = กลุ่ม 3 + มติ 9 ก.ย. (reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน + log, ใบสรุปสั่งซื้อ + CSV, เตือนก่อนปิดรอบ + กันเตือนซ้ำ, จัดสรร equal, ส่งเข้าตะกร้าลูกค้า/เจ้าหน้าที่ + กันส่งซ้ำ + ตรวจตะกร้าจริง, feedback ผู้บริหาร 10 ก.ย.: lookup รหัส/บาร์โค้ด/404/403, price_type) 35 ขั้น
 - UAT + บทสาธิตผู้บริหาร + ทะเบียน test case ให้ผู้ใช้จริงเซ็นรับ: [UAT & Demo Guide — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473517) (ผ่าน UAT = DoD ทางธุรกิจ คู่กับ e2e deployed)
 - ผลล่าสุด: local **79/79** (10 ก.ย. 2569 commit 9b9bda9 บน DB dump ล่าสุด + notification-service รันในเครื่อง, ตั้ง `PRO_CODE_NO_L1=03091086`) `docs/e2e/preorder-local-1789057748542.md` · ก่อนหน้า 78/78 (f0a4233, 1422c4f) · ก่อนหน้า 71/71 (1757f26), 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน

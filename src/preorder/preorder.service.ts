@@ -725,6 +725,7 @@ export class PreorderService {
   ) {
     const mem = String(memCode ?? '').trim();
     if (!mem) throw new BadRequestException('mem_code จำเป็นต้องระบุ');
+    await this.assertStoreInScope(actor, mem);
     return this.upsertItem(
       actor,
       campaignId,
@@ -1278,6 +1279,145 @@ export class PreorderService {
     };
   }
 
+  // ==================== SALES (เซลล์ดูแลร้าน) ====================
+
+  /**
+   * รหัสเซลล์สำหรับจำกัดขอบเขต: admin → null (ไม่จำกัด) · Sales → emp_id_ref ของบัญชี หรือ mem_code ถ้าไม่ได้ผูก
+   * ร้านที่อยู่ในความดูแล = users.emp_id_ref ตรงกับรหัสนี้ (ตาราง employee.emp_code)
+   */
+  private async salesCodeOf(actor: PreorderActor): Promise<string | null> {
+    if (actor.permission) return null;
+    if (actor.role !== 'Sales')
+      throw new ForbiddenException('You not have Permission to Access');
+    const me = await this.userRepo.findOne({
+      where: { mem_code: actor.mem_code },
+      select: ['mem_code', 'emp_id_ref'],
+    });
+    return (me?.emp_id_ref ?? '').trim() || actor.mem_code;
+  }
+
+  private async assertStoreInScope(actor: PreorderActor, memCode: string) {
+    const sc = await this.salesCodeOf(actor);
+    if (!sc) return;
+    const store = await this.userRepo.findOne({
+      where: { mem_code: memCode },
+      select: ['mem_code', 'emp_id_ref'],
+    });
+    if (!store || (store.emp_id_ref ?? '') !== sc) {
+      throw new ForbiddenException('ร้านนี้ไม่อยู่ในความดูแลของท่าน');
+    }
+  }
+
+  /** ร้านในความดูแลของเซลล์ (ค้นด้วยรหัส/ชื่อร้าน) สำหรับ picker "จองแทนร้าน" */
+  async listStoresForSales(actor: PreorderActor, q?: string) {
+    const sc = await this.salesCodeOf(actor);
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .select(['u.mem_code', 'u.mem_nameSite', 'u.mem_phone', 'u.mem_route'])
+      .where("u.role = 'User'")
+      .orderBy('u.mem_code', 'ASC')
+      .limit(30);
+    if (sc) qb.andWhere('u.emp_id_ref = :sc', { sc });
+    const term = String(q ?? '').trim();
+    if (term)
+      qb.andWhere('(u.mem_code LIKE :t OR u.mem_nameSite LIKE :t)', {
+        t: `%${term}%`,
+      });
+    const rows = await qb.getMany();
+    return {
+      sales_code: sc,
+      stores: rows.map((u) => ({
+        mem_code: u.mem_code,
+        mem_name: u.mem_nameSite ?? null,
+        mem_phone: u.mem_phone ?? null,
+        mem_route: u.mem_route ?? null,
+      })),
+    };
+  }
+
+  /** รอบที่เปิดอยู่สำหรับหน้าเซลล์: สินค้า + ยอดรวมทุกร้าน + ยอดเฉพาะร้านในความดูแล */
+  async listOpenCampaignsForSales(actor: PreorderActor) {
+    const sc = await this.salesCodeOf(actor);
+    const now = new Date();
+    const campaigns = await this.campaignRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.products', 'p', 'p.is_active = 1')
+      .leftJoinAndSelect('p.product', 'prod')
+      .leftJoinAndSelect('prod.units', 'units')
+      .where('c.status = :open', { open: PreorderCampaignStatus.OPEN })
+      .andWhere('(c.starts_at IS NULL OR c.starts_at <= :now)', { now })
+      .andWhere('(c.ends_at IS NULL OR c.ends_at >= :now)', { now })
+      .orderBy('c.created_at', 'DESC')
+      .addOrderBy('p.sort_order', 'ASC')
+      .addOrderBy('p.id', 'ASC')
+      .getMany();
+
+    const result: Array<Record<string, unknown>> = [];
+    for (const c of campaigns) {
+      const products: Array<Record<string, unknown>> = [];
+      for (const p of c.products) {
+        const queue = await this.queueInfoFor(
+          this.itemRepo.manager,
+          p.id,
+          null,
+        );
+        const mineQb = this.itemRepo
+          .createQueryBuilder('i')
+          .innerJoin('i.member', 'm')
+          .select('COUNT(DISTINCT i.mem_code)', 'members')
+          .addSelect('COALESCE(SUM(i.amount), 0)', 'qty')
+          .addSelect(
+            'COALESCE(SUM(CASE WHEN i.status = :alloc THEN i.allocated_qty ELSE 0 END), 0)',
+            'allocated',
+          )
+          .where('i.preorder_product_id = :pid', { pid: p.id })
+          .andWhere('i.status IN (:...st)', { st: ACTIVE_ITEM_STATUSES })
+          .setParameter('alloc', PreorderItemStatus.ALLOCATED);
+        if (sc) mineQb.andWhere('m.emp_id_ref = :sc', { sc });
+        const mine = await mineQb.getRawOne<{
+          members: string;
+          qty: string;
+          allocated: string;
+        }>();
+        const presented = this.presentProduct(p, actor, null, queue) as Record<
+          string,
+          unknown
+        >;
+        delete presented.my_item;
+        products.push({
+          ...presented,
+          my_stores: {
+            members: Number(mine?.members ?? 0),
+            qty: Number(mine?.qty ?? 0),
+            allocated: Number(mine?.allocated ?? 0),
+          },
+        });
+      }
+      result.push({
+        id: c.id,
+        name: c.name,
+        mode: c.mode,
+        status: c.status,
+        starts_at: c.starts_at,
+        ends_at: c.ends_at,
+        detail_announcement: c.detail_announcement,
+        breaking_announcement: c.breaking_announcement,
+        terms: c.terms,
+        allow_cancel: c.allow_cancel,
+        increase_policy: c.increase_policy,
+        increase_grace_hours: c.increase_grace_hours,
+        products,
+      });
+    }
+    return { sales_code: sc, campaigns: result };
+  }
+
+  /** คิวของสินค้า เฉพาะร้านในความดูแลของเซลล์ */
+  async getQueueForSales(actor: PreorderActor, preorderProductId: number) {
+    const sc = await this.salesCodeOf(actor);
+    return this.getQueue(preorderProductId, { salesCode: sc });
+  }
+
   /** ใบสรุปยอดสั่งซื้อของรอบ สำหรับส่งจัดซื้อ/supplier (จัดกลุ่มตาม supplier) */
   async purchaseSummary(campaignId: number) {
     const c = await this.campaignRepo.findOne({
@@ -1434,8 +1574,22 @@ export class PreorderService {
       throw new BadRequestException('ต้องระบุ itemId หรือ preorderProductId');
     const items = await this.itemRepo.find({
       where,
-      relations: { preorderProduct: { product: { units: true } } },
+      relations: {
+        preorderProduct: { product: { units: true } },
+        member: true,
+      },
     });
+    // เซลล์ทำได้เฉพาะร้านในความดูแล (admin ไม่จำกัด ลูกค้าตรวจ mem_code ของตัวเองด้านล่าง)
+    if (!opts.customer) {
+      const sc = await this.salesCodeOf(actor);
+      if (sc) {
+        const inScope = items.filter((it) => it.member?.emp_id_ref === sc);
+        if (target.itemId && items.length && !inScope.length) {
+          throw new ForbiddenException('ร้านนี้ไม่อยู่ในความดูแลของท่าน');
+        }
+        items.splice(0, items.length, ...inScope);
+      }
+    }
     const who = actor.username ?? actor.mem_code;
     const results: Array<{
       item_id: number;
@@ -1551,9 +1705,12 @@ export class PreorderService {
 
   /** คิวของสินค้า เรียงเวลาจองครั้งแรก พร้อมข้อมูลร้านและยอดสะสม */
   /** คิวของสินค้า แถวละ 1 ล็อต เรียงเวลาเข้าคิว พร้อมข้อมูลร้านและยอดสะสม (รายการที่ยกเลิกต่อท้ายไม่มีลำดับ) */
-  async getQueue(preorderProductId: number) {
+  async getQueue(
+    preorderProductId: number,
+    opts: { salesCode?: string | null } = {},
+  ) {
     const p = await this.findProductOrFail(preorderProductId);
-    const items = await this.itemRepo
+    const allItems = await this.itemRepo
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.member', 'm')
       .leftJoinAndSelect('m.employee', 'e')
@@ -1561,11 +1718,18 @@ export class PreorderService {
       .orderBy('i.ordered_at', 'ASC')
       .addOrderBy('i.id', 'ASC')
       .getMany();
+    // ขอบเขตเซลล์: เห็นเฉพาะร้านที่ emp_id_ref ตรงกับรหัสเซลล์ แต่ลำดับคิว/ยอดสะสมยังนับจากทุกร้าน
+    const items = opts.salesCode
+      ? allItems.filter((i) => i.member?.emp_id_ref === opts.salesCode)
+      : allItems;
     const byId = new Map(items.map((i) => [i.id, i]));
-    const lots = await this.loadQueueLots(
+    const allLots = await this.loadQueueLots(
       this.itemRepo.manager,
       preorderProductId,
     );
+    const lots = opts.salesCode
+      ? allLots.filter((l) => byId.has(l.item_id))
+      : allLots;
     const lotCount = new Map<number, number>();
     for (const l of lots)
       lotCount.set(l.item_id, (lotCount.get(l.item_id) ?? 0) + 1);
@@ -1653,8 +1817,15 @@ export class PreorderService {
           increase_grace_hours: p.campaign.increase_grace_hours,
         },
       },
-      total_qty: lots.reduce((s, l) => s + l.qty, 0),
-      total_members: new Set(lots.map((l) => l.item_id)).size,
+      total_qty: allLots.reduce((s, l) => s + l.qty, 0),
+      total_members: new Set(allLots.map((l) => l.item_id)).size,
+      scope: opts.salesCode
+        ? {
+            sales_code: opts.salesCode,
+            my_qty: lots.reduce((s, l) => s + l.qty, 0),
+            my_members: new Set(lots.map((l) => l.item_id)).size,
+          }
+        : null,
       items: rows,
     };
   }

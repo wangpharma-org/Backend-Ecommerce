@@ -27,6 +27,8 @@ const PRO_CODE = process.env.PRO_CODE ?? '';
 const MEM2 = process.env.MEM2 ?? '';
 /** (ไม่บังคับ) สินค้าที่มีหน่วยแต่ไม่มี level 1 เช่น 03091086 → ต้องได้หน่วย level ต่ำสุดที่มี */
 const PRO_CODE_NO_L1 = process.env.PRO_CODE_NO_L1 ?? '';
+/** (ไม่บังคับ) token ของบัญชี role=Sales ที่ดูแลร้านของ USER_TOKEN แต่ไม่ดูแล MEM2 → รอบ D หน้าเซลล์ */
+const SALES_TOKEN = process.env.SALES_TOKEN ?? '';
 const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE_URL);
 const E2E_ENV = process.env.E2E_ENV ?? (IS_LOCAL ? 'local' : '');
 const GIT_SHA = (() => {
@@ -65,6 +67,7 @@ const client = (token: string): AxiosInstance =>
   });
 const admin = client(ADMIN_TOKEN);
 const user = client(USER_TOKEN);
+const sales = client(SALES_TOKEN);
 
 interface StepResult {
   step: string;
@@ -1363,6 +1366,264 @@ async function main() {
     },
   );
 
+  // =====================================================================
+  // รอบที่ 4 (D): หน้าเซลล์ — เห็น/ทำได้เฉพาะร้านในความดูแล (ต้องตั้ง SALES_TOKEN)
+  // =====================================================================
+  if (SALES_TOKEN) {
+    const salesJwt = decodeJwt(SALES_TOKEN) as {
+      mem_code?: string;
+      role?: string;
+    };
+    if (salesJwt.role !== 'Sales') {
+      console.error(
+        `SALES_TOKEN ต้องเป็นบัญชี role=Sales (ได้ ${salesJwt.role ?? '?'})`,
+      );
+      process.exit(2);
+    }
+    let campaignD = 0;
+    let productD = 0;
+    let itemDUser = 0;
+    let itemDMem2 = 0;
+
+    await step(
+      'D1 admin สร้างรอบ D (allocation, supply 10) + เปิด',
+      async () => {
+        const r = await admin.post('/ecom/admin/preorder/campaigns', {
+          name: `${tag} D`,
+          mode: 'allocation',
+          allow_cancel: true,
+        });
+        campaignD = r.data?.id ?? 0;
+        const p = await admin.post(
+          `/ecom/admin/preorder/campaigns/${campaignD}/products`,
+          { pro_code: PRO_CODE, supply_qty: 10 },
+        );
+        productD = p.data?.id ?? 0;
+        const o = await admin.patch(
+          `/ecom/admin/preorder/campaigns/${campaignD}/status`,
+          { status: 'open' },
+        );
+        return {
+          status: o.status,
+          ok: campaignD > 0 && productD > 0 && o.data?.status === 'open',
+          detail: `campaign_id=${campaignD}`,
+        };
+      },
+    );
+
+    await step('D2 ลูกค้าธรรมดาเรียกหน้าเซลล์ → 403', async () => {
+      const r = await user.get('/ecom/sales/preorder/campaigns');
+      return { status: r.status, ok: r.status === 403 };
+    });
+
+    await step(
+      'D3 เซลล์เห็นรอบที่เปิด พร้อม sales_code และ my_stores (ยังไม่มี my_item)',
+      async () => {
+        const r = await sales.get('/ecom/sales/preorder/campaigns');
+        const c = (r.data?.campaigns as any[])?.find((x) => x.id === campaignD);
+        const p = c?.products?.find((x: any) => x.id === productD);
+        return {
+          status: r.status,
+          ok:
+            r.status === 200 &&
+            !!r.data?.sales_code &&
+            !!p &&
+            p.my_stores?.qty === 0 &&
+            !('my_item' in p),
+          detail: `sales_code=${r.data?.sales_code} my_stores=${JSON.stringify(p?.my_stores)}`,
+        };
+      },
+    );
+
+    await step(
+      `D4 เซลล์ค้นร้านในความดูแล q=${userJwt.mem_code} → เจอ, q=${MEM2} → ไม่เจอ`,
+      async () => {
+        const a = await sales.get('/ecom/sales/preorder/stores', {
+          params: { q: userJwt.mem_code },
+        });
+        const b = await sales.get('/ecom/sales/preorder/stores', {
+          params: { q: MEM2 },
+        });
+        const found = (a.data?.stores as any[])?.some(
+          (s) => s.mem_code === userJwt.mem_code,
+        );
+        const notFound = !(b.data?.stores as any[])?.some(
+          (s) => s.mem_code === MEM2,
+        );
+        return {
+          status: a.status,
+          ok: a.status === 200 && found && notFound,
+          detail: `own=${found} foreign_hidden=${notFound}`,
+        };
+      },
+    );
+
+    await step(
+      `D5 เซลล์จองแทนร้านในความดูแล ${userJwt.mem_code} 3 → 200 ลำดับ 1`,
+      async () => {
+        const r = await sales.put(
+          `/ecom/sales/preorder/campaigns/${campaignD}/products/${PRO_CODE}/members/${userJwt.mem_code}`,
+          { amount: 3, note: 'e2e sales' },
+        );
+        itemDUser = r.data?.id ?? 0;
+        return {
+          status: r.status,
+          ok:
+            (r.status === 200 || r.status === 201) &&
+            r.data?.amount === 3 &&
+            r.data?.position === 1,
+          detail: `item_id=${itemDUser}`,
+        };
+      },
+    );
+
+    await step(`D6 เซลล์จองแทนร้านนอกความดูแล ${MEM2} → 403`, async () => {
+      const r = await sales.put(
+        `/ecom/sales/preorder/campaigns/${campaignD}/products/${PRO_CODE}/members/${MEM2}`,
+        { amount: 2 },
+      );
+      return {
+        status: r.status,
+        ok: r.status === 403,
+        detail: r.data?.message,
+      };
+    });
+
+    await step(
+      `D7 เซลล์ใช้ endpoint admin จองแทน ${MEM2} → ก็ต้อง 403 (ขอบเขตบังคับที่ service)`,
+      async () => {
+        const r = await sales.put(
+          `/ecom/admin/preorder/campaigns/${campaignD}/products/${PRO_CODE}/members/${MEM2}`,
+          { amount: 2 },
+        );
+        return { status: r.status, ok: r.status === 403 };
+      },
+    );
+
+    await step(`D8 admin จองแทน ${MEM2} 4 ได้ (ไม่จำกัดขอบเขต)`, async () => {
+      const r = await admin.put(
+        `/ecom/admin/preorder/campaigns/${campaignD}/products/${PRO_CODE}/members/${MEM2}`,
+        { amount: 4 },
+      );
+      itemDMem2 = r.data?.id ?? 0;
+      return {
+        status: r.status,
+        ok: (r.status === 200 || r.status === 201) && itemDMem2 > 0,
+      };
+    });
+
+    await step(
+      'D9 คิวของเซลล์เห็นเฉพาะร้านตัวเอง แต่ยอดรวมนับทุกร้าน',
+      async () => {
+        const r = await sales.get(
+          `/ecom/sales/preorder/products/${productD}/queue`,
+        );
+        const codes = (r.data?.items as any[])?.map((x) => x.mem_code) ?? [];
+        return {
+          status: r.status,
+          ok:
+            r.status === 200 &&
+            codes.length === 1 &&
+            codes[0] === userJwt.mem_code &&
+            r.data?.total_qty === 7 &&
+            r.data?.total_members === 2 &&
+            r.data?.scope?.my_qty === 3,
+          detail: `rows=${codes.join(',')} total=${r.data?.total_qty}/${r.data?.total_members} scope=${JSON.stringify(r.data?.scope)}`,
+        };
+      },
+    );
+
+    await step('D10 เซลล์สร้างรอบ (endpoint admin) → 403', async () => {
+      const r = await sales.post('/ecom/admin/preorder/campaigns', {
+        name: 'x',
+        mode: 'allocation',
+      });
+      return { status: r.status, ok: r.status === 403 };
+    });
+
+    await step(
+      'D11 admin จัดสรร fifo supply 10 apply → ทั้งสองร้านได้ครบ',
+      async () => {
+        const r = await admin.post(
+          `/ecom/admin/preorder/products/${productD}/allocate`,
+          { strategy: 'fifo', supply_qty: 10, apply: true },
+        );
+        return {
+          status: r.status,
+          ok: r.status === 200 && r.data?.total_allocated === 7,
+        };
+      },
+    );
+
+    await step(
+      `D12 เซลล์ส่งรายการของร้านนอกความดูแล (${MEM2}) เข้าตะกร้า → 403`,
+      async () => {
+        const r = await sales.post(
+          `/ecom/sales/preorder/items/${itemDMem2}/to-cart`,
+        );
+        return {
+          status: r.status,
+          ok: r.status === 403,
+          detail: r.data?.message,
+        };
+      },
+    );
+
+    await step(
+      `D13 เซลล์ส่งรายการของร้านตัวเอง (${userJwt.mem_code}) เข้าตะกร้า → pushed 1`,
+      async () => {
+        const r = await sales.post(
+          `/ecom/sales/preorder/items/${itemDUser}/to-cart`,
+        );
+        return {
+          status: r.status,
+          ok: r.status === 200 && r.data?.pushed === 1,
+          detail: JSON.stringify(r.data?.results?.[0]),
+        };
+      },
+    );
+
+    await step(
+      'D14 เซลล์ส่ง "ทั้งสินค้า" ผ่าน endpoint admin → ส่งเฉพาะร้านในความดูแล (ที่เหลือถูกกรอง ไม่ใช่ 403)',
+      async () => {
+        const r = await sales.post(
+          `/ecom/admin/preorder/products/${productD}/to-cart`,
+        );
+        const rows = (r.data?.results as any[]) ?? [];
+        return {
+          status: r.status,
+          ok:
+            r.status === 200 &&
+            rows.every((x) => x.mem_code === userJwt.mem_code),
+          detail:
+            rows
+              .map((x) => `${x.mem_code}:${x.ok ? 'ok' : x.reason}`)
+              .join(' ') || 'no rows',
+        };
+      },
+    );
+
+    await step(
+      'D15 cleanup: ลบของออกจากตะกร้าร้านทดสอบ + ยกเลิกรอบ D',
+      async () => {
+        await user.post('/ecom/product-delete-cart', {
+          mem_code: userJwt.mem_code,
+          pro_code: PRO_CODE,
+        });
+        const r = await admin.patch(
+          `/ecom/admin/preorder/campaigns/${campaignD}/status`,
+          { status: 'cancelled' },
+        );
+        return {
+          status: r.status,
+          ok: r.status === 200 && r.data?.status === 'cancelled',
+        };
+      },
+    );
+  } else {
+    console.log('SKIP  รอบ D (หน้าเซลล์) — ไม่ได้ตั้ง SALES_TOKEN');
+  }
+
   const passed = results.filter((r) => r.ok).length;
   const md = [
     `# Pre-order E2E report`,
@@ -1373,7 +1634,7 @@ async function main() {
     `- run at: ${new Date().toISOString()}`,
     `- product: ${PRO_CODE}`,
     `- campaign_id: A=${campaignId} B=${campaignB} C=${campaignC}`,
-    `- rounds: A allocation (23) · B aggregation + นโยบายเพิ่มจำนวน (20) · C Blueprint กลุ่ม 3 + มติ 9 ก.ย. 69 + feedback ผู้บริหาร 10 ก.ย. (35)`,
+    `- rounds: A allocation (23) · B aggregation + นโยบายเพิ่มจำนวน (20) · C Blueprint กลุ่ม 3 + มติ 9 ก.ย. 69 + feedback ผู้บริหาร 10 ก.ย. (35+1) · D หน้าเซลล์ ขอบเขตร้านในความดูแล (15, ต้องมี SALES_TOKEN${SALES_TOKEN ? '' : ' — ข้ามรอบนี้'})`,
     `- result: **${passed}/${results.length} passed**`,
     ``,
     `| # | step | status | ok | detail |`,

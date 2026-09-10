@@ -43,6 +43,7 @@ function actorOf(req: AuthedRequest): PreorderActor {
     username: req.user.username,
     price_option: req.user.price_option,
     permission: req.user.permission,
+    role: req.user.role,
   };
 }
 
@@ -204,6 +205,51 @@ export class PreorderController {
     @Body() dto: StaffBookDto,
   ) {
     return this.service.staffBook(assertStaff(req), id, proCode, memCode, dto);
+  }
+
+  // ==================== SALES: หน้าเซลล์ (เฉพาะร้านในความดูแล) ====================
+
+  @Get('sales/preorder/campaigns')
+  async salesCampaigns(@Req() req: AuthedRequest) {
+    await this.assertEnabled();
+    return this.service.listOpenCampaignsForSales(assertStaff(req));
+  }
+
+  @Get('sales/preorder/stores')
+  async salesStores(@Req() req: AuthedRequest, @Query('q') q?: string) {
+    await this.assertEnabled();
+    return this.service.listStoresForSales(assertStaff(req), q);
+  }
+
+  @Get('sales/preorder/products/:id/queue')
+  async salesQueue(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.assertEnabled();
+    return this.service.getQueueForSales(assertStaff(req), id);
+  }
+
+  @Put('sales/preorder/campaigns/:id/products/:proCode/members/:memCode')
+  async salesBook(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('proCode') proCode: string,
+    @Param('memCode') memCode: string,
+    @Body() dto: StaffBookDto,
+  ) {
+    await this.assertEnabled();
+    return this.service.staffBook(assertStaff(req), id, proCode, memCode, dto);
+  }
+
+  @Post('sales/preorder/items/:id/to-cart')
+  @HttpCode(HttpStatus.OK)
+  async salesItemToCart(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.assertEnabled();
+    return this.service.pushAllocatedToCart(assertStaff(req), { itemId: id });
   }
 
   /** ค้นสินค้าด้วยรหัสหรือบาร์โค้ด (สแกนได้) สำหรับฟอร์มเพิ่มสินค้า */

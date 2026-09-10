@@ -11,6 +11,8 @@ export interface PreorderActor {
   username?: string;
   price_option?: string;
   permission?: boolean;
+  /** 'User' | 'Admin' | 'Sales' จาก JWT — ใช้จำกัดขอบเขตเซลล์ให้เห็น/ทำได้เฉพาะร้านในความดูแล */
+  role?: string;
 }
 
 // ---------- customer ----------
