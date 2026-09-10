@@ -52,6 +52,7 @@ migration: `src/migrations/1788998400000-CreatePreorderTables.ts` (สร้า�
 | `new_price`, `price_effective_date` | ราคาใหม่ที่ผู้ผลิตแจ้งและวันมีผล (บังคับกรอกเมื่อ reason = price_increase) แสดงให้ลูกค้าเพื่อความโปร่งใส **ไม่ใช่ราคาที่ล็อค** ราคาที่เรียกเก็บเป็นราคาปกติ ณ วันยืนยันคำสั่งซื้อ |
 | `min_per_member`, `pack_multiple` | ขั้นต่ำต่อร้าน / ต้องจองเป็นทวีคูณของหีบห่อ (server ปฏิเสธ 400) `min ≤ limit` เสมอ |
 | `price_tiers` | ราคาขั้นบันไดตามยอดรวมทั้งรอบ `[{min_total_qty, price}]` → ลูกค้าเห็น `tier_price` (ขั้นที่ถึงแล้ว) และ `next_tier` (ขั้นถัดไป เหลืออีกเท่าไร) ใบสรุปสั่งซื้อใช้ราคานี้ |
+| หน่วยของสินค้า | เลือกจาก `product_unit` level ต่ำสุดที่มีชื่อหน่วย (กฎเดียวกับตะกร้า) ไม่ยึด level 1 · สินค้าจริงเกือบทั้งหมดมี level 1 ส่วนรหัส `@MESSAGE…` ที่ไม่มีหน่วยไม่ใช่สินค้า |
 | `preorder_items.cart_pushed_at` | ส่งจำนวนที่จัดสรรเข้าตะกร้าร้านแล้วเมื่อ (กันส่งซ้ำ) |
 | `price_type` | ประเภทราคาตามนิยามผู้บริหาร 10 ก.ย. 69 (migration `1789010800000`): `eng_chiu` เอ้งชิ้ว = ขายราคาเก่า/พิเศษในเวลาหรือจำนวนที่กำหนดก่อนขึ้นราคา · `half_half` ครึ่งเก่าครึ่งใหม่ = เฉลี่ยราคาเก่ากับใหม่ · `old_price` ราคาเก่า = ผู้ผลิตปรับแต่วังไม่ปรับตาม · `new_price` ราคาใหม่ · `discount` ลดราคา = ราคาใหม่ถูกลดลง · `pp` public price = ราคาเท่ากันทุก tier ใกล้ต้นทุนร้านทั่วไป — **เก็บฝั่ง admin และใบสรุปสั่งซื้อเท่านั้น** ไม่ส่งให้ลูกค้า ไม่กระทบราคาตะกร้า |
 
@@ -104,13 +105,13 @@ admin (`req.user.permission === true`)
 ## ทดสอบ
 
 - unit: `npx jest src/preorder`
-- e2e ยิง API จริง: `BASE_URL=... E2E_ENV=dev|prod ADMIN_TOKEN=... USER_TOKEN=... PRO_CODE=... MEM2=<ร้านที่สอง> npx ts-node scripts/e2e/preorder.e2e.ts`
+- e2e ยิง API จริง: `BASE_URL=... E2E_ENV=dev|prod ADMIN_TOKEN=... USER_TOKEN=... PRO_CODE=... MEM2=<ร้านที่สอง> PRO_CODE_NO_L1=<สินค้าที่มีหน่วยแต่ไม่มี level 1 ไม่บังคับ> npx ts-node scripts/e2e/preorder.e2e.ts`
   (`MEM2` = รหัสร้านที่มีใน `users` และไม่ใช่ร้านของ USER_TOKEN ใช้ทดสอบจองแทนร้าน · access token อายุ 15 นาที ต่ออายุด้วย `POST /ecom/refresh_token {token: refresh_token}`)
   รายงานติดป้าย environment เสมอ (`local` อัตโนมัติเมื่อ BASE_URL เป็น localhost, อื่นๆ ต้องระบุ E2E_ENV) เขียนลง `docs/e2e/preorder-<env>-<timestamp>.md`
   ผล `local` = ผ่านก่อน merge เท่านั้น ต้องรันซ้ำกับ deployed code หลัง deploy แล้วบันทึกใน Confluence: [E2E Testing Playbook — Backend-Ecommerce](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202407939) → [Test Report — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202440705) + [ทะเบียน E2E Suites](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473473)
 - สคริปต์มี 3 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น · C = กลุ่ม 3 + มติ 9 ก.ย. (reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน + log, ใบสรุปสั่งซื้อ + CSV, เตือนก่อนปิดรอบ + กันเตือนซ้ำ, จัดสรร equal, ส่งเข้าตะกร้าลูกค้า/เจ้าหน้าที่ + กันส่งซ้ำ + ตรวจตะกร้าจริง, feedback ผู้บริหาร 10 ก.ย.: lookup รหัส/บาร์โค้ด/404/403, price_type) 35 ขั้น
 - UAT + บทสาธิตผู้บริหาร + ทะเบียน test case ให้ผู้ใช้จริงเซ็นรับ: [UAT & Demo Guide — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473517) (ผ่าน UAT = DoD ทางธุรกิจ คู่กับ e2e deployed)
-- ผลล่าสุด: local **78/78** (10 ก.ย. 2569 commit f0a4233 บน DB dump ล่าสุด + notification-service รันในเครื่อง) `docs/e2e/preorder-local-1789056953495.md` · ก่อนหน้า 78/78 (1422c4f) · ก่อนหน้า 71/71 (1757f26), 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน
+- ผลล่าสุด: local **79/79** (10 ก.ย. 2569 commit 9b9bda9 บน DB dump ล่าสุด + notification-service รันในเครื่อง, ตั้ง `PRO_CODE_NO_L1=03091086`) `docs/e2e/preorder-local-1789057748542.md` · ก่อนหน้า 78/78 (f0a4233, 1422c4f) · ก่อนหน้า 71/71 (1757f26), 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน
 
 ## Feedback ผู้บริหาร (สาธิต 10 ก.ย. 2569) — ทำแล้ว
 - [x] ปุ่ม "ดูและจอง" บนหน้าแรกย้ายมาชิดหัวข้อ · wording แท็บ/ป้าย "สินค้าขาด กำลังจะเข้า"
