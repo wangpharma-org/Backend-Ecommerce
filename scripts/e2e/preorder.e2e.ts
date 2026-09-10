@@ -1017,6 +1017,112 @@ async function main() {
     };
   });
 
+  // --- feedback ผู้บริหาร 10 ก.ย. 69: สแกนบาร์โค้ดในหน้าแอดมิน + ประเภทราคา (admin เท่านั้น) ---
+  let barcodeOfProduct = '';
+  await step(
+    'C15a admin ค้นสินค้าด้วยรหัส → ได้ข้อมูล catalog (matched_by=code)',
+    async () => {
+      const r = await admin.get('/ecom/admin/preorder/product-lookup', {
+        params: { q: PRO_CODE },
+      });
+      barcodeOfProduct = (r.data?.barcodes ?? [])[0] ?? '';
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.pro_code === PRO_CODE &&
+          r.data?.matched_by === 'code' &&
+          typeof r.data?.out_of_stock === 'boolean',
+        detail: `unit=${r.data?.unit} stock=${r.data?.pro_stock} barcodes=${(r.data?.barcodes ?? []).join('|')}`,
+      };
+    },
+  );
+
+  await step(
+    'C15b admin ค้นสินค้าด้วยบาร์โค้ด (จำลองเครื่องสแกน) → แปลงเป็นรหัสสินค้าเดิม',
+    async () => {
+      if (!barcodeOfProduct)
+        return {
+          status: 0,
+          ok: false,
+          detail:
+            'สินค้าทดสอบไม่มีบาร์โค้ดใน catalog เลือก PRO_CODE ที่มี pro_barcode1',
+        };
+      const r = await admin.get('/ecom/admin/preorder/product-lookup', {
+        params: { q: barcodeOfProduct },
+      });
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.pro_code === PRO_CODE &&
+          r.data?.matched_by === 'barcode',
+        detail: `${barcodeOfProduct} → ${r.data?.pro_code}`,
+      };
+    },
+  );
+
+  await step('C15c admin ค้นรหัส/บาร์โค้ดที่ไม่มี → 404', async () => {
+    const r = await admin.get('/ecom/admin/preorder/product-lookup', {
+      params: { q: 'E2E-NO-SUCH-CODE' },
+    });
+    return { status: r.status, ok: r.status === 404 };
+  });
+
+  await step('C15d ลูกค้าธรรมดาเรียก product-lookup → 403', async () => {
+    const r = await user.get('/ecom/admin/preorder/product-lookup', {
+      params: { q: PRO_CODE },
+    });
+    return { status: r.status, ok: r.status === 403 };
+  });
+
+  await step(
+    'C15e admin ตั้งประเภทราคา price_type=eng_chiu → บันทึกและอ่านกลับได้',
+    async () => {
+      const r = await admin.patch(`/ecom/admin/preorder/products/${productC}`, {
+        price_type: 'eng_chiu',
+      });
+      const c = await admin.get(`/ecom/admin/preorder/campaigns/${campaignC}`);
+      const p = (c.data?.products as any[])?.find((x) => x.id === productC);
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          r.data?.price_type === 'eng_chiu' &&
+          p?.price_type === 'eng_chiu',
+      };
+    },
+  );
+
+  await step('C15f admin ตั้ง price_type ที่ไม่มีในนิยาม → 400', async () => {
+    const r = await admin.patch(`/ecom/admin/preorder/products/${productC}`, {
+      price_type: 'free',
+    });
+    return { status: r.status, ok: r.status === 400 };
+  });
+
+  await step(
+    'C15g ใบสรุปสั่งซื้อมี price_type และลูกค้าไม่เห็นฟิลด์นี้',
+    async () => {
+      const r = await admin.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/purchase-summary`,
+      );
+      const row = (r.data?.products as any[])?.find(
+        (x) => x.pro_code === PRO_CODE,
+      );
+      const { p } = await myProductC();
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          row?.price_type === 'eng_chiu' &&
+          p !== undefined &&
+          !('price_type' in p),
+        detail: `summary price_type=${row?.price_type} customer has field=${p ? 'price_type' in p : '?'}`,
+      };
+    },
+  );
+
   await step(
     'C16 admin รัน reminder ก่อนปิดรอบ → รอบ C ถูกนับ และ closing_reminded_at ถูกตั้ง',
     async () => {
@@ -1246,7 +1352,7 @@ async function main() {
     `- run at: ${new Date().toISOString()}`,
     `- product: ${PRO_CODE}`,
     `- campaign_id: A=${campaignId} B=${campaignB} C=${campaignC}`,
-    `- rounds: A allocation (23) · B aggregation + นโยบายเพิ่มจำนวน (20) · C Blueprint กลุ่ม 3 + มติ 9 ก.ย. 69 (28)`,
+    `- rounds: A allocation (23) · B aggregation + นโยบายเพิ่มจำนวน (20) · C Blueprint กลุ่ม 3 + มติ 9 ก.ย. 69 + feedback ผู้บริหาร 10 ก.ย. (35)`,
     `- result: **${passed}/${results.length} passed**`,
     ``,
     `| # | step | status | ok | detail |`,

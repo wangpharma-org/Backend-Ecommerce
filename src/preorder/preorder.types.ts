@@ -69,6 +69,15 @@ export interface AddProductDto {
   pro_code: string;
   note?: string | null;
   reason?: 'restock' | 'price_increase';
+  /** ประเภทราคาตามนิยามผู้บริหาร (admin เท่านั้น) null = ไม่ระบุ */
+  price_type?:
+    | 'eng_chiu'
+    | 'half_half'
+    | 'old_price'
+    | 'new_price'
+    | 'discount'
+    | 'pp'
+    | null;
   new_price?: number | null;
   price_effective_date?: string | null;
   limit_per_member?: number | null;

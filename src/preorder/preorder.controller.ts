@@ -206,6 +206,13 @@ export class PreorderController {
     return this.service.staffBook(assertStaff(req), id, proCode, memCode, dto);
   }
 
+  /** ค้นสินค้าด้วยรหัสหรือบาร์โค้ด (สแกนได้) สำหรับฟอร์มเพิ่มสินค้า */
+  @Get('admin/preorder/product-lookup')
+  lookupProduct(@Req() req: AuthedRequest, @Query('q') q: string) {
+    assertAdmin(req);
+    return this.service.lookupProduct(q);
+  }
+
   @Post('admin/preorder/campaigns/:id/products')
   addProduct(
     @Req() req: AuthedRequest,

@@ -21,6 +21,25 @@ export enum PreorderReason {
   PRICE_INCREASE = 'price_increase',
 }
 
+/**
+ * ประเภทราคา (นิยามจากผู้บริหาร 10 ก.ย. 69) — เก็บฝั่ง admin ก่อน ยังไม่แสดงให้ลูกค้า
+ * และยังไม่กระทบการคิดราคาในตะกร้า (ราคาที่เรียกเก็บยังเป็นราคาปกติ ณ วันยืนยันคำสั่งซื้อ)
+ */
+export enum PreorderPriceType {
+  /** เอ้งชิ้ว: ขายราคาเก่า/ราคาพิเศษในระยะเวลาหรือจำนวนที่กำหนด ก่อนขึ้นราคาใหม่ */
+  ENG_CHIU = 'eng_chiu',
+  /** ครึ่งเก่าครึ่งใหม่: ขายก่อนปรับราคา โดยเฉลี่ยราคาเก่าปัจจุบันรวมกับราคาใหม่ */
+  HALF_HALF = 'half_half',
+  /** ราคาเก่า: ผู้ผลิตปรับราคา แต่วังไม่ได้ปรับตาม */
+  OLD_PRICE = 'old_price',
+  /** ราคาใหม่: มีการปรับราคาใหม่ */
+  NEW_PRICE = 'new_price',
+  /** ลดราคา: ราคาใหม่ถูกลดลงมา */
+  DISCOUNT = 'discount',
+  /** PP (public price): ราคาเท่ากันทั้ง A B C ใกล้เคียงต้นทุนที่ร้านทั่วไปซื้อได้เอง */
+  PP = 'pp',
+}
+
 export interface PreorderPriceTier {
   /** ยอดรวมทั้งรอบตั้งแต่เท่านี้ขึ้นไป */
   min_total_qty: number;
@@ -69,6 +88,10 @@ export class PreorderProductEntity {
     default: PreorderReason.RESTOCK,
   })
   reason!: PreorderReason;
+
+  /** ประเภทราคาตามนิยามผู้บริหาร (admin เท่านั้น) */
+  @Column({ type: 'enum', enum: PreorderPriceType, nullable: true })
+  price_type!: PreorderPriceType | null;
 
   /** ราคาใหม่หลังปรับ (เฉพาะ reason = price_increase) */
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })

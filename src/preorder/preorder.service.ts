@@ -41,7 +41,7 @@ import { ProductUnitEntity } from '../products/product-unit.entity';
 import { UserEntity } from '../users/users.entity';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { Cron } from '@nestjs/schedule';
-import { PreorderReason } from './preorder-product.entity';
+import { PreorderPriceType, PreorderReason } from './preorder-product.entity';
 import type { PreorderPriceTier } from './preorder-product.entity';
 
 /** ชื่อหน่วยเล็กสุด (level 1) จากตาราง product_unit */
@@ -1004,6 +1004,18 @@ export class PreorderService {
         );
       p.reason = dto.reason as PreorderReason;
     }
+    if (dto.price_type !== undefined) {
+      if (dto.price_type === null) p.price_type = null;
+      else if (
+        !Object.values(PreorderPriceType).includes(
+          dto.price_type as PreorderPriceType,
+        )
+      )
+        throw new BadRequestException(
+          'price_type ต้องเป็น eng_chiu, half_half, old_price, new_price, discount หรือ pp',
+        );
+      else p.price_type = dto.price_type as PreorderPriceType;
+    }
     if (dto.new_price !== undefined) {
       if (dto.new_price === null) p.new_price = null;
       else {
@@ -1207,6 +1219,54 @@ export class PreorderService {
     return { campaigns: campaigns.length, notified };
   }
 
+  /**
+   * ค้นสินค้าจาก catalog ด้วยรหัสสินค้า หรือบาร์โค้ด (สแกนจากเครื่องอ่านได้เลย)
+   * ใช้ในฟอร์มเพิ่มสินค้าหลังบ้าน คืนข้อมูลพอสำหรับ preview + เตือนเรื่องสต็อก
+   */
+  async lookupProduct(q: string) {
+    const code = String(q ?? '').trim();
+    if (!code) throw new BadRequestException('ต้องระบุรหัสสินค้าหรือบาร์โค้ด');
+    const byCode = await this.catalogRepo.findOne({
+      where: { pro_code: code },
+      relations: { units: true },
+    });
+    let product = byCode;
+    let matchedBy: 'code' | 'barcode' = 'code';
+    if (!product) {
+      product = await this.catalogRepo
+        .createQueryBuilder('p')
+        .leftJoinAndSelect('p.units', 'u')
+        .where(
+          'p.pro_barcode1 = :c OR p.pro_barcode2 = :c OR p.pro_barcode3 = :c',
+          { c: code },
+        )
+        .getOne();
+      matchedBy = 'barcode';
+    }
+    if (!product)
+      throw new NotFoundException(`ไม่พบสินค้าที่มีรหัสหรือบาร์โค้ด ${code}`);
+    return {
+      matched_by: matchedBy,
+      query: code,
+      pro_code: product.pro_code,
+      pro_name: product.pro_name ?? null,
+      pro_nameTH: product.pro_nameTH ?? null,
+      pro_imgmain: product.pro_imgmain ?? null,
+      unit: unit1Of(product),
+      pro_stock: product.pro_stock ?? null,
+      pro_priceA: product.pro_priceA ?? null,
+      pro_priceB: product.pro_priceB ?? null,
+      pro_priceC: product.pro_priceC ?? null,
+      pro_supplier: product.pro_supplier ?? null,
+      barcodes: [
+        product.pro_barcode1,
+        product.pro_barcode2,
+        product.pro_barcode3,
+      ].filter((b): b is string => !!b),
+      out_of_stock: (product.pro_stock ?? 0) <= 0,
+    };
+  }
+
   /** ใบสรุปยอดสั่งซื้อของรอบ สำหรับส่งจัดซื้อ/supplier (จัดกลุ่มตาม supplier) */
   async purchaseSummary(campaignId: number) {
     const c = await this.campaignRepo.findOne({
@@ -1230,6 +1290,7 @@ export class PreorderService {
         pro_code: p.pro_code,
         pro_name: p.product?.pro_name ?? null,
         reason: p.reason,
+        price_type: p.price_type,
         unit: unit1Of(p.product),
         supplier:
           p.product?.creditor?.creditor_name ?? p.product?.pro_supplier ?? null,
