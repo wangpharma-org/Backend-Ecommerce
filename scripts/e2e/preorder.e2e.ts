@@ -1134,7 +1134,7 @@ async function main() {
           r.status === 200 &&
           r.data?.campaigns >= 1 &&
           !!c.data?.closing_reminded_at,
-        detail: `campaigns=${r.data?.campaigns} notified=${r.data?.notified} (local ไม่มี notification-service → notified=0 ปกติ) reminded_at=${c.data?.closing_reminded_at}`,
+        detail: `campaigns=${r.data?.campaigns} notified=${r.data?.notified} (notified = จำนวนที่ notification-service รับไว้ ไม่ใช่ส่งถึงจริง ถ้า local ไม่มี service จะเป็น 0) reminded_at=${c.data?.closing_reminded_at}`,
       };
     },
   );

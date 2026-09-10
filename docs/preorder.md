@@ -97,6 +97,8 @@ admin (`req.user.permission === true`)
 ระบบจะตั้ง `arrived_at` บนสินค้าในรอบที่ยังไม่จบ แล้วส่งแจ้งเตือนผ่าน notification-service (`POST /api/notifications/notifications/dispatch`, channels FCM+LINE)
 ให้ทุกร้านที่ยังจองอยู่ ครั้งเดียวต่อสินค้าต่อรอบ การแจ้งล้มเหลวจะ log อย่างเดียว ไม่ทำให้การรับของล้ม
 
+**ข้อควรรู้เรื่องแจ้งเตือน (พิสูจน์ 10 ก.ย. 69 ด้วย notification-service ในเครื่อง):** service ตอบ `success:true` และ backend นับ `notified` แม้ร้านนั้นไม่มี LINE ผูกหรือ FCM token (service log แค่ warn "No LINE accounts/No FCM tokens") → `notified` = จำนวนที่ service รับไว้ ไม่ใช่ส่งถึงจริง การส่งถึงจริงต้องมี `user_line_id`/`user_device_tokens` ของร้านใน notification-service (ผูกผ่าน `/api/notifications/line/bind` หรือแอป)
+
 แจ้งเตือนอื่น: ผลจัดสรร (หลัง allocate apply), ยกเลิกรอบ, ETA เลื่อน (เมื่อ admin แก้ `eta_date` ของสินค้าที่มีคนจอง), เตือนก่อนปิดรอบ (cron 09:00), เจ้าหน้าที่จองแทนให้
 
 ## ทดสอบ
@@ -108,7 +110,7 @@ admin (`req.user.permission === true`)
   ผล `local` = ผ่านก่อน merge เท่านั้น ต้องรันซ้ำกับ deployed code หลัง deploy แล้วบันทึกใน Confluence: [E2E Testing Playbook — Backend-Ecommerce](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202407939) → [Test Report — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202440705) + [ทะเบียน E2E Suites](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473473)
 - สคริปต์มี 3 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น · C = กลุ่ม 3 + มติ 9 ก.ย. (reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน + log, ใบสรุปสั่งซื้อ + CSV, เตือนก่อนปิดรอบ + กันเตือนซ้ำ, จัดสรร equal, ส่งเข้าตะกร้าลูกค้า/เจ้าหน้าที่ + กันส่งซ้ำ + ตรวจตะกร้าจริง, feedback ผู้บริหาร 10 ก.ย.: lookup รหัส/บาร์โค้ด/404/403, price_type) 35 ขั้น
 - UAT + บทสาธิตผู้บริหาร + ทะเบียน test case ให้ผู้ใช้จริงเซ็นรับ: [UAT & Demo Guide — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473517) (ผ่าน UAT = DoD ทางธุรกิจ คู่กับ e2e deployed)
-- ผลล่าสุด: local **78/78** (10 ก.ย. 2569 commit 1422c4f บน DB dump ล่าสุด) `docs/e2e/preorder-local-1789052508069.md` · ก่อนหน้า 71/71 (1757f26), 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน
+- ผลล่าสุด: local **78/78** (10 ก.ย. 2569 commit f0a4233 บน DB dump ล่าสุด + notification-service รันในเครื่อง) `docs/e2e/preorder-local-1789056953495.md` · ก่อนหน้า 78/78 (1422c4f) · ก่อนหน้า 71/71 (1757f26), 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน
 
 ## Feedback ผู้บริหาร (สาธิต 10 ก.ย. 2569) — ทำแล้ว
 - [x] ปุ่ม "ดูและจอง" บนหน้าแรกย้ายมาชิดหัวข้อ · wording แท็บ/ป้าย "สินค้าขาด กำลังจะเข้า"
