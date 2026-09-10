@@ -42,7 +42,7 @@ pre-order เกิดได้ 2 โหมด กำหนดต่อ "รอ�
 ## ตาราง
 
 `preorder_campaigns` → `preorder_products` (สินค้าในรอบ) → `preorder_items` (รายการจองของร้าน) → `preorder_item_logs`
-migration: `src/migrations/1788998400000-CreatePreorderTables.ts` (สร้าง feature flag `preorder` เป็นปิดไว้ด้วย), `1789003600000-AddPreorderLotsAndIncreasePolicy.ts` (ล็อต + นโยบายเพิ่มจำนวน backfill 1 ล็อตต่อรายการเดิม) และ `1789007200000-PreorderBlueprintExtras.ts` (reason/new_price/price_effective_date, min_per_member, pack_multiple, price_tiers, closing_reminded_at, cart_pushed_at, log action to_cart/staff_book)
+migration: `src/migrations/1788998400000-CreatePreorderTables.ts` (สร้าง feature flag `preorder` เป็นปิดไว้ด้วย), `1789003600000-AddPreorderLotsAndIncreasePolicy.ts` (ล็อต + นโยบายเพิ่มจำนวน backfill 1 ล็อตต่อรายการเดิม), `1789010800000-PreorderPriceType.ts` (price_type) และ `1789007200000-PreorderBlueprintExtras.ts` (reason/new_price/price_effective_date, min_per_member, pack_multiple, price_tiers, closing_reminded_at, cart_pushed_at, log action to_cart/staff_book)
 
 ฟิลด์ต่อสินค้าในรอบ (`preorder_products`) ที่เพิ่มตาม Blueprint + มติประชุม 9 ก.ย. 69:
 
@@ -53,6 +53,7 @@ migration: `src/migrations/1788998400000-CreatePreorderTables.ts` (สร้า�
 | `min_per_member`, `pack_multiple` | ขั้นต่ำต่อร้าน / ต้องจองเป็นทวีคูณของหีบห่อ (server ปฏิเสธ 400) `min ≤ limit` เสมอ |
 | `price_tiers` | ราคาขั้นบันไดตามยอดรวมทั้งรอบ `[{min_total_qty, price}]` → ลูกค้าเห็น `tier_price` (ขั้นที่ถึงแล้ว) และ `next_tier` (ขั้นถัดไป เหลืออีกเท่าไร) ใบสรุปสั่งซื้อใช้ราคานี้ |
 | `preorder_items.cart_pushed_at` | ส่งจำนวนที่จัดสรรเข้าตะกร้าร้านแล้วเมื่อ (กันส่งซ้ำ) |
+| `price_type` | ประเภทราคาตามนิยามผู้บริหาร 10 ก.ย. 69 (migration `1789010800000`): `eng_chiu` เอ้งชิ้ว = ขายราคาเก่า/พิเศษในเวลาหรือจำนวนที่กำหนดก่อนขึ้นราคา · `half_half` ครึ่งเก่าครึ่งใหม่ = เฉลี่ยราคาเก่ากับใหม่ · `old_price` ราคาเก่า = ผู้ผลิตปรับแต่วังไม่ปรับตาม · `new_price` ราคาใหม่ · `discount` ลดราคา = ราคาใหม่ถูกลดลง · `pp` public price = ราคาเท่ากันทุก tier ใกล้ต้นทุนร้านทั่วไป — **เก็บฝั่ง admin และใบสรุปสั่งซื้อเท่านั้น** ไม่ส่งให้ลูกค้า ไม่กระทบราคาตะกร้า |
 
 สถานะรอบ: `draft → open → closed → allocating → fulfilled` และ `cancelled` ได้จากทุกสถานะที่ยังไม่จบ
 สถานะรายการ: `reserved → locked → allocated → fulfilled` และ `cancelled`
@@ -76,6 +77,7 @@ admin (`req.user.permission === true`)
 | GET/POST | `/admin/preorder/campaigns` | รายการ / สร้างรอบ |
 | GET/PATCH | `/admin/preorder/campaigns/:id` | รายละเอียดรอบพร้อมยอดต่อสินค้า / แก้ |
 | PATCH | `/admin/preorder/campaigns/:id/status` | เปลี่ยนสถานะ (ตรวจ transition) |
+| GET | `/admin/preorder/product-lookup?q=` | ค้น catalog ด้วยรหัสสินค้าหรือบาร์โค้ด (`pro_barcode1-3`) ช่องรหัสสินค้าหลังบ้านรับสแกนจากเครื่องอ่านได้เลย คืนชื่อ หน่วย สต็อก ราคา A/B/C supplier `out_of_stock` · 404 ถ้าไม่พบ |
 | POST | `/admin/preorder/campaigns/:id/products` | เพิ่มสินค้าเข้ารอบ |
 | PATCH/DELETE | `/admin/preorder/products/:id` | แก้ limit/supply/moq/eta/note / ถอดออก (มีคนจองแล้วจะซ่อนแทนลบ) |
 | GET | `/admin/preorder/products/:id/queue` | คิวแถวละ 1 ล็อต เรียงเวลาเข้าคิว พร้อมข้อมูลร้าน เซลล์ ยอดสะสม (`lot_no/lots_count`, `amount` = ล็อต, `item_amount` = ทั้งรายการ) |
@@ -104,9 +106,14 @@ admin (`req.user.permission === true`)
   (`MEM2` = รหัสร้านที่มีใน `users` และไม่ใช่ร้านของ USER_TOKEN ใช้ทดสอบจองแทนร้าน · access token อายุ 15 นาที ต่ออายุด้วย `POST /ecom/refresh_token {token: refresh_token}`)
   รายงานติดป้าย environment เสมอ (`local` อัตโนมัติเมื่อ BASE_URL เป็น localhost, อื่นๆ ต้องระบุ E2E_ENV) เขียนลง `docs/e2e/preorder-<env>-<timestamp>.md`
   ผล `local` = ผ่านก่อน merge เท่านั้น ต้องรันซ้ำกับ deployed code หลัง deploy แล้วบันทึกใน Confluence: [E2E Testing Playbook — Backend-Ecommerce](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202407939) → [Test Report — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202440705) + [ทะเบียน E2E Suites](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473473)
-- สคริปต์มี 3 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น · C = กลุ่ม 3 + มติ 9 ก.ย. (reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน + log, ใบสรุปสั่งซื้อ + CSV, เตือนก่อนปิดรอบ + กันเตือนซ้ำ, จัดสรร equal, ส่งเข้าตะกร้าลูกค้า/เจ้าหน้าที่ + กันส่งซ้ำ + ตรวจตะกร้าจริง) 28 ขั้น
+- สคริปต์มี 3 รอบทดสอบ: A = allocation (limit/supply/ล็อค/จัดสรร/ของเข้า, split) 23 ขั้น · B = aggregation (MOQ/ETA/ราคาโดยประมาณ, allow_cancel, keep → split ในช่วงผ่อนผัน → split → reset, ยกเลิกแล้วจองใหม่, ปิดรอบล็อคอัตโนมัติ) 20 ขั้น · C = กลุ่ม 3 + มติ 9 ก.ย. (reason=price_increase, min/pack, ราคาขั้นบันได, จองแทนร้าน + log, ใบสรุปสั่งซื้อ + CSV, เตือนก่อนปิดรอบ + กันเตือนซ้ำ, จัดสรร equal, ส่งเข้าตะกร้าลูกค้า/เจ้าหน้าที่ + กันส่งซ้ำ + ตรวจตะกร้าจริง, feedback ผู้บริหาร 10 ก.ย.: lookup รหัส/บาร์โค้ด/404/403, price_type) 35 ขั้น
 - UAT + บทสาธิตผู้บริหาร + ทะเบียน test case ให้ผู้ใช้จริงเซ็นรับ: [UAT & Demo Guide — Pre-order](https://nitipongjin-13063.atlassian.net/wiki/spaces/R/pages/202473517) (ผ่าน UAT = DoD ทางธุรกิจ คู่กับ e2e deployed)
 - ผลล่าสุด: local **71/71** (9 ก.ย. 2569 commit 1757f26 บน DB dump ล่าสุด) `docs/e2e/preorder-local-1788939989006.md` · ก่อนหน้า 43/43, 23/23, 22/22 · deployed: ยังไม่ได้รัน
+
+## Feedback ผู้บริหาร (สาธิต 10 ก.ย. 2569) — ทำแล้ว
+- [x] ปุ่ม "ดูและจอง" บนหน้าแรกย้ายมาชิดหัวข้อ · wording แท็บ/ป้าย "สินค้าขาด กำลังจะเข้า"
+- [x] ช่องรหัสสินค้าหลังบ้านรับสแกนบาร์โค้ด (`product-lookup`) — ยังไม่เชื่อมระบบ procure ตรง (ค้นจาก catalog ของ e-commerce ที่ sync จาก ERP)
+- [x] นิยามประเภทราคา 6 แบบเก็บเป็น `price_type` ฝั่ง admin (ยังไม่แสดงลูกค้า/ไม่กระทบราคาตะกร้า — รอมติว่าจะให้ประเภทไหนมีผลกับราคาจริง)
 
 ## งานค้าง (backlog) — อัปเดต 9 ก.ย. 2569
 
