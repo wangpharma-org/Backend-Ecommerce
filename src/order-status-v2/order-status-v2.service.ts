@@ -76,6 +76,9 @@ interface PickingOrderDetailItem {
   unit: string | null;
   price_unit: number | null;
   price_total: number | null;
+  // ราคาหลัง QC (RT → 0, ตรวจนับขาด → คิดตามจำนวนจริง, ยังไม่ตรวจนับ → เท่า price_total) — ECWC-4xx
+  qc_price_total: number | null;
+  is_rt: boolean;
 }
 
 interface PickingOrderDetailBatchItem {
@@ -604,8 +607,11 @@ export class OrderStatusV2Service {
     const productInfoByProCode =
       await this.productService.getProductInfoByCodes(proCodes);
 
+    // ยอดรวมต้องคิดจากราคาหลัง QC (qc_price_total) ไม่ใช่ราคาที่สั่งไว้เดิม — ไม่งั้นลูกค้าจะเห็น
+    // ยอดรวมเต็มจำนวนทั้งที่สินค้าบางรายการโดน RT (ตัดเป็น 0) หรือตรวจนับได้ไม่ครบ (คิดตามจำนวนจริง)
     const soh_sumprice = items.reduce(
-      (sum, i) => sum + (i.price_total ?? (i.price_unit ?? 0) * i.qty),
+      (sum, i) =>
+        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -627,7 +633,7 @@ export class OrderStatusV2Service {
         spo_qty: item.qty,
         spo_unit: item.unit ?? '',
         spo_price_unit: item.price_unit,
-        spo_total_decimal: item.price_total,
+        spo_total_decimal: item.qc_price_total ?? item.price_total,
         product: {
           pro_code: item.pro_code,
           pro_name:
