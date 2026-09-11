@@ -2,6 +2,7 @@
 
 แทนที่ระบบ `pre_order` (หน้า FMCG) และ `shopping_preorder` (ฟ้าทะลายโจร) ใน wang_shopping
 สรุปที่มาและการเทียบระบบเดิมอยู่ใน Wang Pre-order Blueprint (artifact)
+Jira: ECWC-546 (Story หลัก) · งานค้าง ECWC-547 push/PR frontend, ECWC-548 migration prod, ECWC-549 e2e deployed, ECWC-550 ย้ายข้อมูล pre_order เดิม, ECWC-551 backfill บาร์โค้ด, ECWC-552 guard new-arrivals, ECWC-553 คำถาม UAT Q3–Q5
 
 ## แนวคิด
 
