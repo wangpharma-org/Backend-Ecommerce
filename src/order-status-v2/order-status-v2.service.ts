@@ -1051,7 +1051,6 @@ export class OrderStatusV2Service {
   ): Promise<LegacyOrderListItem[]> {
     const url = `${this.oldWebsiteUrl}/Akitokung/api/order/order_list.php`;
     try {
-      this.logger.log(`[proxy-php] GET ${url}?mem_code=${mem_code}`);
       const response = await firstValueFrom(
         this.httpService.get<LegacyOrderListItem[]>(url, {
           params: { mem_code },
@@ -1079,7 +1078,6 @@ export class OrderStatusV2Service {
   ): Promise<LegacyOrderDetailRes> {
     const url = `${this.oldWebsiteUrl}/Akitokung/api/order/order_detial.php`;
     try {
-      this.logger.log(`[proxy-php] GET ${url}?soh_runing=${soh_running}`);
       const response = await firstValueFrom(
         this.httpService.get<LegacyOrderDetailRes>(url, {
           params: { soh_runing: soh_running },
@@ -1201,9 +1199,6 @@ export class OrderStatusV2Service {
     limit: number,
     offset: number,
   ): Promise<LegacyOrderListItem[]> {
-    this.logger.log(
-      `[legacy-order-list] mem_code=${mem_code} -> order-picking-service (${this.orderPickingUrl})`,
-    );
     const [result, member] = await Promise.all([
       this.getOrderList(mem_code, undefined, undefined, 1, 100, 'DESC'),
       this.userRepo.findOne({ where: { mem_code } }),
@@ -1279,9 +1274,6 @@ export class OrderStatusV2Service {
     soh_running: string,
     mem_code: string,
   ): Promise<LegacyOrderDetailRes> {
-    this.logger.log(
-      `[legacy-order-detail] soh_running=${soh_running} -> order-picking-service (${this.orderPickingUrl})`,
-    );
     const [{ detail, usedPriceFallback }, member] = await Promise.all([
       this.getOrderDetailWithMeta(soh_running, mem_code),
       this.userRepo.findOne({ where: { mem_code } }),

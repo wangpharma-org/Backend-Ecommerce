@@ -978,11 +978,6 @@ export class AppController {
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_list_api',
     );
-    this.logger.log(
-      `[legacy/order-list] mem_code=${mem_code} new_order_list_api=${enabled} -> ${
-        enabled ? 'order-picking-service' : 'PHP (order_list.php)'
-      }`,
-    );
     if (!enabled) {
       return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
     }
@@ -1011,11 +1006,6 @@ export class AppController {
   ) {
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_detail_api',
-    );
-    this.logger.log(
-      `[legacy/order-detail] soh_running=${soh_running} new_order_detail_api=${enabled} -> ${
-        enabled ? 'order-picking-service' : 'PHP (order_detial.php)'
-      }`,
     );
     if (!enabled) {
       return this.orderStatusV2Service.getLegacyOrderDetailFromPhp(soh_running);
