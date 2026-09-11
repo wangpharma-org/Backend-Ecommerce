@@ -9,7 +9,6 @@ import {
   ForbiddenException,
   Get,
   HttpException,
-  NotFoundException,
   HttpStatus,
   Ip,
   Param,
@@ -883,6 +882,8 @@ export class AppController {
   }
 
   // ECWC-398/406: เหมือน all-order-member เดิม แต่รองรับ filter ช่วงวันที่ — endpoint ใหม่ ไม่แก้ของเดิม
+  // ECWC-545: flag 'new_order_list_api' ปิด = proxy ไป PHP เดิมแทนที่จะยิง order-picking-service
+  // (คืน shape เดิมเป๊ะ ไม่กระทบ frontend) — date_from/date_to ใช้ไม่ได้ตอน proxy เพราะ PHP ไม่รองรับ
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/order-list/:memCode')
   async AllOrderByMemberV2(
@@ -893,6 +894,16 @@ export class AppController {
     @Query('pageSize') pageSize?: string,
     @Query('sort_order') sort_order?: string,
   ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_list_api',
+    );
+    if (!enabled) {
+      return this.orderStatusV2Service.getOrderListFromPhp(
+        memCode,
+        page ? parseInt(page, 10) : 1,
+        pageSize ? parseInt(pageSize, 10) : 10,
+      );
+    }
     const result = await this.orderStatusV2Service.getOrderList(
       memCode,
       date_from,
@@ -924,12 +935,19 @@ export class AppController {
 
   // ECWC-4xx: รายละเอียดเต็มของบิลสำหรับหน้า Track — ดึงจาก order-picking-service เสมอ
   // ไม่ว่าบิลนั้นจะมีใน shopping_head ของ ecommerce เองหรือไม่ แทนที่ /ecom/some-order/:soh_runing เดิม
+  // ECWC-545: flag 'new_order_detail_api' ปิด = proxy ไป PHP เดิมแทน (คืน shape เดิมเป๊ะ)
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/order-detail/:soh_running')
   async getOrderDetailV2(
     @Param('soh_running') soh_running: string,
     @Req() req: Request & { user: JwtPayload },
   ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_detail_api',
+    );
+    if (!enabled) {
+      return this.orderStatusV2Service.getOrderDetailFromPhp(soh_running);
+    }
     const result = await this.orderStatusV2Service.getOrderDetail(
       soh_running,
       req.user.mem_code,
@@ -947,7 +965,8 @@ export class AppController {
   }
 
   // ECWC-545: clone ของ Akitokung/api/order/order_list.php (PHP เก่า) ให้ mobile app สลับมาเรียก
-  // ที่นี่แทนได้ — คุมด้วย feature flag 'new_order_list_api' (default ปิด จนกว่าจะ QA เทียบแอปจริง)
+  // ที่นี่แทนได้ — คุมด้วย feature flag 'new_order_list_api' flag ปิด = proxy ไปขอข้อมูลจาก PHP
+  // เก่าตรงๆ แทน (ไม่ยิงไป order-picking-service/warehouse เอง) จน QA เทียบแอปจริงผ่านค่อยเปิด
   // ไม่บังคับ JwtAuthGuard เพราะ endpoint เดิมก็รับแค่ mem_code จาก query ไม่มี auth header เหมือนกัน
   @Get('/ecom/legacy/order-list')
   async getLegacyOrderListV2(
@@ -959,8 +978,13 @@ export class AppController {
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_list_api',
     );
+    this.logger.log(
+      `[legacy/order-list] mem_code=${mem_code} new_order_list_api=${enabled} -> ${
+        enabled ? 'order-picking-service' : 'PHP (order_list.php)'
+      }`,
+    );
     if (!enabled) {
-      throw new NotFoundException('Not Found');
+      return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
     }
     const parsedLimit = limit !== undefined ? parseInt(limit, 10) : 10;
     const parsedOffset = offset !== undefined ? parseInt(offset, 10) : 0;
@@ -976,10 +1000,10 @@ export class AppController {
   }
 
   // ECWC-545: clone ของ Akitokung/api/order/order_detial.php (PHP เก่า สะกดตามต้นฉบับ) — คุมด้วย
-  // feature flag 'new_order_detail_api' — ต่างจากเดิมตรงที่ endpoint นี้ "ต้องการ" mem_code เป็น
-  // query param เพิ่ม (ของเดิมรับแค่ soh_runing ไม่เช็คเจ้าของบิลเลย เป็นช่องโหว่ของระบบเก่าที่ตั้งใจ
-  // ไม่ทำตาม เพราะระบบใหม่ต้องใช้ mem_code ยืนยันตัวตนกับ order-picking-service) — ฝั่งแอปต้องแก้
-  // เพิ่ม param นี้ตอนสลับมาใช้ endpoint นี้
+  // feature flag 'new_order_detail_api' flag ปิด = proxy ไปขอข้อมูลจาก PHP เก่าตรงๆ (ส่งแค่
+  // soh_runing เหมือนที่ระบบเดิมรับอยู่ ไม่เช็ค mem_code เพราะ PHP เดิมก็ไม่เช็คเจ้าของบิลเหมือนกัน)
+  // — flag เปิดค่อยต้องการ mem_code เพิ่มเพื่อยืนยันตัวตนกับ order-picking-service ฝั่งแอปต้องแก้
+  // เพิ่ม param นี้ตอนสลับมาใช้ระบบใหม่
   @Get('/ecom/legacy/order-detail')
   async getLegacyOrderDetailV2(
     @Query('soh_runing') soh_running: string,
@@ -988,8 +1012,13 @@ export class AppController {
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_detail_api',
     );
+    this.logger.log(
+      `[legacy/order-detail] soh_running=${soh_running} new_order_detail_api=${enabled} -> ${
+        enabled ? 'order-picking-service' : 'PHP (order_detial.php)'
+      }`,
+    );
     if (!enabled) {
-      throw new NotFoundException('Not Found');
+      return this.orderStatusV2Service.getLegacyOrderDetailFromPhp(soh_running);
     }
     return this.orderStatusV2Service.getLegacyOrderDetail(
       soh_running,
