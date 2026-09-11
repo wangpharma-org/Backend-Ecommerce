@@ -49,6 +49,17 @@ const LEGACY_STATUS_LABEL: Record<EcomOrderTimelineStatus, string> = {
   cancelled: 'ยกเลิกออเดอร์แล้ว',
 };
 
+// ECWC-545: ย้อนกลับจาก label ไทยของ PHP เดิม -> enum ภายในของเรา ใช้ตอน map response จาก PHP
+// กลับเป็น shape v2 (สำหรับเว็บ) ตอน feature flag ปิด — ถ้า label ไม่ตรงกับที่รู้จักเลย fallback
+// เป็น 'opened' (เจอจริงได้ยาก เพราะ PHP เดิมกับ LEGACY_STATUS_LABEL ของเราใช้ข้อความชุดเดียวกัน)
+const LEGACY_STATUS_LABEL_REVERSE: Record<string, EcomOrderTimelineStatus> =
+  Object.fromEntries(
+    Object.entries(LEGACY_STATUS_LABEL).map(([key, label]) => [
+      label,
+      key as EcomOrderTimelineStatus,
+    ]),
+  );
+
 // ECWC-545: ข้อความเตือนสำหรับ legacy API เมื่อบิลตกอยู่ในเคสที่ข้อมูลบางส่วนอาจไม่ครบ/ไม่แม่นยำ
 // 100% (ราคาต้อง fallback มาจาก ecommerce เอง หรือสินค้าตัวเดียวกันสั่งหลายหน่วยแล้วโชว์แค่หน่วยแรก)
 const LEGACY_DATA_NOTE =
@@ -76,6 +87,9 @@ interface PickingOrderDetailItem {
   unit: string | null;
   price_unit: number | null;
   price_total: number | null;
+  // ราคาหลัง QC (RT → 0, ตรวจนับขาด → คิดตามจำนวนจริง, ยังไม่ตรวจนับ → เท่า price_total) — ECWC-4xx
+  qc_price_total: number | null;
+  is_rt: boolean;
 }
 
 interface PickingOrderDetailBatchItem {
@@ -128,6 +142,7 @@ export class OrderStatusV2Service {
   private readonly logger = new Logger(OrderStatusV2Service.name);
   private readonly orderPickingUrl: string;
   private readonly logisticUrl: string;
+  private readonly oldWebsiteUrl: string;
 
   constructor(
     @InjectRepository(ShoppingHeadEntity)
@@ -149,6 +164,9 @@ export class OrderStatusV2Service {
     this.logisticUrl =
       this.configService.get<string>('LOGISTIC_API_URL') ??
       'https://warehouse.wangpharma.com';
+    this.oldWebsiteUrl =
+      this.configService.get<string>('OLD_WEBSITE_URL') ??
+      'https://wangpharma.com';
   }
 
 
@@ -521,8 +539,11 @@ export class OrderStatusV2Service {
       }),
     );
 
+    // เหตุผลเดียวกับ getOrderDetail — ต้องคิดจาก qc_price_total (RT/deficit) ไม่ใช่ price_total
+    // เฉยๆ ไม่งั้นยอดรวมในหน้ารายการจะไม่ตรงกับยอดที่คิดจริงหลัง QC
     const soh_sumprice = detail.items.reduce(
-      (sum, i) => sum + (i.price_total ?? (i.price_unit ?? 0) * i.qty),
+      (sum, i) =>
+        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -604,8 +625,11 @@ export class OrderStatusV2Service {
     const productInfoByProCode =
       await this.productService.getProductInfoByCodes(proCodes);
 
+    // ยอดรวมต้องคิดจากราคาหลัง QC (qc_price_total) ไม่ใช่ราคาที่สั่งไว้เดิม — ไม่งั้นลูกค้าจะเห็น
+    // ยอดรวมเต็มจำนวนทั้งที่สินค้าบางรายการโดน RT (ตัดเป็น 0) หรือตรวจนับได้ไม่ครบ (คิดตามจำนวนจริง)
     const soh_sumprice = items.reduce(
-      (sum, i) => sum + (i.price_total ?? (i.price_unit ?? 0) * i.qty),
+      (sum, i) =>
+        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -627,7 +651,7 @@ export class OrderStatusV2Service {
         spo_qty: item.qty,
         spo_unit: item.unit ?? '',
         spo_price_unit: item.price_unit,
-        spo_total_decimal: item.price_total,
+        spo_total_decimal: item.qc_price_total ?? item.price_total,
         product: {
           pro_code: item.pro_code,
           pro_name:
@@ -1016,6 +1040,151 @@ export class OrderStatusV2Service {
     ]
       .filter(Boolean)
       .join(' ');
+  }
+
+  // ECWC-545: feature flag ปิด = ยังไม่ไว้ใจ endpoint clone ของเราพอ ให้ proxy ไปขอข้อมูลจาก PHP
+  // เก่าตรงๆ แทนที่จะยิงไป order-picking-service/warehouse เอง (คนละ data source กับตอน flag
+  // เปิด) — ส่ง mem_code อย่างเดียวเหมือนที่แอปเก่าเรียกอยู่ตอนนี้ ไม่ filter/paginate เองเพิ่ม
+  // เพราะ PHP เดิมไม่รองรับพารามิเตอร์พวกนี้ ต้องคืนค่าเดิมเป๊ะให้ behavior เหมือนเรียก PHP ตรงๆ
+  async getLegacyOrderListFromPhp(
+    mem_code: string,
+  ): Promise<LegacyOrderListItem[]> {
+    const url = `${this.oldWebsiteUrl}/Akitokung/api/order/order_list.php`;
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<LegacyOrderListItem[]>(url, {
+          params: { mem_code },
+        }),
+      );
+      return response.data;
+    } catch (error: unknown) {
+      this.logger.error('Error proxying order_list.php', error);
+      throw new ServiceUnavailableException(
+        'ไม่สามารถเชื่อมต่อระบบเดิมได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง',
+      );
+    }
+  }
+
+  // ECWC-545: เหมือน getLegacyOrderListFromPhp แต่สำหรับ order_detial.php (สะกดตามต้นฉบับ) — ส่ง
+  // soh_runing อย่างเดียวเหมือนที่ระบบเดิมรับอยู่ (ไม่ส่ง mem_code เพราะ PHP เดิมไม่เช็คเจ้าของบิล)
+  //
+  // ข้อจำกัดที่รู้อยู่แล้ว (ทดสอบยืนยันแล้วกับของจริง 2026-09): เรียกแบบ server-to-server ไม่มี
+  // session คืน products/total_list/sumprice ว่างเสมอ (ทดลองใส่ mem_code เพิ่ม/ปลอม User-Agent
+  // เป็นมือถือแล้วไม่ช่วย) — มีแค่ timeline/shipping/pay_type ที่ได้ข้อมูลจริง ตัวอย่าง response
+  // เต็มที่เคยเห็นตอนเก็บ requirement คงมาจาก session ของแอปจริงที่ login อยู่ ซึ่งเราไม่มีทางมีให้
+  // ยอมรับข้อจำกัดนี้ไปก่อน (ตัดสินใจแล้ว) — ถ้าจะแก้ให้ครบต้องหา auth mechanism ที่แอปมือถือใช้จริง
+  async getLegacyOrderDetailFromPhp(
+    soh_running: string,
+  ): Promise<LegacyOrderDetailRes> {
+    const url = `${this.oldWebsiteUrl}/Akitokung/api/order/order_detial.php`;
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<LegacyOrderDetailRes>(url, {
+          params: { soh_runing: soh_running },
+        }),
+      );
+      return response.data;
+    } catch (error: unknown) {
+      this.logger.error('Error proxying order_detial.php', error);
+      throw new ServiceUnavailableException(
+        'ไม่สามารถเชื่อมต่อระบบเดิมได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง',
+      );
+    }
+  }
+
+  // ECWC-545: แปลง response ของ PHP เดิม (order_list.php) ให้เป็น shape เดียวกับ EcomOrderListV2Res
+  // ที่หน้าเว็บ (Ecommerce-Frontend) ใช้อยู่แล้ว — ให้ flag ปิดใช้ได้กับหน้าเว็บด้วย ไม่ใช่แค่ mobile
+  // app ข้อจำกัด: PHP ไม่มี soh_datetime แบบ ISO ให้ (มีแต่ text ที่ format แล้ว) และไม่มีข้อมูลพอ
+  // คำนวณ totalSmallestUnit — ปล่อย [] ไปเพราะฝั่งเว็บ fallback แสดง 0 อยู่แล้วเมื่อไม่มีข้อมูล
+  private mapPhpOrderToV2(php: LegacyOrderListItem): EcomOrderListV2Order {
+    const status = LEGACY_STATUS_LABEL_REVERSE[php.status] ?? 'opened';
+    const Newdetails: EcomOrderListV2Order['Newdetails'] = php.products.map(
+      (p, index) => ({
+        pro_code: p.pro_code,
+        product: { pro_code: p.pro_code, pro_imgmain: p.thumbnail },
+        items: [
+          {
+            spo_id: index,
+            spo_qty: Number(p.amountUnit) || 0,
+            spo_unit: p.Unit,
+          },
+        ],
+      }),
+    );
+    return {
+      soh_running: php.orderNo,
+      // PHP ให้แค่ text ที่ format แล้ว (เช่น "08 ก.ย. 2569") ไม่ใช่ ISO date — หน้าเว็บมี fallback
+      // แสดง raw string ตรงๆ เมื่อไม่ match ISO regex อยู่แล้ว (OrderStatus.tsx) จึงปล่อยผ่านตรงๆ ได้
+      soh_datetime: php.date as unknown as Date,
+      soh_sumprice: Number(String(php.price).replace(/,/g, '')) || 0,
+      soh_coin_recieve: php.point,
+      details: php.products.length,
+      totalSmallestUnit: [],
+      Newdetails,
+      status,
+      status_label: ECOM_ORDER_TIMELINE_LABEL[status],
+    };
+  }
+
+  // ECWC-545: flag 'new_order_list_api' ปิด = ให้หน้าเว็บ (v2 endpoint) ก็ proxy ไป PHP เดิมเหมือน
+  // mobile app แทนที่จะยิงไป order-picking-service เอง — คืนเป็น shape EcomOrderListV2Res เดิม
+  // ไม่ต้องแก้โค้ด frontend เลย pagination ทำเองที่นี่เพราะ PHP คืนมาทั้งก้อนไม่แบ่งหน้า
+  async getOrderListFromPhp(
+    mem_code: string,
+    page: number,
+    pageSize: number,
+  ): Promise<EcomOrderListV2Res> {
+    const phpOrders = await this.getLegacyOrderListFromPhp(mem_code);
+    const data = phpOrders.map((o) => this.mapPhpOrderToV2(o));
+    const total = data.length;
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    return {
+      data: data.slice((page - 1) * pageSize, page * pageSize),
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  }
+
+  // ECWC-545: เหมือน mapPhpOrderToV2 แต่สำหรับ order_detial.php — status มาจาก step สุดท้ายของ
+  // timeline (ใหม่สุด) ไม่มี soh_payment_type/discount ที่เชื่อถือได้แบบ ISO เหมือนกัน จึงส่ง
+  // pay_type/discount_price ของ PHP ตรงๆ ไปเลย (ดีกว่า null เพราะ PHP มีข้อมูลจริงให้)
+  private mapPhpDetailToV2(php: LegacyOrderDetailRes): EcomOrderDetailV2Res {
+    const lastStep = php.timeline[php.timeline.length - 1]?.status;
+    const status = LEGACY_STATUS_LABEL_REVERSE[lastStep ?? ''] ?? 'opened';
+    const details: EcomOrderDetailV2Res['details'] = php.products.map(
+      (p, index) => ({
+        spo_id: index,
+        spo_qty: Number(p.order_amount) || 0,
+        spo_unit: p.Unit,
+        spo_price_unit: Number(p.price_unit) || null,
+        spo_total_decimal: Number(p.price_total) || null,
+        product: {
+          pro_code: p.pro_code,
+          pro_name: p.pro_name,
+          pro_imgmain: p.thumbnail,
+        },
+      }),
+    );
+    return {
+      soh_running: php.orderNo,
+      soh_datetime: php.orderTime as unknown as Date,
+      soh_sumprice: Number(String(php.sumprice).replace(/,/g, '')) || 0,
+      soh_payment_type: php.pay_type || null,
+      discount: Number(String(php.discount_price).replace(/,/g, '')) || 0,
+      status,
+      status_label: ECOM_ORDER_TIMELINE_LABEL[status],
+      details,
+    };
+  }
+
+  // ECWC-545: flag 'new_order_detail_api' ปิด = ให้หน้า Track (v2 endpoint) proxy ไป PHP เดิมด้วย
+  async getOrderDetailFromPhp(
+    soh_running: string,
+  ): Promise<EcomOrderDetailV2Res> {
+    const php = await this.getLegacyOrderDetailFromPhp(soh_running);
+    return this.mapPhpDetailToV2(php);
   }
 
   // ECWC-4xx: clone ของ Akitokung/api/order/order_list.php (PHP เก่า) ให้ mobile app สลับมาเรียก
