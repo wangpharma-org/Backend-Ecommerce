@@ -1,6 +1,7 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
   BadGatewayException,
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -8,6 +9,7 @@ import {
   ForbiddenException,
   Get,
   HttpException,
+  NotFoundException,
   HttpStatus,
   Ip,
   Param,
@@ -887,21 +889,112 @@ export class AppController {
     @Param('memCode') memCode: string,
     @Query('date_from') date_from?: string,
     @Query('date_to') date_to?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('sort_order') sort_order?: string,
   ) {
     const result = await this.orderStatusV2Service.getOrderList(
       memCode,
       date_from,
       date_to,
+      page ? parseInt(page, 10) : undefined,
+      pageSize ? parseInt(pageSize, 10) : undefined,
+      sort_order === 'ASC' ? 'ASC' : undefined,
     );
-    for (const order of result) {
+    // เดิม await ทีละ product ทีละออเดอร์ (sequential) — หน้าละ 10 ออเดอร์ x 5-8 สินค้า/ออเดอร์
+    // กลายเป็น 50-80 query รอทีละตัว ทำให้ endpoint นี้ช้ากว่าที่ getOrderList เองใช้จริงมาก
+    // (เจอจาก load test — วัดใน getOrderList แล้วไม่เจอ เพราะ loop นี้อยู่นอก service)
+    // dedupe pro_code ก่อนเพราะสินค้าเดียวกันอาจซ้ำกันหลายออเดอร์ในหน้าเดียว แล้วยิงพร้อมกันแทน
+    const proCodesOnPage = new Map<string, string>();
+    for (const order of result.data) {
       for (const orderItem of order.Newdetails) {
-        await this.imagedebugService.UpsercetImg({
-          pro_code: orderItem.product.pro_code,
-          imageUrl: orderItem.product.pro_imgmain,
-        });
+        proCodesOnPage.set(
+          orderItem.product.pro_code,
+          orderItem.product.pro_imgmain,
+        );
       }
     }
+    await Promise.all(
+      [...proCodesOnPage.entries()].map(([pro_code, imageUrl]) =>
+        this.imagedebugService.UpsercetImg({ pro_code, imageUrl }),
+      ),
+    );
     return result;
+  }
+
+  // ECWC-4xx: รายละเอียดเต็มของบิลสำหรับหน้า Track — ดึงจาก order-picking-service เสมอ
+  // ไม่ว่าบิลนั้นจะมีใน shopping_head ของ ecommerce เองหรือไม่ แทนที่ /ecom/some-order/:soh_runing เดิม
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-detail/:soh_running')
+  async getOrderDetailV2(
+    @Param('soh_running') soh_running: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const result = await this.orderStatusV2Service.getOrderDetail(
+      soh_running,
+      req.user.mem_code,
+    );
+    // เดิม await ทีละ product (sequential) — เปลี่ยนเป็นยิงพร้อมกันเหมือนที่แก้ใน order-list
+    await Promise.all(
+      result.details.map((item) =>
+        this.imagedebugService.UpsercetImg({
+          pro_code: item.product.pro_code,
+          imageUrl: item.product.pro_imgmain,
+        }),
+      ),
+    );
+    return result;
+  }
+
+  // ECWC-545: clone ของ Akitokung/api/order/order_list.php (PHP เก่า) ให้ mobile app สลับมาเรียก
+  // ที่นี่แทนได้ — คุมด้วย feature flag 'new_order_list_api' (default ปิด จนกว่าจะ QA เทียบแอปจริง)
+  // ไม่บังคับ JwtAuthGuard เพราะ endpoint เดิมก็รับแค่ mem_code จาก query ไม่มี auth header เหมือนกัน
+  @Get('/ecom/legacy/order-list')
+  async getLegacyOrderListV2(
+    @Query('mem_code') mem_code: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_list_api',
+    );
+    if (!enabled) {
+      throw new NotFoundException('Not Found');
+    }
+    const parsedLimit = limit !== undefined ? parseInt(limit, 10) : 10;
+    const parsedOffset = offset !== undefined ? parseInt(offset, 10) : 0;
+    if (!Number.isInteger(parsedLimit) || !Number.isInteger(parsedOffset)) {
+      throw new BadRequestException('limit/offset');
+    }
+    return this.orderStatusV2Service.getLegacyOrderList(
+      mem_code,
+      status,
+      parsedLimit,
+      parsedOffset,
+    );
+  }
+
+  // ECWC-545: clone ของ Akitokung/api/order/order_detial.php (PHP เก่า สะกดตามต้นฉบับ) — คุมด้วย
+  // feature flag 'new_order_detail_api' — ต่างจากเดิมตรงที่ endpoint นี้ "ต้องการ" mem_code เป็น
+  // query param เพิ่ม (ของเดิมรับแค่ soh_runing ไม่เช็คเจ้าของบิลเลย เป็นช่องโหว่ของระบบเก่าที่ตั้งใจ
+  // ไม่ทำตาม เพราะระบบใหม่ต้องใช้ mem_code ยืนยันตัวตนกับ order-picking-service) — ฝั่งแอปต้องแก้
+  // เพิ่ม param นี้ตอนสลับมาใช้ endpoint นี้
+  @Get('/ecom/legacy/order-detail')
+  async getLegacyOrderDetailV2(
+    @Query('soh_runing') soh_running: string,
+    @Query('mem_code') mem_code: string,
+  ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_detail_api',
+    );
+    if (!enabled) {
+      throw new NotFoundException('Not Found');
+    }
+    return this.orderStatusV2Service.getLegacyOrderDetail(
+      soh_running,
+      mem_code,
+    );
   }
 
   // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว

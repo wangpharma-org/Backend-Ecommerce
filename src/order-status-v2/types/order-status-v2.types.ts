@@ -32,7 +32,13 @@ export interface EcomOrderListV2Order {
   status_label: string;
 }
 
-export type EcomOrderListV2Res = EcomOrderListV2Order[];
+export interface EcomOrderListV2Res {
+  data: EcomOrderListV2Order[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
 // สถานะรวมของหน้า order-status — ECWC-403
 export type EcomOrderTimelineStatus =
@@ -46,7 +52,10 @@ export type EcomOrderTimelineStatus =
   | 'returned' // ตีกลับ
   | 'cancelled'; // ลูกค้ายกเลิก
 
-export const ECOM_ORDER_TIMELINE_LABEL: Record<EcomOrderTimelineStatus, string> = {
+export const ECOM_ORDER_TIMELINE_LABEL: Record<
+  EcomOrderTimelineStatus,
+  string
+> = {
   opened: 'เปิดบิล',
   picking: 'กำลังจัดออเดอร์',
   checking: 'กำลังตรวจสอบออเดอร์',
@@ -87,6 +96,35 @@ export interface EcomOrderStatusV2Evidence {
   image4: string | null;
   cancel_img: string | null;
   employee_sign: string | null;
+}
+
+// ECWC-4xx: รายละเอียดเต็มของบิลสำหรับหน้า Track — ดึงจาก order-picking-service เสมอ ไม่ว่าจะเป็น
+// บิลปกติหรือบิลตกหล่น (เพื่อให้พฤติกรรมสม่ำเสมอ) แลกกับการไม่มี soh_payment_type/discount จริง
+// เพราะข้อมูลนี้เป็นของฝั่ง checkout ของ ecommerce เอง ไม่ได้ถูกส่งต่อไปที่คลัง
+export interface EcomOrderDetailV2Product {
+  pro_code: string;
+  pro_name: string | null;
+  pro_imgmain: string;
+}
+
+export interface EcomOrderDetailV2Item {
+  spo_id: number;
+  spo_qty: number;
+  spo_unit: string;
+  spo_price_unit: number | null;
+  spo_total_decimal: number | null;
+  product: EcomOrderDetailV2Product;
+}
+
+export interface EcomOrderDetailV2Res {
+  soh_running: string;
+  soh_datetime: Date;
+  soh_sumprice: number;
+  soh_payment_type: string | null;
+  discount: number;
+  status: EcomOrderTimelineStatus;
+  status_label: string;
+  details: EcomOrderDetailV2Item[];
 }
 
 export interface EcomOrderStatusV2Res {

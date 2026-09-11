@@ -54,7 +54,11 @@ export class ImagedebugService {
         'Error occurred while upserting image debug:',
         errorMessage,
       );
-      throw error;
+      // อย่า throw ทิ้งขึ้นไป — ทุก call site (order-list, order-detail, cart, search, ฯลฯ)
+      // await ตรงๆ ไม่มี try/catch เอง ถ้า throw ที่นี่จะทำให้ทั้ง request 500 ทั้งที่ upsert
+      // ภาพ debug เป็นแค่ side-effect เสริม ไม่ควรกระทบ response หลัก (เจอจริง: pro_code
+      // สินค้าที่เลิกขายไปแล้วไม่มีใน table product ทำให้ FK constraint fail)
+      return 'Error occurred while upserting image debug';
     }
   }
 
