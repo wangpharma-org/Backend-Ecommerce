@@ -72,6 +72,40 @@ describe('ProductsService — unit helpers', () => {
     expect(service).toBeDefined();
   });
 
+  it('includes the English name in the product detail response', async () => {
+    const product = {
+      pro_code: 'P001',
+      pro_name: 'Thai product name',
+      pro_nameEN: 'English product name',
+    };
+    const queryBuilder: Record<string, jest.Mock> = {};
+    for (const method of ['leftJoinAndSelect', 'select', 'where']) {
+      queryBuilder[method] = jest.fn(() => queryBuilder);
+    }
+    queryBuilder.getOne = jest.fn().mockResolvedValue(product);
+
+    Object.assign(service, {
+      productRepo: {
+        increment: jest.fn().mockResolvedValue(undefined),
+        createQueryBuilder: jest.fn(() => queryBuilder),
+      },
+      isL16Member: jest.fn().mockResolvedValue(false),
+      transformProductWithUnits: jest
+        .fn()
+        .mockImplementation((value) => Promise.resolve(value)),
+    });
+
+    const result = await service.getProductDetail({
+      pro_code: product.pro_code,
+      mem_code: 'TEST',
+    });
+
+    expect(result.pro_nameEN).toBe(product.pro_nameEN);
+    expect(queryBuilder.select).toHaveBeenCalledWith(
+      expect.arrayContaining(['product.pro_nameEN']),
+    );
+  });
+
   // ─── convertEnumToUnitName ────────────────────────────────────────────────
 
   describe('convertEnumToUnitName', () => {
