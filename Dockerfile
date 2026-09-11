@@ -1,4 +1,4 @@
-FROM node:22-bullseye AS builder
+FROM node:22-bookworm AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN npm run build
 
 # =========================
 
-FROM node:22-bullseye
+FROM node:22-bookworm
 
 WORKDIR /app
 
