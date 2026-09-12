@@ -47,6 +47,7 @@ import { SearchCartTrackingModule } from './search-cart-tracking/search-cart-tra
 import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
 import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
+import { OrderStatusV2Module } from './order-status-v2/order-status-v2.module';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 import { RatingModule } from './rating/rating.module';
@@ -116,6 +117,7 @@ import { DeliveryPreferenceModule } from './delivery-preference/delivery-prefere
     AppVersionModule,
     LandingModule,
     TrackOrderModule,
+    OrderStatusV2Module,
     ProductReturnModule,
     BehaviorTrackingModule,
     NotifyRtModule,
