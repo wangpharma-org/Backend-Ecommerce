@@ -54,6 +54,12 @@ DB_NAME=ecommerce-db
 
 `HappyHourService` implements `OnModuleInit` → seed default slots ลง `e-commerce-database-other` อัตโนมัติตอน app start ถ้าตารางว่างอยู่ ดู [src/happy-hour/happy-hour.service.ts](src/happy-hour/happy-hour.service.ts)
 
+## Pre-order (สั่งจองสินค้า)
+
+โมดูล [src/preorder/](src/preorder/) — รอบจอง 2 โหมด (allocation / aggregation), คิวจาก `ordered_at` ที่ไม่ถูกแก้, admin ล็อค/จัดสรร, แจ้งร้านเมื่อของเข้าผ่าน `NewArrivalsService → PreorderService.handleArrivals`
+เปิดใช้ด้วย feature flag `preorder` (migration สร้างไว้เป็นปิด) รายละเอียดและ endpoint ทั้งหมดใน [docs/preorder.md](docs/preorder.md)
+e2e: `scripts/e2e/preorder.e2e.ts`
+
 Team knowledge below is distilled from PR review feedback by the
 `learn-from-reviews` skill and ratified through normal PR review. It primes both
 human contributors and AI sessions so review feedback isn't re-learned every time.
