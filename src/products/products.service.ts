@@ -28,6 +28,10 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import { LineSupportService } from 'src/line-support/line-support.service';
+import { applyRedeemProductIdentityFilter } from './redeem-product.criteria';
+
+const STOCK_UPDATE_CHUNK_SIZE = 1000;
 
 interface OrderItem {
   pro_code: string;
@@ -100,6 +104,7 @@ export class ProductsService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    private readonly lineSupportService: LineSupportService,
   ) {}
 
   private convertEnumToUnitName(
@@ -2282,25 +2287,165 @@ export class ProductsService {
   }
 
   async updateStock(body: {
-    group: { pro_code: string; stock: number }[];
+    group: { pro_code: string; stock: number | string }[];
     filename: string;
   }): Promise<string> {
-    try {
-      for (const item of body.group) {
-        await this.productRepo.update(
-          { pro_code: item.pro_code },
-          { pro_stock: item.stock },
-        );
+    const filename =
+      typeof body?.filename === 'string' ? body.filename.trim() : '';
+    if (!filename) {
+      throw new BadRequestException('Stock update filename is empty');
+    }
+    if (!Array.isArray(body?.group) || body.group.length === 0) {
+      throw new BadRequestException('Stock update payload is empty');
+    }
+
+    const effectiveRawStockByCode = new Map<string, unknown>();
+    for (const item of body.group) {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        typeof item.pro_code !== 'string'
+      ) {
+        throw new BadRequestException('Invalid stock update payload');
       }
-      await this.backendService.updateLogFile(
+      const proCode = item.pro_code.trim();
+      if (!proCode) {
+        throw new BadRequestException('Invalid stock update payload');
+      }
+      effectiveRawStockByCode.set(proCode, item?.stock);
+    }
+
+    const effectiveStockByCode = new Map<string, number>();
+    for (const [proCode, rawStock] of effectiveRawStockByCode) {
+      const stock =
+        typeof rawStock === 'number'
+          ? rawStock
+          : typeof rawStock === 'string' && rawStock.trim() !== ''
+            ? Number(rawStock)
+            : Number.NaN;
+
+      if (!Number.isFinite(stock)) {
+        throw new BadRequestException('Invalid stock update payload');
+      }
+
+      effectiveStockByCode.set(proCode, stock);
+    }
+
+    const effectiveStockUpdates = Array.from(
+      effectiveStockByCode,
+      ([pro_code, stock]) => ({ pro_code, stock }),
+    ).sort((left, right) =>
+      left.pro_code < right.pro_code
+        ? -1
+        : left.pro_code > right.pro_code
+          ? 1
+          : 0,
+    );
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    const stockOutItems: { pro_code: string; pro_name: string }[] = [];
+    let connected = false;
+    let transactionStarted = false;
+
+    try {
+      await queryRunner.connect();
+      connected = true;
+      await queryRunner.startTransaction();
+      transactionStarted = true;
+
+      for (
+        let offset = 0;
+        offset < effectiveStockUpdates.length;
+        offset += STOCK_UPDATE_CHUNK_SIZE
+      ) {
+        const chunk = effectiveStockUpdates.slice(
+          offset,
+          offset + STOCK_UPDATE_CHUNK_SIZE,
+        );
+        const zeroStockCodes = chunk
+          .filter((item) => item.stock === 0)
+          .map((item) => item.pro_code);
+
+        if (zeroStockCodes.length > 0) {
+          const stockOutQuery = queryRunner.manager
+            .createQueryBuilder(ProductEntity, 'product')
+            .select('product.pro_code', 'pro_code')
+            .addSelect('product.pro_name', 'pro_name')
+            .where('product.pro_code IN (:...zeroStockCodes)', {
+              zeroStockCodes,
+            })
+            .andWhere('product.pro_stock > :previousStock', {
+              previousStock: 0,
+            })
+            .orderBy('product.pro_code', 'ASC')
+            .setLock('pessimistic_write');
+          applyRedeemProductIdentityFilter(stockOutQuery, 'product');
+          stockOutItems.push(
+            ...(
+              await stockOutQuery.getRawMany<{
+                pro_code: string;
+                pro_name: string | null;
+              }>()
+            ).map((product) => ({
+              pro_code: product.pro_code,
+              pro_name: product.pro_name?.trim() || product.pro_code,
+            })),
+          );
+        }
+
+        const parameters: Record<string, string | number> = {};
+        const stockCases = chunk.map((item, index) => {
+          parameters[`stockCode${index}`] = item.pro_code;
+          parameters[`stockValue${index}`] = item.stock;
+          return `WHEN :stockCode${index} THEN :stockValue${index}`;
+        });
+        const updateCodes = chunk.map((item) => item.pro_code);
+
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({
+            pro_stock: () =>
+              `CASE pro_code ${stockCases.join(' ')} ELSE pro_stock END`,
+          })
+          .where('pro_code IN (:...updateCodes)', { updateCodes })
+          .setParameters(parameters)
+          .execute();
+      }
+
+      await queryRunner.manager.update(
+        LogFileEntity,
         { feature: 'UpdateStock' },
-        { filename: body.filename, uploadedAt: new Date() },
+        { filename, uploadedAt: new Date() },
       );
-      return 'Stock updated successfully';
+      await queryRunner.commitTransaction();
+      transactionStarted = false;
     } catch (error) {
+      if (transactionStarted) {
+        await queryRunner.rollbackTransaction();
+      }
       this.logger.error('Error updating stock:', error);
       throw new Error('Error updating stock');
+    } finally {
+      if (connected) {
+        await queryRunner.release();
+      }
     }
+
+    if (stockOutItems.length > 0) {
+      try {
+        await this.lineSupportService.notifyRedeemStockOut({
+          file_name: filename,
+          items: stockOutItems,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to notify redeem stock-out after stock commit (file=${filename})`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    return 'Stock updated successfully';
   }
 
   async updateProductL16OnlyFromUpload(body: {
