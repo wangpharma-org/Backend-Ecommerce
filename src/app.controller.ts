@@ -4269,12 +4269,13 @@ export class AppController {
   @Post('/ecom/qc/add-token-for-notification')
   async addTokenForNotification(
     @Req() req: Request & { user: JwtPayload },
-    @Body() body: { token: string },
+    @Body() body: { token: string; refresh_token?: string | null },
   ) {
     const mem_code = req.user.mem_code;
     return await this.notifyRtService.addTokenForNotification({
       mem_code,
       token: body.token,
+      refresh_token: body.refresh_token,
     });
   }
 
