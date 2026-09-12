@@ -31,6 +31,10 @@ import {
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
+import {
+  promoUnitPrice,
+  type PriceOption,
+} from 'src/promotion/promo-line-value';
 import * as dayjs from 'dayjs';
 
 export interface ShoppingProductCart {
@@ -1184,18 +1188,12 @@ export class ShoppingCartService {
       if (this.hasFixedTotal(line)) return Number(line.spc_fixed_total);
       const p = line.product;
       const ratio = this.getUnitRatio(p, line.spc_unit_enum);
-      const totalUnits = perProductTotalUnits.get(line.pro_code) ?? 0;
-      const isPromoPrice =
-        p.pro_promotion_month === promoMonth &&
-        totalUnits >= (p.pro_promotion_amount ?? 0);
-
-      const unitPrice = isPromoPrice
-        ? Number(p.pro_priceA)
-        : priceOption === 'A'
-          ? Number(p.pro_priceA)
-          : priceOption === 'B'
-            ? Number(p.pro_priceB)
-            : Number(p.pro_priceC);
+      const unitPrice = promoUnitPrice(
+        p,
+        priceOption as PriceOption,
+        perProductTotalUnits.get(line.pro_code) ?? 0,
+        promoMonth,
+      );
 
       return Number(line.spc_amount) * unitPrice * ratio;
     };
