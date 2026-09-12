@@ -61,7 +61,7 @@ interface ApiResult<T = unknown> {
 }
 interface CartItem {
   pro_code: string;
-  shopping_cart: Array<{ is_reward: boolean }>;
+  shopping_cart: Array<{ is_reward: boolean; spc_amount: string }>;
 }
 
 let token = '';
@@ -300,15 +300,30 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
   });
 
   it('ของแถมถูกคิดใหม่ทันทีเมื่อกระเช้าเข้าและออกจากตะกร้า', async () => {
-    const rewardRows = async () => {
+    /**
+     * นับ "จำนวนชิ้น" ของแถมทั้งตะกร้า ไม่ใช่จำนวนสินค้าที่เป็นของแถม
+     * เพราะของแถมของโปรที่ทดสอบอาจเป็นสินค้าตัวเดียวกับที่ค้างอยู่แล้ว
+     * จำนวนสินค้าจะไม่ขยับแม้ engine แจกเพิ่ม
+     */
+    const rewardUnits = async () => {
       const res = await call<{ cart: CartItem[] }>(
         'GET',
         `/ecom/product-cart/${memCode}`,
       );
-      return res.body.cart.filter((item) =>
-        item.shopping_cart.some((sc) => sc.is_reward),
+      return res.body.cart.reduce(
+        (total, item) =>
+          total +
+          item.shopping_cart
+            .filter((sc) => sc.is_reward)
+            .reduce((sum, sc) => sum + Number(sc.spc_amount), 0),
+        0,
       );
     };
+
+    // เทียบกับจุดตั้งต้น ไม่ใช่ศูนย์ — ตะกร้าของบัญชีทดสอบอาจมีของแถมจากโปรอื่น
+    // หรือ hotdeal ค้างอยู่ (clearBaskets ล้างแค่กระเช้าของ PROMO_ID)
+    // ถ้า assert ว่าต้องเป็น 0 เทสจะล้มเพราะข้อมูลรอบข้าง ไม่ใช่เพราะโค้ดพัง
+    const before = await rewardUnits();
 
     const created = await call<{ basket_id: number }>(
       'POST',
@@ -317,11 +332,11 @@ describe('กระเช้าโปรโมชั่น (e2e)', () => {
     );
     expect(created.status).toBe(201);
     // ถึงเกณฑ์แล้ว engine ต้องแจกของแถมโดยไม่ต้องรอให้ลูกค้าแตะตะกร้าอีกครั้ง
-    expect((await rewardRows()).length).toBeGreaterThan(0);
+    expect(await rewardUnits()).toBeGreaterThan(before);
 
     await call('DELETE', `/ecom/special-collection/basket/${created.body.basket_id}`);
-    // กระเช้าหาย ของแถมต้องหายตาม ไม่ค้างเป็นแถวลอยๆ
-    expect(await rewardRows()).toHaveLength(0);
+    // กระเช้าหาย ของแถมของกระเช้านั้นต้องหายตาม ไม่ค้างเป็นแถวลอยๆ
+    expect(await rewardUnits()).toBe(before);
   });
 
   it('ลบกระเช้าทั้งก้อนได้โดยตรง', async () => {
