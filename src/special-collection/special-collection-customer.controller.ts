@@ -18,6 +18,7 @@ import { PromoBoardService } from './promo-board.service';
 import { CartBasketService } from './cart-basket.service';
 import { CreateBasketDto } from './dto/create-basket.dto';
 import { CreateSetBasketDto } from './dto/create-set-basket.dto';
+import { PreviewBasketDto } from './dto/preview-basket.dto';
 import { FlashsaleService } from '../flashsale/flashsale.service';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
 
@@ -147,6 +148,24 @@ export class SpecialCollectionCustomerController {
       promoId,
       req.user.mem_code,
       toPriceOption(req.user.price_option),
+    );
+  }
+
+  /**
+   * ของแถมที่กระเช้าชุดที่กำลังประกอบจะได้ ถ้าใส่ตะกร้าตอนนี้
+   * หน้าบ้านเคยคิดเองแล้วได้ขั้นละ 1 ชุดเสมอ ทั้งที่ engine ให้หลายชุดตามยอด (ECWC-496)
+   */
+  @Post('promo-board/:promoId/preview')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  previewBasket(
+    @Param('promoId', ParseIntPipe) promoId: number,
+    @Body() body: PreviewBasketDto,
+    @Req() req: { user: JwtUser },
+  ) {
+    return this.promoBoardService.previewDraft(
+      promoId,
+      toPriceOption(req.user.price_option),
+      body.lines ?? [],
     );
   }
 
