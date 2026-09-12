@@ -5,6 +5,8 @@ import { ShoppingOrderEntity } from 'src/shopping-order/shopping-order.entity';
 import { NotificationTokenEntity } from './notification-token.entity';
 import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
+import { JwtService } from '@nestjs/jwt';
+import { RefreshTokenEntity } from 'src/auth/refresh-token.entity';
 type NotificationTokenEventType = 'upsert' | 'remove';
 
 @Injectable()
@@ -17,6 +19,9 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     private readonly shoppingOrderRepository: Repository<ShoppingOrderEntity>,
     @InjectRepository(NotificationTokenEntity)
     private readonly notificationTokenRepository: Repository<NotificationTokenEntity>,
+    @InjectRepository(RefreshTokenEntity)
+    private readonly refreshTokenRepository: Repository<RefreshTokenEntity>,
+    private readonly jwtService: JwtService,
   ) {
     const kafka = new Kafka({
       clientId: process.env.KAFKA_CLIENT_ID || 'notifyapp',
@@ -93,6 +98,7 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
   async addTokenForNotification(data: {
     mem_code: string;
     token: string;
+    refresh_token?: string | null;
   }): Promise<{ success: boolean; message: string }> {
     try {
       const normalizedToken = data.token?.trim();
@@ -100,6 +106,16 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
         return {
           success: false,
           message: 'Token is required',
+        };
+      }
+      const expiresAt = await this.resolveNotificationLeaseExpiry(
+        data.mem_code,
+        data.refresh_token,
+      );
+      if (data.refresh_token !== undefined && !expiresAt) {
+        return {
+          success: false,
+          message: 'Invalid refresh token for notification registration',
         };
       }
       // ตรวจสอบว่ามี token เดิมอยู่แล้วหรือไม่
@@ -118,7 +134,12 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
               updated_at: new Date(),
             },
           );
-          await this.sendTokenToKafka(data.mem_code, normalizedToken, 'upsert');
+          await this.sendTokenToKafka(
+            data.mem_code,
+            normalizedToken,
+            'upsert',
+            expiresAt,
+          );
           return {
             success: true,
             message: 'Notification token updated successfully',
@@ -132,7 +153,12 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
               updated_at: new Date(),
             },
           );
-          await this.sendTokenToKafka(data.mem_code, normalizedToken, 'upsert');
+          await this.sendTokenToKafka(
+            data.mem_code,
+            normalizedToken,
+            'upsert',
+            expiresAt,
+          );
           return {
             success: true,
             message: 'Notification token reactivated successfully',
@@ -148,7 +174,12 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
         });
 
         await this.notificationTokenRepository.save(newToken);
-        await this.sendTokenToKafka(data.mem_code, normalizedToken, 'upsert');
+        await this.sendTokenToKafka(
+          data.mem_code,
+          normalizedToken,
+          'upsert',
+          expiresAt,
+        );
         return {
           success: true,
           message: 'Notification token added successfully',
@@ -223,16 +254,68 @@ export class NotifyRtService implements OnModuleInit, OnModuleDestroy {
     mem_code: string,
     token: string,
     event_type: NotificationTokenEventType = 'upsert',
-  ) {
+    expires_at?: string,
+  ): Promise<void> {
     const payload = {
       event_type,
       mem_code,
       token,
+      ...(expires_at ? { expires_at } : {}),
       occurred_at: new Date().toISOString(),
     };
     await this.producer.send({
       topic: process.env.KAFKA_TOPIC || 'noti_token',
-      messages: [{ value: JSON.stringify(payload) }],
+      messages: [
+        {
+          key: `${mem_code}:${token}`,
+          value: JSON.stringify(payload),
+        },
+      ],
     });
+  }
+
+  private async resolveNotificationLeaseExpiry(
+    memCode: string,
+    refreshToken?: string | null,
+  ): Promise<string | undefined> {
+    const normalizedRefreshToken = refreshToken?.trim();
+    if (!normalizedRefreshToken) {
+      return undefined;
+    }
+
+    const storedToken = await this.refreshTokenRepository.findOne({
+      where: {
+        mem_code: memCode,
+        refresh_token: normalizedRefreshToken,
+      },
+      select: {
+        id: true,
+        mem_code: true,
+        refresh_token: true,
+      },
+    });
+    if (!storedToken) {
+      return undefined;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<{
+        mem_code: string;
+        exp?: number;
+      }>(normalizedRefreshToken, {
+        secret: process.env.ACCESS_TOKEN_SECRET,
+      });
+      if (
+        payload.mem_code !== memCode ||
+        !Number.isFinite(payload.exp) ||
+        !Number.isInteger(payload.exp) ||
+        payload.exp! <= Math.floor(Date.now() / 1000)
+      ) {
+        return undefined;
+      }
+      return new Date(payload.exp! * 1000).toISOString();
+    } catch {
+      return undefined;
+    }
   }
 }
