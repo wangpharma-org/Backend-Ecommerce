@@ -9,13 +9,21 @@ import { ProductEntity } from '../products/products.entity';
 import { ProductUnitEntity } from '../products/product-unit.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
+import {
+  allocateTierSets,
+  totalTierSets,
+} from '../promotion/tier-allocation';
+import { promoUnitPrice } from '../promotion/promo-line-value';
 
 export interface BoardReward {
   reward_id: number;
   pro_code: string;
   pro_name: string;
   pro_imgmain: string | null;
+  /** จำนวนต่อ 1 ชุด ตามที่แอดมินตั้งไว้ */
   qty: number;
+  /** จำนวนที่ได้จริง = qty x จำนวนชุดที่ยอดถึง (0 เมื่อยังไม่ได้) */
+  total_qty: number;
   /** แปลงจาก level index ใน promotion_reward.unit เป็นชื่อหน่วยจริงแล้ว */
   unit_name: string;
 }
@@ -33,6 +41,11 @@ export interface BoardTier {
   /** ยอดปัจจุบันของลูกค้าที่นับเข้าเงื่อนไขนี้ */
   progress: number;
   reached: boolean;
+  /**
+   * ได้ของแถมกี่ชุดจริง — ยอด 3 เท่าของเกณฑ์ = 3 ชุด
+   * 0 ทั้งที่ reached = true แปลว่ายอดถูกขั้นที่ใหญ่กว่ากินไปหมดแล้ว
+   */
+  multiplier: number;
   /** เหลืออีกเท่าไหร่ถึงจะได้ — 0 เมื่อครบแล้ว */
   gap: number;
   rewards: BoardReward[];
@@ -73,9 +86,32 @@ export interface PromoBoard {
     /** จำนวนหน่วยรวมของสินค้าที่ร่วมรายการในตะกร้า */
     units: number;
     reached_count: number;
+    /** จำนวนชุดของแถมที่ได้รวมทุกขั้น — ตัวเลขที่ลูกค้าสนใจจริง */
+    reward_sets: number;
+    /** จำนวนชิ้นของแถมรวมทุกขั้น */
+    reward_items: number;
     /** ขั้นถัดไปที่ยังไม่ถึง — null เมื่อได้ครบทุกขั้นแล้ว */
     next_tier: { tier_id: number; tier_name: string; gap: number } | null;
   };
+}
+
+/** 1 บรรทัดในกระเช้าที่ลูกค้ากำลังประกอบ ยังไม่ได้ใส่ตะกร้า */
+export interface DraftLineInput {
+  pro_code: string;
+  unit_level: number;
+  qty: number;
+}
+
+/**
+ * ของแถมที่กระเช้าชุดนี้จะได้ ถ้าใส่ตะกร้าตามที่เลือกไว้ตอนนี้
+ * หน้าบ้านเคยคำนวณเองแล้วได้ไม่ตรงกับ engine (นับได้ขั้นละ 1 ชุดเสมอ) — ECWC-496
+ */
+export interface BoardPreview {
+  amount: number;
+  units: number;
+  tiers: BoardTier[];
+  reward_sets: number;
+  reward_items: number;
 }
 
 @Injectable()
@@ -190,6 +226,22 @@ export class PromoBoardService {
       ) || 1;
 
     // ---- ยอดปัจจุบันของลูกค้า ----
+    const month = new Date().getMonth() + 1;
+
+    // ราคาโปรเดือนคิดจากยอดรวมของสินค้าตัวนั้นทั้งตะกร้า ไม่ใช่ทีละบรรทัด
+    // ต้องนับให้ครบก่อนถึงจะตีราคาได้ เหมือนที่ checkPromotionReward ทำ
+    const perProductUnits = new Map<string, number>();
+    for (const line of cartRows) {
+      if (line.hotdeal_free) continue;
+      if (Number(line.spc_fixed_total) === 0) continue;
+      const ratio = ratioOf(line.pro_code, Number(line.spc_unit_enum ?? 1));
+      perProductUnits.set(
+        line.pro_code,
+        (perProductUnits.get(line.pro_code) ?? 0) +
+          Number(line.spc_amount) * ratio,
+      );
+    }
+
     const countsFor = (codes: Set<string> | null) => {
       let amount = 0;
       let unitCount = 0;
@@ -207,7 +259,15 @@ export class PromoBoardService {
         const ratio = ratioOf(line.pro_code, Number(line.spc_unit_enum ?? 1));
         const qty = Number(line.spc_amount) * ratio;
         unitCount += qty;
-        amount += fixed ?? qty * this.priceOf(product, option);
+        amount +=
+          fixed ??
+          qty *
+            promoUnitPrice(
+              product,
+              option,
+              perProductUnits.get(line.pro_code) ?? 0,
+              month,
+            );
       }
       return { amount: this.round2(amount), units: unitCount };
     };
@@ -216,51 +276,15 @@ export class PromoBoardService {
     const scoped = countsFor(allProducts ? null : participatingSet);
 
     // ---- ประกอบ tier ----
-    const rewardsByTier = new Map<number, BoardReward[]>();
-    for (const reward of rewards) {
-      const gift = reward.giftProduct;
-      if (!gift) continue;
-      const level = Number(reward.unit);
-      const unitName =
-        unitsByCode.get(gift.pro_code)?.find((u) => u.level === level)
-          ?.unit_name ??
-        // ค่าที่เก็บอาจเป็นชื่อหน่วยอยู่แล้วในข้อมูลเก่า
-        (Number.isFinite(level) ? '' : reward.unit);
+    const rewardsByTier = this.buildRewardsByTier(rewards, unitsByCode);
 
-      const tierId = reward.tier.tier_id;
-      rewardsByTier.set(tierId, [
-        ...(rewardsByTier.get(tierId) ?? []),
-        {
-          reward_id: reward.reward_id,
-          pro_code: gift.pro_code,
-          pro_name: gift.pro_name,
-          pro_imgmain: gift.pro_imgmain ?? null,
-          qty: reward.qty,
-          unit_name: unitName,
-        },
-      ]);
-    }
-
-    const boardTiers: BoardTier[] = tiers.map((tier) => {
-      const threshold = Number(tier.min_amount);
-      // tier ที่นับทั้งร้านใช้ยอดทั้งตะกร้า ไม่ใช่เฉพาะสินค้าร่วมรายการ
-      const source = tier.all_products ? countsFor(null) : scoped;
-      const progress = tier.is_unit ? source.units : source.amount;
-      const reached = progress >= threshold;
-      return {
-        tier_id: tier.tier_id,
-        tier_name: tier.tier_name,
-        tier_postter: tier.tier_postter ?? null,
-        description: tier.description ?? null,
-        is_unit: Boolean(tier.is_unit),
-        all_products: Boolean(tier.all_products),
-        threshold,
-        progress: this.round2(progress),
-        reached,
-        gap: reached ? 0 : this.round2(threshold - progress),
-        rewards: rewardsByTier.get(tier.tier_id) ?? [],
-      };
-    });
+    const storeWide = countsFor(null);
+    const { boardTiers, setsByTier } = this.assembleTiers(
+      tiers,
+      rewardsByTier,
+      scoped,
+      storeWide,
+    );
 
     // ---- สินค้าที่ร่วมรายการ (คอลัมน์ "ซื้ออะไร") ----
     const inCartUnits = new Map<string, number>();
@@ -317,6 +341,13 @@ export class PromoBoardService {
         amount: scoped.amount,
         units: scoped.units,
         reached_count: boardTiers.filter((tier) => tier.reached).length,
+        reward_sets: totalTierSets(setsByTier),
+        reward_items: boardTiers.reduce(
+          (sum, tier) =>
+            sum +
+            tier.rewards.reduce((inner, reward) => inner + reward.total_qty, 0),
+          0,
+        ),
         next_tier: nextTier
           ? {
               tier_id: nextTier.tier_id,
@@ -327,4 +358,222 @@ export class PromoBoardService {
       },
     };
   }
+
+  /**
+   * ประกอบขั้นของโปรพร้อมจำนวนชุดที่ได้จริง — ใช้ทั้งหน้าบอร์ด (ยอดในตะกร้า)
+   * และหน้าพรีวิวกระเช้าที่ยังไม่ได้ใส่ตะกร้า จะได้ตอบตัวเลขเดียวกันเสมอ
+   */
+  private assembleTiers(
+    tiers: PromotionTierEntity[],
+    rewardsByTier: Map<number, BoardReward[]>,
+    scoped: { amount: number; units: number },
+    storeWide: { amount: number; units: number },
+    /** true = ยอดเดียวใช้กับทุกขั้น (พรีวิวกระเช้า ไม่มีของอื่นในถัง) */
+    singlePool = false,
+  ): { boardTiers: BoardTier[]; setsByTier: Map<number, number> } {
+    const describe = (tier: PromotionTierEntity) => ({
+      tier_id: tier.tier_id,
+      threshold: Number(tier.min_amount),
+      is_unit: Boolean(tier.is_unit),
+    });
+
+    const setsByTier = new Map<number, number>();
+    if (singlePool) {
+      // ขั้นทั้งหมดแย่งยอดก้อนเดียวกัน ขั้นใหญ่กินก่อนเหมือน engine
+      for (const [tierId, sets] of allocateTierSets(
+        tiers.map(describe),
+        scoped,
+      )) {
+        setsByTier.set(tierId, sets);
+      }
+    } else {
+      // ขั้นที่นับทั้งร้านใช้ยอดคนละถังกับขั้นที่นับเฉพาะสินค้าร่วมรายการ
+      // แบ่งชุดของแถมแยกถังกัน แล้วค่อยประกอบกลับเป็นรายการเดียว
+      for (const [allProducts, pool] of [
+        [false, scoped],
+        [true, storeWide],
+      ] as const) {
+        const group = tiers
+          .filter((tier) => Boolean(tier.all_products) === allProducts)
+          .map(describe);
+        if (group.length === 0) continue;
+        for (const [tierId, sets] of allocateTierSets(group, pool)) {
+          setsByTier.set(tierId, sets);
+        }
+      }
+    }
+
+    const boardTiers: BoardTier[] = tiers.map((tier) => {
+      const threshold = Number(tier.min_amount);
+      // tier ที่นับทั้งร้านใช้ยอดทั้งตะกร้า ไม่ใช่เฉพาะสินค้าร่วมรายการ
+      const source = tier.all_products ? storeWide : scoped;
+      const progress = tier.is_unit ? source.units : source.amount;
+      const reached = progress >= threshold;
+      const multiplier = setsByTier.get(tier.tier_id) ?? 0;
+      return {
+        tier_id: tier.tier_id,
+        tier_name: tier.tier_name,
+        tier_postter: tier.tier_postter ?? null,
+        description: tier.description ?? null,
+        is_unit: Boolean(tier.is_unit),
+        all_products: Boolean(tier.all_products),
+        threshold,
+        progress: this.round2(progress),
+        reached,
+        multiplier,
+        gap: reached ? 0 : this.round2(threshold - progress),
+        rewards: (rewardsByTier.get(tier.tier_id) ?? []).map((reward) => ({
+          ...reward,
+          total_qty: reward.qty * multiplier,
+        })),
+      };
+    });
+
+    return { boardTiers, setsByTier };
+  }
+
+
+  /** ของแถมต่อขั้น พร้อมแปลง level ใน promotion_reward.unit เป็นชื่อหน่วยจริง */
+  private buildRewardsByTier(
+    rewards: PromotionRewardEntity[],
+    unitsByCode: Map<string, ProductUnitEntity[]>,
+  ): Map<number, BoardReward[]> {
+    const rewardsByTier = new Map<number, BoardReward[]>();
+    for (const reward of rewards) {
+      const gift = reward.giftProduct;
+      if (!gift) continue;
+      const level = Number(reward.unit);
+      const unitName =
+        unitsByCode.get(gift.pro_code)?.find((u) => u.level === level)
+          ?.unit_name ??
+        // ค่าที่เก็บอาจเป็นชื่อหน่วยอยู่แล้วในข้อมูลเก่า
+        (Number.isFinite(level) ? '' : reward.unit);
+
+      const tierId = reward.tier.tier_id;
+      rewardsByTier.set(tierId, [
+        ...(rewardsByTier.get(tierId) ?? []),
+        {
+          reward_id: reward.reward_id,
+          pro_code: gift.pro_code,
+          pro_name: gift.pro_name,
+          pro_imgmain: gift.pro_imgmain ?? null,
+          qty: reward.qty,
+          total_qty: 0,
+          unit_name: unitName,
+        },
+      ]);
+    }
+    return rewardsByTier;
+  }
+
+
+  /**
+   * ตีราคากระเช้าที่ยังไม่ได้ใส่ตะกร้า แล้วบอกว่าจะได้ของแถมกี่ชุด
+   * คิดด้วยกติกาเดียวกับ checkPromotionReward ทุกประการ หน้าบ้านจึงไม่ต้องคิดเอง
+   */
+  async previewDraft(
+    promoId: number,
+    option: PriceOption,
+    lines: DraftLineInput[],
+  ): Promise<BoardPreview> {
+    const tiers = await this.tierRepo.find({
+      where: { promotion: { promo_id: promoId } },
+      order: { min_amount: 'ASC' },
+    });
+    if (tiers.length === 0) {
+      throw new NotFoundException(`โปรโมชั่นรหัส ${promoId} ยังไม่มีเงื่อนไข`);
+    }
+
+    const tierIds = tiers.map((tier) => tier.tier_id);
+    const rewards = await this.rewardRepo.find({
+      where: { tier: { tier_id: In(tierIds) } },
+      relations: ['tier', 'giftProduct'],
+    });
+
+    const wanted = (lines ?? []).filter(
+      (line) => line && line.pro_code && Number(line.qty) > 0,
+    );
+    const codes = Array.from(
+      new Set([
+        ...wanted.map((line) => line.pro_code),
+        ...rewards
+          .map((reward) => reward.giftProduct?.pro_code)
+          .filter((code): code is string => Boolean(code)),
+      ]),
+    );
+
+    const [products, units] = await Promise.all([
+      codes.length > 0
+        ? this.productRepo.find({ where: { pro_code: In(codes) } })
+        : Promise.resolve([] as ProductEntity[]),
+      codes.length > 0
+        ? this.unitRepo.find({ where: { pro_code: In(codes) } })
+        : Promise.resolve([] as ProductUnitEntity[]),
+    ]);
+
+    const productMap = new Map(products.map((row) => [row.pro_code, row]));
+    const unitsByCode = new Map<string, ProductUnitEntity[]>();
+    units.forEach((unit) => {
+      unitsByCode.set(unit.pro_code, [
+        ...(unitsByCode.get(unit.pro_code) ?? []),
+        unit,
+      ]);
+    });
+    const ratioOf = (proCode: string, level: number): number =>
+      Number(
+        unitsByCode.get(proCode)?.find((unit) => unit.level === level)?.ratio,
+      ) || 1;
+
+    // ราคาโปรเดือนดูจากยอดรวมของสินค้าตัวนั้นทั้งกระเช้า ไม่ใช่ทีละบรรทัด
+    const perProductUnits = new Map<string, number>();
+    for (const line of wanted) {
+      const ratio = ratioOf(line.pro_code, Number(line.unit_level));
+      perProductUnits.set(
+        line.pro_code,
+        (perProductUnits.get(line.pro_code) ?? 0) + ratio * Number(line.qty),
+      );
+    }
+
+    const month = new Date().getMonth() + 1;
+    let amount = 0;
+    let unitCount = 0;
+    for (const line of wanted) {
+      const product = productMap.get(line.pro_code);
+      if (!product) continue;
+      const ratio = ratioOf(line.pro_code, Number(line.unit_level));
+      const qty = ratio * Number(line.qty);
+      unitCount += qty;
+      amount +=
+        qty *
+        promoUnitPrice(
+          product,
+          option,
+          perProductUnits.get(line.pro_code) ?? 0,
+          month,
+        );
+    }
+
+    const pool = { amount: this.round2(amount), units: unitCount };
+    const { boardTiers, setsByTier } = this.assembleTiers(
+      tiers,
+      this.buildRewardsByTier(rewards, unitsByCode),
+      pool,
+      pool,
+      true,
+    );
+
+    return {
+      amount: pool.amount,
+      units: pool.units,
+      tiers: boardTiers,
+      reward_sets: totalTierSets(setsByTier),
+      reward_items: boardTiers.reduce(
+        (sum, tier) =>
+          sum +
+          tier.rewards.reduce((inner, reward) => inner + reward.total_qty, 0),
+        0,
+      ),
+    };
+  }
+
 }

@@ -20,6 +20,10 @@ import { ProductUnitEntity } from '../products/product-unit.entity';
 import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
 import { BundleSetService } from '../bundle-set/bundle-set.service';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
+import {
+  allocateTierSets,
+  totalTierSets,
+} from '../promotion/tier-allocation';
 
 export interface BasketLineInput {
   pro_code: string;
@@ -57,7 +61,13 @@ export interface BasketView {
   min_threshold: number;
   min_is_unit: boolean;
   qualifies: boolean;
+  /** จำนวนขั้นที่ยอดกระเช้าถึงเกณฑ์ — ไม่ใช่จำนวนของแถมที่ได้ */
   reached_tier_count: number;
+  /**
+   * จำนวนชุดของแถมที่ยอดกระเช้านี้นับได้ — ยอด 3 เท่าของเกณฑ์ = 3 ชุด
+   * ของแถมจริงคิดจากทั้งตะกร้า ตัวเลขนี้จึงเป็นขั้นต่ำที่กระเช้านี้การันตี (ECWC-496)
+   */
+  reward_sets: number;
 }
 
 @Injectable()
@@ -422,6 +432,16 @@ export class CartBasketService {
           (tier) =>
             (tier.is_unit ? unitCount : amount) >= Number(tier.min_amount),
         ).length,
+        reward_sets: totalTierSets(
+          allocateTierSets(
+            tiers.map((tier) => ({
+              tier_id: tier.tier_id,
+              threshold: Number(tier.min_amount),
+              is_unit: Boolean(tier.is_unit),
+            })),
+            { amount: this.round2(amount), units: unitCount },
+          ),
+        ),
       });
     }
     return views;
@@ -474,6 +494,7 @@ export class CartBasketService {
       min_is_unit: false,
       qualifies: true,
       reached_tier_count: 0,
+      reward_sets: 0,
     };
   }
 
