@@ -68,6 +68,11 @@ export interface BasketView {
    * ของแถมจริงคิดจากทั้งตะกร้า ตัวเลขนี้จึงเป็นขั้นต่ำที่กระเช้านี้การันตี (ECWC-496)
    */
   reward_sets: number;
+  /**
+   * true = โปรถูกปิด/ลบเงื่อนไขทิ้งหลังลูกค้าใส่กระเช้าไปแล้ว
+   * ของยังอยู่ในตะกร้าและคิดราคาปกติ แต่ไม่มีของแถมให้แล้ว
+   */
+  promo_ended: boolean;
 }
 
 @Injectable()
@@ -121,6 +126,34 @@ export class CartBasketService {
       threshold: Number(tiers[0].min_amount),
       is_unit: Boolean(tiers[0].is_unit),
       tiers,
+    };
+  }
+
+  /**
+   * เหมือน lowestTier แต่ไม่โยนเมื่อโปรไม่มีเงื่อนไขแล้ว
+   *
+   * แอดมินแก้เงื่อนไขกลางคันได้ (ลบขั้นทิ้ง/ปิดโปร) ทั้งที่ลูกค้าใส่กระเช้าไปแล้ว
+   * ถ้าปล่อยให้โยน 404 จะพัง "ทั้ง endpoint" — กระเช้าของโปรอื่นหายไปด้วยทั้งหมด
+   * และแถวในตะกร้าจะหลุดไปโผล่เป็นสินค้าเดี่ยวโดยลูกค้าไม่รู้ตัว (ECWC-496 รอบทดสอบ)
+   */
+  private async lowestTierOrEnded(promoId: number): Promise<{
+    threshold: number;
+    is_unit: boolean;
+    tiers: PromotionTierEntity[];
+    ended: boolean;
+  }> {
+    const tiers = await this.tierRepo.find({
+      where: { promotion: { promo_id: promoId } },
+      order: { min_amount: 'ASC' },
+    });
+    if (tiers.length === 0) {
+      return { threshold: 0, is_unit: false, tiers: [], ended: true };
+    }
+    return {
+      threshold: Number(tiers[0].min_amount),
+      is_unit: Boolean(tiers[0].is_unit),
+      tiers,
+      ended: false,
     };
   }
 
@@ -386,7 +419,8 @@ export class CartBasketService {
       }
 
       const promoId = basket.promo_id as number;
-      const { threshold, is_unit, tiers } = await this.lowestTier(promoId);
+      const { threshold, is_unit, tiers, ended } =
+        await this.lowestTierOrEnded(promoId);
 
       let amount = 0;
       let unitCount = 0;
@@ -427,7 +461,8 @@ export class CartBasketService {
         total_units: unitCount,
         min_threshold: threshold,
         min_is_unit: is_unit,
-        qualifies: progress >= threshold,
+        qualifies: !ended && progress >= threshold,
+        promo_ended: ended,
         reached_tier_count: tiers.filter(
           (tier) =>
             (tier.is_unit ? unitCount : amount) >= Number(tier.min_amount),
@@ -495,6 +530,7 @@ export class CartBasketService {
       qualifies: true,
       reached_tier_count: 0,
       reward_sets: 0,
+      promo_ended: false,
     };
   }
 
@@ -550,7 +586,8 @@ export class CartBasketService {
       throw new NotFoundException(`ไม่พบรายการรหัส ${spcId} ในกระเช้านี้`);
     }
 
-    const { threshold, is_unit } = await this.lowestTier(
+    // โปรถูกปิด/ลบเงื่อนไขไปแล้วก็ต้องเอาของออกได้ ไม่ใช่ติดอยู่ในตะกร้าถาวร
+    const { threshold, is_unit } = await this.lowestTierOrEnded(
       basket.promo_id as number,
     );
     const codes = Array.from(new Set(rows.map((row) => row.pro_code)));
