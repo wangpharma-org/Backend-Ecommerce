@@ -18,9 +18,11 @@ export class CartItemDto {
 }
 
 export class CartPreviewDto {
+  /** backend อ่านตะกร้าเองจาก token แล้ว ฟิลด์นี้เหลือไว้ให้ client เก่าส่งมาได้โดยไม่ 400 */
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  order_amount!: number;
+  order_amount?: number;
 
   @IsOptional()
   @IsArray()

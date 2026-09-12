@@ -428,8 +428,10 @@ export class ShoppingOrderService {
               );
             }
 
-            let price =
-              isPromotionActive || isFlashSale
+            // กระเช้าสำเร็จรูป: ราคาชุดถูกเฉลี่ยลงบรรทัดตอนใส่ตะกร้าแล้ว ใช้ตามนั้น
+            let price = this.shoppingCartService.hasFixedTotal(item)
+              ? Number(item.spc_fixed_total)
+              : isPromotionActive || isFlashSale
                 ? Number(item.spc_amount) *
                   Number(item.product.pro_priceA) *
                   ratio
