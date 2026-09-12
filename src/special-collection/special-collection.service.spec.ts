@@ -20,7 +20,9 @@ import { BundleSetService } from '../bundle-set/bundle-set.service';
  */
 
 const buildRepoMock = () => ({
-  find: jest.fn(),
+  // ค่าเริ่มต้นต้องเป็นลิสต์ว่าง ไม่ใช่ undefined — loadDisplayNames วน for..of ผลลัพธ์ทุกตัว
+  // เทสที่ไม่ได้สนใจชื่อที่แสดงจะได้ไม่ล้มด้วย "is not iterable"
+  find: jest.fn().mockResolvedValue([]),
   findOne: jest.fn(),
   save: jest.fn(),
   create: jest.fn((row: unknown) => row),
