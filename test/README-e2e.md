@@ -58,6 +58,7 @@ GROUP BY p.promo_id HAVING products >= 2;
 ```bash
 npm run test:e2e -- promo-basket          # เฉพาะชุดกระเช้า
 npm run test:e2e -- --runInBand           # ทั้งหมด — ต้องรันทีละไฟล์ เพราะทุกชุดใช้ตะกร้าของบัญชีทดสอบเดียวกัน
+E2E_BASE_URL=http://localhost:3022 npm run test:e2e -- order-basket   # ชุดที่ออกออเดอร์จริง ชี้ไป server แยกที่ปิด Slack
 ```
 
 ปรับปลายทาง/บัญชีได้ด้วย env:
@@ -78,6 +79,7 @@ npm run test:e2e -- promo-basket
 | `set-basket.e2e-spec.ts` | กระเช้าสำเร็จรูป (bundle_set) — เข้าตะกร้าทั้งชุดในราคาชุด/ยอดรวมคิดที่ราคาชุด/แบ่งขายไม่ได้/สต็อก/payload ผิดรูป (ต้องมี set ที่ active เช่น `SET-DEMO-01`) |
 | `promo-reward-sets.e2e-spec.ts` | จำนวนชุดของแถม (ECWC-496 review) — ยอดหลายเท่าของเกณฑ์ได้หลายชุด / พรีวิวกระเช้าก่อนใส่ตะกร้าตรงกับของแถมที่ engine แจกจริง / basket กับ board รายงานตัวเลขเดียวกัน |
 | `flashsale-collection.e2e-spec.ts` | flashsale ในคอลเลกชันพิเศษ (ECWC-523) — ลูกค้าเห็นเฉพาะรอบที่ยังไม่จบ/แอดมินเห็นรอบที่จบเป็น unavailable/endpoint สินค้าในรอบ + live/หน้าแรกยังเห็นเฉพาะรอบที่กำลังลด/ใส่ตะกร้าแล้วสะท้อนจำนวน (สร้าง flashsale + คอลเลกชันเองแล้วลบทิ้ง) |
+| `order-basket.e2e-spec.ts` | ที่มาของบรรทัดออเดอร์ (ECWC-525) — สั่งกระเช้าสำเร็จรูปแล้วบรรทัดมี spo_basket_id/spo_set_code, order_basket มี snapshot, กระเช้าไม่ค้างในตะกร้า, สินค้าเดี่ยวเป็น NULL · **ยิง submit-order จริง** ต้องรันกับ server ที่ `.env` ไม่มี `SLACK_WEBHOOK_URL` เท่านั้น (ค่าเริ่มต้นชี้ 3022) และต่อ DB ตรงเพื่อตรวจ/ลบออเดอร์ที่สร้าง |
 | `app.e2e-spec.ts` | scaffold เดิมของ NestJS ยังไม่ได้ใช้งานจริง |
 
 ## ข้อควรรู้

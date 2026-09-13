@@ -24,6 +24,20 @@ import { PromotionService } from 'src/promotion/promotion.service';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { ClientKafka } from '@nestjs/microservices';
+import { CartBasketEntity } from 'src/special-collection/cart-basket.entity';
+import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
+import { OrderBasketEntity } from './order-basket.entity';
+
+/** ข้อมูลกระเช้าที่ต้องจำไว้ก่อนสั่ง เพราะ cart_basket หายหลังออกออเดอร์ (ECWC-525) */
+interface BasketInfo {
+  basket_id: number;
+  kind: 'promo' | 'set';
+  promo_id: number | null;
+  set_code: string | null;
+  set_name: string | null;
+  set_qty: number | null;
+  set_price: number | null;
+}
 import { lastValueFrom } from 'rxjs';
 
 interface CountSale {
@@ -63,6 +77,10 @@ export class ShoppingOrderService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(PromotionTierEntity)
     private readonly promotionTierRepo: Repository<PromotionTierEntity>,
+    @InjectRepository(CartBasketEntity)
+    private readonly cartBasketRepo: Repository<CartBasketEntity>,
+    @InjectRepository(BundleSetEntity)
+    private readonly bundleSetRepo: Repository<BundleSetEntity>,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
     private readonly happyHourService: HappyHourService,
@@ -328,6 +346,8 @@ export class ShoppingOrderService {
           await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
         const groupCartArray = groupCart(cart, 80);
+        // อ่านข้อมูลกระเช้าก่อนออกออเดอร์ — หลังจากนี้ cart_basket จะถูกลบ
+        const basketInfo = await this.loadBasketInfo(cart);
 
         for (const [groupIndex, group] of groupCartArray.entries()) {
           submitLogContext.push({ groupIndex, groupSize: group.length });
@@ -476,6 +496,9 @@ export class ShoppingOrderService {
               tier_id: item.tier_id,
               is_reward: item.is_reward,
               spo_unit_enum: item.spc_unit_enum,
+              spo_basket_id: item.basket_id ?? null,
+              spo_set_code:
+                basketInfo.get(item.basket_id ?? -1)?.set_code ?? null,
             });
           });
 
@@ -691,6 +714,19 @@ export class ShoppingOrderService {
             forOrder: running,
           });
 
+          const orderBaskets = this.buildOrderBaskets(
+            running,
+            orderSales,
+            basketInfo,
+          );
+          if (orderBaskets.length > 0) {
+            await manager.save(OrderBasketEntity, orderBaskets);
+            submitLogContext.push({
+              orderBasketsCount: orderBaskets.length,
+              forOrder: running,
+            });
+          }
+
           const currentGroupTotal =
             totalsummaryfromCart.items[groupIndex]?.grandTotalItems || 0;
 
@@ -822,6 +858,7 @@ export class ShoppingOrderService {
       for (const id of allIdCartForDelete) {
         await this.shoppingCartService.clearCheckoutCart(id);
       }
+      await this.deleteEmptyBaskets(data.mem_code);
       this.logger.log('submit_order_trace', {
         event: 'submit_order_trace',
         mem_code: data.mem_code,
@@ -880,6 +917,116 @@ export class ShoppingOrderService {
         this.logger.error('Failed to notify Slack', e);
       }
       throw new Error('Failed to submit order. ' + error);
+    }
+  }
+
+  /** ข้อมูลกระเช้าที่บรรทัดในตะกร้าอ้างถึง — อ่านครั้งเดียวก่อนออกออเดอร์ */
+  private async loadBasketInfo(
+    cart: ShoppingCartEntity[],
+  ): Promise<Map<number, BasketInfo>> {
+    const info = new Map<number, BasketInfo>();
+    const ids = Array.from(
+      new Set(
+        cart
+          .map((line) => line.basket_id)
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    );
+    if (ids.length === 0) return info;
+
+    const baskets = await this.cartBasketRepo.find({
+      where: { basket_id: In(ids) },
+    });
+    const setCodes = baskets
+      .map((b) => b.set_code)
+      .filter((code): code is string => code !== null);
+    // ชุดที่ถูกปิด/ลบไปแล้วก็ยังต้องได้ชื่อและราคา — withDeleted
+    const sets =
+      setCodes.length > 0
+        ? await this.bundleSetRepo.find({
+            where: { set_code: In(setCodes) },
+            withDeleted: true,
+          })
+        : [];
+    const setMap = new Map(sets.map((s) => [s.set_code, s]));
+
+    for (const basket of baskets) {
+      const set = basket.set_code ? setMap.get(basket.set_code) : undefined;
+      info.set(basket.basket_id, {
+        basket_id: basket.basket_id,
+        kind: basket.set_code !== null ? 'set' : 'promo',
+        promo_id: basket.promo_id,
+        set_code: basket.set_code,
+        set_name: set?.set_name ?? null,
+        set_qty: basket.set_qty,
+        set_price: set ? Number(set.price) : null,
+      });
+    }
+    return info;
+  }
+
+  /**
+   * snapshot กระเช้าต่อออเดอร์ — รวมจากบรรทัดที่ลง shopping_order จริง
+   * กระเช้าที่ถูกแบ่งข้าม 2 ออเดอร์ (เกิน 80 รายการ) จะได้แถวละออเดอร์ ยอดเฉพาะบรรทัดในออเดอร์นั้น
+   */
+  private buildOrderBaskets(
+    running: string,
+    lines: ShoppingOrderEntity[],
+    info: Map<number, BasketInfo>,
+  ): Partial<OrderBasketEntity>[] {
+    const byBasket = new Map<number, ShoppingOrderEntity[]>();
+    for (const line of lines) {
+      if (line.spo_basket_id === null || line.spo_basket_id === undefined) {
+        continue;
+      }
+      const bucket = byBasket.get(line.spo_basket_id) ?? [];
+      bucket.push(line);
+      byBasket.set(line.spo_basket_id, bucket);
+    }
+
+    const rows: Partial<OrderBasketEntity>[] = [];
+    for (const [basketId, basketLines] of byBasket) {
+      const meta = info.get(basketId);
+      const total = basketLines.reduce(
+        (sum, line) => sum + Number(line.spo_total_decimal),
+        0,
+      );
+      rows.push({
+        soh_running: running,
+        basket_id: basketId,
+        kind: meta?.kind ?? 'promo',
+        promo_id: meta?.promo_id ?? null,
+        set_code: meta?.set_code ?? null,
+        set_name: meta?.set_name ?? null,
+        set_qty: meta?.set_qty ?? null,
+        set_price: meta?.set_price ?? null,
+        line_count: basketLines.length,
+        total_amount: Math.round(total * 100) / 100,
+      });
+    }
+    return rows;
+  }
+
+  /**
+   * กระเช้าที่บรรทัดถูกออกออเดอร์ไปหมดแล้วต้องหายไปด้วย
+   * ไม่งั้นค้างเป็นการ์ดว่าง "0 รายการ" ในตะกร้า (clearCheckoutCart ลบแค่บรรทัด)
+   * ออเดอร์ออกไปแล้ว — พลาดตรงนี้แค่ log ไม่ทำให้การสั่งล้ม
+   */
+  private async deleteEmptyBaskets(memCode: string): Promise<void> {
+    try {
+      await this.cartBasketRepo
+        .createQueryBuilder()
+        .delete()
+        .from(CartBasketEntity)
+        .where('mem_code = :memCode', { memCode })
+        .andWhere(
+          'basket_id NOT IN (SELECT basket_id FROM shopping_cart WHERE mem_code = :memCode AND basket_id IS NOT NULL)',
+        )
+        .execute();
+    } catch (error) {
+      this.logger.error(
+        `deleteEmptyBaskets failed for ${memCode}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

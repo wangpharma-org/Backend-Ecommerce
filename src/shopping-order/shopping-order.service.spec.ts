@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { of } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import { ShoppingOrderService } from './shopping-order.service';
 import { ShoppingOrderEntity } from './shopping-order.entity';
@@ -15,6 +16,8 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { PromotionService } from 'src/promotion/promotion.service';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
+import { CartBasketEntity } from 'src/special-collection/cart-basket.entity';
+import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -63,12 +66,16 @@ describe('ShoppingOrderService — unit helpers', () => {
         { provide: getRepositoryToken(PromotionRewardEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(UserEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(PromotionTierEntity), useValue: mockRepo() },
+        { provide: getRepositoryToken(CartBasketEntity), useValue: mockRepo() },
+        { provide: getRepositoryToken(BundleSetEntity), useValue: mockRepo() },
         { provide: ShoppingCartService, useValue: {} },
         { provide: HttpService, useValue: {} },
         { provide: DataSource, useValue: { transaction: jest.fn(), createQueryRunner: jest.fn() } },
         { provide: CompanyDayAnalyticService, useValue: {} },
         { provide: PromotionService, useValue: {} },
         { provide: HappyHourService, useValue: {} },
+        // เหมือน PR #257 (tech-debt) — service inject ClientKafka ตัวนี้ตอนสร้าง
+        { provide: 'ECOMMERCE_KAFKA_SERVICE', useValue: { emit: jest.fn(() => of(undefined)) } },
       ],
     }).compile();
 

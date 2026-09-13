@@ -67,4 +67,12 @@ export class ShoppingOrderEntity {
 
   @Column({ type: 'boolean', default: false })
   is_happy_hour?: boolean;
+
+  /** ที่มาของบรรทัด (ECWC-525): กระเช้าในตะกร้าที่บรรทัดนี้มาจาก — null = สินค้าเดี่ยว */
+  @Column({ type: 'int', nullable: true, default: null })
+  spo_basket_id: number | null;
+
+  /** รหัสชุดสำเร็จรูป ถ้ากระเช้านั้นเป็น bundle_set — เก็บซ้ำไว้ให้ query รายงานตรงๆ ได้ */
+  @Column({ type: 'varchar', length: 30, nullable: true, default: null })
+  spo_set_code: string | null;
 }
