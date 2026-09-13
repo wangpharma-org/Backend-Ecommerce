@@ -43,6 +43,11 @@ export interface BasketLineView {
   line_total: number;
   /** ของแถมในกระเช้าสำเร็จรูป (ราคาล็อกไว้ที่ 0) */
   is_gift: boolean;
+  /**
+   * ราคาปกติต่อหน่วยจาก price list — กระเช้าสำเร็จรูปเท่านั้นที่ต่างจาก unit_price
+   * เพราะราคาชุดถูกเฉลี่ยลงบรรทัด ทำให้ unit_price x qty ไม่เท่า line_total (ECWC-567)
+   */
+  list_price: number;
 }
 
 export interface BasketView {
@@ -407,14 +412,33 @@ export class CartBasketService {
     const unitOf = (proCode: string, level: number) =>
       units.find((u) => u.pro_code === proCode && u.level === level);
 
+    /**
+     * กระเช้าที่ไม่เหลือแถวในตะกร้าแล้ว = เช็คเอาต์ไปแล้ว
+     * submitOrder ลบแถวใน shopping_cart ทีละแถวแต่ไม่ได้ลบ cart_basket
+     * ถ้าปล่อยไว้ลูกค้าจะเห็นกระเช้าเปล่ายอด 0 บาทค้างในตะกร้าตลอดไป (ECWC-567 รอบทดสอบ)
+     * เก็บกวาดตรงนี้เลยเพราะแถวพวกนี้ใช้ต่อไม่ได้แล้ว และทำให้ของเก่าที่ค้างอยู่หายไปด้วย
+     */
+    const orphanIds = baskets
+      .filter((basket) => !rows.some((row) => row.basket_id === basket.basket_id))
+      .map((basket) => basket.basket_id);
+    if (orphanIds.length > 0) {
+      await this.basketRepo.delete({ basket_id: In(orphanIds) });
+      this.logger.log(
+        `cleaned ${orphanIds.length} empty cart baskets for ${memCode}`,
+      );
+    }
+
     const views: BasketView[] = [];
     for (const basket of baskets) {
       const basketRows = rows.filter(
         (row) => row.basket_id === basket.basket_id,
       );
+      if (basketRows.length === 0) continue;
 
       if (basket.set_code !== null) {
-        views.push(this.buildSetView(basket, basketRows, setMap, unitOf));
+        views.push(
+          this.buildSetView(basket, basketRows, setMap, unitOf, option),
+        );
         continue;
       }
 
@@ -442,6 +466,7 @@ export class CartBasketService {
           unit_level: level,
           qty,
           unit_price: unitPrice,
+          list_price: unitPrice,
           line_total: this.round2(unitPrice * qty),
           is_gift: false,
         };
@@ -488,6 +513,7 @@ export class CartBasketService {
     basketRows: ShoppingCartEntity[],
     setMap: Map<string, BundleSetEntity>,
     unitOf: (proCode: string, level: number) => ProductUnitEntity | undefined,
+    option: PriceOption,
   ): BasketView {
     let amount = 0;
     let unitCount = 0;
@@ -508,6 +534,11 @@ export class CartBasketService {
         unit_level: level,
         qty,
         unit_price: qty > 0 ? this.round2(lineTotal / qty) : 0,
+        // ราคาปกติของหน่วยที่สั่ง — หน้าบ้านต้องโชว์ตัวนี้ ไม่ใช่ราคาเฉลี่ย
+        // เพราะราคาเฉลี่ยคูณกลับไม่เท่า line_total (ECWC-567)
+        list_price: row.product
+          ? this.round2(this.priceOf(row.product, option) * ratio)
+          : 0,
         line_total: lineTotal,
         is_gift: lineTotal === 0,
       };
