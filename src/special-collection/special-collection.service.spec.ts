@@ -9,6 +9,7 @@ import { PromotionEntity } from '../promotion/promotion.entity';
 import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
+import { ProductUnitEntity } from '../products/product-unit.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import { UserEntity } from '../users/users.entity';
 import { BundleSetEntity } from '../bundle-set/bundle-set.entity';
@@ -58,6 +59,7 @@ describe('SpecialCollectionService', () => {
   let flashsaleRepo: ReturnType<typeof buildRepoMock>;
   let userRepo: ReturnType<typeof buildRepoMock>;
   let bundleSetRepo: ReturnType<typeof buildRepoMock>;
+  let productUnitRepo: ReturnType<typeof buildRepoMock>;
   let bundleSetService: { getSetView: jest.Mock };
 
   beforeEach(async () => {
@@ -71,6 +73,7 @@ describe('SpecialCollectionService', () => {
     flashsaleRepo = buildRepoMock();
     userRepo = buildRepoMock();
     bundleSetRepo = buildRepoMock();
+    productUnitRepo = buildRepoMock();
     bundleSetService = { getSetView: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -106,6 +109,10 @@ describe('SpecialCollectionService', () => {
         {
           provide: getRepositoryToken(BundleSetEntity),
           useValue: bundleSetRepo,
+        },
+        {
+          provide: getRepositoryToken(ProductUnitEntity),
+          useValue: productUnitRepo,
         },
         { provide: BundleSetService, useValue: bundleSetService },
       ],

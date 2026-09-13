@@ -21,6 +21,7 @@ import { PromotionEntity } from '../promotion/promotion.entity';
 import { PromotionTierEntity } from '../promotion/promotion-tier.entity';
 import { ProductEntity } from '../products/products.entity';
 import { HotdealEntity } from '../hotdeal/hotdeal.entity';
+import { ProductUnitEntity } from '../products/product-unit.entity';
 import { FlashSaleEntity } from '../flashsale/flashsale.entity';
 import {
   flashsaleClock,
@@ -82,6 +83,8 @@ export class SpecialCollectionService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(BundleSetEntity)
     private readonly bundleSetRepo: Repository<BundleSetEntity>,
+    @InjectRepository(ProductUnitEntity)
+    private readonly productUnitRepo: Repository<ProductUnitEntity>,
     private readonly bundleSetService: BundleSetService,
   ) {}
 
@@ -636,9 +639,68 @@ export class SpecialCollectionService {
     const map = new Map<string, unknown>();
     if (ids.length === 0) return map;
 
-    const rows = await this.hotdealRepo.find({ where: { id: In(ids) } });
+    // หน้าบ้านต้องบอกลูกค้าได้ว่าดีลนี้คือดีลอะไร ซื้ออะไรแถมอะไร
+    // และดีลอยู่คนละหน้ากันตาม special_deal (Product Pro / Buy More Get 1)
+    const rows = await this.hotdealRepo.find({
+      where: { id: In(ids) },
+      relations: { product: true, product2: true },
+    });
+
+    // pro1_unit/pro2_unit เก็บเป็น "ระดับหน่วย" (1/2/3) ไม่ใช่ชื่อหน่วย
+    // ถ้าส่งเลขดิบไปหน้าบ้านจะได้ประโยคว่า "ซื้อ 5 1 แถม 1 1"
+    const unitName = await this.loadUnitNames(
+      rows.flatMap((row) =>
+        [row.product?.pro_code, row.product2?.pro_code].filter(
+          (code): code is string => Boolean(code),
+        ),
+      ),
+    );
+    const nameOf = (proCode: string | undefined, level: string): string =>
+      (proCode ? unitName.get(`${proCode}:${Number(level)}`) : '') || '';
+
     for (const hotdeal of rows) {
-      map.set(String(hotdeal.id), hotdeal);
+      map.set(String(hotdeal.id), {
+        id: hotdeal.id,
+        special_deal: hotdeal.special_deal,
+        promo_title: hotdeal.promo_title,
+        promo_body: hotdeal.promo_body,
+        pro1_amount: hotdeal.pro1_amount,
+        pro1_unit: hotdeal.pro1_unit,
+        pro1_unit_name: nameOf(hotdeal.product?.pro_code, hotdeal.pro1_unit),
+        pro2_amount: hotdeal.pro2_amount,
+        pro2_unit: hotdeal.pro2_unit,
+        pro2_unit_name: nameOf(hotdeal.product2?.pro_code, hotdeal.pro2_unit),
+        product: hotdeal.product
+          ? {
+              pro_code: hotdeal.product.pro_code,
+              pro_name: hotdeal.product.pro_name,
+              pro_imgmain: hotdeal.product.pro_imgmain,
+            }
+          : null,
+        product2: hotdeal.product2
+          ? {
+              pro_code: hotdeal.product2.pro_code,
+              pro_name: hotdeal.product2.pro_name,
+              pro_imgmain: hotdeal.product2.pro_imgmain,
+            }
+          : null,
+      });
+    }
+    return map;
+  }
+
+  /** map "<pro_code>:<level>" → ชื่อหน่วย */
+  private async loadUnitNames(codes: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const unique = [...new Set(codes)];
+    if (unique.length === 0) return map;
+
+    const units = await this.productUnitRepo.find({
+      where: { pro_code: In(unique) },
+      select: { pro_code: true, level: true, unit_name: true },
+    });
+    for (const unit of units) {
+      map.set(`${unit.pro_code}:${unit.level}`, unit.unit_name);
     }
     return map;
   }
