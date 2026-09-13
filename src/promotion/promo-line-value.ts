@@ -46,3 +46,23 @@ export function promoUnitPrice(
     ? Number(product.pro_priceA)
     : priceByOption(product, option);
 }
+
+/**
+ * ส่วนลดของบรรทัดเป็นเปอร์เซ็นต์ เทียบราคาปกติกับยอดที่เก็บจริง (ECWC-567)
+ *
+ * ใช้แสดงบนบิลเท่านั้น — ยอดที่เก็บจริงคือ spo_total_decimal ปลายทางห้ามเอา %
+ * ไปคำนวณสุทธิใหม่ เพราะ % เก็บได้ 2 ตำแหน่ง บรรทัดมูลค่าสูงคลาดเคลื่อนถึงหลักบาท
+ *
+ * @param listPrice มูลค่าปกติของบรรทัด (ราคาต่อหน่วย x จำนวน) ก่อนหักอะไร
+ * @param charged   ยอดที่เก็บลูกค้าจริงของบรรทัดนั้น
+ */
+export function lineDiscountPercent(
+  listPrice: number,
+  charged: number,
+): number {
+  if (!listPrice || listPrice <= 0) return 0;
+  const pct = ((listPrice - charged) / listPrice) * 100;
+  // ปัดเศษอาจทำให้ติดลบนิดหน่อย และกันเกิน 100 เผื่อข้อมูลเพี้ยน
+  const clamped = Math.min(100, Math.max(0, pct));
+  return Math.round(clamped * 100) / 100;
+}
