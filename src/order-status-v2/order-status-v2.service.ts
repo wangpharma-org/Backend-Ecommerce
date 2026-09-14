@@ -115,6 +115,7 @@ interface LogisticTrackingV2Res {
   store_name: string;
   driver_name: string;
   driver_tel: string | null;
+  departure_time: string | null;
   finished_at: string | null;
   checkpoint: {
     type: 'DEPARTURE' | 'STORE_DELIVERED';
@@ -770,6 +771,7 @@ export class OrderStatusV2Service {
             store_name: delivery.store_name,
             driver_name: delivery.driver_name || null,
             driver_tel: delivery.driver_tel,
+            departure_time: delivery.departure_time,
             checkpoint: delivery.checkpoint,
             store_latitude: delivery.store_latitude,
             store_longitude: delivery.store_longitude,
