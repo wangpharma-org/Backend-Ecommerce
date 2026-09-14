@@ -126,6 +126,22 @@ admin (`req.user.permission === true`)
 - [x] ช่องรหัสสินค้าหลังบ้านรับสแกนบาร์โค้ด (`product-lookup`) — ยังไม่เชื่อมระบบ procure ตรง (ค้นจาก catalog ของ e-commerce ที่ sync จาก ERP)
 - [x] นิยามประเภทราคา 6 แบบเก็บเป็น `price_type` ฝั่ง admin (ยังไม่แสดงลูกค้า/ไม่กระทบราคาตะกร้า — รอมติว่าจะให้ประเภทไหนมีผลกับราคาจริง)
 
+## ข้อมูลตัวอย่างสำหรับสาธิต / UAT
+
+`scripts/demo/preorder-demo.ts` สร้างรอบสาธิต 2 รอบผ่าน admin API จริง (ไม่แตะ DB ตรง) ให้เวทีสาธิตเหมือนกันทุกเครื่องทุก environment
+
+```bash
+BASE_URL=http://localhost:3021/api ADMIN_TOKEN=<jwt admin> npx ts-node scripts/demo/preorder-demo.ts up      # สร้าง
+BASE_URL=... ADMIN_TOKEN=... npx ts-node scripts/demo/preorder-demo.ts status                                 # ดูว่ามีอะไรอยู่
+BASE_URL=... ADMIN_TOKEN=... npx ts-node scripts/demo/preorder-demo.ts down                                   # ยกเลิกทั้งหมดเมื่อจบ
+```
+
+- ชื่อรอบขึ้นต้น `DEMO <env> ·` เสมอ แยกจากข้อมูลจริงและกวาดทิ้งได้ด้วย `down`
+- นอก localhost ต้องตั้ง `DEMO_ENV=dev|staging|prod` ให้ชัดว่าสร้างที่ไหน
+- สินค้า 3 ตัว default `73051105` / `85100209` / `03031208` เปลี่ยนได้ด้วย `PRO_S1` `PRO_S2` `PRO_S3` ทุกตัวควรสต็อก 0 (สคริปต์เตือนถ้ายังมีสต็อก และหยุดถ้าไม่มีหน่วย)
+- รอบ A ของขาดจัดสรร (limit 5 supply 8) · รอบ B สั่งผลิตตามยอด (MOQ 10 ขั้นบันได 30→88 / 60→85) + กรณีปรับราคา (129 ขั้นต่ำ 2 หีบห่อ 2)
+- `price_type` เว้นว่างไว้ตั้งใจ ให้ผู้สาธิตเลือกสดในฟอร์มเพื่อโชว์ 6 แบบตามนิยามผู้บริหาร
+
 ## งานค้าง (backlog) — อัปเดต 9 ก.ย. 2569
 
 ### 1. ปิดงานให้ขึ้น production (ทำเมื่อ review)
