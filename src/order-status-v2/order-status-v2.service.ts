@@ -171,7 +171,6 @@ export class OrderStatusV2Service {
       'https://wangpharma.com';
   }
 
-
   // ECWC-398/406/4xx: รายการ order พร้อม filter วันที่ (เลือกเป็นช่วงได้) + pagination — รวมทั้งบิล
   // ปกติของ ecommerce เองและบิลที่มีฝั่ง order-picking-service แต่ไม่มีใน shopping_head ของ
   // ecommerce (เช่น บิลถูก archive/มาจากระบบอื่น) เข้าเป็น pagination เดียวกัน เรียงตามวันที่จริง
@@ -372,70 +371,70 @@ export class OrderStatusV2Service {
     const [orders, fetchedPickingBatch] = await Promise.all([
       Promise.all(
         result.map(async (item) => {
-            const groupedDetails: Record<
-              string,
-              {
-                pro_code: string;
-                product: { pro_code: string; pro_imgmain: string };
-                items: { spo_id: number; spo_qty: number; spo_unit: string }[];
-              }
-            > = {};
-
-            for (const detail of item.details) {
-              const proCode = detail.product.pro_code;
-              if (!groupedDetails[proCode]) {
-                groupedDetails[proCode] = {
-                  pro_code: proCode,
-                  product: detail.product,
-                  items: [],
-                };
-              }
-              groupedDetails[proCode].items.push({
-                spo_id: detail.spo_id,
-                spo_qty: detail.spo_qty,
-                spo_unit: detail.spo_unit,
-              });
+          const groupedDetails: Record<
+            string,
+            {
+              pro_code: string;
+              product: { pro_code: string; pro_imgmain: string };
+              items: { spo_id: number; spo_qty: number; spo_unit: string }[];
             }
+          > = {};
 
-            // สินค้าเก่า/ยกเลิกขายบางตัวไม่มีข้อมูล unit แล้ว calculateSmallestUnit จะ throw
-            // ทั้งบิล — กันไม่ให้บิลอื่นในหน้าเดียวกันแสดงผลไม่ได้ไปด้วย fallback เป็น 0 ต่อรายการ
-            const totalSmallestUnit = await Promise.all(
-              Object.values(groupedDetails).map(async (group) => {
-                const orderItems = group.items.map((line) => ({
-                  unit: line.spo_unit,
-                  quantity: parseFloat(String(line.spo_qty)),
-                  pro_code: group.pro_code,
-                }));
-                try {
-                  return await this.productService.calculateSmallestUnit(
-                    orderItems,
-                  );
-                } catch (error: unknown) {
-                  this.logger.error(
-                    `Error calculating smallest unit for pro_code ${group.pro_code} (soh_running ${item.soh_running})`,
-                    error,
-                  );
-                  return 0;
-                }
+          for (const detail of item.details) {
+            const proCode = detail.product.pro_code;
+            if (!groupedDetails[proCode]) {
+              groupedDetails[proCode] = {
+                pro_code: proCode,
+                product: detail.product,
+                items: [],
+              };
+            }
+            groupedDetails[proCode].items.push({
+              spo_id: detail.spo_id,
+              spo_qty: detail.spo_qty,
+              spo_unit: detail.spo_unit,
+            });
+          }
+
+          // สินค้าเก่า/ยกเลิกขายบางตัวไม่มีข้อมูล unit แล้ว calculateSmallestUnit จะ throw
+          // ทั้งบิล — กันไม่ให้บิลอื่นในหน้าเดียวกันแสดงผลไม่ได้ไปด้วย fallback เป็น 0 ต่อรายการ
+          const totalSmallestUnit = await Promise.all(
+            Object.values(groupedDetails).map(async (group) => {
+              const orderItems = group.items.map((line) => ({
+                unit: line.spo_unit,
+                quantity: parseFloat(String(line.spo_qty)),
+                pro_code: group.pro_code,
+              }));
+              try {
+                return await this.productService.calculateSmallestUnit(
+                  orderItems,
+                );
+              } catch (error: unknown) {
+                this.logger.error(
+                  `Error calculating smallest unit for pro_code ${group.pro_code} (soh_running ${item.soh_running})`,
+                  error,
+                );
+                return 0;
+              }
+            }),
+          );
+
+          return {
+            soh_running: item.soh_running,
+            soh_datetime: item.soh_datetime,
+            soh_sumprice: item.soh_sumprice,
+            soh_coin_recieve: item.soh_coin_recieve,
+            details: item.details.length,
+            totalSmallestUnit: Object.values(groupedDetails).map(
+              (group, index) => ({
+                pro_code: group.pro_code,
+                totalSmallestUnit: totalSmallestUnit[index],
               }),
-            );
-
-            return {
-              soh_running: item.soh_running,
-              soh_datetime: item.soh_datetime,
-              soh_sumprice: item.soh_sumprice,
-              soh_coin_recieve: item.soh_coin_recieve,
-              details: item.details.length,
-              totalSmallestUnit: Object.values(groupedDetails).map(
-                (group, index) => ({
-                  pro_code: group.pro_code,
-                  totalSmallestUnit: totalSmallestUnit[index],
-                }),
-              ),
-              Newdetails: Object.values(groupedDetails),
-            };
-          }),
-        ),
+            ),
+            Newdetails: Object.values(groupedDetails),
+          };
+        }),
+      ),
       unknownStatusRunnings.length > 0
         ? this.fetchPickingStatusBatch(unknownStatusRunnings, mem_code)
         : Promise.resolve({}),
@@ -545,7 +544,8 @@ export class OrderStatusV2Service {
     // เฉยๆ ไม่งั้นยอดรวมในหน้ารายการจะไม่ตรงกับยอดที่คิดจริงหลัง QC
     const soh_sumprice = detail.items.reduce(
       (sum, i) =>
-        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
+        sum +
+        (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -631,7 +631,8 @@ export class OrderStatusV2Service {
     // ยอดรวมเต็มจำนวนทั้งที่สินค้าบางรายการโดน RT (ตัดเป็น 0) หรือตรวจนับได้ไม่ครบ (คิดตามจำนวนจริง)
     const soh_sumprice = items.reduce(
       (sum, i) =>
-        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
+        sum +
+        (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -1222,7 +1223,9 @@ export class OrderStatusV2Service {
     const addressText = member ? this.buildMemberAddressText(member) : '';
     const page = filtered.slice(offset, offset + limit);
 
-    return page.map((order) => this.buildLegacyOrderListItem(order, addressText));
+    return page.map((order) =>
+      this.buildLegacyOrderListItem(order, addressText),
+    );
   }
 
   private buildLegacyOrderListItem(
@@ -1283,19 +1286,17 @@ export class OrderStatusV2Service {
       this.userRepo.findOne({ where: { mem_code } }),
     ]);
 
-    const products: LegacyOrderDetailProduct[] = detail.details.map(
-      (item) => ({
-        thumbnail: this.resolveLegacyImageUrl(item.product.pro_imgmain),
-        pro_code: item.product.pro_code,
-        pro_name: item.product.pro_name,
-        order_amount: String(item.spo_qty),
-        Unit: item.spo_unit,
-        price_unit: (item.spo_price_unit ?? 0).toFixed(2),
-        discount: '0.00',
-        price_total: (item.spo_total_decimal ?? 0).toFixed(2),
-        qc_amount: 0,
-      }),
-    );
+    const products: LegacyOrderDetailProduct[] = detail.details.map((item) => ({
+      thumbnail: this.resolveLegacyImageUrl(item.product.pro_imgmain),
+      pro_code: item.product.pro_code,
+      pro_name: item.product.pro_name,
+      order_amount: String(item.spo_qty),
+      Unit: item.spo_unit,
+      price_unit: (item.spo_price_unit ?? 0).toFixed(2),
+      discount: '0.00',
+      price_total: (item.spo_total_decimal ?? 0).toFixed(2),
+      qc_amount: 0,
+    }));
 
     const timeline = this.buildLegacyTimeline(detail);
     const netPrice = detail.soh_sumprice - detail.discount;
