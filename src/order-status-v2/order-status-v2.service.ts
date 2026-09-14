@@ -114,6 +114,7 @@ interface LogisticTrackingV2Res {
   status: 'DELIVERING' | 'DONE' | 'BACK';
   store_name: string;
   driver_name: string;
+  driver_emp_code: string | null;
   driver_tel: string | null;
   departure_time: string | null;
   finished_at: string | null;
@@ -770,6 +771,7 @@ export class OrderStatusV2Service {
         ? {
             store_name: delivery.store_name,
             driver_name: delivery.driver_name || null,
+            driver_emp_code: delivery.driver_emp_code,
             driver_tel: delivery.driver_tel,
             departure_time: delivery.departure_time,
             checkpoint: delivery.checkpoint,
