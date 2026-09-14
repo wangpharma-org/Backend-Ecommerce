@@ -19,7 +19,23 @@ Kafka จำเป็น — ถ้าไม่ขึ้น `bootstrap` ขอ�
 npm run start:dev
 ```
 
-**3. บัญชีทดสอบใน DB**
+**3. ข้อมูลทดสอบใน DB — รันสคริปต์เดียวจบ**
+
+```bash
+docker exec -i ecommerce-db mysql -uroot -ppassword \
+  --default-character-set=utf8mb4 ecommerce_db < scripts/seed/ecwc496-test-data.sql
+```
+
+สร้างบัญชีทดสอบ โปรเดโม 196 คอลเลกชันเดโม และกระเช้า `SET-DEMO-01/02/03`
+ให้ครบในครั้งเดียว รันซ้ำได้ไม่สร้างซ้ำ และจบด้วยตารางเช็คว่าได้ครบไหม
+ต้องมี dump production โหลดไว้ก่อน เพราะอ้างถึงรหัสสินค้าจริง — รายละเอียดอยู่ในหัวไฟล์
+
+> **ถ้าไม่ seed บางเทสจะ `skip` เงียบๆ ดูเหมือนผ่าน** ไม่ใช่ fail
+> โดยเฉพาะ `hotdeal-gift-in-cart.smoke.spec.ts` ที่ต้องมีแถว `promotion_condition`
+> ผูก `36020814` เข้า tier 568
+
+<details>
+<summary>สร้างบัญชีทดสอบเองแบบเดิม (ถ้าไม่อยากใช้สคริปต์)</summary>
 
 เทสต้องล็อกอินได้ จึงต้องมีบัญชีที่รู้รหัสผ่าน สร้างครั้งเดียวพอ:
 
@@ -35,6 +51,8 @@ ON DUPLICATE KEY UPDATE mem_password = VALUES(mem_password);
 ```
 
 > บัญชีนี้ใช้เฉพาะเครื่อง dev เท่านั้น **ห้ามสร้างบน production**
+
+</details>
 
 **4. โปรโมชั่นที่ใช้ทดสอบ**
 
