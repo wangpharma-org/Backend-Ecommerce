@@ -56,6 +56,7 @@ import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
+import { PreorderModule } from './preorder/preorder.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 
 @Module({
@@ -157,6 +158,7 @@ import { DeliveryPreferenceModule } from './delivery-preference/delivery-prefere
     ReviewRequestModule,
     ProductRequestModule,
     WatermarkAuditModule,
+    PreorderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
