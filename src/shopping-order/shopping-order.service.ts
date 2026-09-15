@@ -25,6 +25,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { ClientKafka } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
+import { lineDiscountPercent } from 'src/promotion/promo-line-value';
 
 interface CountSale {
   pro_code: string;
@@ -69,6 +70,10 @@ export class ShoppingOrderService {
     @Inject('ECOMMERCE_KAFKA_SERVICE')
     private readonly clientKafka: ClientKafka,
   ) {}
+
+  private round2(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
 
   private convertEnumToUnitName(
     unitEnum: 1 | 2 | 3 | string,
@@ -428,12 +433,22 @@ export class ShoppingOrderService {
               );
             }
 
-            let price =
+            /**
+             * ราคาที่ควรเก็บถ้าไม่มีส่วนลดของกระเช้า/ของแถมมาเกี่ยว
+             * ใช้เป็นทั้ง "มูลค่าสินค้า" บนบิลและเป็นฐานคิดส่วนลด (ECWC-567)
+             * โปรเดือน/flashsale ถือเป็นราคาขายจริง ไม่ใช่ส่วนลด จึงรวมอยู่ในราคานี้
+             */
+            const listPrice =
               isPromotionActive || isFlashSale
                 ? Number(item.spc_amount) *
                   Number(item.product.pro_priceA) *
                   ratio
                 : Number(item.spc_amount) * unitPrice * ratio;
+
+            // กระเช้าสำเร็จรูป: ราคาชุดถูกเฉลี่ยลงบรรทัดตอนใส่ตะกร้าแล้ว ใช้ตามนั้น
+            let price = this.shoppingCartService.hasFixedTotal(item)
+              ? Number(item.spc_fixed_total)
+              : listPrice;
 
             const isFreebie = Boolean(
               item.hotdeal_free === true &&
@@ -469,6 +484,8 @@ export class ShoppingOrderService {
               spo_unit: unitName,
               spo_price_unit: price / item.spc_amount,
               spo_total_decimal: price,
+              spo_price_list: this.round2(listPrice / item.spc_amount),
+              spo_discount: lineDiscountPercent(listPrice, price),
               pro_code: item.pro_code,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
@@ -552,6 +569,21 @@ export class ShoppingOrderService {
               item.product?.units,
             );
 
+            // ของแถมก็ต้องบอกมูลค่าปกติ ไม่งั้นบิลไม่รู้ว่าแถมของราคาเท่าไรไป (ECWC-567)
+            const rewardRatio = this.getRatioFromUnits(
+              item.spc_unit_enum,
+              item.product?.units,
+            );
+            const rewardUnitPrice =
+              data.priceOption === 'A'
+                ? Number(item.product?.pro_priceA)
+                : data.priceOption === 'B'
+                  ? Number(item.product?.pro_priceB)
+                  : Number(item.product?.pro_priceC);
+            const rewardListPrice = this.round2(
+              (Number(rewardUnitPrice) || 0) * (rewardRatio || 1),
+            );
+
             const orderItem = manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
               pro_code: item.pro_code,
@@ -559,6 +591,8 @@ export class ShoppingOrderService {
               spo_qty: item.spc_amount,
               spo_price_unit: 0,
               spo_total_decimal: 0,
+              spo_price_list: rewardListPrice,
+              spo_discount: rewardListPrice > 0 ? 100 : 0,
               is_reward: true,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,

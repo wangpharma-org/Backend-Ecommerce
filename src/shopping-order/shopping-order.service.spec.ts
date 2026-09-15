@@ -69,6 +69,12 @@ describe('ShoppingOrderService — unit helpers', () => {
         { provide: CompanyDayAnalyticService, useValue: {} },
         { provide: PromotionService, useValue: {} },
         { provide: HappyHourService, useValue: {} },
+        // branch นี้เพิ่ม ClientKafka เข้า constructor แต่ลืมเติมใน spec
+        // suite เลยพังตั้งแต่ตอนประกอบ module (ยังผ่านอยู่บน main)
+        {
+          provide: 'ECOMMERCE_KAFKA_SERVICE',
+          useValue: { emit: jest.fn(), connect: jest.fn() },
+        },
       ],
     }).compile();
 
