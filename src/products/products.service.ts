@@ -978,6 +978,7 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameEN',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
