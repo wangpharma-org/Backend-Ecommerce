@@ -252,6 +252,13 @@ export class PreorderController {
     return this.service.pushAllocatedToCart(assertStaff(req), { itemId: id });
   }
 
+  /** autocomplete: ค้นสินค้าแบบพิมพ์บางส่วนด้วยรหัส/บาร์โค้ด/ชื่อ สำหรับฟอร์มเพิ่มสินค้า */
+  @Get('admin/preorder/product-search')
+  searchProducts(@Req() req: AuthedRequest, @Query('q') q: string) {
+    assertAdmin(req);
+    return this.service.searchProducts(q);
+  }
+
   /** ค้นสินค้าด้วยรหัสหรือบาร์โค้ด (สแกนได้) สำหรับฟอร์มเพิ่มสินค้า */
   @Get('admin/preorder/product-lookup')
   lookupProduct(@Req() req: AuthedRequest, @Query('q') q: string) {

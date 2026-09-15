@@ -1232,6 +1232,45 @@ export class PreorderService {
   }
 
   /**
+   * ค้น catalog แบบพิมพ์บางส่วน (autocomplete) ด้วยรหัสสินค้า, บาร์โค้ด หรือชื่อสินค้า
+   * ใช้แสดง dropdown ในฟอร์มเพิ่มสินค้าหลังบ้าน ก่อนเลือกแล้วค่อย lookupProduct ด้วยรหัสที่ชัวร์
+   */
+  async searchProducts(q: string, limit = 10) {
+    const term = String(q ?? '').trim();
+    if (term.length < 2) return [];
+    const products = await this.catalogRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.units', 'u')
+      .where(
+        `p.pro_code LIKE :term OR p.pro_barcode1 LIKE :term OR p.pro_barcode2 LIKE :term
+         OR p.pro_barcode3 LIKE :term OR p.pro_name LIKE :term OR p.pro_nameTH LIKE :term`,
+        { term: `%${term}%` },
+      )
+      // ตัด record ปลอมใน catalog (ค่าโอน/ค่าขนส่ง/ข้อความภายใน) ตามแบบ ProductsService.searchByCodeOrSupplier
+      .andWhere('p.pro_code NOT LIKE :at1', { at1: '@M%' })
+      .andWhere('p.pro_code NOT LIKE :at2', { at2: '%@%' })
+      .andWhere('p.pro_name NOT LIKE :n1', { n1: '%โอน%' })
+      .andWhere('p.pro_name NOT LIKE :n2', { n2: '%ค่าขนส่ง%' })
+      .orderBy('p.pro_code', 'ASC')
+      .take(limit)
+      .getMany();
+    return products.map((product) => ({
+      pro_code: product.pro_code,
+      pro_name: product.pro_name ?? null,
+      pro_nameTH: product.pro_nameTH ?? null,
+      pro_imgmain: product.pro_imgmain ?? null,
+      unit: unit1Of(product),
+      pro_stock: product.pro_stock ?? null,
+      barcodes: [
+        product.pro_barcode1,
+        product.pro_barcode2,
+        product.pro_barcode3,
+      ].filter((b): b is string => !!b),
+      out_of_stock: (product.pro_stock ?? 0) <= 0,
+    }));
+  }
+
+  /**
    * ค้นสินค้าจาก catalog ด้วยรหัสสินค้า หรือบาร์โค้ด (สแกนจากเครื่องอ่านได้เลย)
    * ใช้ในฟอร์มเพิ่มสินค้าหลังบ้าน คืนข้อมูลพอสำหรับ preview + เตือนเรื่องสต็อก
    */
