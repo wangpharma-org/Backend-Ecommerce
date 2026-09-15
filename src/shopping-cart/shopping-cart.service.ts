@@ -31,6 +31,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
 import * as dayjs from 'dayjs';
+import { rethrowAsHttp } from 'src/common/http-error.util';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -667,7 +668,9 @@ export class ShoppingCartService {
     const toRemove = cart.filter(
       (c) =>
         c.is_reward &&
-        Object.entries(filter).every(([k, v]) => (c as any)[k] === v),
+        Object.entries(filter).every(
+          ([k, v]) => (c as unknown as Record<string, unknown>)[k] === v,
+        ),
     );
     if (toRemove.length) await this.shoppingCartRepo.remove(toRemove);
   }
@@ -795,7 +798,8 @@ export class ShoppingCartService {
         ops.push(
           this.shoppingCartRepo.update(
             { spc_id: line.spc_id },
-            { promo_id: null as any, tier_id: null as any },
+            // คอลัมน์ทั้งคู่เป็น int NULL ใน DB แต่ entity ประกาศเป็น number จึงต้อง cast
+            { promo_id: null, tier_id: null } as unknown as Partial<ShoppingCartEntity>,
           ),
         );
       }
@@ -883,8 +887,7 @@ export class ShoppingCartService {
         await this.checkPromotionReward(member.mem_code, member.mem_price);
       }
     } catch (error) {
-      this.logger.error('Error in Check Cart Promotion:', error);
-      throw new Error('Error in Check Cart Promotion');
+      rethrowAsHttp(error, this.logger, 'Error in Check Cart Promotion');
     }
   }
 
@@ -1496,11 +1499,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version, companyDayRewardContext };
     } catch (e) {
-      this.logger.error('Error in checkedProductCart', e);
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Something wrong in checkedProductCart');
+      rethrowAsHttp(e, this.logger, 'Something wrong in checkedProductCart');
     }
   }
 
@@ -1516,8 +1515,8 @@ export class ShoppingCartService {
         relations: ['product', 'product.units'],
         order: { pro_code: 'ASC' },
       });
-    } catch {
-      throw new Error('Somthing wrong in handleGetCartToOrder');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Somthing wrong in handleGetCartToOrder');
     }
   }
 
@@ -1549,10 +1548,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Somthing wrong in delete product cart');
+      rethrowAsHttp(e, this.logger, 'Somthing wrong in delete product cart');
     }
   }
 
@@ -1566,8 +1562,8 @@ export class ShoppingCartService {
       if (cartItem?.mem_code) {
         await this.incrementCartVersion(cartItem.mem_code);
       }
-    } catch {
-      throw new Error('Clear Checkout Cart Failed');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Clear Checkout Cart Failed');
     }
   }
 
@@ -1614,11 +1610,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      this.logger.error('Error in checkedProductCartAll', e);
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Somthing wrong in checkedProductCartAll');
+      rethrowAsHttp(e, this.logger, 'Somthing wrong in checkedProductCartAll');
     }
   }
 
@@ -1637,8 +1629,7 @@ export class ShoppingCartService {
         return 0;
       }
     } catch (error) {
-      this.logger.error('Error getting cart item count:', error);
-      throw new Error('Error in getCartItemCount');
+      rethrowAsHttp(error, this.logger, 'Error in getCartItemCount');
     }
   }
 
@@ -2032,8 +2023,7 @@ export class ShoppingCartService {
 
       return result;
     } catch (error) {
-      this.logger.error('Error get product cart:', error);
-      throw new Error(`Error in Get product Cart`);
+      rethrowAsHttp(error, this.logger, 'Error in Get product Cart');
     }
   }
 
@@ -2344,8 +2334,7 @@ export class ShoppingCartService {
       });
       return 'Remove All Cart Hotdeal Cart Success';
     } catch (error) {
-      this.logger.error('Error removing all hotdeal cart items:', error);
-      throw new Error('Error in removeAllCarthotdeal');
+      rethrowAsHttp(error, this.logger, 'Error in removeAllCarthotdeal');
     }
   }
 
@@ -2367,8 +2356,7 @@ export class ShoppingCartService {
       });
       return freebies;
     } catch (error) {
-      this.logger.error('Error fetching freebie products:', error);
-      throw new Error('Error in getProFreebie');
+      rethrowAsHttp(error, this.logger, 'Error in getProFreebie');
     }
   }
 
