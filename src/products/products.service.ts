@@ -1521,6 +1521,42 @@ export class ProductsService {
   //   }
   // }
 
+  // ES filter เอง cover ไม่ถึง external/enter fallback (search_auto.php, search_enter.php)
+  // ต้องกรองซ้ำหลัง fetch จาก DB กัน fallback หลุด filter เดียวกันเข้ามา
+  private isSearchExcludedProduct(product: {
+    pro_name: string;
+    pro_priceA: number;
+    pro_priceB: number;
+    pro_priceC: number;
+  }): boolean {
+    const name = product.pro_name ?? '';
+    const excludedPrefixes = [
+      'ฟรี',
+      '@',
+      'ส่งเสริม',
+      'รีเบท',
+      '-',
+      '/',
+      'ค่า',
+      '.',
+    ];
+    const excludedContains = ['บัตรโลตัส', 'สนับสนุน', 'ชดเชย'];
+    const excludedPrices = [0, 1, 10000000];
+
+    if (excludedPrefixes.some((prefix) => name.startsWith(prefix))) {
+      return true;
+    }
+    if (name.endsWith('ฟรี')) {
+      return true;
+    }
+    if (excludedContains.some((word) => name.includes(word))) {
+      return true;
+    }
+    return [product.pro_priceA, product.pro_priceB, product.pro_priceC].some(
+      (price) => excludedPrices.includes(Number(price)),
+    );
+  }
+
   async searchProductsElastic(data: {
     keyword: string;
     offset: number;
@@ -1586,6 +1622,22 @@ export class ProductsService {
                   { prefix: { 'pro_name.keyword': '-' } },
                   { prefix: { 'pro_name.keyword': '/' } },
                   { prefix: { 'pro_name.keyword': 'ค่า' } },
+                  { prefix: { 'pro_name.keyword': '.' } },
+                  { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+                  {
+                    wildcard: {
+                      'pro_name.keyword': { value: '*บัตรโลตัส*' },
+                    },
+                  },
+                  {
+                    wildcard: {
+                      'pro_name.keyword': { value: '*สนับสนุน*' },
+                    },
+                  },
+                  { wildcard: { 'pro_name.keyword': { value: '*ชดเชย*' } } },
+                  { terms: { pro_priceA: [1, 10000000] } },
+                  { terms: { pro_priceB: [1, 10000000] } },
+                  { terms: { pro_priceC: [1, 10000000] } },
                   { exists: { field: 'invisible_id' } },
                   ...(isL16
                     ? []
@@ -1837,7 +1889,14 @@ export class ProductsService {
           'fs.date',
         ]);
 
-      const products = await qb.getMany();
+      const rawProducts = await qb.getMany();
+      const products = rawProducts.filter(
+        (product) => !this.isSearchExcludedProduct(product),
+      );
+      totalCount = Math.max(
+        0,
+        totalCount - (rawProducts.length - products.length),
+      );
 
       const productMap = new Map(products.map((p) => [p.pro_code, p]));
 
@@ -1915,11 +1974,14 @@ export class ProductsService {
     }
   }
 
-  // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล
-  private async getProductsWithUnits(pro_code: string) {
+  // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล — query เดียวสำหรับหลาย pro_code พร้อมกัน
+  // (เดิม calculateSmallestUnit เรียกทีละ pro_code ในลูป กลายเป็น N+1 query เวลาประมวลผลหลาย
+  // บิลพร้อมกัน เช่นหน้า order-list/missing-orders ที่วน Promise.all หลายสิบบิล)
+  private async getProductsWithUnits(pro_codes: string[]) {
+    if (pro_codes.length === 0) return [];
     const products = await this.productRepo
       .createQueryBuilder('product')
-      .where('product.pro_code = :pro_code', { pro_code })
+      .where('product.pro_code IN (:...pro_codes)', { pro_codes })
       .select(['product.pro_code'])
       .innerJoinAndSelect('product.units', 'units')
       .getMany();
@@ -1934,20 +1996,18 @@ export class ProductsService {
   }
 
   async calculateSmallestUnit(order: OrderItem[]): Promise<number> {
-    let total = 0;
     try {
-      // ลูปผ่านทุก orderItem
+      const proCodes = [...new Set(order.map((o) => o.pro_code))];
+      const productsWithUnits = await this.getProductsWithUnits(proCodes);
+      const productByCode = new Map(
+        productsWithUnits.map((p) => [p.pro_code, p]),
+      );
+
+      let total = 0;
       for (const orderItem of order) {
         const { unit, quantity, pro_code } = orderItem;
 
-        const productsWithUnits = await this.getProductsWithUnits(pro_code);
-
-        const product:
-          | {
-              pro_code: string;
-              units: { unit: string; ratio: number }[];
-            }
-          | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
+        const product = productByCode.get(pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
@@ -3093,6 +3153,25 @@ export class ProductsService {
       pro_img4: product.pro_img4 ?? null,
       pro_img5: product.pro_img5 ?? null,
     };
+  }
+
+  // ECWC-4xx: รูปสินค้า+ชื่อสินค้าแบบ batch สำหรับสร้างการ์ด/รายละเอียดออเดอร์ที่ข้อมูลมาจาก
+  // order-picking-service (เช่น sh_running ที่ไม่มีใน shopping_head ของ ecommerce เอง หรือ
+  // product_name_at_order ฝั่งนั้นเป็น null)
+  async getProductInfoByCodes(
+    pro_codes: string[],
+  ): Promise<Map<string, { pro_name: string; pro_imgmain: string }>> {
+    if (pro_codes.length === 0) return new Map();
+    const products = await this.productRepo.find({
+      where: { pro_code: In(pro_codes) },
+      select: { pro_code: true, pro_name: true, pro_imgmain: true },
+    });
+    return new Map(
+      products.map((p) => [
+        p.pro_code,
+        { pro_name: p.pro_name, pro_imgmain: p.pro_imgmain },
+      ]),
+    );
   }
 
   async productSearchProductName(
