@@ -11,6 +11,7 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { LineSupportService } from 'src/line-support/line-support.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -62,6 +63,7 @@ describe('ProductsService — unit helpers', () => {
         { provide: BackendService, useValue: {} },
         { provide: ElasticsearchService, useValue: {} },
         { provide: ShoppingCartService, useValue: {} },
+        { provide: LineSupportService, useValue: {} },
       ],
     }).compile();
 
