@@ -145,7 +145,7 @@ BASE_URL=... ADMIN_TOKEN=... npx ts-node scripts/demo/preorder-demo.ts down     
 ## งานค้าง (backlog) — อัปเดต 9 ก.ย. 2569
 
 ### 1. ปิดงานให้ขึ้น production (ทำเมื่อ review)
-- [ ] push frontend + เปิด PR Ecommerce-Frontend (worktree `Ecommerce-Frontend-preorder` branch `feat/preorder`) ประสานลำดับ merge กับ `feature/ECWC-542-rewards`
+- [x] push frontend + เปิด PR Ecommerce-Frontend#251 (branch `feat/preorder` → `main`, 15 ก.ย. 69) ยังต้องประสานลำดับ merge กับ `feature/ECWC-542-rewards` และ sync เข้า `develop` ตาม PR ปกติของทีม
 - [ ] review/merge PR #261 → deploy dev/prod → `migration:run` (2 ตัว) → เปิด flag `preorder`
 - [ ] รัน e2e กับ deployed (`E2E_ENV=dev|prod`) แล้วเติมช่อง deployed ใน Confluence (Test Report 202440705, ทะเบียน 202473473, Playbook 202407939)
 - [ ] หาคนยิง POST `/ecom/new-arrivals` (ระบบรับของ) และใส่ guard ให้ endpoint นี้
