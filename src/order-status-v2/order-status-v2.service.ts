@@ -101,6 +101,8 @@ interface PickingOrderDetailBatchItem {
 
 interface OrderPickingStatusRes {
   sh_running: string;
+  // Order-picking-service เพิ่มภายหลัง จึงรองรับ response จาก instance ที่ยังไม่ได้ deploy field นี้ด้วย
+  bill_number?: string | null;
   status: 'picking' | 'checking' | 'ready' | 'blocked';
   picking_time: string | null;
   picked_time: string | null;
@@ -753,6 +755,7 @@ export class OrderStatusV2Service {
 
     return {
       soh_running,
+      bill_number: picking?.bill_number ?? null,
       status,
       status_label: ECOM_ORDER_TIMELINE_LABEL[status],
       picking: picking
