@@ -56,6 +56,33 @@ export function unit1Of(product?: ProductEntity | null): string | null {
   return units[0]?.unit_name ?? null;
 }
 
+/** หน่วย/อัตราส่วน level 1-3 ตามที่มีจริงใน product_unit (ไม่มี = null) ใช้ตอนส่งข้อมูลสินค้าให้ระบบภายนอก */
+export function unitsOf(product?: ProductEntity | null): {
+  pro_unit1: string | null;
+  pro_ratio1: number | null;
+  pro_unit2: string | null;
+  pro_ratio2: number | null;
+  pro_unit3: string | null;
+  pro_ratio3: number | null;
+} {
+  const byLevel = new Map((product?.units ?? []).map((u) => [u.level, u]));
+  const at = (level: number) => {
+    const u = byLevel.get(level);
+    return u && (u.unit_name ?? '').trim().length > 0 ? u : null;
+  };
+  const u1 = at(1);
+  const u2 = at(2);
+  const u3 = at(3);
+  return {
+    pro_unit1: u1?.unit_name ?? null,
+    pro_ratio1: u1?.ratio ?? null,
+    pro_unit2: u2?.unit_name ?? null,
+    pro_ratio2: u2?.ratio ?? null,
+    pro_unit3: u3?.unit_name ?? null,
+    pro_ratio3: u3?.ratio ?? null,
+  };
+}
+
 /** สถานะที่ถือว่า "ยังจองอยู่" นับเข้าคิวและยอดรวม */
 const ACTIVE_ITEM_STATUSES = [
   PreorderItemStatus.RESERVED,
@@ -868,6 +895,103 @@ export class PreorderService {
       });
     }
     return { ...c, products };
+  }
+
+  /**
+   * รายการรอบจองทั้งหมดพร้อมสินค้าในรอบ (รหัส/ราคา A-C/หน่วย/รูป) — สำหรับระบบภายนอกเชื่อมต่อ (ERP/โกดัง)
+   */
+  async listCampaignsForErp() {
+    const campaigns = await this.campaignRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.products', 'p', 'p.is_active = 1')
+      .leftJoinAndSelect('p.product', 'prod')
+      .leftJoinAndSelect('prod.units', 'units')
+      .orderBy('c.created_at', 'DESC')
+      .addOrderBy('p.sort_order', 'ASC')
+      .addOrderBy('p.id', 'ASC')
+      .getMany();
+
+    return campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      mode: c.mode,
+      status: c.status,
+      starts_at: c.starts_at,
+      ends_at: c.ends_at,
+      products: c.products.map((p) => ({
+        preorder_product_id: p.id,
+        pro_code: p.pro_code,
+        pro_name: p.product?.pro_name ?? null,
+        pro_nameTH: p.product?.pro_nameTH ?? null,
+        pro_imgmain: p.product?.pro_imgmain ?? null,
+        pro_priceA: p.product?.pro_priceA ?? null,
+        pro_priceB: p.product?.pro_priceB ?? null,
+        pro_priceC: p.product?.pro_priceC ?? null,
+        ...unitsOf(p.product),
+      })),
+    }));
+  }
+
+  /**
+   * รายการสั่งจองของลูกค้าทั้งหมดในรอบ จัดกลุ่มตามร้าน (mem_code) — สำหรับระบบภายนอกเชื่อมต่อ (ERP/โกดัง)
+   */
+  async listCampaignOrdersForErp(campaignId: number) {
+    await this.findCampaignOrFail(campaignId);
+
+    const items = await this.itemRepo
+      .createQueryBuilder('i')
+      .innerJoinAndSelect('i.preorderProduct', 'p')
+      .leftJoinAndSelect('p.product', 'prod')
+      .leftJoinAndSelect('i.member', 'm')
+      .where('p.campaign_id = :campaignId', { campaignId })
+      .andWhere('i.status != :cancelled', {
+        cancelled: PreorderItemStatus.CANCELLED,
+      })
+      .orderBy('i.mem_code', 'ASC')
+      .addOrderBy('i.ordered_at', 'ASC')
+      .getMany();
+
+    const byMember = new Map<
+      string,
+      {
+        mem_code: string;
+        mem_name: string | null;
+        mem_phone: string | null;
+        mem_price: string | null;
+        mem_route: string | null;
+        items: Array<Record<string, unknown>>;
+      }
+    >();
+
+    for (const i of items) {
+      let group = byMember.get(i.mem_code);
+      if (!group) {
+        group = {
+          mem_code: i.mem_code,
+          mem_name: i.member?.mem_nameSite ?? null,
+          mem_phone: i.member?.mem_phone ?? null,
+          mem_price: i.member?.mem_price ?? null,
+          mem_route: i.member?.mem_route ?? null,
+          items: [],
+        };
+        byMember.set(i.mem_code, group);
+      }
+      group.items.push({
+        item_id: i.id,
+        preorder_product_id: i.preorder_product_id,
+        pro_code: i.preorderProduct.pro_code,
+        pro_name: i.preorderProduct.product?.pro_name ?? null,
+        pro_nameTH: i.preorderProduct.product?.pro_nameTH ?? null,
+        pro_imgmain: i.preorderProduct.product?.pro_imgmain ?? null,
+        pro_unit: i.unit,
+        amount: i.amount,
+        allocated_qty: i.allocated_qty,
+        status: i.status,
+        is_paid: i.is_paid,
+        ordered_at: i.ordered_at,
+      });
+    }
+    return Array.from(byMember.values());
   }
 
   private applyCampaignDto(c: PreorderCampaignEntity, dto: UpdateCampaignDto) {

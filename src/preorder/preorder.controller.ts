@@ -151,6 +151,25 @@ export class PreorderController {
     return this.service.getCampaign(id);
   }
 
+  // ==================== ADMIN: เชื่อมระบบภายนอก (ERP/โกดัง) ====================
+
+  /** รายการรอบจองทั้งหมด + สินค้าในรอบ (รหัส/ราคา A-C/หน่วย/รูป) */
+  @Get('admin/preorder/erp/campaigns')
+  listCampaignsForErp(@Req() req: AuthedRequest) {
+    assertAdmin(req);
+    return this.service.listCampaignsForErp();
+  }
+
+  /** รายการสั่งจองของลูกค้าทั้งหมดในรอบ (เอา id จาก /erp/campaigns มาเป็น param) */
+  @Get('admin/preorder/erp/campaigns/:id/orders')
+  listCampaignOrdersForErp(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    assertAdmin(req);
+    return this.service.listCampaignOrdersForErp(id);
+  }
+
   @Patch('admin/preorder/campaigns/:id')
   updateCampaign(
     @Req() req: AuthedRequest,
