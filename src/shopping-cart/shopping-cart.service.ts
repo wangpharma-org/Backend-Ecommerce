@@ -9,6 +9,7 @@ import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   In,
+  IsNull,
   Repository,
   Not,
   Brackets,
@@ -30,6 +31,10 @@ import {
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
+import {
+  promoUnitPrice,
+  type PriceOption,
+} from 'src/promotion/promo-line-value';
 import * as dayjs from 'dayjs';
 
 export interface ShoppingProductCart {
@@ -627,6 +632,24 @@ export class ShoppingCartService {
     }
   }
 
+  /** บรรทัดที่ราคาถูกล็อกไว้ (กระเช้าสำเร็จรูป) — ห้ามคิดจาก product.pro_price */
+  hasFixedTotal(line: { spc_fixed_total?: string | number | null }): boolean {
+    return line.spc_fixed_total !== null && line.spc_fixed_total !== undefined;
+  }
+
+  /** ของแถมในกระเช้าสำเร็จรูป = ล็อกราคาไว้ที่ 0 */
+  isSetGiftLine(line: { spc_fixed_total?: string | number | null }): boolean {
+    return this.hasFixedTotal(line) && Number(line.spc_fixed_total) === 0;
+  }
+
+  /**
+   * ให้ service อื่นที่เขียน shopping_cart ตรง (เช่น CartBasketService) bump version ได้
+   * ไม่งั้นแท็บอื่นส่ง clientVersion เก่ามาแล้วผ่านทั้งที่ตะกร้าเปลี่ยนไปแล้ว
+   */
+  bumpCartVersion(mem_code: string): Promise<CartVersionState> {
+    return this.incrementCartVersion(mem_code);
+  }
+
   private async incrementCartVersion(
     mem_code: string,
   ): Promise<CartVersionState> {
@@ -921,6 +944,7 @@ export class ShoppingCartService {
       const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
       // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
 
+      // แถวของกระเช้าโปร (basket_id) แยกจากสินค้าเดี่ยวเสมอ ห้ามรวมจำนวนเข้าไป
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -928,6 +952,7 @@ export class ShoppingCartService {
           spc_unit_enum: unitEnum,
           hotdeal_free: false,
           is_reward: false,
+          basket_id: IsNull(),
         },
       });
 
@@ -1106,8 +1131,14 @@ export class ShoppingCartService {
     await this.removeExpiredUseCodeRewards(cart, mem_code, priceOption);
 
     // ─── 3. baseEligibleCart + perProductTotalUnits ───────────────────────────
+    // ของแถมในกระเช้าสำเร็จรูป (fixed = 0) ไม่นับเข้าเกณฑ์ เหมือน hotdeal_free
     const baseEligibleCart = cart.filter(
-      (l) => l.product && l.spc_checked && !l.is_reward && !l.hotdeal_free,
+      (l) =>
+        l.product &&
+        l.spc_checked &&
+        !l.is_reward &&
+        !l.hotdeal_free &&
+        !this.isSetGiftLine(l),
     );
 
     const perProductTotalUnits = new Map<string, number>();
@@ -1153,20 +1184,16 @@ export class ShoppingCartService {
 
     // ─── helper: คำนวณ line value ─────────────────────────────────────────────
     const getLineValue = (line: ShoppingCartEntity): number => {
+      // กระเช้าสำเร็จรูปนับที่ราคาชุดที่จ่ายจริง (เจ้าของงานเคาะ 2026-09-06)
+      if (this.hasFixedTotal(line)) return Number(line.spc_fixed_total);
       const p = line.product;
       const ratio = this.getUnitRatio(p, line.spc_unit_enum);
-      const totalUnits = perProductTotalUnits.get(line.pro_code) ?? 0;
-      const isPromoPrice =
-        p.pro_promotion_month === promoMonth &&
-        totalUnits >= (p.pro_promotion_amount ?? 0);
-
-      const unitPrice = isPromoPrice
-        ? Number(p.pro_priceA)
-        : priceOption === 'A'
-          ? Number(p.pro_priceA)
-          : priceOption === 'B'
-            ? Number(p.pro_priceB)
-            : Number(p.pro_priceC);
+      const unitPrice = promoUnitPrice(
+        p,
+        priceOption as PriceOption,
+        perProductTotalUnits.get(line.pro_code) ?? 0,
+        promoMonth,
+      );
 
       return Number(line.spc_amount) * unitPrice * ratio;
     };
@@ -1464,6 +1491,7 @@ export class ShoppingCartService {
             mem_code: data.mem_code,
             is_reward: false,
             hotdeal_free: false,
+            basket_id: IsNull(),
           },
           { spc_checked: false },
         );
@@ -1539,10 +1567,12 @@ export class ShoppingCartService {
         });
       }
 
+      // ลบเฉพาะสินค้าเดี่ยว — แถวในกระเช้าโปรต้องออกผ่าน CartBasketService เท่านั้น
       await this.shoppingCartRepo.delete({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
         hotdeal_free: false,
+        basket_id: IsNull(),
       });
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
       const cart = await this.getProductCart(data.mem_code);
@@ -1601,7 +1631,7 @@ export class ShoppingCartService {
         );
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          { mem_code: data.mem_code, is_reward: false },
+          { mem_code: data.mem_code, is_reward: false, basket_id: IsNull() },
           { spc_checked: false },
         );
       } else {
@@ -2555,6 +2585,19 @@ export class ShoppingCartService {
   async summaryCart(
     mem_code: string,
   ): Promise<{ total: number; items: { [key: string]: number }[] }> {
+    const { total, items } = await this.summaryCartDetailed(mem_code);
+    return { total, items };
+  }
+
+  /**
+   * ยอดตะกร้า + มูลค่าต่อบรรทัด ด้วยกติกาเดียวกันเป๊ะ (fixed total > promotion/flashsale > price tier)
+   * ใช้โดย summaryCart และ happy hour preview เพื่อไม่ให้สองที่คิดเลขคนละแบบ
+   */
+  async summaryCartDetailed(mem_code: string): Promise<{
+    total: number;
+    items: { [key: string]: number }[];
+    lines: { spc_id: number; pro_code: string; amount: number }[];
+  }> {
     try {
       const result = await this.shoppingCartRepo
         .createQueryBuilder('cart')
@@ -2570,6 +2613,7 @@ export class ShoppingCartService {
           'cart.pro_code',
           'cart.mem_code',
           'cart.flashsale_end',
+          'cart.spc_fixed_total',
           'product.pro_code',
           'product.pro_priceA',
           'product.pro_priceB',
@@ -2599,6 +2643,8 @@ export class ShoppingCartService {
 
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
+      const lines: { spc_id: number; pro_code: string; amount: number }[] =
+        [];
 
       for (const [index, dataGroup] of splitData.entries()) {
         const productTotalAmounts = new Map<string, number>();
@@ -2677,19 +2723,29 @@ export class ShoppingCartService {
 
         const tier = result[0]?.member?.mem_price ?? 'C';
 
+        const lineValue = (
+          item: (typeof dataGroup)[number],
+          t: 'A' | 'B' | 'C',
+        ): number => {
+          // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
+          if (this.hasFixedTotal(item)) return Number(item.spc_fixed_total);
+          let ratio = 0;
+          const matchedUnit = item.product.units?.find(
+            (u) =>
+              u.unit_name === item.spc_unit_enum ||
+              String(u.level) === String(item.spc_unit_enum),
+          );
+          if (matchedUnit) ratio = matchedUnit.ratio;
+          const quantity = Number(item.spc_amount) * Number(ratio);
+          const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+          return quantity * price;
+        };
+
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            let ratio = 0;
-            const matchedUnit = item.product.units?.find(
-              (u) =>
-                u.unit_name === item.spc_unit_enum ||
-                String(u.level) === String(item.spc_unit_enum),
-            );
-            if (matchedUnit) ratio = matchedUnit.ratio;
-            const quantity = Number(item.spc_amount) * Number(ratio);
-            const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
-
-            return sum + quantity * price;
+            const amount = lineValue(item, t);
+            lines.push({ spc_id: item.spc_id, pro_code: item.pro_code, amount });
+            return sum + amount;
           }, 0);
 
         const promoTotal = totalByTier(split.promo, 'A');
@@ -2703,9 +2759,9 @@ export class ShoppingCartService {
         itemsArray.push({ index: index, grandTotalItems });
       }
 
-      return { total: total, items: itemsArray };
+      return { total: total, items: itemsArray, lines };
     } catch {
-      return { total: 0, items: [] };
+      return { total: 0, items: [], lines: [] };
     }
   }
 

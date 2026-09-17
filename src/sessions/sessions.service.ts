@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { UserSessionsEntity } from './sessions.entity';
 import { Cron } from '@nestjs/schedule';
 import * as dayjs from 'dayjs';
+import { createHash } from 'crypto';
 import { ExpireSessionResponse } from '../auth/auth.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 
@@ -17,6 +18,11 @@ export class SessionsService {
     private readonly featureFlagsService: FeatureFlagsService,
   ) {}
 
+  // ค้นหาด้วย hash แทน session_token ตรงๆ — คอลัมน์เดิมยาว 1024 ทำ index เต็มไม่ได้ (ECWC-381)
+  private hashToken(sessionToken: string): string {
+    return createHash('sha256').update(sessionToken).digest('hex');
+  }
+
   async createSession(
     memCode: string,
     sessionToken: string,
@@ -27,6 +33,7 @@ export class SessionsService {
     const session = this.sessionsRepository.create({
       mem_code: memCode,
       session_token: sessionToken,
+      token_hash: this.hashToken(sessionToken),
       ip_address: ipAddress,
       user_agent: userAgent,
       device_type: deviceType,
@@ -43,7 +50,7 @@ export class SessionsService {
   ): Promise<UserSessionsEntity | null> {
     return await this.sessionsRepository.findOne({
       where: {
-        session_token: sessionToken,
+        token_hash: this.hashToken(sessionToken),
         is_active: true,
       },
       relations: ['user'],
@@ -71,14 +78,14 @@ export class SessionsService {
     }
 
     await this.sessionsRepository.update(
-      { session_token: sessionToken, is_active: true },
+      { token_hash: this.hashToken(sessionToken), is_active: true },
       { last_activity: new Date() },
     );
   }
 
   async logoutSession(sessionToken: string): Promise<void> {
     await this.sessionsRepository.update(
-      { session_token: sessionToken },
+      { token_hash: this.hashToken(sessionToken) },
       {
         is_active: false,
         logout_at: new Date(),
