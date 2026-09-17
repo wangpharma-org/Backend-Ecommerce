@@ -63,7 +63,65 @@ Base URL: `<BASE_URL>/api/ecom` (local dev: `http://localhost:3021/api/ecom`)
 
 ---
 
-## 2. GET `/admin/preorder/erp/campaigns/:id/orders`
+## 2. GET `/admin/preorder/erp/rules`
+
+เงื่อนไข (business rules) ของ **ทุกรอบ** Pre-order ทั้งระดับรอบและระดับสินค้า — ใช้ตั้งเงื่อนไขให้ตรงกันในระบบภายนอก
+ต่างจาก endpoint 1 ตรงที่เน้นกติกาที่ server บังคับ ไม่ใช่ข้อมูล catalog (ไม่มีราคา A-C/รูป)
+
+### Response `200`
+
+```jsonc
+[
+  {
+    "id": 1,
+    "name": "ฟ้าทะลายโจร รอบ 20 ก.ย. 2569",
+    "mode": "allocation",           // "allocation" (ของขาด จำกัดจำนวน) | "aggregation" (รวบรวมยอดสั่งผู้ผลิต)
+    "status": "open",
+    "starts_at": "2026-09-15T13:18:00.000Z",
+    "ends_at": "2026-09-20T13:00:00.000Z",
+    "conditions": {
+      "allow_cancel": true,          // ลูกค้ายกเลิกเองได้ระหว่างรอบเปิดไหม
+      "increase_policy": "keep",     // "keep" | "split" | "reset" — เพิ่มจำนวนหลังจองแล้ว มีผลกับคิวยังไง
+      "increase_grace_hours": null,  // ภายใน N ชม.หลังจองครั้งแรก เพิ่มได้โดยไม่เสียคิวเสมอ (null = ไม่มีช่วงผ่อนผัน)
+      "terms": ""                    // เงื่อนไขที่ลูกค้าต้องยอมรับก่อนจองครั้งแรก ("" หรือ null = ไม่มี)
+    },
+    "products": [
+      {
+        "preorder_product_id": 2,
+        "pro_code": "06010005",
+        "pro_name": "-ฟ้าทะลายโจรสกัด10แค็ป[20มก]85บ1*10ผ/ไวทัลแคลร์",
+        "unit": "กล[10ผ]",           // หน่วยเล็กสุด (level 1) — null ถ้าไม่มี
+        "is_active": true,           // false = ถูกถอดออกจากรอบแล้ว (มีคนจองค้างอยู่เลยไม่ลบ)
+        "sort_order": 0,
+        "note": null,
+        "conditions": {
+          "reason": "restock",              // "restock" (ของกำลังจะเข้า) | "price_increase" (ของขาด+ผู้ผลิตขึ้นราคา)
+          "price_type": "eng_chiu",          // ดู docs/preorder.md — ใช้ภายใน ไม่กระทบราคาตะกร้า, null = ไม่ระบุ
+          "min_per_member": 10,              // ขั้นต่ำต่อร้าน — null = ไม่กำหนด
+          "limit_per_member": null,          // จำกัดสูงสุดต่อร้าน (โหมด allocation) — null = ไม่จำกัด
+          "pack_multiple": null,             // ต้องจองเป็นทวีคูณของค่านี้ — null = ไม่บังคับ
+          "supply_qty": null,                // จำนวนที่จะได้จริงในรอบ (โหมด allocation) — null = ไม่จำกัด
+          "moq": null,                       // ยอดรวมขั้นต่ำก่อนสั่งผู้ผลิต (โหมด aggregation) — null = ไม่มี
+          "estimated_price": null,           // ราคาประมาณต่อหน่วย — null = ใช้ราคา A/B/C ปกติ
+          "price_tiers": null,               // [{min_total_qty, price}] ราคาขั้นบันไดตามยอดรวมทั้งรอบ — null = ไม่มี
+          "new_price": null,                 // ราคาใหม่ที่ผู้ผลิตแจ้ง (เฉพาะ reason=price_increase)
+          "price_effective_date": null,      // วันที่ราคาใหม่มีผล (เฉพาะ reason=price_increase)
+          "eta_date": null                   // วันที่คาดว่าของถึงคลัง
+        }
+      }
+    ]
+  }
+]
+```
+
+### หมายเหตุ
+
+- คืน**ทุกสินค้ารวม `is_active=false`** ด้วย (ต่างจาก endpoint 1 ที่กรองเฉพาะ active) เพื่อให้เห็นเงื่อนไขที่เคยตั้งไว้ครบ — เช็ค `is_active` เองถ้าต้องการเฉพาะที่ยังเปิดจอง
+- ความหมายเต็มของแต่ละเงื่อนไขและปฏิสัมพันธ์ระหว่างกัน (เช่น `increase_policy`, `price_type`) ดูที่ [docs/preorder.md](../preorder.md)
+
+---
+
+## 3. GET `/admin/preorder/erp/campaigns/:id/orders`
 
 รายการสั่งจองของลูกค้าทั้งหมดใน **รอบเดียว** (เอา `id` จาก endpoint 1 มาใส่) จัดกลุ่มตามร้าน (`mem_code`)
 **ไม่รวมรายการที่ถูกยกเลิก** (`status = cancelled`)
@@ -130,12 +188,16 @@ curl -X POST "$BASE_URL/api/ecom/login" \
 curl "$BASE_URL/api/ecom/admin/preorder/erp/campaigns" \
   -H "Authorization: Bearer $TOKEN"
 
-# 3) ดึงรายการสั่งจองของรอบ id=1
+# 3) ดึงเงื่อนไขของทุกรอบ
+curl "$BASE_URL/api/ecom/admin/preorder/erp/rules" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 4) ดึงรายการสั่งจองของรอบ id=1
 curl "$BASE_URL/api/ecom/admin/preorder/erp/campaigns/1/orders" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Source
 
-- Controller: [src/preorder/preorder.controller.ts](../../src/preorder/preorder.controller.ts) (`listCampaignsForErp`, `listCampaignOrdersForErp`)
+- Controller: [src/preorder/preorder.controller.ts](../../src/preorder/preorder.controller.ts) (`listCampaignsForErp`, `listCampaignRulesForErp`, `listCampaignOrdersForErp`)
 - Service: [src/preorder/preorder.service.ts](../../src/preorder/preorder.service.ts)

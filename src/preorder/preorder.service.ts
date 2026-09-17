@@ -994,6 +994,61 @@ export class PreorderService {
     return Array.from(byMember.values());
   }
 
+  /**
+   * เงื่อนไขของทุกรอบจอง (ระดับรอบ + ระดับสินค้า) — ให้ระบบภายนอกนำไปตั้งเงื่อนไขให้ตรงกัน
+   * ต่างจาก listCampaignsForErp ที่เน้นข้อมูล catalog (ราคา A-C/หน่วย/รูป) อันนี้เน้นกติกาที่ server บังคับ
+   */
+  async listCampaignRulesForErp() {
+    const campaigns = await this.campaignRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.products', 'p')
+      .leftJoinAndSelect('p.product', 'prod')
+      .leftJoinAndSelect('prod.units', 'units')
+      .orderBy('c.created_at', 'DESC')
+      .addOrderBy('p.sort_order', 'ASC')
+      .addOrderBy('p.id', 'ASC')
+      .getMany();
+
+    return campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      mode: c.mode,
+      status: c.status,
+      starts_at: c.starts_at,
+      ends_at: c.ends_at,
+      conditions: {
+        allow_cancel: c.allow_cancel,
+        increase_policy: c.increase_policy,
+        increase_grace_hours: c.increase_grace_hours,
+        terms: c.terms,
+      },
+      products: c.products.map((p) => ({
+        preorder_product_id: p.id,
+        pro_code: p.pro_code,
+        pro_name: p.product?.pro_name ?? null,
+        unit: unit1Of(p.product),
+        is_active: p.is_active,
+        sort_order: p.sort_order,
+        note: p.note,
+        conditions: {
+          reason: p.reason,
+          price_type: p.price_type,
+          min_per_member: p.min_per_member,
+          limit_per_member: p.limit_per_member,
+          pack_multiple: p.pack_multiple,
+          supply_qty: p.supply_qty,
+          moq: p.moq,
+          estimated_price:
+            p.estimated_price === null ? null : Number(p.estimated_price),
+          price_tiers: p.price_tiers,
+          new_price: p.new_price === null ? null : Number(p.new_price),
+          price_effective_date: p.price_effective_date,
+          eta_date: p.eta_date,
+        },
+      })),
+    }));
+  }
+
   private applyCampaignDto(c: PreorderCampaignEntity, dto: UpdateCampaignDto) {
     if (dto.name !== undefined) {
       if (!dto.name?.trim())

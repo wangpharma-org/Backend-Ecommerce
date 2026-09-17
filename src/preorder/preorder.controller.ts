@@ -160,6 +160,13 @@ export class PreorderController {
     return this.service.listCampaignsForErp();
   }
 
+  /** เงื่อนไขของทุกรอบจอง (ระดับรอบ + ระดับสินค้า) ให้ระบบภายนอกตั้งเงื่อนไขให้ตรงกัน */
+  @Get('admin/preorder/erp/rules')
+  listCampaignRulesForErp(@Req() req: AuthedRequest) {
+    assertAdmin(req);
+    return this.service.listCampaignRulesForErp();
+  }
+
   /** รายการสั่งจองของลูกค้าทั้งหมดในรอบ (เอา id จาก /erp/campaigns มาเป็น param) */
   @Get('admin/preorder/erp/campaigns/:id/orders')
   listCampaignOrdersForErp(
