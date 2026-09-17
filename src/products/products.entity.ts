@@ -30,6 +30,8 @@ import { ProductUnitEntity } from './product-unit.entity';
 
 @Entity({ name: 'product' })
 export class ProductEntity {
+  productLabels?: string[];
+
   @PrimaryColumn({ unique: true, length: 20 })
   pro_code!: string;
 

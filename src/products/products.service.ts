@@ -28,6 +28,7 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
 import {
   applyRedeemProductFilter,
   buildRedeemCandidateWhere,
@@ -110,6 +111,7 @@ export class ProductsService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    private readonly productLabelRulesService: ProductLabelRulesService,
     private readonly redeemProductSetService: RedeemProductSetService,
   ) {}
 
@@ -1075,7 +1077,13 @@ export class ProductsService {
         throw new Error('Not found Product');
       }
 
-      return await this.transformProductWithUnits(product);
+      const transformedProduct = await this.transformProductWithUnits(product);
+      await this.attachProductLabels([
+        transformedProduct,
+        ...(transformedProduct.replace ? [transformedProduct.replace] : []),
+        ...(transformedProduct.recommend?.products ?? []),
+      ]);
+      return transformedProduct;
     } catch (error) {
       this.logger.error(error);
       throw new Error('Something Error in Product Detail');
@@ -1365,6 +1373,7 @@ export class ProductsService {
         productsWithUnits.push(await this.transformProductWithUnits(product));
       }
 
+      await this.attachProductLabels(productsWithUnits);
       return { products: productsWithUnits, totalCount };
     } catch (error) {
       this.logger.error('Error searching products:', error);
@@ -1918,6 +1927,7 @@ export class ProductsService {
         const detailedProduct = await this.transformProductWithUnits(product);
         productEntity.push(detailedProduct);
       }
+      await this.attachProductLabels(productEntity);
       return {
         products: productEntity,
         totalCount,
@@ -1977,6 +1987,11 @@ export class ProductsService {
       this.logger.error('Error free products:', error);
       throw new Error('Error free products');
     }
+  }
+
+  // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล
+  private async attachProductLabels(products: ProductEntity[]) {
+    await this.productLabelRulesService.attachToProducts(products);
   }
 
   // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล — query เดียวสำหรับหลาย pro_code พร้อมกัน

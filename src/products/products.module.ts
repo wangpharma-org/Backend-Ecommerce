@@ -16,6 +16,7 @@ import { ElasticsearchModule } from 'src/elasticsearch/elasticsearch.module';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import { ProductLabelRulesModule } from 'src/product-label-rules/product-label-rules.module';
 import { FixFreeModule } from 'src/fix-free/fix-free.module';
 
 @Module({
@@ -34,6 +35,7 @@ import { FixFreeModule } from 'src/fix-free/fix-free.module';
     BackendModule,
     ImagedebugModule,
     ElasticsearchModule,
+    ProductLabelRulesModule,
     FixFreeModule,
     forwardRef(() => ShoppingCartModule),
   ],

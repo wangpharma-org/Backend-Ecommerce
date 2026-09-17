@@ -57,6 +57,7 @@ import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
+import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
 
@@ -129,6 +130,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ElasticsearchModule,
     HappyHourModule,
     DeliveryPreferenceModule,
+    ProductLabelRulesModule,
     SpecialCollectionModule,
     BundleSetModule,
     MailerModule.forRootAsync({
