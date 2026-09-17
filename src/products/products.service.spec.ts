@@ -11,6 +11,7 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { LineSupportService } from 'src/line-support/line-support.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -47,21 +48,32 @@ const UNITS_3_LEVELS = [
 
 describe('ProductsService — unit helpers', () => {
   let service: ProductsService;
+  const lineSupportMock = { notifyRedeemStockOut: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
         { provide: getRepositoryToken(ProductEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ProductPharmaEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ProductPharmaEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(CreditorEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ProductUnitEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ProductUnitEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(UserEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ShoppingCartEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ShoppingCartEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(DeleteCartEntity), useValue: mockRepo() },
         { provide: BackendService, useValue: {} },
         { provide: ElasticsearchService, useValue: {} },
         { provide: ShoppingCartService, useValue: {} },
+        { provide: LineSupportService, useValue: lineSupportMock },
       ],
     }).compile();
 
@@ -76,27 +88,39 @@ describe('ProductsService — unit helpers', () => {
 
   describe('convertEnumToUnitName', () => {
     it('returns unit_name for level 1 (number input)', () => {
-      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('returns unit_name for level 2', () => {
-      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('returns unit_name for level 3', () => {
-      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('accepts string enum "1"', () => {
-      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('accepts string enum "2"', () => {
-      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('accepts string enum "3"', () => {
-      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('falls back to string enum when units array is empty', () => {
@@ -109,11 +133,15 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('returns empty string when unitEnum is undefined', () => {
-      expect((service as any).convertEnumToUnitName(undefined, UNITS_3_LEVELS)).toBe('');
+      expect(
+        (service as any).convertEnumToUnitName(undefined, UNITS_3_LEVELS),
+      ).toBe('');
     });
 
     it('returns empty string for level not found (e.g. 9)', () => {
-      expect((service as any).convertEnumToUnitName(9, UNITS_3_LEVELS)).toBe('');
+      expect((service as any).convertEnumToUnitName(9, UNITS_3_LEVELS)).toBe(
+        '',
+      );
     });
 
     it('returns empty string when product has only level 1 and level 2 is requested', () => {
@@ -155,7 +183,9 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('returns 1 when unitEnum is undefined', () => {
-      expect((service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS)).toBe(1);
+      expect(
+        (service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS),
+      ).toBe(1);
     });
 
     it('returns 1 for level not found in array', () => {
@@ -169,6 +199,92 @@ describe('ProductsService — unit helpers', () => {
         { level: 3, unit_name: 'กล่อง', ratio: 1000 },
       ];
       expect((service as any).getRatioFromUnits(3, units)).toBe(1000);
+    });
+  });
+  // ─── ECWC-477: notifyRedeemStockOut ───────────────────────────────────────
+
+  describe('notifyRedeemStockOut', () => {
+    type RedeemNotifyInternals = {
+      productRepo: { find: jest.Mock };
+      notifyRedeemStockOut(body: {
+        group: { pro_code: string; stock: number }[];
+        filename: string;
+      }): Promise<void>;
+    };
+    const internals = () => service as unknown as RedeemNotifyInternals;
+
+    beforeEach(() => {
+      lineSupportMock.notifyRedeemStockOut.mockClear();
+    });
+
+    it('sends one message with all zero-stock redeem products', async () => {
+      const find = jest.fn().mockResolvedValue([
+        { pro_code: 'P0001', pro_name: 'สินค้า A' },
+        { pro_code: 'P0002', pro_name: 'สินค้า B' },
+      ]);
+      internals().productRepo.find = find;
+
+      await internals().notifyRedeemStockOut({
+        group: [
+          { pro_code: 'P0001', stock: 0 },
+          { pro_code: 'P0002', stock: 0 },
+          { pro_code: 'P0003', stock: 5 },
+        ],
+        filename: 'stock_20260822.xlsx',
+      });
+
+      // เงื่อนไขเป็น array = OR (pro_free = 1 หรือ product_type = '00')
+      const where = find.mock.calls[0][0].where as Record<string, unknown>[];
+      expect(where).toHaveLength(2);
+      expect(where[0]).toMatchObject({ pro_free: true });
+      expect(where[1]).toMatchObject({ product_type: '00' });
+
+      expect(lineSupportMock.notifyRedeemStockOut).toHaveBeenCalledTimes(1);
+      expect(lineSupportMock.notifyRedeemStockOut).toHaveBeenCalledWith({
+        file_name: 'stock_20260822.xlsx',
+        items: [
+          { pro_code: 'P0001', pro_name: 'สินค้า A' },
+          { pro_code: 'P0002', pro_name: 'สินค้า B' },
+        ],
+      });
+    });
+
+    it('does not send when no product in the file hit zero stock', async () => {
+      const find = jest.fn().mockResolvedValue([]);
+      internals().productRepo.find = find;
+
+      await internals().notifyRedeemStockOut({
+        group: [{ pro_code: 'P0003', stock: 5 }],
+        filename: 'stock.xlsx',
+      });
+
+      expect(find).not.toHaveBeenCalled();
+      expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
+    });
+
+    it('does not send when zero-stock products are not redeem products', async () => {
+      internals().productRepo.find = jest.fn().mockResolvedValue([]);
+
+      await internals().notifyRedeemStockOut({
+        group: [{ pro_code: 'P0009', stock: 0 }],
+        filename: 'stock.xlsx',
+      });
+
+      expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
+    });
+
+    it('swallows query errors so update stock keeps working', async () => {
+      internals().productRepo.find = jest
+        .fn()
+        .mockRejectedValue(new Error('db down'));
+
+      await expect(
+        internals().notifyRedeemStockOut({
+          group: [{ pro_code: 'P0001', stock: 0 }],
+          filename: 'stock.xlsx',
+        }),
+      ).resolves.toBeUndefined();
+      expect(lineSupportMock.notifyRedeemStockOut).not.toHaveBeenCalled();
     });
   });
 });
