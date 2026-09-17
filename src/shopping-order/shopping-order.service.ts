@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { ShoppingOrderEntity } from './shopping-order.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
@@ -7,10 +12,10 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { HttpService } from '@nestjs/axios';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
+import { RedeemProductSetService } from '../fix-free/redeem-product-set.service';
 import { DataSource } from 'typeorm';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import axios from 'axios';
-import { Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SaleLogEntity } from './salelog-order.entity';
 import { PromotionRewardEntity } from 'src/promotion/promotion-reward.entity';
@@ -19,10 +24,21 @@ import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-
 import { PromotionService } from 'src/promotion/promotion.service';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
+import { ClientKafka } from '@nestjs/microservices';
+import { lastValueFrom } from 'rxjs';
+import { lineDiscountPercent } from 'src/promotion/promo-line-value';
 
 interface CountSale {
   pro_code: string;
   order_count: number;
+}
+
+interface EcommerceOrderCreatedEvent {
+  sh_running: string;
+  sh_datetime: string;
+  mem_code: string;
+  source: 'ecommerce';
+  occurred_at: string;
 }
 
 @Injectable()
@@ -52,7 +68,14 @@ export class ShoppingOrderService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly promotionService: PromotionService,
     private readonly happyHourService: HappyHourService,
+    private readonly redeemProductSetService: RedeemProductSetService,
+    @Inject('ECOMMERCE_KAFKA_SERVICE')
+    private readonly clientKafka: ClientKafka,
   ) {}
+
+  private round2(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
 
   private convertEnumToUnitName(
     unitEnum: 1 | 2 | 3 | string,
@@ -274,6 +297,7 @@ export class ShoppingOrderService {
       const numberOfMonth = new Date().getMonth() + 1;
       runningNumbers = [];
       const allIdCartForDelete: number[] = [];
+      const ecommerceOrderCreatedEvents: EcommerceOrderCreatedEvent[] = [];
       let totalSumPrice = 0;
       let totalSumPoint = 0;
       let pointAfterUse = 0;
@@ -331,6 +355,16 @@ export class ShoppingOrderService {
             { soh_running: running },
           );
           runningNumbers.push(running);
+          const shDatetime = NewHead.soh_datetime
+            ? new Date(NewHead.soh_datetime)
+            : new Date();
+          ecommerceOrderCreatedEvents.push({
+            sh_running: running,
+            sh_datetime: shDatetime.toISOString(),
+            mem_code: data.mem_code,
+            source: 'ecommerce',
+            occurred_at: new Date().toISOString(),
+          });
           submitLogContext.push({ createdOrderHead: running });
 
           const normalItems = group.filter((item) => !item.is_reward);
@@ -401,12 +435,22 @@ export class ShoppingOrderService {
               );
             }
 
-            let price =
+            /**
+             * ราคาที่ควรเก็บถ้าไม่มีส่วนลดของกระเช้า/ของแถมมาเกี่ยว
+             * ใช้เป็นทั้ง "มูลค่าสินค้า" บนบิลและเป็นฐานคิดส่วนลด (ECWC-567)
+             * โปรเดือน/flashsale ถือเป็นราคาขายจริง ไม่ใช่ส่วนลด จึงรวมอยู่ในราคานี้
+             */
+            const listPrice =
               isPromotionActive || isFlashSale
                 ? Number(item.spc_amount) *
                   Number(item.product.pro_priceA) *
                   ratio
                 : Number(item.spc_amount) * unitPrice * ratio;
+
+            // กระเช้าสำเร็จรูป: ราคาชุดถูกเฉลี่ยลงบรรทัดตอนใส่ตะกร้าแล้ว ใช้ตามนั้น
+            let price = this.shoppingCartService.hasFixedTotal(item)
+              ? Number(item.spc_fixed_total)
+              : listPrice;
 
             const isFreebie = Boolean(
               item.hotdeal_free === true &&
@@ -442,6 +486,8 @@ export class ShoppingOrderService {
               spo_unit: unitName,
               spo_price_unit: price / item.spc_amount,
               spo_total_decimal: price,
+              spo_price_list: this.round2(listPrice / item.spc_amount),
+              spo_discount: lineDiscountPercent(listPrice, price),
               pro_code: item.pro_code,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
@@ -525,6 +571,21 @@ export class ShoppingOrderService {
               item.product?.units,
             );
 
+            // ของแถมก็ต้องบอกมูลค่าปกติ ไม่งั้นบิลไม่รู้ว่าแถมของราคาเท่าไรไป (ECWC-567)
+            const rewardRatio = this.getRatioFromUnits(
+              item.spc_unit_enum,
+              item.product?.units,
+            );
+            const rewardUnitPrice =
+              data.priceOption === 'A'
+                ? Number(item.product?.pro_priceA)
+                : data.priceOption === 'B'
+                  ? Number(item.product?.pro_priceB)
+                  : Number(item.product?.pro_priceC);
+            const rewardListPrice = this.round2(
+              (Number(rewardUnitPrice) || 0) * (rewardRatio || 1),
+            );
+
             const orderItem = manager.create(ShoppingOrderEntity, {
               orderHeader: { soh_running: running },
               pro_code: item.pro_code,
@@ -532,6 +593,8 @@ export class ShoppingOrderService {
               spo_qty: item.spc_amount,
               spo_price_unit: 0,
               spo_total_decimal: 0,
+              spo_price_list: rewardListPrice,
+              spo_discount: rewardListPrice > 0 ? 100 : 0,
               is_reward: true,
               promotion_id: item.promo_id,
               tier_id: item.tier_id,
@@ -561,16 +624,37 @@ export class ShoppingOrderService {
 
           if (groupIndex === groupCartArray.length - 1) {
             if (data.listFree && data.listFree.length > 0) {
-              const listFree = await Promise.all(
-                data.listFree.map((order) =>
-                  manager.findOne(ProductEntity, {
-                    where: { pro_code: order.pro_code },
-                  }),
-                ),
-              );
+              const requestedQuantityByProduct = new Map<string, number>();
+              for (const requested of data.listFree) {
+                if (
+                  !Number.isInteger(requested.amount) ||
+                  requested.amount < 1
+                ) {
+                  throw new BadRequestException(
+                    'จำนวนสินค้าแลกแต้มต้องเป็นจำนวนเต็มมากกว่า 0',
+                  );
+                }
+                requestedQuantityByProduct.set(
+                  requested.pro_code,
+                  (requestedQuantityByProduct.get(requested.pro_code) ?? 0) +
+                    requested.amount,
+                );
+              }
 
-              const sumpoint = listFree.reduce((total, order, index) => {
-                if (!order?.pro_free) {
+              const redeemSet =
+                await this.redeemProductSetService.getCustomerSet(manager);
+              const redeemSetByDisplayCode = new Map(
+                redeemSet
+                  .filter(
+                    (item) =>
+                      item.isComingSoon !== true &&
+                      (!isL16 || item.displayProduct.pro_l16_only !== 1),
+                  )
+                  .map((item) => [item.displayProduct.pro_code, item]),
+              );
+              const listFree = data.listFree.map((order) => {
+                const redeemItem = redeemSetByDisplayCode.get(order.pro_code);
+                if (!redeemItem) {
                   orderContext = {
                     memberCode: data.mem_code,
                     priceOption: data.priceOption,
@@ -586,13 +670,27 @@ export class ShoppingOrderService {
                     })),
                   };
                   submitLogContext.push({
-                    freebieError: 'No pro_free defined',
-                    forProCode: data.listFree?.[index].pro_code,
+                    freebieError: 'Product is not redeemable',
+                    forProCode: order.pro_code,
                   });
                   throw new Error('Point Error');
                 }
-                const amount = data.listFree?.[index].amount ?? 0;
-                const point = order?.pro_point ?? 0;
+                return { order, redeemItem };
+              });
+
+              const sumpoint = listFree.reduce((total, item) => {
+                const { order, redeemItem } = item;
+                const amount = order.amount;
+                const requestedQuantity =
+                  requestedQuantityByProduct.get(
+                    redeemItem.displayProduct.pro_code,
+                  ) ?? 0;
+                if (requestedQuantity > redeemItem.displayQuantity) {
+                  throw new BadRequestException(
+                    `สินค้า ${order.pro_code} เลือกได้ไม่เกิน ${redeemItem.displayQuantity} ชิ้น`,
+                  );
+                }
+                const point = Number(redeemItem.redeemProduct.pro_point ?? 0);
                 submitLogContext.push({
                   calculatingPoint: point * amount,
                   forProCode: order.pro_code,
@@ -667,11 +765,11 @@ export class ShoppingOrderService {
 
           // สร้าง order items สำหรับ Happy Hour scope filtering
           const happyHourItems = orderSales.map((os) => ({
-            pro_code: os.pro_code!,
+            pro_code: os.pro_code,
             amount: Number(os.spo_total_decimal),
-            vendor_code: normalItems
-              .find((n) => n.pro_code === os.pro_code)
-              ?.product?.creditor?.creditor_code ?? undefined,
+            vendor_code:
+              normalItems.find((n) => n.pro_code === os.pro_code)?.product
+                ?.creditor?.creditor_code ?? undefined,
           }));
 
           submitLogContext.push({
@@ -684,8 +782,10 @@ export class ShoppingOrderService {
 
           // Happy Hour: คำนวณและบันทึก reward / excess discount
           let happyHourDiscount = 0;
-          const happyReward =
-            await this.happyHourService.calcHappyHourReward(currentGroupTotal, happyHourItems);
+          const happyReward = await this.happyHourService.calcHappyHourReward(
+            currentGroupTotal,
+            happyHourItems,
+          );
 
           if (happyReward) {
             submitLogContext.push({
@@ -709,7 +809,8 @@ export class ShoppingOrderService {
                   spo_unit: rewardEntry?.unit ?? 'ใบ',
                   spo_unit_enum: '1', // happy hour reward ใช้ smallest unit เสมอ
                   spo_qty:
-                    happyReward.numCards * (rewardEntry?.amount ?? happyReward.slot.reward_amount),
+                    happyReward.numCards *
+                    (rewardEntry?.amount ?? happyReward.slot.reward_amount),
                   spo_price_unit: 0,
                   spo_total_decimal: 0,
                   is_happy_hour: true,
@@ -818,6 +919,7 @@ export class ShoppingOrderService {
         });
         await this.saleLogEntity.save(raw);
       }
+      await this.emitEcommerceOrderCreatedEvents(ecommerceOrderCreatedEvents);
       return runningNumbers;
     } catch (error) {
       this.logger.error('Error submitting order', {
@@ -849,7 +951,34 @@ export class ShoppingOrderService {
       } catch (e) {
         this.logger.error('Failed to notify Slack', e);
       }
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       throw new Error('Failed to submit order. ' + error);
+    }
+  }
+
+  private async emitEcommerceOrderCreatedEvents(
+    events: EcommerceOrderCreatedEvent[],
+  ): Promise<void> {
+    for (const event of events) {
+      try {
+        await lastValueFrom(
+          this.clientKafka.emit('ecommerce_order_created', event),
+        );
+        this.logger.log('ecommerce_order_created_emitted', {
+          event: 'ecommerce_order_created_emitted',
+          sh_running: event.sh_running,
+          sh_datetime: event.sh_datetime,
+          mem_code: event.mem_code,
+        });
+      } catch (error) {
+        this.logger.error('Failed to emit ecommerce_order_created', {
+          event: 'ecommerce_order_created_failed',
+          sh_running: event.sh_running,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 

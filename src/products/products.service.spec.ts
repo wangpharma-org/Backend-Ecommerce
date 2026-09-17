@@ -11,6 +11,7 @@ import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -53,15 +54,28 @@ describe('ProductsService — unit helpers', () => {
       providers: [
         ProductsService,
         { provide: getRepositoryToken(ProductEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ProductPharmaEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ProductPharmaEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(CreditorEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ProductUnitEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ProductUnitEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(UserEntity), useValue: mockRepo() },
-        { provide: getRepositoryToken(ShoppingCartEntity), useValue: mockRepo() },
+        {
+          provide: getRepositoryToken(ShoppingCartEntity),
+          useValue: mockRepo(),
+        },
         { provide: getRepositoryToken(DeleteCartEntity), useValue: mockRepo() },
         { provide: BackendService, useValue: {} },
         { provide: ElasticsearchService, useValue: {} },
         { provide: ShoppingCartService, useValue: {} },
+        {
+          provide: RedeemProductSetService,
+          useValue: { getCustomerSet: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -76,27 +90,39 @@ describe('ProductsService — unit helpers', () => {
 
   describe('convertEnumToUnitName', () => {
     it('returns unit_name for level 1 (number input)', () => {
-      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName(1, UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('returns unit_name for level 2', () => {
-      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName(2, UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('returns unit_name for level 3', () => {
-      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName(3, UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('accepts string enum "1"', () => {
-      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe('ชิ้น');
+      expect((service as any).convertEnumToUnitName('1', UNITS_3_LEVELS)).toBe(
+        'ชิ้น',
+      );
     });
 
     it('accepts string enum "2"', () => {
-      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe('กล่อง');
+      expect((service as any).convertEnumToUnitName('2', UNITS_3_LEVELS)).toBe(
+        'กล่อง',
+      );
     });
 
     it('accepts string enum "3"', () => {
-      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe('ลัง');
+      expect((service as any).convertEnumToUnitName('3', UNITS_3_LEVELS)).toBe(
+        'ลัง',
+      );
     });
 
     it('falls back to string enum when units array is empty', () => {
@@ -109,11 +135,15 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('returns empty string when unitEnum is undefined', () => {
-      expect((service as any).convertEnumToUnitName(undefined, UNITS_3_LEVELS)).toBe('');
+      expect(
+        (service as any).convertEnumToUnitName(undefined, UNITS_3_LEVELS),
+      ).toBe('');
     });
 
     it('returns empty string for level not found (e.g. 9)', () => {
-      expect((service as any).convertEnumToUnitName(9, UNITS_3_LEVELS)).toBe('');
+      expect((service as any).convertEnumToUnitName(9, UNITS_3_LEVELS)).toBe(
+        '',
+      );
     });
 
     it('returns empty string when product has only level 1 and level 2 is requested', () => {
@@ -155,7 +185,9 @@ describe('ProductsService — unit helpers', () => {
     });
 
     it('returns 1 when unitEnum is undefined', () => {
-      expect((service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS)).toBe(1);
+      expect(
+        (service as any).getRatioFromUnits(undefined, UNITS_3_LEVELS),
+      ).toBe(1);
     });
 
     it('returns 1 for level not found in array', () => {

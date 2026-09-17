@@ -18,4 +18,5 @@ export const envValidationSchema = Joi.object({
   PORT: Joi.number().default(3000),
   PRODUCT_SERVICE_URL: Joi.string().optional(),
   WEBHOOK_SECRET: Joi.string().optional(),
+  KAFKA_GROUP_ID: Joi.string().default('consumer-ecommerce'),
 });
