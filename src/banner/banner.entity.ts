@@ -111,4 +111,8 @@ export class BannerEntity {
 
   @Column({ nullable: true })
   product_list?: string;
+
+  /** ผูกกับโปรโมชั่นเพื่อมีปุ่ม "สรุปโปร" บนแบนเนอร์ (ECWC-532) — null = แบนเนอร์ธรรมดา */
+  @Column({ type: 'int', nullable: true, default: null })
+  promo_id?: number | null;
 }
