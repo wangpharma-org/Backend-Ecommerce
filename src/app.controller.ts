@@ -1021,6 +1021,17 @@ export class AppController {
 
   // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-status/delivering-count')
+  async getDeliveringOrderCount(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<{ count: number }> {
+    const count = await this.orderStatusV2Service.getDeliveringCount(
+      req.user.mem_code,
+    );
+    return { count };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/order-status/:soh_running')
   async getOrderStatusV2(
     @Param('soh_running') soh_running: string,
