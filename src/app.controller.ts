@@ -1027,6 +1027,17 @@ export class AppController {
     );
   }
 
+  // ECWC-601: แถบใต้ navbar หน้าหลัก — ขนส่งที่กำลังส่งของให้ลูกค้าส่งถึงร้านไหนแล้ว
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/delivery/latest-store')
+  async getLatestDeliveringStores(
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.orderStatusV2Service.getLatestDeliveringStores(
+      req.user.mem_code,
+    );
+  }
+
   // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/order-status/:soh_running')
