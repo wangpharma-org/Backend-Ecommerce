@@ -1224,14 +1224,21 @@ export class PreorderService {
       p.min_per_member = toIntOrNull(dto.min_per_member, 'min_per_member', 1);
     if (dto.pack_multiple !== undefined)
       p.pack_multiple = toIntOrNull(dto.pack_multiple, 'pack_multiple', 1);
-    if (
-      p.min_per_member !== null &&
-      p.limit_per_member !== null &&
-      p.min_per_member > p.limit_per_member
-    ) {
-      throw new BadRequestException(
-        'min_per_member ต้องไม่เกิน limit_per_member',
-      );
+    // ต้องมีจำนวนที่จองได้จริงอย่างน้อย 1 ค่า: ทวีคูณของ pack_multiple ที่ >= min_per_member ต้องไม่เกิน limit_per_member
+    // (ครอบคลุมทั้งกรณี min > limit ตรงๆ และกรณี pack_multiple เองก็เกิน limit อยู่แล้ว)
+    if (p.limit_per_member !== null) {
+      const packMultiple =
+        p.pack_multiple !== null && p.pack_multiple > 1 ? p.pack_multiple : 1;
+      const effectiveMin = p.min_per_member ?? packMultiple;
+      const smallestValidAmount =
+        Math.ceil(effectiveMin / packMultiple) * packMultiple;
+      if (smallestValidAmount > p.limit_per_member) {
+        throw new BadRequestException(
+          p.pack_multiple !== null && p.pack_multiple > 1
+            ? `ไม่มีจำนวนที่จองได้จริง: ขั้นต่ำ ${p.min_per_member ?? 1} ร่วมกับทวีคูณหีบห่อ ${p.pack_multiple} ทำให้จำนวนต่ำสุดที่จองได้คือ ${smallestValidAmount} ซึ่งเกิน limit ต่อร้าน ${p.limit_per_member}`
+            : 'min_per_member ต้องไม่เกิน limit_per_member',
+        );
+      }
     }
     if (dto.price_tiers !== undefined) {
       if (
