@@ -142,7 +142,6 @@ export interface EcomOrderStatusV2Res {
   delivery: {
     store_name: string;
     driver_name: string | null;
-    driver_emp_code: string | null;
     driver_tel: string | null;
     departure_time: string | null;
     checkpoint: EcomOrderStatusV2Checkpoint | null;
