@@ -1872,6 +1872,7 @@ export class PreorderService {
           priceCondition: member?.mem_price ?? 'A',
           mem_route: member?.mem_route ?? undefined,
           company_day_source: 'Preorder',
+          isPreorderFulfillment: true,
         });
         await this.itemRepo.update(
           { id: it.id },

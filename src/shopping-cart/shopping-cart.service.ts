@@ -931,6 +931,8 @@ export class ShoppingCartService {
     flashsale_end?: string;
     clientVersion?: string | number;
     company_day_source?: string;
+    /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
+    isPreorderFulfillment?: boolean;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -938,7 +940,7 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
-      if (Number(data.amount) > 0) {
+      if (Number(data.amount) > 0 && !data.isPreorderFulfillment) {
         await this.ensureNotPreorderRestricted(data.pro_code);
       }
 
@@ -1012,6 +1014,7 @@ export class ShoppingCartService {
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
         syncHotdeal: false,
+        isPreorderFulfillment: data.isPreorderFulfillment,
       });
 
       const cart = await this.getProductCart(data.mem_code, {
@@ -1471,12 +1474,16 @@ export class ShoppingCartService {
     mem_route?: string;
     clientVersion?: string | number;
     syncHotdeal?: boolean;
+    /** true เฉพาะตอนเรียกจาก addProductCart ที่เป็นการส่งสินค้าที่จัดสรรแล้วของ PreorderService เข้าตะกร้า */
+    isPreorderFulfillment?: boolean;
   }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       if (data.type === 'check') {
-        await this.ensureNotPreorderRestricted(data.pro_code);
+        if (!data.isPreorderFulfillment) {
+          await this.ensureNotPreorderRestricted(data.pro_code);
+        }
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
           { spc_checked: true },
