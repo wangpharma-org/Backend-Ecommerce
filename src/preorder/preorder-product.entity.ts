@@ -40,6 +40,17 @@ export enum PreorderPriceType {
   PP = 'pp',
 }
 
+/**
+ * Tag ราคาที่ลูกค้าเห็นบนการ์ดสินค้า (ต่างจาก price_type ที่เก็บไว้ใช้ภายในเท่านั้น)
+ * ไม่กระทบการคิดราคาในตะกร้า เป็นแค่ป้ายแจ้งลูกค้าว่าทำไมราคาถึงเป็นแบบนี้
+ */
+export enum PreorderPriceTag {
+  /** ราคาเก่า: ผู้ผลิตปรับราคาแล้ว แต่วังยังไม่ได้ปรับตาม */
+  OLD_PRICE = 'old_price',
+  /** ลดราคา: ราคาใหม่ถูกลดลงมา */
+  DISCOUNT = 'discount',
+}
+
 export interface PreorderPriceTier {
   /** ยอดรวมทั้งรอบตั้งแต่เท่านี้ขึ้นไป */
   min_total_qty: number;
@@ -89,9 +100,13 @@ export class PreorderProductEntity {
   })
   reason!: PreorderReason;
 
-  /** ประเภทราคาตามนิยามผู้บริหาร (admin เท่านั้น) */
+  /** ประเภทราคาตามนิยามผู้บริหาร (admin เท่านั้น ลูกค้าไม่เห็น) */
   @Column({ type: 'enum', enum: PreorderPriceType, nullable: true })
   price_type!: PreorderPriceType | null;
+
+  /** Tag ราคาที่แสดงให้ลูกค้าเห็นบนการ์ด (แยกจาก price_type โดยเจตนา) */
+  @Column({ type: 'enum', enum: PreorderPriceTag, nullable: true })
+  price_tag!: PreorderPriceTag | null;
 
   /** ราคาใหม่หลังปรับ (เฉพาะ reason = price_increase) */
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })

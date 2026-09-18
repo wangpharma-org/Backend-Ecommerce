@@ -71,7 +71,7 @@ export interface AddProductDto {
   pro_code: string;
   note?: string | null;
   reason?: 'restock' | 'price_increase';
-  /** ประเภทราคาตามนิยามผู้บริหาร (admin เท่านั้น) null = ไม่ระบุ */
+  /** ประเภทราคาตามนิยามผู้บริหาร (admin เท่านั้น ลูกค้าไม่เห็น) null = ไม่ระบุ */
   price_type?:
     | 'eng_chiu'
     | 'half_half'
@@ -80,6 +80,8 @@ export interface AddProductDto {
     | 'discount'
     | 'pp'
     | null;
+  /** Tag ราคาที่ลูกค้าเห็นบนการ์ด null = ไม่ระบุ */
+  price_tag?: 'old_price' | 'discount' | null;
   new_price?: number | null;
   price_effective_date?: string | null;
   limit_per_member?: number | null;

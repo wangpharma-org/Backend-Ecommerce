@@ -41,7 +41,11 @@ import { ProductUnitEntity } from '../products/product-unit.entity';
 import { UserEntity } from '../users/users.entity';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { Cron } from '@nestjs/schedule';
-import { PreorderPriceType, PreorderReason } from './preorder-product.entity';
+import {
+  PreorderPriceType,
+  PreorderPriceTag,
+  PreorderReason,
+} from './preorder-product.entity';
 import type { PreorderPriceTier } from './preorder-product.entity';
 
 /** ชื่อหน่วยเล็กสุด (level 1) จากตาราง product_unit */
@@ -496,6 +500,7 @@ export class PreorderService {
           ? Math.min(100, Math.round((queue.total_qty / p.moq) * 100))
           : null,
       reason: p.reason,
+      price_tag: p.price_tag,
       new_price: p.new_price === null ? null : Number(p.new_price),
       price_effective_date: p.price_effective_date,
       min_per_member: p.min_per_member,
@@ -1033,6 +1038,7 @@ export class PreorderService {
         conditions: {
           reason: p.reason,
           price_type: p.price_type,
+          price_tag: p.price_tag,
           min_per_member: p.min_per_member,
           limit_per_member: p.limit_per_member,
           pack_multiple: p.pack_multiple,
@@ -1206,6 +1212,18 @@ export class PreorderService {
           'price_type ต้องเป็น eng_chiu, half_half, old_price, new_price, discount หรือ pp',
         );
       else p.price_type = dto.price_type as PreorderPriceType;
+    }
+    if (dto.price_tag !== undefined) {
+      if (dto.price_tag === null) p.price_tag = null;
+      else if (
+        !Object.values(PreorderPriceTag).includes(
+          dto.price_tag as PreorderPriceTag,
+        )
+      )
+        throw new BadRequestException(
+          'price_tag ต้องเป็น old_price หรือ discount',
+        );
+      else p.price_tag = dto.price_tag as PreorderPriceTag;
     }
     if (dto.new_price !== undefined) {
       if (dto.new_price === null) p.new_price = null;
@@ -1667,6 +1685,7 @@ export class PreorderService {
         pro_name: p.product?.pro_name ?? null,
         reason: p.reason,
         price_type: p.price_type,
+        price_tag: p.price_tag,
         unit: unit1Of(p.product),
         supplier:
           p.product?.creditor?.creditor_name ?? p.product?.pro_supplier ?? null,

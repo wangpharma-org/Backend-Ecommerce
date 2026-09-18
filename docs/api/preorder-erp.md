@@ -96,7 +96,8 @@ Base URL: `<BASE_URL>/api/ecom` (local dev: `http://localhost:3021/api/ecom`)
         "note": null,
         "conditions": {
           "reason": "restock",              // "restock" (ของกำลังจะเข้า) | "price_increase" (ของขาด+ผู้ผลิตขึ้นราคา)
-          "price_type": "eng_chiu",          // ดู docs/preorder.md — ใช้ภายใน ไม่กระทบราคาตะกร้า, null = ไม่ระบุ
+          "price_type": "eng_chiu",          // "eng_chiu" | "half_half" — ใช้ภายในเท่านั้น ลูกค้าไม่เห็น ไม่กระทบราคาตะกร้า, null = ไม่ระบุ
+          "price_tag": null,                 // "old_price" | "discount" — tag ที่ลูกค้าเห็นบนการ์ดสินค้าจริง (คนละฟิลด์กับ price_type), null = ไม่ระบุ
           "min_per_member": 10,              // ขั้นต่ำต่อร้าน — null = ไม่กำหนด
           "limit_per_member": null,          // จำกัดสูงสุดต่อร้าน (โหมด allocation) — null = ไม่จำกัด
           "pack_multiple": null,             // ต้องจองเป็นทวีคูณของค่านี้ — null = ไม่บังคับ
