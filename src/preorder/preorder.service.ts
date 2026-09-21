@@ -605,8 +605,12 @@ export class PreorderService {
         where: { preorder_product_id: pp.id, mem_code: memCode },
       });
 
-      // supply ของรอบ (โหมด A): ยอดคนอื่น + ของเรา ต้องไม่เกิน
-      if (pp.supply_qty !== null) {
+      // supply ของรอบ เฉพาะโหมด allocation (ของขาด จำกัดจำนวน): ยอดคนอื่น + ของเรา ต้องไม่เกิน
+      // โหมด aggregation (รวบรวมยอดสั่งผลิต) ไม่จำกัดยอดจองรายร้าน ใช้ moq เป็นเกณฑ์แทน — ไม่ใช่ supply_qty
+      if (
+        pp.supply_qty !== null &&
+        campaign.mode === PreorderMode.ALLOCATION
+      ) {
         const others = await manager
           .createQueryBuilder(PreorderItemEntity, 'i')
           .select('COALESCE(SUM(i.amount), 0)', 'qty')
