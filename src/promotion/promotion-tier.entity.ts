@@ -11,6 +11,7 @@ import {
 import { PromotionEntity } from './promotion.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
+import { PromotionTierExclusionEntity } from './promotion-tier-exclusion.entity';
 
 @Entity({ name: 'promotion_tier' })
 export class PromotionTierEntity {
@@ -47,6 +48,9 @@ export class PromotionTierEntity {
     cascade: true,
   })
   rewards!: PromotionRewardEntity[];
+
+  @OneToMany(() => PromotionTierExclusionEntity, (ex) => ex.tier)
+  exclusions!: PromotionTierExclusionEntity[];
 
   @Index()
   @ManyToOne(() => PromotionEntity, (promotion) => promotion.tiers, {
