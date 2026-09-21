@@ -1348,18 +1348,16 @@ export class ShoppingCartService {
       (l) => !usedSpcIds.has(l.spc_id),
     );
 
-    const totalRemainingBudget = remainingEligibleCart.reduce(
-      (sum, l) => sum + (remainingValuePerItem.get(l.spc_id) ?? 0),
-      0,
-    );
-    const totalRemainingUnits = remainingEligibleCart.reduce((sum, l) => {
+    const remainingUnitsPerItem = new Map<number, number>();
+    for (const l of remainingEligibleCart) {
       const ratio = this.getUnitRatio(l.product, l.spc_unit_enum);
-      return sum + Number(l.spc_amount) * ratio;
-    }, 0);
+      remainingUnitsPerItem.set(l.spc_id, Number(l.spc_amount) * ratio);
+    }
 
     const allProductTiers = await this.tierRepo
       .createQueryBuilder('tier')
       .innerJoinAndSelect('tier.promotion', 'promo')
+      .leftJoinAndSelect('tier.exclusions', 'exclusion')
       .leftJoinAndSelect('tier.rewards', 'reward')
       .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
       .where('tier.all_products = :all', { all: true })
@@ -1373,21 +1371,38 @@ export class ShoppingCartService {
         (a, b) => Number(b.min_amount) - Number(a.min_amount),
       );
 
-      let remainingBudget = totalRemainingBudget;
-      let remainingUnits = totalRemainingUnits;
-
       for (const tier of sortedAllTiers) {
         const threshold = Number(tier.min_amount);
         if (!threshold) continue;
 
-        const pool = tier.is_unit ? remainingUnits : remainingBudget;
+        // แต่ละ tier มีรายการสินค้าที่ไม่เข้าร่วมต่างกัน จึงต้องนับ pool แยก
+        const excludedCodes = new Set(
+          (tier.exclusions ?? []).map((e) => e.product_code),
+        );
+        const tierCart = remainingEligibleCart.filter(
+          (l) => !excludedCodes.has(l.pro_code),
+        );
+        const poolMap = tier.is_unit
+          ? remainingUnitsPerItem
+          : remainingValuePerItem;
+
+        const pool = tierCart.reduce(
+          (sum, l) => sum + (poolMap.get(l.spc_id) ?? 0),
+          0,
+        );
         if (pool < threshold) continue;
 
         const multiplier = Math.floor(pool / threshold);
         if (multiplier <= 0) continue;
 
-        if (tier.is_unit) remainingUnits -= multiplier * threshold;
-        else remainingBudget -= multiplier * threshold;
+        let toDeduct = multiplier * threshold;
+        for (const line of tierCart) {
+          if (toDeduct <= 0) break;
+          const avail = poolMap.get(line.spc_id) ?? 0;
+          const deduct = Math.min(avail, toDeduct);
+          poolMap.set(line.spc_id, avail - deduct);
+          toDeduct -= deduct;
+        }
 
         selectedTierContexts.push({
           promo_id: tier.promotion.promo_id,
@@ -1398,7 +1413,7 @@ export class ShoppingCartService {
           min_amount: threshold,
         });
 
-        for (const line of remainingEligibleCart) {
+        for (const line of tierCart) {
           if (!conditionTagMap.has(line.spc_id)) {
             conditionTagMap.set(line.spc_id, {
               promo_id: tier.promotion.promo_id,

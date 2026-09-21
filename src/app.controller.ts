@@ -1160,6 +1160,26 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/exclusion/add')
+  async addPromotionExclusion(
+    @Body() data: { tier_id: number; product_gcode: string },
+  ) {
+    return this.promotionService.addExclusion(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/exclusion/delete')
+  async deletePromotionExclusion(@Body() data: { exclusion_id: number }) {
+    return this.promotionService.deleteExclusion(data.exclusion_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/exclusion/list/:tier_id')
+  async listPromotionExclusions(@Param('tier_id') tier_id: string) {
+    return this.promotionService.getExclusionsByTier(Number(tier_id));
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/condition/delete')
   async deletePromotionCondition(@Body() data: { cond_id: number }) {
     return this.promotionService.deleteCondition(data.cond_id);
