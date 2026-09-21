@@ -1381,10 +1381,10 @@ export class PromotionService {
     }
   }
 
-  async getTierAllProduct() {
+  async getTierAllProduct(mem_code?: string) {
     try {
       const { startOfDay, endOfDay } = getTodayRange();
-      return await this.promotionTierRepo.find({
+      const tiers = await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
@@ -1395,6 +1395,7 @@ export class PromotionService {
         },
         relations: {
           promotion: true,
+          exclusions: true,
         },
         select: {
           tier_id: true,
@@ -1407,7 +1408,26 @@ export class PromotionService {
             promo_id: true,
             promo_name: true,
           },
+          exclusions: {
+            exclusion_id: true,
+            product_code: true,
+          },
         },
+      });
+
+      // ยอดที่ progress bar ใช้ต้องไม่รวมสินค้าที่ tier นั้นยกเว้น
+      const lines = mem_code
+        ? (await this.shoppingCartService.summaryCartDetailed(mem_code)).lines
+        : [];
+      return tiers.map(({ exclusions, ...tier }) => {
+        const excludedCodes = new Set(exclusions.map((e) => e.product_code));
+        return {
+          ...tier,
+          current_amount: lines.reduce(
+            (sum, l) => (excludedCodes.has(l.pro_code) ? sum : sum + l.amount),
+            0,
+          ),
+        };
       });
     } catch {
       throw new Error(`Failed to get tier with all products`);

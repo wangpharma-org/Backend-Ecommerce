@@ -2628,8 +2628,8 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product')
-  async getPromotionTierList() {
-    return await this.promotionService.getTierAllProduct();
+  async getPromotionTierList(@Req() req: Request & { user: JwtPayload }) {
+    return await this.promotionService.getTierAllProduct(req.user?.mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
