@@ -6,12 +6,14 @@ import { ProductsModule } from 'src/products/products.module';
 import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { UserEntity } from 'src/users/users.entity';
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
+import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([HotdealEntity, UserEntity, BannerHotdealEntity]),
     forwardRef(() => ProductsModule),
     forwardRef(() => ShoppingCartModule),
+    PromoOverlapModule,
   ],
   exports: [HotdealService],
   providers: [HotdealService],
