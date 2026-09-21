@@ -15,3 +15,14 @@ if (!Number.isInteger(page) || page < 1) throw new BadRequestException('current_
 ```
 **Source:** PR#148 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/148
 **Added:** 2026-05-19  **Confidence:** medium (single occurrence)
+
+### C-002  PR description must explicitly state whether new environment variables are added in this change
+**Why:** PR#229 — reviewer found the PR introduced new env vars but the PR description made no mention of them: "เพิ่มใน PR Information ด้วยว่ามี env เพิ่ม". Deployers who miss this skip adding the var and get a silent runtime failure.
+**Example:**
+```
+## Environment Variables
+- `KAFKA_BROKER_URL` (new) — Kafka broker URL for shopping-order notifications
+```
+If there are no new env vars, write: `ไม่มี env ใหม่`
+**Source:** PR#229 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/229
+**Added:** 2026-09-21  **Confidence:** medium (single occurrence)

@@ -37,3 +37,19 @@ this.logger.error('failed to fetch products', err)
 ```
 **Source:** ECWC-282 session 2026-05-30
 **Added:** 2026-05-30
+
+### R-003  Every state-mutating or auth-sensitive endpoint must have `@UseGuards(JwtAuthGuard)`; admin-only endpoints need an additional role guard
+**Why:** PR#176 — a POST endpoint `/ecom/check-happy-hour-reward` that modifies order rewards was deployed with no guard at all, meaning any unauthenticated caller could trigger it. Reviewer (Sasit-Nine) flagged Critical: "ใครก็ POST `sh_running` ใดก็ได้แล้วแก้จำนวนของแถมในออเดอร์ได้โดยไม่ต้องล็อกอิน ต้องเพิ่ม guard ก่อน merge"
+**Example:**
+```ts
+// ✗ no — ไม่มี guard ใดเลย
+@Post('/ecom/check-happy-hour-reward')
+async checkHappyHourReward(@Body() body: { sh_running: string }) { ... }
+
+// ✓ เพิ่ม JwtAuthGuard เสมอ; endpoint ที่เป็น admin-only ต้องเพิ่ม RoleGuard ด้วย
+@UseGuards(JwtAuthGuard)
+@Post('/ecom/check-happy-hour-reward')
+async checkHappyHourReward(@Body() body: { sh_running: string }) { ... }
+```
+**Source:** PR#176 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/176
+**Added:** 2026-09-21  **Enforce:** code review; consider global guard at router level for ecom routes
