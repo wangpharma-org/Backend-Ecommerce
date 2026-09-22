@@ -6,6 +6,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { UserEntity } from '../users/users.entity';
 import { ProductsModule } from '../products/products.module';
+import { StoreVisibilityModule } from '../store-visibility/store-visibility.module';
 import { OrderStatusV2Service } from './order-status-v2.service';
 
 @Module({
@@ -16,6 +17,7 @@ import { OrderStatusV2Service } from './order-status-v2.service';
       UserEntity,
     ]),
     ProductsModule,
+    StoreVisibilityModule,
     HttpModule,
     ConfigModule,
   ],

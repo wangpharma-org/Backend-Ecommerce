@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError } from 'axios';
@@ -14,8 +14,11 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { UserEntity } from '../users/users.entity';
 import { ProductsService } from '../products/products.service';
+import { StoreVisibilityService } from '../store-visibility/store-visibility.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
+  EcomLastDeliveredStore,
+  EcomLatestDeliveringStoreItem,
   EcomOrderDetailV2Res,
   EcomOrderListV2Order,
   EcomOrderListV2Res,
@@ -33,6 +36,8 @@ import {
 } from './types/legacy-order-api.types';
 
 const PICKING_ORDERS_MONTHS_BACK = 3;
+// ECWC-601: บิลที่ยังอยู่ระหว่างจัดส่งควรเปิดไม่เกินกี่วัน — กันยิง batch ไป logistics ทั้งประวัติ
+const DELIVERING_ORDERS_DAYS_BACK = 7;
 
 // ECWC-4xx: mapping สถานะภายในของเรา → ข้อความ Thai แบบเดียวกับ API เก่าฝั่ง PHP (Akitokung)
 // ยืนยันแล้วจากตัวอย่างจริงแค่ 'opened' ("กำลังเปิดบิล") — ที่เหลือ best-effort ตาม pattern เดียวกัน
@@ -121,11 +126,14 @@ interface LogisticTrackingV2Res {
     latitude: string;
     longitude: string;
     time: string | null;
+    mem_code?: string; // ECWC-600: มีเฉพาะ STORE_DELIVERED
   } | null;
   store_latitude: string | null;
   store_longitude: string | null;
   evidence: EcomOrderStatusV2Evidence | null;
 }
+
+type LastDeliveredStoreRow = Omit<EcomLastDeliveredStore, 'delivered_at'>;
 
 type PickingBatchStatus = 'picking' | 'checking' | 'ready' | 'blocked';
 type DeliveryBatchStatus = 'DELIVERING' | 'DONE' | 'BACK' | 'CANCELLED';
@@ -152,6 +160,7 @@ export class OrderStatusV2Service {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly productService: ProductsService,
+    private readonly storeVisibilityService: StoreVisibilityService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
@@ -750,6 +759,7 @@ export class OrderStatusV2Service {
       : pickingRaw;
 
     const status = this.resolveTimelineStatus(picking, delivery);
+    const lastDeliveredStore = await this.resolveLastDeliveredStore(delivery);
 
     return {
       soh_running,
@@ -770,13 +780,157 @@ export class OrderStatusV2Service {
             store_name: delivery.store_name,
             driver_name: delivery.driver_name || null,
             driver_tel: delivery.driver_tel,
-            checkpoint: delivery.checkpoint,
+            // map ทีละ field — checkpoint จาก logistics มี mem_code ของร้านอื่นติดมา ห้ามส่งต่อ
+            checkpoint: delivery.checkpoint
+              ? {
+                  type: delivery.checkpoint.type,
+                  latitude: delivery.checkpoint.latitude,
+                  longitude: delivery.checkpoint.longitude,
+                  time: delivery.checkpoint.time,
+                }
+              : null,
             store_latitude: delivery.store_latitude,
             store_longitude: delivery.store_longitude,
             finished_at: delivery.finished_at,
             evidence: delivery.evidence,
+            last_delivered_store: lastDeliveredStore,
           }
         : null,
+    };
+  }
+
+  // ECWC-601: หน้าหลัก (แถบใต้ navbar) — บิลของลูกค้าที่ขนส่งกำลังส่งอยู่ + ร้านล่าสุดที่ส่งถึงแล้ว
+  // เรียงร้านที่ส่งล่าสุดก่อน, ไม่มีบิลกำลังส่ง = [] (frontend ซ่อนแถบ)
+  // หาบิลย้อนหลัง DELIVERING_ORDERS_DAYS_BACK วัน ทั้งใน shopping_head และฝั่ง order-picking-service
+  // (บิลที่มีแค่ฝั่งคลังก็ขึ้นรถได้ — เจอจริง 005-090382 ไม่มีใน shopping_head แถบเลยไม่ขึ้น)
+  async getLatestDeliveringStores(
+    mem_code: string,
+  ): Promise<EcomLatestDeliveringStoreItem[]> {
+    const since = new Date();
+    since.setDate(since.getDate() - DELIVERING_ORDERS_DAYS_BACK);
+
+    const [heads, pickingEntries] = await Promise.all([
+      this.shoppingHeadRepo
+        .createQueryBuilder('head')
+        .where('head.mem_code = :mem_code', { mem_code })
+        .andWhere('head.soh_datetime >= :since', { since })
+        .select(['head.soh_running'])
+        .getMany(),
+      this.fetchPickingRunnings(mem_code, 1),
+    ]);
+    const runnings = [
+      ...new Set([
+        ...heads.map((h) => h.soh_running),
+        ...pickingEntries
+          .filter((e) => new Date(e.sh_datetime) >= since)
+          .map((e) => e.sh_running),
+      ]),
+    ];
+
+    const batch = await this.fetchDeliveryStatusBatch(runnings, mem_code);
+    const delivering = runnings.filter((r) => batch[r] === 'DELIVERING');
+    if (delivering.length === 0) return [];
+
+    const deliveries = await Promise.all(
+      delivering.map((r) => this.fetchDeliveryStatus(r, mem_code)),
+    );
+    const stores = await this.findStoresByMemCode(
+      deliveries.map((d) => this.lastDeliveredMemCode(d)),
+    );
+
+    // รถออกแล้วแต่ยังไม่ได้ส่งสักร้าน → last_delivered_store = null (frontend: "รถกำลังออกจากวังเภสัช")
+    const result: EcomLatestDeliveringStoreItem[] = delivering.map(
+      (soh_running, i) => ({
+        soh_running,
+        last_delivered_store: this.toLastDeliveredStore(deliveries[i], stores),
+      }),
+    );
+
+    // มีร้านที่ส่งถึงแล้วขึ้นก่อน เรียงส่งล่าสุดก่อน — frontend ใช้รายการแรก
+    const deliveredTime = (item: EcomLatestDeliveringStoreItem) =>
+      item.last_delivered_store
+        ? new Date(item.last_delivered_store.delivered_at ?? 0).getTime()
+        : -1;
+    return result.sort((a, b) => deliveredTime(b) - deliveredTime(a));
+  }
+
+  // ECWC-600: ร้านล่าสุดมีเฉพาะตอนกำลังส่ง และขนส่งส่งสำเร็จไปแล้วอย่างน้อย 1 ร้านในรอบนี้
+  private async resolveLastDeliveredStore(
+    delivery: LogisticTrackingV2Res | null,
+  ): Promise<EcomLastDeliveredStore | null> {
+    const memCode = this.lastDeliveredMemCode(delivery);
+    if (!memCode) return null;
+    const stores = await this.findStoresByMemCode([memCode]);
+    return this.toLastDeliveredStore(delivery, stores);
+  }
+
+  private lastDeliveredMemCode(
+    delivery: LogisticTrackingV2Res | null,
+  ): string | null {
+    if (delivery?.status !== 'DELIVERING') return null;
+    if (delivery.checkpoint?.type !== 'STORE_DELIVERED') return null;
+    return delivery.checkpoint.mem_code ?? null;
+  }
+
+  // ชื่อร้านใส่ให้เฉพาะร้านที่ยอมให้คนอื่นเห็นเอง (customer_store_visibility)
+  // อ่านค่าตั้งไม่ได้ = ซ่อนชื่อ ไม่ให้ชื่อร้านอื่นหลุด และไม่ทำให้หน้าสถานะทั้งหน้าพัง
+  private async findStoresByMemCode(
+    memCodes: (string | null)[],
+  ): Promise<Map<string, LastDeliveredStoreRow>> {
+    const unique = [...new Set(memCodes.filter((c): c is string => !!c))];
+    if (unique.length === 0) return new Map();
+    const [users, visible] = await Promise.all([
+      this.userRepo.find({
+        where: { mem_code: In(unique) },
+        select: {
+          mem_code: true,
+          mem_nameSite: true,
+          mem_tumbon: true,
+          mem_amphur: true,
+          mem_province: true,
+        },
+      }),
+      this.storeVisibilityService
+        .findVisibleMemCodes(unique)
+        .catch((error: unknown) => {
+          this.logger.error('Error read customer_store_visibility', error);
+          return new Set<string>();
+        }),
+    ]);
+    return new Map(
+      users.map((u) => [
+        u.mem_code,
+        {
+          store_name: visible.has(u.mem_code)
+            ? this.cleanText(u.mem_nameSite)
+            : null,
+          tumbon: this.cleanText(u.mem_tumbon),
+          amphur: this.cleanText(u.mem_amphur),
+          province: this.cleanText(u.mem_province),
+        },
+      ]),
+    );
+  }
+
+  // ข้อมูลใน users มีทั้ง '' และช่องว่างต่อท้าย (เช่น 'เขาพนม   ') — ให้ frontend ได้ null แทน
+  private cleanText(value: string | null | undefined): string | null {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  private toLastDeliveredStore(
+    delivery: LogisticTrackingV2Res | null,
+    stores: Map<string, LastDeliveredStoreRow>,
+  ): EcomLastDeliveredStore | null {
+    const memCode = this.lastDeliveredMemCode(delivery);
+    if (!memCode) return null;
+    const store = stores.get(memCode);
+    return {
+      store_name: store?.store_name ?? null,
+      tumbon: store?.tumbon ?? null,
+      amphur: store?.amphur ?? null,
+      province: store?.province ?? null,
+      delivered_at: delivery?.checkpoint?.time ?? null,
     };
   }
 
