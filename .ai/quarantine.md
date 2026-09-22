@@ -11,3 +11,9 @@ Format per entry: `### Q-NNN <statement>` then **Why:** / **Example:** / **Sourc
 **Promote to convention when:** seen again in ≥1 more PR by another reviewer.
 **Source:** PR#123 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/123
 **Added:** 2026-05-19  **Status:** quarantined (not team-agreed)
+
+### Q-002  Document new environment variables in the PR description when adding them
+**Why:** PR#229 — reviewer asked "เพิ่มใน PR Information ด้วยว่ามี env เพิ่ม" after the PR added a new Kafka broker env var without listing it. Single occurrence; process guidance not yet team-agreed.
+**Promote to convention when:** seen in ≥1 more PR by another reviewer.
+**Source:** PR#229 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/229
+**Added:** 2026-09-07  **Status:** quarantined (not team-agreed)
