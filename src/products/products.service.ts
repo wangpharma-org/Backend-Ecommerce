@@ -28,6 +28,17 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
+import {
+  applyRedeemProductFilter,
+  buildRedeemCandidateWhere,
+  buildRedeemProductWhere,
+  getRedeemDisplayQuantity,
+  isRedeemProductVisible,
+  REDEEM_PRODUCT_SUPPLIER,
+  sortRedeemProductsByRank,
+} from './redeem-product.criteria';
+import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 
 interface OrderItem {
   pro_code: string;
@@ -100,6 +111,8 @@ export class ProductsService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(ProductUnitEntity)
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
+    private readonly productLabelRulesService: ProductLabelRulesService,
+    private readonly redeemProductSetService: RedeemProductSetService,
   ) {}
 
   private convertEnumToUnitName(
@@ -1064,7 +1077,13 @@ export class ProductsService {
         throw new Error('Not found Product');
       }
 
-      return await this.transformProductWithUnits(product);
+      const transformedProduct = await this.transformProductWithUnits(product);
+      await this.attachProductLabels([
+        transformedProduct,
+        ...(transformedProduct.replace ? [transformedProduct.replace] : []),
+        ...(transformedProduct.recommend?.products ?? []),
+      ]);
+      return transformedProduct;
     } catch (error) {
       this.logger.error(error);
       throw new Error('Something Error in Product Detail');
@@ -1180,9 +1199,7 @@ export class ProductsService {
         .innerJoinAndSelect('product.units', 'units');
 
       if (data.category === 8) {
-        qb.where('product.pro_free = :free', { free: true })
-          .andWhere('product.pro_point > :point', { point: 0 })
-          .andWhere('product.pro_stock > :stock', { stock: 0 });
+        applyRedeemProductFilter(qb, 'product');
       } else {
         qb.where('product.pro_priceA != 0')
           .andWhere(
@@ -1356,6 +1373,7 @@ export class ProductsService {
         productsWithUnits.push(await this.transformProductWithUnits(product));
       }
 
+      await this.attachProductLabels(productsWithUnits);
       return { products: productsWithUnits, totalCount };
     } catch (error) {
       this.logger.error('Error searching products:', error);
@@ -1521,6 +1539,42 @@ export class ProductsService {
   //   }
   // }
 
+  // ES filter เอง cover ไม่ถึง external/enter fallback (search_auto.php, search_enter.php)
+  // ต้องกรองซ้ำหลัง fetch จาก DB กัน fallback หลุด filter เดียวกันเข้ามา
+  private isSearchExcludedProduct(product: {
+    pro_name: string;
+    pro_priceA: number;
+    pro_priceB: number;
+    pro_priceC: number;
+  }): boolean {
+    const name = product.pro_name ?? '';
+    const excludedPrefixes = [
+      'ฟรี',
+      '@',
+      'ส่งเสริม',
+      'รีเบท',
+      '-',
+      '/',
+      'ค่า',
+      '.',
+    ];
+    const excludedContains = ['บัตรโลตัส', 'สนับสนุน', 'ชดเชย'];
+    const excludedPrices = [0, 1, 10000000];
+
+    if (excludedPrefixes.some((prefix) => name.startsWith(prefix))) {
+      return true;
+    }
+    if (name.endsWith('ฟรี')) {
+      return true;
+    }
+    if (excludedContains.some((word) => name.includes(word))) {
+      return true;
+    }
+    return [product.pro_priceA, product.pro_priceB, product.pro_priceC].some(
+      (price) => excludedPrices.includes(Number(price)),
+    );
+  }
+
   async searchProductsElastic(data: {
     keyword: string;
     offset: number;
@@ -1586,6 +1640,22 @@ export class ProductsService {
                   { prefix: { 'pro_name.keyword': '-' } },
                   { prefix: { 'pro_name.keyword': '/' } },
                   { prefix: { 'pro_name.keyword': 'ค่า' } },
+                  { prefix: { 'pro_name.keyword': '.' } },
+                  { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+                  {
+                    wildcard: {
+                      'pro_name.keyword': { value: '*บัตรโลตัส*' },
+                    },
+                  },
+                  {
+                    wildcard: {
+                      'pro_name.keyword': { value: '*สนับสนุน*' },
+                    },
+                  },
+                  { wildcard: { 'pro_name.keyword': { value: '*ชดเชย*' } } },
+                  { terms: { pro_priceA: [1, 10000000] } },
+                  { terms: { pro_priceB: [1, 10000000] } },
+                  { terms: { pro_priceC: [1, 10000000] } },
                   { exists: { field: 'invisible_id' } },
                   ...(isL16
                     ? []
@@ -1837,7 +1907,14 @@ export class ProductsService {
           'fs.date',
         ]);
 
-      const products = await qb.getMany();
+      const rawProducts = await qb.getMany();
+      const products = rawProducts.filter(
+        (product) => !this.isSearchExcludedProduct(product),
+      );
+      totalCount = Math.max(
+        0,
+        totalCount - (rawProducts.length - products.length),
+      );
 
       const productMap = new Map(products.map((p) => [p.pro_code, p]));
 
@@ -1850,6 +1927,7 @@ export class ProductsService {
         const detailedProduct = await this.transformProductWithUnits(product);
         productEntity.push(detailedProduct);
       }
+      await this.attachProductLabels(productEntity);
       return {
         products: productEntity,
         totalCount,
@@ -1862,53 +1940,49 @@ export class ProductsService {
 
   async listFree(sort_by?: string, mem_code?: string, mem_route?: string) {
     try {
-      let order: Record<string, 'ASC' | 'DESC'>;
-
-      switch (sort_by) {
-        case '1':
-          order = { pro_stock: 'DESC' };
-          break;
-        case '2':
-          order = { pro_stock: 'ASC' };
-          break;
-        case '3':
-          order = { pro_point: 'DESC' };
-          break;
-        case '4':
-          order = { pro_point: 'ASC' };
-          break;
-        case '5':
-          order = { pro_sale_amount: 'DESC' };
-          break;
-        default:
-          order = { pro_name: 'ASC' };
-      }
-
       const isL16 = await this.isL16Member(mem_code, mem_route);
-      const data = await this.productRepo.find({
-        where: {
-          pro_free: true,
-          pro_stock: MoreThan(0),
-          pro_point: MoreThan(0),
-          ...(isL16
-            ? {
-                pro_l16_only: In([0, null]),
-              }
-            : {}),
-        },
-        relations: ['units'],
-        select: {
-          pro_code: true,
-          pro_name: true,
-          pro_point: true,
-          pro_imgmain: true,
-          pro_sale_amount: true,
-          pro_stock: true,
-        },
-        order,
-      });
+      const setItems = await this.redeemProductSetService.getCustomerSet();
+      const products = setItems
+        .filter((item) => !isL16 || item.displayProduct.pro_l16_only !== 1)
+        .map((item) => ({
+          ...item.displayProduct,
+          pro_point: Number(item.redeemProduct.pro_point ?? 0),
+          pro_redeem_display_quantity: item.displayQuantity,
+          redeem_main_code: item.redeemProduct.pro_code,
+          is_redeem_backup:
+            item.displayProduct.pro_code !== item.redeemProduct.pro_code,
+          is_redeem_coming_soon: item.isComingSoon,
+        }));
 
-      return data;
+      const compare = (
+        left: (typeof products)[number],
+        right: (typeof products)[number],
+      ): number => {
+        switch (sort_by) {
+          case '1':
+            return right.pro_stock - left.pro_stock;
+          case '2':
+            return left.pro_stock - right.pro_stock;
+          case '3':
+            return Number(right.pro_point) - Number(left.pro_point);
+          case '4':
+            return Number(left.pro_point) - Number(right.pro_point);
+          case '5':
+            return right.pro_sale_amount - left.pro_sale_amount;
+          default:
+            return 0;
+        }
+      };
+
+      const sortedProducts = [...products].sort(compare);
+      return [
+        ...sortedProducts.filter(
+          (product) => product.is_redeem_coming_soon !== true,
+        ),
+        ...sortedProducts.filter(
+          (product) => product.is_redeem_coming_soon === true,
+        ),
+      ];
     } catch (error) {
       this.logger.error('Error free products:', error);
       throw new Error('Error free products');
@@ -1916,10 +1990,18 @@ export class ProductsService {
   }
 
   // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล
-  private async getProductsWithUnits(pro_code: string) {
+  private async attachProductLabels(products: ProductEntity[]) {
+    await this.productLabelRulesService.attachToProducts(products);
+  }
+
+  // ฟังก์ชันดึงข้อมูลสินค้าพร้อมหน่วยจากฐานข้อมูล — query เดียวสำหรับหลาย pro_code พร้อมกัน
+  // (เดิม calculateSmallestUnit เรียกทีละ pro_code ในลูป กลายเป็น N+1 query เวลาประมวลผลหลาย
+  // บิลพร้อมกัน เช่นหน้า order-list/missing-orders ที่วน Promise.all หลายสิบบิล)
+  private async getProductsWithUnits(pro_codes: string[]) {
+    if (pro_codes.length === 0) return [];
     const products = await this.productRepo
       .createQueryBuilder('product')
-      .where('product.pro_code = :pro_code', { pro_code })
+      .where('product.pro_code IN (:...pro_codes)', { pro_codes })
       .select(['product.pro_code'])
       .innerJoinAndSelect('product.units', 'units')
       .getMany();
@@ -1934,20 +2016,18 @@ export class ProductsService {
   }
 
   async calculateSmallestUnit(order: OrderItem[]): Promise<number> {
-    let total = 0;
     try {
-      // ลูปผ่านทุก orderItem
+      const proCodes = [...new Set(order.map((o) => o.pro_code))];
+      const productsWithUnits = await this.getProductsWithUnits(proCodes);
+      const productByCode = new Map(
+        productsWithUnits.map((p) => [p.pro_code, p]),
+      );
+
+      let total = 0;
       for (const orderItem of order) {
         const { unit, quantity, pro_code } = orderItem;
 
-        const productsWithUnits = await this.getProductsWithUnits(pro_code);
-
-        const product:
-          | {
-              pro_code: string;
-              units: { unit: string; ratio: number }[];
-            }
-          | undefined = productsWithUnits.find((p) => p.pro_code === pro_code);
+        const product = productByCode.get(pro_code);
         if (!product) {
           throw new Error(`Product with code ${pro_code} not found`);
         }
@@ -2482,17 +2562,50 @@ export class ProductsService {
     }
   }
 
+  // หน้าแอดมิน — คืนสินค้ากลุ่มแลกแต้มครบทุกตัว พร้อม is_visible บอกสถานะแสดงผล
   async findProductFree(): Promise<
-    { pro_code: string; pro_name: string; pro_point: number }[]
+    {
+      pro_code: string;
+      pro_name: string;
+      pro_point: number;
+      pro_stock: number;
+      pro_supplier: string;
+      pro_free: boolean;
+      pro_redeem_display_quantity: number;
+      pro_redeem_rank: number | null;
+      source: 'pro_free' | 'supplier_00';
+      is_visible: boolean;
+    }[]
   > {
     try {
       const products = await this.productRepo.find({
-        where: { pro_free: true },
+        where: buildRedeemCandidateWhere(),
+        select: {
+          pro_code: true,
+          pro_name: true,
+          pro_point: true,
+          pro_stock: true,
+          pro_free: true,
+          pro_supplier: true,
+          pro_redeem_display_quantity: true,
+          pro_redeem_rank: true,
+        },
+        order: { pro_name: 'ASC' },
       });
-      return products.map((product) => ({
+      return sortRedeemProductsByRank(products).map((product) => ({
         pro_code: product.pro_code,
         pro_name: product.pro_name,
-        pro_point: product.pro_point,
+        pro_point: Number(product.pro_point ?? 0),
+        pro_stock: product.pro_stock,
+        pro_supplier: product.pro_supplier,
+        pro_free: product.pro_free,
+        pro_redeem_display_quantity: getRedeemDisplayQuantity(product),
+        pro_redeem_rank: product.pro_redeem_rank,
+        source:
+          product.pro_supplier === REDEEM_PRODUCT_SUPPLIER
+            ? 'supplier_00'
+            : 'pro_free',
+        is_visible: isRedeemProductVisible(product),
       }));
     } catch (error) {
       this.logger.error('Error finding free products:', error);
@@ -2912,18 +3025,30 @@ export class ProductsService {
       );
 
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
-      if (data.product_name !== undefined) esFields.pro_name = data.product_name ?? null;
-      if (data.product_nameEN !== undefined) esFields.pro_nameEN = data.product_nameEN ?? null;
-      if (data.product_nameSale !== undefined) esFields.pro_nameSale = data.product_nameSale ?? null;
-      if (data.product_genericname !== undefined) esFields.pro_genericname = data.product_genericname ?? null;
-      if (data.product_keysearch !== undefined) esFields.pro_keysearch = data.product_keysearch ?? null;
-      if (data.product_barcode !== undefined) esFields.pro_barcode1 = data.product_barcode ?? null;
-      if (data.product_barcode2 !== undefined) esFields.pro_barcode2 = data.product_barcode2 ?? null;
-      if (data.product_barcode3 !== undefined) esFields.pro_barcode3 = data.product_barcode3 ?? null;
-      if (data.product_price_a !== undefined) esFields.pro_priceA = data.product_price_a ?? null;
-      if (data.product_price_b !== undefined) esFields.pro_priceB = data.product_price_b ?? null;
-      if (data.product_price_c !== undefined) esFields.pro_priceC = data.product_price_c ?? null;
-      if (data.creditor_code !== undefined) esFields.creditor_code = data.creditor_code ?? null;
+      if (data.product_name !== undefined)
+        esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameEN !== undefined)
+        esFields.pro_nameEN = data.product_nameEN ?? null;
+      if (data.product_nameSale !== undefined)
+        esFields.pro_nameSale = data.product_nameSale ?? null;
+      if (data.product_genericname !== undefined)
+        esFields.pro_genericname = data.product_genericname ?? null;
+      if (data.product_keysearch !== undefined)
+        esFields.pro_keysearch = data.product_keysearch ?? null;
+      if (data.product_barcode !== undefined)
+        esFields.pro_barcode1 = data.product_barcode ?? null;
+      if (data.product_barcode2 !== undefined)
+        esFields.pro_barcode2 = data.product_barcode2 ?? null;
+      if (data.product_barcode3 !== undefined)
+        esFields.pro_barcode3 = data.product_barcode3 ?? null;
+      if (data.product_price_a !== undefined)
+        esFields.pro_priceA = data.product_price_a ?? null;
+      if (data.product_price_b !== undefined)
+        esFields.pro_priceB = data.product_price_b ?? null;
+      if (data.product_price_c !== undefined)
+        esFields.pro_priceC = data.product_price_c ?? null;
+      if (data.creditor_code !== undefined)
+        esFields.creditor_code = data.creditor_code ?? null;
 
       if (Object.keys(esFields).length > 0) {
         void this.elasticsearchService
@@ -3093,6 +3218,25 @@ export class ProductsService {
       pro_img4: product.pro_img4 ?? null,
       pro_img5: product.pro_img5 ?? null,
     };
+  }
+
+  // ECWC-4xx: รูปสินค้า+ชื่อสินค้าแบบ batch สำหรับสร้างการ์ด/รายละเอียดออเดอร์ที่ข้อมูลมาจาก
+  // order-picking-service (เช่น sh_running ที่ไม่มีใน shopping_head ของ ecommerce เอง หรือ
+  // product_name_at_order ฝั่งนั้นเป็น null)
+  async getProductInfoByCodes(
+    pro_codes: string[],
+  ): Promise<Map<string, { pro_name: string; pro_imgmain: string }>> {
+    if (pro_codes.length === 0) return new Map();
+    const products = await this.productRepo.find({
+      where: { pro_code: In(pro_codes) },
+      select: { pro_code: true, pro_name: true, pro_imgmain: true },
+    });
+    return new Map(
+      products.map((p) => [
+        p.pro_code,
+        { pro_name: p.pro_name, pro_imgmain: p.pro_imgmain },
+      ]),
+    );
   }
 
   async productSearchProductName(

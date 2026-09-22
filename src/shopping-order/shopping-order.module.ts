@@ -17,6 +17,7 @@ import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-a
 import { PromotionModule } from 'src/promotion/promotion.module';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
+import { FixFreeModule } from 'src/fix-free/fix-free.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
     CompanyDayAnalyticModule,
     PromotionModule,
     HappyHourModule,
+    FixFreeModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],

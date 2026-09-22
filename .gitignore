@@ -55,6 +55,13 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# Load test — ข้อมูลจาก prod dump + token จริง ห้าม commit
+loadtest/seed-tokens.json
+loadtest/seed-jwt.txt
+loadtest/*.sql
+loadtest/result-*.json
+loadtest/*.docx
+
 # Claude Code — personal Stop-hook scratch (learn-from-reviews complement)
 .claude/*.local.md
 .claude/.learning-seen.json
