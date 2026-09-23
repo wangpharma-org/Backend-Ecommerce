@@ -14,6 +14,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { UserEntity } from '../users/users.entity';
 import { ProductsService } from '../products/products.service';
+import { OrderBillNumberService } from '../order-bill-number/order-bill-number.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
   EcomOrderDetailV2Res,
@@ -158,6 +159,7 @@ export class OrderStatusV2Service {
     private readonly productService: ProductsService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly orderBillNumberService: OrderBillNumberService,
   ) {
     // สมมติฐาน: order-picking-service กับ logistics-backend อยู่หลัง gateway เดียวกัน
     // (LOGISTIC_API_URL เดิมของ track-order.service.ts ก็ defaultไปที่ host เดียวกันนี้)
@@ -755,10 +757,13 @@ export class OrderStatusV2Service {
       : pickingRaw;
 
     const status = this.resolveTimelineStatus(picking, delivery);
+    // ECWC-559: เลขบิลที่ order-picking ยิงมาเก็บไว้ที่ ecom ก่อน ไม่มีค่อยใช้จาก response ของ order-picking
+    const storedBillNumber =
+      await this.orderBillNumberService.findBySohRunning(soh_running);
 
     return {
       soh_running,
-      bill_number: picking?.bill_number ?? null,
+      bill_number: storedBillNumber ?? picking?.bill_number ?? null,
       status,
       status_label: ECOM_ORDER_TIMELINE_LABEL[status],
       picking: picking
