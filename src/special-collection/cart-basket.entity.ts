@@ -17,11 +17,12 @@ export class CartBasketEntity {
   @PrimaryGeneratedColumn()
   basket_id!: number;
 
-  @Index()
+  // ตั้งชื่อ index ให้ตรงกับที่ migration release-1.48.0 สร้างไว้ ไม่งั้น migration:generate จะ drop แล้วสร้างใหม่
+  @Index('IDX_cart_basket_member')
   @Column({ length: 30 })
   mem_code!: string;
 
-  @Index()
+  @Index('IDX_cart_basket_promo')
   /** กระเช้าที่ลูกค้าประกอบเองจากโปร — null เมื่อเป็นกระเช้าสำเร็จรูป */
   @Column({ type: 'int', nullable: true, default: null })
   promo_id!: number | null;
