@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { PromotionEntity } from './promotion.entity';
 import { PromotionService } from './promotion.service';
@@ -96,10 +96,10 @@ describe('PromotionService promotion type policy', () => {
     );
   });
 
-  it('rejects a lock when more than one promotion is active', async () => {
+  it('rejects a lock when both promotion types are active', async () => {
     promotionBuilder.getMany.mockResolvedValue([
       promotion(1, null),
-      promotion(2, null),
+      promotion(2, { creditor_code: 'CRD001' } as PromotionEntity['creditor']),
     ]);
 
     await expect(service.lockPromotionTypePolicy()).rejects.toBeInstanceOf(
@@ -107,19 +107,52 @@ describe('PromotionService promotion type policy', () => {
     );
   });
 
-  it('locks the sole active promotion and exposes it for confirmation', async () => {
-    const survivor = promotion(7, { creditor_code: 'CRD001' } as PromotionEntity['creditor']);
-    promotionBuilder.getMany.mockResolvedValue([survivor]);
-    promotionRepo.find.mockResolvedValue([survivor]);
+  it('locks one active type even when it has multiple active promotions', async () => {
+    const companyPromotions = [
+      promotion(7, { creditor_code: 'CRD001' } as PromotionEntity['creditor']),
+      promotion(8, { creditor_code: 'CRD001' } as PromotionEntity['creditor']),
+    ];
+    promotionBuilder.getMany.mockResolvedValue(companyPromotions);
+    promotionRepo.find.mockResolvedValue(companyPromotions);
 
     await expect(service.lockPromotionTypePolicy()).resolves.toEqual({
       locked_type: 'company',
       locked_promo_id: 7,
     });
     await expect(service.getPromotionTypePolicy()).resolves.toMatchObject({
-      active_promotion_count: 1,
-      active_promotion: { promo_id: 7, promo_name: 'Promo 7', type: 'company' },
+      active_promotion_count: 2,
+      active_promotion_counts: { company: 2, wang: 0 },
+      eligible_type: 'company',
+      eligible_promotion_count: 2,
     });
+  });
+
+  it('unlocks the current type without changing promotions', async () => {
+    policy.locked_type = 'company';
+    policy.locked_promo_id = 7;
+    policy.locked_at = new Date();
+
+    await expect(service.unlockPromotionTypePolicy('company')).resolves.toEqual({
+      locked_type: null,
+      locked_promo_id: null,
+    });
+    expect(policy).toMatchObject({
+      locked_type: null,
+      locked_promo_id: null,
+      locked_at: null,
+    });
+    expect(manager.save).toHaveBeenCalledWith(policy);
+    expect(promotionBuilder.getMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unlock from a stale policy state', async () => {
+    policy.locked_type = 'company';
+    policy.locked_promo_id = 7;
+
+    await expect(service.unlockPromotionTypePolicy('wang')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('rejects opposite-type add, activation, and duplicate while allowing the survivor type', async () => {

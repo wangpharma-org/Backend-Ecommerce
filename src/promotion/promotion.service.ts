@@ -1,6 +1,7 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -172,11 +173,9 @@ export class PromotionService {
     locked_type: PromotionType | null;
     locked_promo_id: number | null;
     active_promotion_count: number;
-    active_promotion: {
-      promo_id: number;
-      promo_name: string;
-      type: PromotionType;
-    } | null;
+    active_promotion_counts: Record<PromotionType, number>;
+    eligible_type: PromotionType | null;
+    eligible_promotion_count: number;
   }> {
     const [policy, activePromotions] = await Promise.all([
       this.promotionTypePolicyRepo.findOneBy({ id: 1 }),
@@ -197,28 +196,40 @@ export class PromotionService {
       );
     }
 
+    const activePromotionCounts: Record<PromotionType, number> = {
+      company: 0,
+      wang: 0,
+    };
+    for (const promotion of activePromotions) {
+      activePromotionCounts[this.getPromotionType(promotion)] += 1;
+    }
+
+    const eligibleType =
+      activePromotionCounts.company > 0 && activePromotionCounts.wang === 0
+        ? 'company'
+        : activePromotionCounts.wang > 0 && activePromotionCounts.company === 0
+          ? 'wang'
+          : null;
+
     return {
       locked_type: policy.locked_type,
       locked_promo_id: policy.locked_promo_id,
       active_promotion_count: activePromotions.length,
-      active_promotion:
-        activePromotions.length === 1
-          ? {
-              promo_id: activePromotions[0].promo_id,
-              promo_name: activePromotions[0].promo_name,
-              type: this.getPromotionType(activePromotions[0]),
-            }
-          : null,
+      active_promotion_counts: activePromotionCounts,
+      eligible_type: eligibleType,
+      eligible_promotion_count: eligibleType
+        ? activePromotionCounts[eligibleType]
+        : 0,
     };
   }
 
   async lockPromotionTypePolicy(): Promise<{
     locked_type: PromotionType;
-    locked_promo_id: number;
+    locked_promo_id: number | null;
   }> {
     return this.dataSource.transaction(async (manager) => {
       const policy = await this.getLockedPromotionTypePolicy(manager);
-      if (policy.locked_type && policy.locked_promo_id) {
+      if (policy.locked_type) {
         return {
           locked_type: policy.locked_type,
           locked_promo_id: policy.locked_promo_id,
@@ -233,22 +244,67 @@ export class PromotionService {
         .setLock('pessimistic_write')
         .getMany();
 
-      if (activePromotions.length !== 1) {
+      const activePromotionCounts: Record<PromotionType, number> = {
+        company: 0,
+        wang: 0,
+      };
+      for (const promotion of activePromotions) {
+        activePromotionCounts[this.getPromotionType(promotion)] += 1;
+      }
+
+      const lockedType =
+        activePromotionCounts.company > 0 && activePromotionCounts.wang === 0
+          ? 'company'
+          : activePromotionCounts.wang > 0 && activePromotionCounts.company === 0
+            ? 'wang'
+            : null;
+
+      if (!lockedType) {
         throw new BadRequestException(
-          'กรุณาปิดโปรโมชั่นด้วยตนเองให้เหลือรายการที่เปิดใช้งานเพียง 1 รายการก่อนยืนยัน',
+          activePromotions.length === 0
+            ? 'กรุณาเปิดใช้งานโปรโมชั่น Company Day หรือ Wang Day อย่างน้อย 1 รายการก่อนยืนยัน'
+            : 'กรุณาปิดโปรโมชั่นของ Company Day หรือ Wang Day ให้เหลือเปิดใช้งานเพียงประเภทเดียวก่อนยืนยัน',
         );
       }
 
-      const activePromotion = activePromotions[0];
-      const lockedType = this.getPromotionType(activePromotion);
+      const representativePromotion = activePromotions.find(
+        (promotion) => this.getPromotionType(promotion) === lockedType,
+      );
       policy.locked_type = lockedType;
-      policy.locked_promo_id = activePromotion.promo_id;
+      policy.locked_promo_id = representativePromotion?.promo_id ?? null;
       policy.locked_at = new Date();
       await manager.save(policy);
 
       return {
         locked_type: lockedType,
-        locked_promo_id: activePromotion.promo_id,
+        locked_promo_id: policy.locked_promo_id,
+      };
+    });
+  }
+
+  async unlockPromotionTypePolicy(
+    expectedLockedType: PromotionType,
+  ): Promise<{
+    locked_type: null;
+    locked_promo_id: null;
+  }> {
+    return this.dataSource.transaction(async (manager) => {
+      const policy = await this.getLockedPromotionTypePolicy(manager);
+
+      if (policy.locked_type !== expectedLockedType) {
+        throw new ConflictException(
+          'สถานะการล็อกโปรโมชั่นมีการเปลี่ยนแปลง กรุณารีเฟรชข้อมูลแล้วลองใหม่อีกครั้ง',
+        );
+      }
+
+      policy.locked_type = null;
+      policy.locked_promo_id = null;
+      policy.locked_at = null;
+      await manager.save(policy);
+
+      return {
+        locked_type: null,
+        locked_promo_id: null,
       };
     });
   }

@@ -1100,6 +1100,28 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/type-policy/unlock')
+  async unlockPromotionTypePolicy(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { expected_locked_type?: unknown },
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Admin permission is required');
+    }
+    if (
+      data.expected_locked_type !== 'company' &&
+      data.expected_locked_type !== 'wang'
+    ) {
+      throw new BadRequestException(
+        'expected_locked_type ต้องเป็น company หรือ wang',
+      );
+    }
+    return this.promotionService.unlockPromotionTypePolicy(
+      data.expected_locked_type,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/detail/:promo_id')
   async getPromotion(@Param('promo_id') promo_id: string) {
     return this.promotionService.getPromotionById(Number(promo_id));
