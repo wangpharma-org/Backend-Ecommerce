@@ -36,8 +36,9 @@ export const SPECIAL_COLLECTION_REF_TYPES: SpecialCollectionRefType[] = [
 ];
 
 @Entity({ name: 'special_collection_item' })
-@Index(['collection_id', 'sort_order'])
-@Index(['ref_type', 'ref_id'])
+// ตั้งชื่อ index/FK ให้ตรงกับที่ migration release-1.48.0 สร้างไว้ ไม่งั้น migration:generate จะ drop แล้วสร้างใหม่
+@Index('IDX_special_collection_item_order', ['collection_id', 'sort_order'])
+@Index('IDX_special_collection_item_ref', ['ref_type', 'ref_id'])
 export class SpecialCollectionItemEntity {
   @PrimaryGeneratedColumn()
   item_id!: number;
@@ -66,6 +67,9 @@ export class SpecialCollectionItemEntity {
     nullable: false,
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'collection_id' })
+  @JoinColumn({
+    name: 'collection_id',
+    foreignKeyConstraintName: 'FK_special_collection_item_collection',
+  })
   collection!: SpecialCollectionEntity;
 }

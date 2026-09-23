@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   ManyToMany,
+  Index,
 } from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
@@ -29,6 +30,16 @@ import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
 import { ProductUnitEntity } from './product-unit.entity';
 
 @Entity({ name: 'product' })
+// index สำหรับหน้าสินค้าแลกแต้ม (redeem-product.criteria.ts) — สร้างใน migration release-1.48.0
+// ต้องประกาศไว้ที่นี่ ไม่งั้น migration:generate จะมองว่าเกินแล้ว drop ทิ้ง
+@Index('IDX_product_redeem', ['product_type', 'pro_point', 'pro_stock'])
+@Index('IDX_product_free_redeem', ['pro_free', 'pro_point', 'pro_stock'])
+@Index('IDX_product_redeem_supplier', [
+  'pro_supplier',
+  'pro_point',
+  'pro_stock',
+])
+@Index('IDX_product_redeem_rank', ['pro_redeem_rank'])
 export class ProductEntity {
   productLabels?: string[];
 
@@ -166,8 +177,8 @@ export class ProductEntity {
   @Column({ nullable: true })
   pro_drugmain4!: string;
 
-  @Column({ nullable: true, type: 'varchar' })
-  pro_nameTH!: string;
+  @Column({ nullable: true, type: 'varchar', length: 255 })
+  pro_nameTH!: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
   pro_nameMain!: string;

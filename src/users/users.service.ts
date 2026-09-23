@@ -4,6 +4,7 @@ import { AdminActionLogEntity } from './admin-action-log.entity';
 import { Like, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
+import { rethrowAsHttp } from 'src/common/http-error.util';
 
 export interface AdminActor {
   mem_code: string;
@@ -60,8 +61,7 @@ export class UsersService {
       });
       return { data, total, page, limit };
     } catch (error) {
-      this.logger.error('Error retrieving admin action logs:', error);
-      throw new Error('Error retrieving admin action logs');
+      rethrowAsHttp(error, this.logger, 'Error retrieving admin action logs');
     }
   }
 
@@ -77,8 +77,8 @@ export class UsersService {
       } else {
         return user;
       }
-    } catch {
-      throw new Error('Error retrieving user');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Error retrieving user');
     }
   }
 
@@ -86,8 +86,8 @@ export class UsersService {
     try {
       const newUser = this.userRepo.create(user);
       return await this.userRepo.save(newUser);
-    } catch {
-      throw new Error('Error creating user');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Error creating user');
     }
   }
 
@@ -98,8 +98,8 @@ export class UsersService {
     try {
       await this.userRepo.update({ mem_username: username }, user);
       return this.findOne(username);
-    } catch {
-      throw new Error('Error updating user');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Error updating user');
     }
   }
 
@@ -112,8 +112,8 @@ export class UsersService {
         throw new Error('User not found');
       }
       return user;
-    } catch {
-      throw new Error('Error retrieving user by mem_code');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Error retrieving user by mem_code');
     }
   }
 
@@ -124,8 +124,8 @@ export class UsersService {
         select: ['mem_email'], // เลือกเฉพาะฟิลด์ mem_email
       });
       return user ? user.mem_email : null;
-    } catch {
-      throw new Error('Error retrieving email');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Error retrieving email');
     }
   }
 
@@ -137,8 +137,7 @@ export class UsersService {
       const isMatch = await bcrypt.compare(plainPassword, hashedPassword);
       return isMatch;
     } catch (error) {
-      this.logger.error('Error comparing passwords:', error);
-      throw new Error('Error comparing passwords');
+      rethrowAsHttp(error, this.logger, 'Error comparing passwords');
     }
   }
 
@@ -190,8 +189,7 @@ export class UsersService {
       }
       return 'Purchase within 1 year';
     } catch (error) {
-      this.logger.error('Error in checklatestPurchase:', error);
-      throw new Error('Error retrieving latest purchase date');
+      rethrowAsHttp(error, this.logger, 'Error retrieving latest purchase date');
     }
   }
 
@@ -270,8 +268,7 @@ export class UsersService {
       });
       return vipUsers;
     } catch (error) {
-      this.logger.error('Error getting all VIP users:', error);
-      throw new Error('Error retrieving VIP users');
+      rethrowAsHttp(error, this.logger, 'Error retrieving VIP users');
     }
   }
 
@@ -313,8 +310,7 @@ export class UsersService {
 
       return this.findOneByMemCode(mem_code);
     } catch (error) {
-      this.logger.error('Error updating user role:', error);
-      throw new Error('Error updating user role');
+      rethrowAsHttp(error, this.logger, 'Error updating user role');
     }
   }
 
@@ -344,8 +340,7 @@ export class UsersService {
         order: { role: 'ASC', mem_code: 'ASC' },
       });
     } catch (error) {
-      this.logger.error('Error retrieving staff users:', error);
-      throw new Error('Error retrieving staff users');
+      rethrowAsHttp(error, this.logger, 'Error retrieving staff users');
     }
   }
 
@@ -375,8 +370,7 @@ export class UsersService {
         ],
       });
     } catch (error) {
-      this.logger.error('Error looking up user by mem_code:', error);
-      throw new Error('Error looking up user by mem_code');
+      rethrowAsHttp(error, this.logger, 'Error looking up user by mem_code');
     }
   }
 
@@ -412,8 +406,7 @@ export class UsersService {
       });
       return users.filter((u) => /^\d{4}$/.test(u.mem_code));
     } catch (error) {
-      this.logger.error('Error searching users by mem_code:', error);
-      throw new Error('Error searching users by mem_code');
+      rethrowAsHttp(error, this.logger, 'Error searching users by mem_code');
     }
   }
 
@@ -444,8 +437,7 @@ export class UsersService {
 
       return { mem_code, admin_features: features };
     } catch (error) {
-      this.logger.error('Error updating user features:', error);
-      throw new Error('Error updating user features');
+      rethrowAsHttp(error, this.logger, 'Error updating user features');
     }
   }
 }

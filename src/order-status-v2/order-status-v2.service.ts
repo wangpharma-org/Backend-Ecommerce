@@ -101,6 +101,8 @@ interface PickingOrderDetailBatchItem {
 
 interface OrderPickingStatusRes {
   sh_running: string;
+  // Order-picking-service เพิ่มภายหลัง จึงรองรับ response จาก instance ที่ยังไม่ได้ deploy field นี้ด้วย
+  bill_number?: string | null;
   status: 'picking' | 'checking' | 'ready' | 'blocked';
   picking_time: string | null;
   picked_time: string | null;
@@ -114,6 +116,7 @@ interface LogisticTrackingV2Res {
   status: 'DELIVERING' | 'DONE' | 'BACK';
   store_name: string;
   driver_name: string;
+  driver_emp_code: string | null;
   driver_tel: string | null;
   departure_time: string | null;
   finished_at: string | null;
@@ -436,7 +439,7 @@ export class OrderStatusV2Service {
       ),
       unknownStatusRunnings.length > 0
         ? this.fetchPickingStatusBatch(unknownStatusRunnings, mem_code)
-        : Promise.resolve({}),
+        : Promise.resolve<Record<string, PickingBatchStatus>>({}),
     ]);
 
     // status/status_label ตรงนี้เป็นค่า placeholder เท่านั้น — getOrderList resolve ค่าจริงจาก
@@ -755,6 +758,7 @@ export class OrderStatusV2Service {
 
     return {
       soh_running,
+      bill_number: picking?.bill_number ?? null,
       status,
       status_label: ECOM_ORDER_TIMELINE_LABEL[status],
       picking: picking
@@ -771,6 +775,7 @@ export class OrderStatusV2Service {
         ? {
             store_name: delivery.store_name,
             driver_name: delivery.driver_name || null,
+            driver_emp_code: delivery.driver_emp_code,
             driver_tel: delivery.driver_tel,
             departure_time: delivery.departure_time,
             checkpoint: delivery.checkpoint,
@@ -1012,6 +1017,21 @@ export class OrderStatusV2Service {
       }
       this.logger.error('Error fetch delivery status', error);
       return null;
+    }
+  }
+
+  async getDeliveringCount(mem_code: string): Promise<number> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<{ count: number }>(
+          `${this.logisticUrl}/api/logistic/tracking/delivering-count`,
+          { params: { mem_code } },
+        ),
+      );
+      return response.data.count;
+    } catch (error: unknown) {
+      this.logger.error('Error fetch delivering count', error);
+      return 0;
     }
   }
 

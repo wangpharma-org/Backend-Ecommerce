@@ -2,6 +2,7 @@ import { ProductEntity } from 'src/products/products.entity';
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToOne,
@@ -10,6 +11,9 @@ import {
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
 
 @Entity()
+// unique index เก่าที่มีอยู่แล้วใน DB — ซ้ำกับ REL_a5848... ที่ @OneToOne สร้างให้
+// ประกาศไว้เพื่อไม่ให้ migration:generate drop ทิ้ง ถ้าจะเอาออกให้เขียน migration แยกอย่างตั้งใจ
+@Index('IDX_a5848859c3cbbf247db852e323', ['product'], { unique: true })
 export class HotdealEntity {
   @PrimaryGeneratedColumn()
   id!: number;
