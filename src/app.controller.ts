@@ -1,6 +1,5 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
-  BadRequestException,
   BadGatewayException,
   BadRequestException,
   Body,
