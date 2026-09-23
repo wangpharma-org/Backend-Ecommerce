@@ -8,6 +8,8 @@ import {
 } from './banner.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  FindOptionsWhere,
+  In,
   LessThan,
   LessThanOrEqual,
   MoreThanOrEqual,
@@ -15,12 +17,15 @@ import {
 } from 'typeorm';
 import * as AWS from 'aws-sdk';
 import { Cron } from '@nestjs/schedule';
+import { PromotionEntity } from 'src/promotion/promotion.entity';
 
 export interface UploadBannerDto {
   date_start: Date;
   date_end: Date;
   banner_name?: string;
   banner_location?: BannerLocation;
+  /** multipart ส่งมาเป็น string เสมอ แปลงตอน map */
+  promo_id?: number | string | null;
   link_url?: string;
   display_type?: BannerDisplayType;
   title?: string;
@@ -46,6 +51,8 @@ export class BannerService {
   constructor(
     @InjectRepository(BannerEntity)
     private readonly bannerRepo: Repository<BannerEntity>,
+    @InjectRepository(PromotionEntity)
+    private readonly promotionRepo: Repository<PromotionEntity>,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -71,7 +78,7 @@ export class BannerService {
     try {
       const today = new Date();
 
-      const whereCondition: any = {
+      const whereCondition: FindOptionsWhere<BannerEntity> = {
         date_start: LessThanOrEqual(today),
         date_end: MoreThanOrEqual(today),
         is_active: true,
@@ -82,16 +89,46 @@ export class BannerService {
         whereCondition.banner_location = location;
       }
 
-      return this.bannerRepo.find({
+      const banners = await this.bannerRepo.find({
         where: whereCondition,
         order: {
           sort_order: 'ASC',
           created_at: 'DESC',
         },
       });
+      return this.stripInactivePromos(banners);
     } catch {
       throw new Error('Error in GetImageUrl');
     }
+  }
+
+  /**
+   * ปุ่ม "สรุปโปร" ต้องโผล่เฉพาะโปรที่ยังเปิดอยู่ — โปรปิด/หมดอายุ/ถูกลบ ให้ส่ง promo_id เป็น null
+   * แบนเนอร์เองยังแสดงตามปกติ (วันของแบนเนอร์กับวันของโปรอาจไม่ตรงกัน)
+   */
+  private async stripInactivePromos(banners: BannerEntity[]): Promise<BannerEntity[]> {
+    const ids = Array.from(
+      new Set(
+        banners
+          .map((b) => b.promo_id)
+          .filter((id): id is number => typeof id === 'number' && id > 0),
+      ),
+    );
+    if (ids.length === 0) return banners;
+    const now = new Date();
+    const active = await this.promotionRepo.find({
+      where: {
+        promo_id: In(ids),
+        status: true,
+        start_date: LessThanOrEqual(now),
+        end_date: MoreThanOrEqual(now),
+      },
+      select: { promo_id: true },
+    });
+    const activeIds = new Set(active.map((p) => p.promo_id));
+    return banners.map((b) =>
+      b.promo_id && !activeIds.has(b.promo_id) ? { ...b, promo_id: null } : b,
+    );
   }
 
   /**
@@ -154,6 +191,7 @@ export class BannerService {
         advertise_code: data.advertise_code,
         creditor: data.creditor,
         product_list: data.product_list,
+        promo_id: this.toPromoId(data.promo_id),
       });
 
       const savedBanner = await this.bannerRepo.save(banner);
@@ -244,7 +282,10 @@ export class BannerService {
 
   async createBannerFromUrl(
     imgUrl: string,
-    data: Pick<UploadBannerDto, 'date_start' | 'date_end' | 'banner_name' | 'banner_location'>,
+    data: Pick<
+      UploadBannerDto,
+      'date_start' | 'date_end' | 'banner_name' | 'banner_location' | 'promo_id'
+    >,
   ): Promise<BannerEntity> {
     const banner = this.bannerRepo.create({
       banner_image: imgUrl,
@@ -254,7 +295,14 @@ export class BannerService {
       date_end: data.date_end,
       display_type: 'image_only',
       is_active: true,
+      promo_id: this.toPromoId(data.promo_id),
     });
     return this.bannerRepo.save(banner);
+  }
+
+  /** "" / "0" / undefined จาก multipart = ไม่ผูกโปร */
+  private toPromoId(value: number | string | null | undefined): number | null {
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
   }
 }

@@ -166,7 +166,9 @@ export class ProductListner {
     @Payload() message: UpdateProductImageEcommercePayload,
   ) {
     try {
-      const oldImages = await this.productServerce.getProductImageUrls(message.product_code);
+      const oldImages = await this.productServerce.getProductImageUrls(
+        message.product_code,
+      );
       await this.productServerce.updateProductImageFromCentral(message);
 
       if (message.reply_id) {
