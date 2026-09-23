@@ -129,6 +129,7 @@ export interface EcomOrderDetailV2Res {
 
 export interface EcomOrderStatusV2Res {
   soh_running: string;
+  bill_number: string | null;
   status: EcomOrderTimelineStatus;
   status_label: string;
   picking: {
