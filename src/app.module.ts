@@ -47,6 +47,7 @@ import { SearchCartTrackingModule } from './search-cart-tracking/search-cart-tra
 import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
 import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
+import { OrderStatusV2Module } from './order-status-v2/order-status-v2.module';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 import { RatingModule } from './rating/rating.module';
@@ -57,6 +58,9 @@ import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
+import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
+import { SpecialCollectionModule } from './special-collection/special-collection.module';
+import { BundleSetModule } from './bundle-set/bundle-set.module';
 
 @Module({
   imports: [
@@ -117,6 +121,7 @@ import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
     AppVersionModule,
     LandingModule,
     TrackOrderModule,
+    OrderStatusV2Module,
     ProductReturnModule,
     BehaviorTrackingModule,
     NotifyRtModule,
@@ -127,6 +132,9 @@ import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
     HappyHourModule,
     DeliveryPreferenceModule,
     DhlTrackingModule,
+    ProductLabelRulesModule,
+    SpecialCollectionModule,
+    BundleSetModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

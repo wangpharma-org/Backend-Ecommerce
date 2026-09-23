@@ -1,13 +1,16 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { NewArrival } from './new-arrival.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { ClientKafka } from '@nestjs/microservices';
 import * as dayjs from 'dayjs';
+import { rethrowAsHttp } from 'src/common/http-error.util';
 
 @Injectable()
 export class NewArrivalsService {
+  private readonly logger = new Logger(NewArrivalsService.name);
+
   constructor(
     @InjectRepository(NewArrival)
     private readonly newArrivalsRepository: Repository<NewArrival>,
@@ -107,9 +110,9 @@ export class NewArrivalsService {
 
       await queryRunner.commitTransaction();
       return { message: 'New arrival added successfully' };
-    } catch {
+    } catch (error) {
       await queryRunner.rollbackTransaction();
-      throw new Error('Error adding new arrival');
+      rethrowAsHttp(error, this.logger, 'Error adding new arrival');
     } finally {
       await queryRunner.release();
     }
