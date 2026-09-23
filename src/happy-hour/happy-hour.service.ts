@@ -253,13 +253,29 @@ export class HappyHourService implements OnModuleInit {
     // Batch query: ดึงสินค้าทั้งหมดใน 1 query แทนที่จะ query ทีละ reward (N+1)
     const productMap = new Map<
       string,
-      { pro_name: string; pro_imgmain: string }
+      {
+        pro_name: string;
+        pro_nameTH?: string | null;
+        pro_nameSale?: string | null;
+        pro_imgmain: string;
+      }
     >();
-    if (rewardList.length) {
-      const codes = rewardList.map((r) => r.pro_code);
+    const codes = [
+      ...new Set([
+        ...rewardList.map((r) => r.pro_code),
+        ...(slot.minOrderProducts ?? []).map((p) => p.pro_code),
+      ]),
+    ];
+    if (codes.length) {
       const products = await this.productRepo
         .createQueryBuilder('p')
-        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .select([
+          'p.pro_code',
+          'p.pro_name',
+          'p.pro_nameTH',
+          'p.pro_nameSale',
+          'p.pro_imgmain',
+        ])
         .where('p.pro_code IN (:...codes)', { codes })
         .getMany();
       products.forEach((p) => productMap.set(p.pro_code, p));
@@ -271,6 +287,8 @@ export class HappyHourService implements OnModuleInit {
       unit: r.unit ?? null,
       amount: r.amount ?? 1,
       pro_name: productMap.get(r.pro_code)?.pro_name ?? null,
+      pro_nameTH: productMap.get(r.pro_code)?.pro_nameTH ?? null,
+      pro_nameSale: productMap.get(r.pro_code)?.pro_nameSale ?? null,
       pro_imgmain: productMap.get(r.pro_code)?.pro_imgmain ?? null,
     }));
 
@@ -278,6 +296,8 @@ export class HappyHourService implements OnModuleInit {
       id: p.id,
       pro_code: p.pro_code,
       pro_name: p.pro_name,
+      pro_nameTH: productMap.get(p.pro_code)?.pro_nameTH ?? null,
+      pro_nameSale: productMap.get(p.pro_code)?.pro_nameSale ?? null,
     }));
 
     let min_order_vendor_name: string | null = null;
@@ -608,14 +628,31 @@ export class HappyHourService implements OnModuleInit {
     const rewardList = slot.rewards ?? [];
     const productMap = new Map<
       string,
-      { pro_code: string; pro_name: string; pro_imgmain: string }
+      {
+        pro_code: string;
+        pro_name: string;
+        pro_nameTH?: string | null;
+        pro_nameSale?: string | null;
+        pro_imgmain: string;
+      }
     >();
 
-    if (rewardList.length) {
-      const codes = rewardList.map((r) => r.pro_code);
+    const codes = [
+      ...new Set([
+        ...rewardList.map((r) => r.pro_code),
+        ...(slot.minOrderProducts ?? []).map((p) => p.pro_code),
+      ]),
+    ];
+    if (codes.length) {
       const products = await this.productRepo
         .createQueryBuilder('p')
-        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .select([
+          'p.pro_code',
+          'p.pro_name',
+          'p.pro_nameTH',
+          'p.pro_nameSale',
+          'p.pro_imgmain',
+        ])
         .where('p.pro_code IN (:...codes)', { codes })
         .getMany();
       products.forEach((p) => productMap.set(p.pro_code, p));
@@ -628,6 +665,8 @@ export class HappyHourService implements OnModuleInit {
         unit: r.unit ?? null,
         amount: num_cards * (r.amount ?? slot.reward_amount),
         pro_name: product?.pro_name ?? null,
+        pro_nameTH: product?.pro_nameTH ?? null,
+        pro_nameSale: product?.pro_nameSale ?? null,
         pro_imgmain: product?.pro_imgmain ?? null,
       };
     });
@@ -636,6 +675,8 @@ export class HappyHourService implements OnModuleInit {
       id: p.id,
       pro_code: p.pro_code,
       pro_name: p.pro_name,
+      pro_nameTH: productMap.get(p.pro_code)?.pro_nameTH ?? null,
+      pro_nameSale: productMap.get(p.pro_code)?.pro_nameSale ?? null,
     }));
 
     let min_order_vendor_name: string | null = null;
@@ -699,6 +740,8 @@ export class HappyHourService implements OnModuleInit {
     reward_items?: {
       pro_code: string;
       pro_name: string | null;
+      pro_nameTH?: string | null;
+      pro_nameSale?: string | null;
       pro_imgmain: string | null;
       unit: string | null;
       amount: number;
@@ -787,13 +830,24 @@ export class HappyHourService implements OnModuleInit {
     const rewardList = slot.rewards ?? [];
     const productMap = new Map<
       string,
-      { pro_name: string; pro_imgmain: string }
+      {
+        pro_name: string;
+        pro_nameTH?: string | null;
+        pro_nameSale?: string | null;
+        pro_imgmain: string;
+      }
     >();
     if (rewardList.length) {
       const codes = rewardList.map((r) => r.pro_code);
       const products = await this.productRepo
         .createQueryBuilder('p')
-        .select(['p.pro_code', 'p.pro_name', 'p.pro_imgmain'])
+        .select([
+          'p.pro_code',
+          'p.pro_name',
+          'p.pro_nameTH',
+          'p.pro_nameSale',
+          'p.pro_imgmain',
+        ])
         .where('p.pro_code IN (:...codes)', { codes })
         .getMany();
       products.forEach((p) => productMap.set(p.pro_code, p));
@@ -802,6 +856,8 @@ export class HappyHourService implements OnModuleInit {
     const reward_items = rewardList.map((r) => ({
       pro_code: r.pro_code,
       pro_name: productMap.get(r.pro_code)?.pro_name ?? null,
+      pro_nameTH: productMap.get(r.pro_code)?.pro_nameTH ?? null,
+      pro_nameSale: productMap.get(r.pro_code)?.pro_nameSale ?? null,
       pro_imgmain: productMap.get(r.pro_code)?.pro_imgmain ?? null,
       unit: r.unit ?? null,
       amount: num_cards * (r.amount ?? 1),

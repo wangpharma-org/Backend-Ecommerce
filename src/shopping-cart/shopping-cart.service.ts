@@ -41,6 +41,8 @@ import { rethrowAsHttp } from 'src/common/http-error.util';
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -77,6 +79,8 @@ export interface RecommendedProduct {
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   recommend_rank?: number | null;
 }
 
@@ -109,6 +113,8 @@ export interface FlashSale {
 interface RawProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -141,6 +147,8 @@ interface RawProductCart {
   recommended_id: number;
   recommended_pro_imgmain?: string;
   recommended_pro_name?: string;
+  recommended_pro_nameTH?: string | null;
+  recommended_pro_nameSale?: string | null;
   recommended_pro_code?: string;
   pro_stock: number;
   order_quantity: number;
@@ -148,6 +156,8 @@ interface RawProductCart {
   recommend_rank?: number;
   replace_pro_code?: string;
   replace_pro_name?: string;
+  replace_pro_nameTH?: string | null;
+  replace_pro_nameSale?: string | null;
   replace_pro_imgmain?: string;
   recommended_replace_pro_code?: string;
 }
@@ -155,6 +165,8 @@ interface RawProductCart {
 export interface TransformedProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -167,6 +179,8 @@ export interface TransformedProductCart {
   replace_pro_code: any;
   replace_pro_imgmain: any;
   replace_pro_name: any;
+  replace_pro_nameTH?: string | null;
+  replace_pro_nameSale?: string | null;
   lot_id: any;
   lot: any;
   mfg: any;
@@ -190,6 +204,8 @@ export interface TransformedProductCart {
   recommended_pro_code: any;
   recommended_pro_imgmain: any;
   recommended_pro_name: any;
+  recommended_pro_nameTH?: string | null;
+  recommended_pro_nameSale?: string | null;
   recommend_rank: any;
   recommended_replace_pro_code: any;
   pro_unit1: string;
@@ -270,6 +286,8 @@ export interface CartMutationWithCompanyDayContext extends CartMutationResult {
 export interface ShoppingCartItemWithProduct extends ShoppingCartEntity {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -1718,6 +1736,8 @@ export class ShoppingCartService {
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',
+          'product.pro_nameTH AS pro_nameTH',
+          'product.pro_nameSale AS pro_nameSale',
           'product.pro_imgmain AS pro_imgmain',
           'product.pro_priceA AS pro_priceA',
           'product.pro_priceB AS pro_priceB',
@@ -1730,6 +1750,8 @@ export class ShoppingCartService {
           'replace.pro_code AS replace_pro_code',
           'replace.pro_imgmain AS replace_pro_imgmain',
           'replace.pro_name AS replace_pro_name',
+          'replace.pro_nameTH AS replace_pro_nameTH',
+          'replace.pro_nameSale AS replace_pro_nameSale',
           'lot.lot_id AS lot_id',
           'lot.lot AS lot',
           'lot.mfg AS mfg',
@@ -1753,6 +1775,8 @@ export class ShoppingCartService {
           'recommendedProducts.pro_code AS recommended_pro_code',
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
+          'recommendedProducts.pro_nameTH AS recommended_pro_nameTH',
+          'recommendedProducts.pro_nameSale AS recommended_pro_nameSale',
           'recommendedProducts.recommend_rank AS recommend_rank',
           'recommendedProductsReplace.pro_code AS recommended_replace_pro_code',
         ])
@@ -1882,6 +1906,8 @@ export class ShoppingCartService {
           grouped[key] = {
             pro_code: row.pro_code,
             pro_name: row.pro_name,
+            pro_nameTH: row.pro_nameTH,
+            pro_nameSale: row.pro_nameSale,
             pro_imgmain: row.pro_imgmain,
             pro_priceA: row.pro_priceA,
             pro_priceB: row.pro_priceB,
@@ -1931,6 +1957,8 @@ export class ShoppingCartService {
               pro_code: row.replace_pro_code,
               pro_imgmain: row.replace_pro_imgmain ?? '',
               pro_name: row.replace_pro_name ?? '',
+              pro_nameTH: row.replace_pro_nameTH,
+              pro_nameSale: row.replace_pro_nameSale,
               recommend_rank: 1,
             },
           ];
@@ -1949,6 +1977,8 @@ export class ShoppingCartService {
               pro_code: row.recommended_pro_code,
               pro_imgmain: row.recommended_pro_imgmain ?? '',
               pro_name: row.recommended_pro_name,
+              pro_nameTH: row.recommended_pro_nameTH,
+              pro_nameSale: row.recommended_pro_nameSale,
               recommend_rank: row.recommend_rank ?? null,
             });
           }
@@ -3175,6 +3205,8 @@ export class ShoppingCartService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_imgmain: true,
           },
         },

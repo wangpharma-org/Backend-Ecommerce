@@ -352,6 +352,8 @@ export class ProductsService {
       .select([
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_imgmain',
         'product.pro_priceA',
         'product.pro_priceB',
@@ -644,6 +646,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_imgmain',
           'product.pro_promotion_amount',
@@ -1026,6 +1030,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_nameEN',
           'product.pro_priceA',
           'product.pro_priceB',
@@ -1062,6 +1068,8 @@ export class ProductsService {
           'recommend.id',
           'products.pro_code',
           'products.pro_name',
+          'products.pro_nameTH',
+          'products.pro_nameSale',
           'products.pro_imgmain',
           'products.pro_priceA',
           'products.pro_priceB',
@@ -1075,6 +1083,8 @@ export class ProductsService {
           'replaceInRecommend.pro_code',
           'replace.pro_code',
           'replace.pro_name',
+          'replace.pro_nameTH',
+          'replace.pro_nameSale',
           'replace.pro_imgmain',
           'replace.pro_priceA',
           'replace.pro_priceB',
@@ -1190,6 +1200,8 @@ export class ProductsService {
           // 'product.pro_id',
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -1379,6 +1391,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -1922,6 +1936,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -3164,7 +3180,8 @@ export class ProductsService {
         }
       } else if (data.product_name !== undefined) {
         productData.pro_name = data.product_name;
-      }
+      if (data.product_nameTH !== undefined)
+        productData.pro_nameTH = data.product_nameTH;
       if (data.product_nameEN !== undefined)
         productData.pro_nameEN = data.product_nameEN as string;
       if (data.product_nameSale !== undefined)
