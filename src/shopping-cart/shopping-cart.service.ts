@@ -9,6 +9,7 @@ import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   In,
+  IsNull,
   Repository,
   Not,
   Brackets,
@@ -30,11 +31,18 @@ import {
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
+import {
+  promoUnitPrice,
+  type PriceOption,
+} from 'src/promotion/promo-line-value';
 import * as dayjs from 'dayjs';
+import { rethrowAsHttp } from 'src/common/http-error.util';
 
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -71,6 +79,8 @@ export interface RecommendedProduct {
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   recommend_rank?: number | null;
 }
 
@@ -103,6 +113,8 @@ export interface FlashSale {
 interface RawProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -135,6 +147,8 @@ interface RawProductCart {
   recommended_id: number;
   recommended_pro_imgmain?: string;
   recommended_pro_name?: string;
+  recommended_pro_nameTH?: string | null;
+  recommended_pro_nameSale?: string | null;
   recommended_pro_code?: string;
   pro_stock: number;
   order_quantity: number;
@@ -142,6 +156,8 @@ interface RawProductCart {
   recommend_rank?: number;
   replace_pro_code?: string;
   replace_pro_name?: string;
+  replace_pro_nameTH?: string | null;
+  replace_pro_nameSale?: string | null;
   replace_pro_imgmain?: string;
   recommended_replace_pro_code?: string;
 }
@@ -149,6 +165,8 @@ interface RawProductCart {
 export interface TransformedProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -161,6 +179,8 @@ export interface TransformedProductCart {
   replace_pro_code: any;
   replace_pro_imgmain: any;
   replace_pro_name: any;
+  replace_pro_nameTH?: string | null;
+  replace_pro_nameSale?: string | null;
   lot_id: any;
   lot: any;
   mfg: any;
@@ -184,6 +204,8 @@ export interface TransformedProductCart {
   recommended_pro_code: any;
   recommended_pro_imgmain: any;
   recommended_pro_name: any;
+  recommended_pro_nameTH?: string | null;
+  recommended_pro_nameSale?: string | null;
   recommend_rank: any;
   recommended_replace_pro_code: any;
   pro_unit1: string;
@@ -264,6 +286,8 @@ export interface CartMutationWithCompanyDayContext extends CartMutationResult {
 export interface ShoppingCartItemWithProduct extends ShoppingCartEntity {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -627,6 +651,24 @@ export class ShoppingCartService {
     }
   }
 
+  /** บรรทัดที่ราคาถูกล็อกไว้ (กระเช้าสำเร็จรูป) — ห้ามคิดจาก product.pro_price */
+  hasFixedTotal(line: { spc_fixed_total?: string | number | null }): boolean {
+    return line.spc_fixed_total !== null && line.spc_fixed_total !== undefined;
+  }
+
+  /** ของแถมในกระเช้าสำเร็จรูป = ล็อกราคาไว้ที่ 0 */
+  isSetGiftLine(line: { spc_fixed_total?: string | number | null }): boolean {
+    return this.hasFixedTotal(line) && Number(line.spc_fixed_total) === 0;
+  }
+
+  /**
+   * ให้ service อื่นที่เขียน shopping_cart ตรง (เช่น CartBasketService) bump version ได้
+   * ไม่งั้นแท็บอื่นส่ง clientVersion เก่ามาแล้วผ่านทั้งที่ตะกร้าเปลี่ยนไปแล้ว
+   */
+  bumpCartVersion(mem_code: string): Promise<CartVersionState> {
+    return this.incrementCartVersion(mem_code);
+  }
+
   private async incrementCartVersion(
     mem_code: string,
   ): Promise<CartVersionState> {
@@ -667,7 +709,9 @@ export class ShoppingCartService {
     const toRemove = cart.filter(
       (c) =>
         c.is_reward &&
-        Object.entries(filter).every(([k, v]) => (c as any)[k] === v),
+        Object.entries(filter).every(
+          ([k, v]) => (c as unknown as Record<string, unknown>)[k] === v,
+        ),
     );
     if (toRemove.length) await this.shoppingCartRepo.remove(toRemove);
   }
@@ -795,7 +839,8 @@ export class ShoppingCartService {
         ops.push(
           this.shoppingCartRepo.update(
             { spc_id: line.spc_id },
-            { promo_id: null as any, tier_id: null as any },
+            // คอลัมน์ทั้งคู่เป็น int NULL ใน DB แต่ entity ประกาศเป็น number จึงต้อง cast
+            { promo_id: null, tier_id: null } as unknown as Partial<ShoppingCartEntity>,
           ),
         );
       }
@@ -883,8 +928,7 @@ export class ShoppingCartService {
         await this.checkPromotionReward(member.mem_code, member.mem_price);
       }
     } catch (error) {
-      this.logger.error('Error in Check Cart Promotion:', error);
-      throw new Error('Error in Check Cart Promotion');
+      rethrowAsHttp(error, this.logger, 'Error in Check Cart Promotion');
     }
   }
 
@@ -921,6 +965,7 @@ export class ShoppingCartService {
       const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
       // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
 
+      // แถวของกระเช้าโปร (basket_id) แยกจากสินค้าเดี่ยวเสมอ ห้ามรวมจำนวนเข้าไป
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -928,6 +973,7 @@ export class ShoppingCartService {
           spc_unit_enum: unitEnum,
           hotdeal_free: false,
           is_reward: false,
+          basket_id: IsNull(),
         },
       });
 
@@ -1106,8 +1152,14 @@ export class ShoppingCartService {
     await this.removeExpiredUseCodeRewards(cart, mem_code, priceOption);
 
     // ─── 3. baseEligibleCart + perProductTotalUnits ───────────────────────────
+    // ของแถมในกระเช้าสำเร็จรูป (fixed = 0) ไม่นับเข้าเกณฑ์ เหมือน hotdeal_free
     const baseEligibleCart = cart.filter(
-      (l) => l.product && l.spc_checked && !l.is_reward && !l.hotdeal_free,
+      (l) =>
+        l.product &&
+        l.spc_checked &&
+        !l.is_reward &&
+        !l.hotdeal_free &&
+        !this.isSetGiftLine(l),
     );
 
     const perProductTotalUnits = new Map<string, number>();
@@ -1153,20 +1205,16 @@ export class ShoppingCartService {
 
     // ─── helper: คำนวณ line value ─────────────────────────────────────────────
     const getLineValue = (line: ShoppingCartEntity): number => {
+      // กระเช้าสำเร็จรูปนับที่ราคาชุดที่จ่ายจริง (เจ้าของงานเคาะ 2026-09-06)
+      if (this.hasFixedTotal(line)) return Number(line.spc_fixed_total);
       const p = line.product;
       const ratio = this.getUnitRatio(p, line.spc_unit_enum);
-      const totalUnits = perProductTotalUnits.get(line.pro_code) ?? 0;
-      const isPromoPrice =
-        p.pro_promotion_month === promoMonth &&
-        totalUnits >= (p.pro_promotion_amount ?? 0);
-
-      const unitPrice = isPromoPrice
-        ? Number(p.pro_priceA)
-        : priceOption === 'A'
-          ? Number(p.pro_priceA)
-          : priceOption === 'B'
-            ? Number(p.pro_priceB)
-            : Number(p.pro_priceC);
+      const unitPrice = promoUnitPrice(
+        p,
+        priceOption as PriceOption,
+        perProductTotalUnits.get(line.pro_code) ?? 0,
+        promoMonth,
+      );
 
       return Number(line.spc_amount) * unitPrice * ratio;
     };
@@ -1464,6 +1512,7 @@ export class ShoppingCartService {
             mem_code: data.mem_code,
             is_reward: false,
             hotdeal_free: false,
+            basket_id: IsNull(),
           },
           { spc_checked: false },
         );
@@ -1496,11 +1545,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version, companyDayRewardContext };
     } catch (e) {
-      this.logger.error('Error in checkedProductCart', e);
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Something wrong in checkedProductCart');
+      rethrowAsHttp(e, this.logger, 'Something wrong in checkedProductCart');
     }
   }
 
@@ -1516,8 +1561,8 @@ export class ShoppingCartService {
         relations: ['product', 'product.units'],
         order: { pro_code: 'ASC' },
       });
-    } catch {
-      throw new Error('Somthing wrong in handleGetCartToOrder');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Somthing wrong in handleGetCartToOrder');
     }
   }
 
@@ -1539,20 +1584,19 @@ export class ShoppingCartService {
         });
       }
 
+      // ลบเฉพาะสินค้าเดี่ยว — แถวในกระเช้าโปรต้องออกผ่าน CartBasketService เท่านั้น
       await this.shoppingCartRepo.delete({
         pro_code: data.pro_code,
         mem_code: data.mem_code,
         hotdeal_free: false,
+        basket_id: IsNull(),
       });
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
       const cart = await this.getProductCart(data.mem_code);
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Somthing wrong in delete product cart');
+      rethrowAsHttp(e, this.logger, 'Somthing wrong in delete product cart');
     }
   }
 
@@ -1566,8 +1610,8 @@ export class ShoppingCartService {
       if (cartItem?.mem_code) {
         await this.incrementCartVersion(cartItem.mem_code);
       }
-    } catch {
-      throw new Error('Clear Checkout Cart Failed');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Clear Checkout Cart Failed');
     }
   }
 
@@ -1601,7 +1645,7 @@ export class ShoppingCartService {
         );
       } else if (data.type === 'uncheck') {
         await this.shoppingCartRepo.update(
-          { mem_code: data.mem_code, is_reward: false },
+          { mem_code: data.mem_code, is_reward: false, basket_id: IsNull() },
           { spc_checked: false },
         );
       } else {
@@ -1614,11 +1658,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      this.logger.error('Error in checkedProductCartAll', e);
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Somthing wrong in checkedProductCartAll');
+      rethrowAsHttp(e, this.logger, 'Somthing wrong in checkedProductCartAll');
     }
   }
 
@@ -1637,8 +1677,7 @@ export class ShoppingCartService {
         return 0;
       }
     } catch (error) {
-      this.logger.error('Error getting cart item count:', error);
-      throw new Error('Error in getCartItemCount');
+      rethrowAsHttp(error, this.logger, 'Error in getCartItemCount');
     }
   }
 
@@ -1697,6 +1736,8 @@ export class ShoppingCartService {
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',
+          'product.pro_nameTH AS pro_nameTH',
+          'product.pro_nameSale AS pro_nameSale',
           'product.pro_imgmain AS pro_imgmain',
           'product.pro_priceA AS pro_priceA',
           'product.pro_priceB AS pro_priceB',
@@ -1709,6 +1750,8 @@ export class ShoppingCartService {
           'replace.pro_code AS replace_pro_code',
           'replace.pro_imgmain AS replace_pro_imgmain',
           'replace.pro_name AS replace_pro_name',
+          'replace.pro_nameTH AS replace_pro_nameTH',
+          'replace.pro_nameSale AS replace_pro_nameSale',
           'lot.lot_id AS lot_id',
           'lot.lot AS lot',
           'lot.mfg AS mfg',
@@ -1732,6 +1775,8 @@ export class ShoppingCartService {
           'recommendedProducts.pro_code AS recommended_pro_code',
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
+          'recommendedProducts.pro_nameTH AS recommended_pro_nameTH',
+          'recommendedProducts.pro_nameSale AS recommended_pro_nameSale',
           'recommendedProducts.recommend_rank AS recommend_rank',
           'recommendedProductsReplace.pro_code AS recommended_replace_pro_code',
         ])
@@ -1861,6 +1906,8 @@ export class ShoppingCartService {
           grouped[key] = {
             pro_code: row.pro_code,
             pro_name: row.pro_name,
+            pro_nameTH: row.pro_nameTH,
+            pro_nameSale: row.pro_nameSale,
             pro_imgmain: row.pro_imgmain,
             pro_priceA: row.pro_priceA,
             pro_priceB: row.pro_priceB,
@@ -1910,6 +1957,8 @@ export class ShoppingCartService {
               pro_code: row.replace_pro_code,
               pro_imgmain: row.replace_pro_imgmain ?? '',
               pro_name: row.replace_pro_name ?? '',
+              pro_nameTH: row.replace_pro_nameTH,
+              pro_nameSale: row.replace_pro_nameSale,
               recommend_rank: 1,
             },
           ];
@@ -1928,6 +1977,8 @@ export class ShoppingCartService {
               pro_code: row.recommended_pro_code,
               pro_imgmain: row.recommended_pro_imgmain ?? '',
               pro_name: row.recommended_pro_name,
+              pro_nameTH: row.recommended_pro_nameTH,
+              pro_nameSale: row.recommended_pro_nameSale,
               recommend_rank: row.recommend_rank ?? null,
             });
           }
@@ -2032,8 +2083,7 @@ export class ShoppingCartService {
 
       return result;
     } catch (error) {
-      this.logger.error('Error get product cart:', error);
-      throw new Error(`Error in Get product Cart`);
+      rethrowAsHttp(error, this.logger, 'Error in Get product Cart');
     }
   }
 
@@ -2344,8 +2394,7 @@ export class ShoppingCartService {
       });
       return 'Remove All Cart Hotdeal Cart Success';
     } catch (error) {
-      this.logger.error('Error removing all hotdeal cart items:', error);
-      throw new Error('Error in removeAllCarthotdeal');
+      rethrowAsHttp(error, this.logger, 'Error in removeAllCarthotdeal');
     }
   }
 
@@ -2367,8 +2416,7 @@ export class ShoppingCartService {
       });
       return freebies;
     } catch (error) {
-      this.logger.error('Error fetching freebie products:', error);
-      throw new Error('Error in getProFreebie');
+      rethrowAsHttp(error, this.logger, 'Error in getProFreebie');
     }
   }
 
@@ -2555,6 +2603,19 @@ export class ShoppingCartService {
   async summaryCart(
     mem_code: string,
   ): Promise<{ total: number; items: { [key: string]: number }[] }> {
+    const { total, items } = await this.summaryCartDetailed(mem_code);
+    return { total, items };
+  }
+
+  /**
+   * ยอดตะกร้า + มูลค่าต่อบรรทัด ด้วยกติกาเดียวกันเป๊ะ (fixed total > promotion/flashsale > price tier)
+   * ใช้โดย summaryCart และ happy hour preview เพื่อไม่ให้สองที่คิดเลขคนละแบบ
+   */
+  async summaryCartDetailed(mem_code: string): Promise<{
+    total: number;
+    items: { [key: string]: number }[];
+    lines: { spc_id: number; pro_code: string; amount: number }[];
+  }> {
     try {
       const result = await this.shoppingCartRepo
         .createQueryBuilder('cart')
@@ -2570,6 +2631,7 @@ export class ShoppingCartService {
           'cart.pro_code',
           'cart.mem_code',
           'cart.flashsale_end',
+          'cart.spc_fixed_total',
           'product.pro_code',
           'product.pro_priceA',
           'product.pro_priceB',
@@ -2599,6 +2661,8 @@ export class ShoppingCartService {
 
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
+      const lines: { spc_id: number; pro_code: string; amount: number }[] =
+        [];
 
       for (const [index, dataGroup] of splitData.entries()) {
         const productTotalAmounts = new Map<string, number>();
@@ -2677,19 +2741,29 @@ export class ShoppingCartService {
 
         const tier = result[0]?.member?.mem_price ?? 'C';
 
+        const lineValue = (
+          item: (typeof dataGroup)[number],
+          t: 'A' | 'B' | 'C',
+        ): number => {
+          // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
+          if (this.hasFixedTotal(item)) return Number(item.spc_fixed_total);
+          let ratio = 0;
+          const matchedUnit = item.product.units?.find(
+            (u) =>
+              u.unit_name === item.spc_unit_enum ||
+              String(u.level) === String(item.spc_unit_enum),
+          );
+          if (matchedUnit) ratio = matchedUnit.ratio;
+          const quantity = Number(item.spc_amount) * Number(ratio);
+          const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+          return quantity * price;
+        };
+
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
-            let ratio = 0;
-            const matchedUnit = item.product.units?.find(
-              (u) =>
-                u.unit_name === item.spc_unit_enum ||
-                String(u.level) === String(item.spc_unit_enum),
-            );
-            if (matchedUnit) ratio = matchedUnit.ratio;
-            const quantity = Number(item.spc_amount) * Number(ratio);
-            const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
-
-            return sum + quantity * price;
+            const amount = lineValue(item, t);
+            lines.push({ spc_id: item.spc_id, pro_code: item.pro_code, amount });
+            return sum + amount;
           }, 0);
 
         const promoTotal = totalByTier(split.promo, 'A');
@@ -2703,9 +2777,9 @@ export class ShoppingCartService {
         itemsArray.push({ index: index, grandTotalItems });
       }
 
-      return { total: total, items: itemsArray };
+      return { total: total, items: itemsArray, lines };
     } catch {
-      return { total: 0, items: [] };
+      return { total: 0, items: [], lines: [] };
     }
   }
 
@@ -3131,6 +3205,8 @@ export class ShoppingCartService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_imgmain: true,
           },
         },
