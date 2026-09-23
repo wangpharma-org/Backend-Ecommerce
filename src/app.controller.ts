@@ -1,6 +1,8 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
+  BadRequestException,
   BadGatewayException,
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -89,6 +91,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
+import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
@@ -160,9 +163,18 @@ export class AppController {
     private readonly behaviorTrackingService: BehaviorTrackingService,
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
+    private readonly orderStatusV2Service: OrderStatusV2Service,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
+
+  private requireRedeemAdmin(req: Request & { user: JwtPayload }): void {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException(
+        'You do not have permission to access this resource',
+      );
+    }
+  }
 
   @Get('/ecom/get-data/:soh_running')
   async apiForOldSystem(@Param('soh_running') soh_running: string) {
@@ -231,6 +243,7 @@ export class AppController {
       advertise_code?: string;
       creditor?: string;
       product_list?: string;
+      promo_id?: number | string;
     },
   ) {
     this.logger.log('=== Controller uploadBanner ===');
@@ -250,6 +263,7 @@ export class AppController {
       banner_location?: 'store_carousel' | 'landing_hero' | 'popup' | 'sidebar';
       date_start: Date;
       date_end: Date;
+      promo_id?: number | null;
     },
   ) {
     const banner = await this.bannerService.createBannerFromUrl(body.img_url, {
@@ -257,6 +271,7 @@ export class AppController {
       date_end: body.date_end,
       banner_name: body.banner_name,
       banner_location: body.banner_location,
+      promo_id: body.promo_id,
     });
     return { success: true, data: banner };
   }
@@ -340,11 +355,58 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/product-l16/list')
+  async listProductL16Status(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('visibility') visibility?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You not have Permission to Accesss');
+    }
+
+    if (
+      visibility !== undefined &&
+      visibility !== 'all' &&
+      visibility !== 'hidden' &&
+      visibility !== 'visible'
+    ) {
+      throw new BadRequestException('สถานะตัวกรองไม่ถูกต้อง');
+    }
+
+    return this.productsService.getPaginatedProductL16Status({
+      page,
+      limit,
+      search,
+      visibility,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/product-l16/export')
   async exportProductL16Status(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
     if (permission === true) {
       return await this.productsService.getProductL16Status();
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/product-l16/status')
+  async updateProductL16Status(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { products: { pro_code: string; status: number }[] },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.updateProductL16OnlyStatus(
+        data.products,
+      );
     } else {
       throw new Error('You not have Permission to Accesss');
     }
@@ -876,6 +938,154 @@ export class AppController {
       });
     }
     return result;
+  }
+
+  // ECWC-398/406: เหมือน all-order-member เดิม แต่รองรับ filter ช่วงวันที่ — endpoint ใหม่ ไม่แก้ของเดิม
+  // ECWC-545: flag 'new_order_list_api' ปิด = proxy ไป PHP เดิมแทนที่จะยิง order-picking-service
+  // (คืน shape เดิมเป๊ะ ไม่กระทบ frontend) — date_from/date_to ใช้ไม่ได้ตอน proxy เพราะ PHP ไม่รองรับ
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-list/:memCode')
+  async AllOrderByMemberV2(
+    @Param('memCode') memCode: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('sort_order') sort_order?: string,
+  ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_list_api',
+    );
+    if (!enabled) {
+      return this.orderStatusV2Service.getOrderListFromPhp(
+        memCode,
+        page ? parseInt(page, 10) : 1,
+        pageSize ? parseInt(pageSize, 10) : 10,
+      );
+    }
+    const result = await this.orderStatusV2Service.getOrderList(
+      memCode,
+      date_from,
+      date_to,
+      page ? parseInt(page, 10) : undefined,
+      pageSize ? parseInt(pageSize, 10) : undefined,
+      sort_order === 'ASC' ? 'ASC' : undefined,
+    );
+    // เดิม await ทีละ product ทีละออเดอร์ (sequential) — หน้าละ 10 ออเดอร์ x 5-8 สินค้า/ออเดอร์
+    // กลายเป็น 50-80 query รอทีละตัว ทำให้ endpoint นี้ช้ากว่าที่ getOrderList เองใช้จริงมาก
+    // (เจอจาก load test — วัดใน getOrderList แล้วไม่เจอ เพราะ loop นี้อยู่นอก service)
+    // dedupe pro_code ก่อนเพราะสินค้าเดียวกันอาจซ้ำกันหลายออเดอร์ในหน้าเดียว แล้วยิงพร้อมกันแทน
+    const proCodesOnPage = new Map<string, string>();
+    for (const order of result.data) {
+      for (const orderItem of order.Newdetails) {
+        proCodesOnPage.set(
+          orderItem.product.pro_code,
+          orderItem.product.pro_imgmain,
+        );
+      }
+    }
+    await Promise.all(
+      [...proCodesOnPage.entries()].map(([pro_code, imageUrl]) =>
+        this.imagedebugService.UpsercetImg({ pro_code, imageUrl }),
+      ),
+    );
+    return result;
+  }
+
+  // ECWC-4xx: รายละเอียดเต็มของบิลสำหรับหน้า Track — ดึงจาก order-picking-service เสมอ
+  // ไม่ว่าบิลนั้นจะมีใน shopping_head ของ ecommerce เองหรือไม่ แทนที่ /ecom/some-order/:soh_runing เดิม
+  // ECWC-545: flag 'new_order_detail_api' ปิด = proxy ไป PHP เดิมแทน (คืน shape เดิมเป๊ะ)
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-detail/:soh_running')
+  async getOrderDetailV2(
+    @Param('soh_running') soh_running: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_detail_api',
+    );
+    if (!enabled) {
+      return this.orderStatusV2Service.getOrderDetailFromPhp(soh_running);
+    }
+    const result = await this.orderStatusV2Service.getOrderDetail(
+      soh_running,
+      req.user.mem_code,
+    );
+    // เดิม await ทีละ product (sequential) — เปลี่ยนเป็นยิงพร้อมกันเหมือนที่แก้ใน order-list
+    await Promise.all(
+      result.details.map((item) =>
+        this.imagedebugService.UpsercetImg({
+          pro_code: item.product.pro_code,
+          imageUrl: item.product.pro_imgmain,
+        }),
+      ),
+    );
+    return result;
+  }
+
+  // ECWC-545: clone ของ Akitokung/api/order/order_list.php (PHP เก่า) ให้ mobile app สลับมาเรียก
+  // ที่นี่แทนได้ — คุมด้วย feature flag 'new_order_list_api' flag ปิด = proxy ไปขอข้อมูลจาก PHP
+  // เก่าตรงๆ แทน (ไม่ยิงไป order-picking-service/warehouse เอง) จน QA เทียบแอปจริงผ่านค่อยเปิด
+  // ไม่บังคับ JwtAuthGuard เพราะ endpoint เดิมก็รับแค่ mem_code จาก query ไม่มี auth header เหมือนกัน
+  @Get('/ecom/legacy/order-list')
+  async getLegacyOrderListV2(
+    @Query('mem_code') mem_code: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_list_api',
+    );
+    if (!enabled) {
+      return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
+    }
+    const parsedLimit = limit !== undefined ? parseInt(limit, 10) : 10;
+    const parsedOffset = offset !== undefined ? parseInt(offset, 10) : 0;
+    if (!Number.isInteger(parsedLimit) || !Number.isInteger(parsedOffset)) {
+      throw new BadRequestException('limit/offset');
+    }
+    return this.orderStatusV2Service.getLegacyOrderList(
+      mem_code,
+      status,
+      parsedLimit,
+      parsedOffset,
+    );
+  }
+
+  // ECWC-545: clone ของ Akitokung/api/order/order_detial.php (PHP เก่า สะกดตามต้นฉบับ) — คุมด้วย
+  // feature flag 'new_order_detail_api' flag ปิด = proxy ไปขอข้อมูลจาก PHP เก่าตรงๆ (ส่งแค่
+  // soh_runing เหมือนที่ระบบเดิมรับอยู่ ไม่เช็ค mem_code เพราะ PHP เดิมก็ไม่เช็คเจ้าของบิลเหมือนกัน)
+  // — flag เปิดค่อยต้องการ mem_code เพิ่มเพื่อยืนยันตัวตนกับ order-picking-service ฝั่งแอปต้องแก้
+  // เพิ่ม param นี้ตอนสลับมาใช้ระบบใหม่
+  @Get('/ecom/legacy/order-detail')
+  async getLegacyOrderDetailV2(
+    @Query('soh_runing') soh_running: string,
+    @Query('mem_code') mem_code: string,
+  ) {
+    const enabled = await this.featureFlagsService.getFlag(
+      'new_order_detail_api',
+    );
+    if (!enabled) {
+      return this.orderStatusV2Service.getLegacyOrderDetailFromPhp(soh_running);
+    }
+    return this.orderStatusV2Service.getLegacyOrderDetail(
+      soh_running,
+      mem_code,
+    );
+  }
+
+  // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-status/:soh_running')
+  async getOrderStatusV2(
+    @Param('soh_running') soh_running: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.orderStatusV2Service.getOrderStatus(
+      soh_running,
+      req.user.mem_code,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1739,7 +1949,8 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-free/all')
-  async getAllProductFree() {
+  async getAllProductFree(@Req() req: Request & { user: JwtPayload }) {
+    this.requireRedeemAdmin(req);
     try {
       return await this.fixFreeService.getAllProductFree();
     } catch {
@@ -1749,20 +1960,109 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/add')
-  async addProductFree(@Body() data: { pro_code: string; pro_point: number }) {
+  async addProductFree(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      pro_code: string;
+      pro_point: number;
+      pro_redeem_display_quantity?: number;
+      pin_to_set?: boolean;
+    },
+  ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.addProductFree(data);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete('/ecom/product-free/delete')
-  async deleteProductFree(@Body() data: { pro_code: string }) {
+  async deleteProductFree(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_code: string },
+  ) {
+    this.requireRedeemAdmin(req);
     return await this.fixFreeService.removeProductFree(data.pro_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/product-free/edit')
-  async editProductFree(@Body() data: { pro_code: string; pro_point: number }) {
-    return await this.fixFreeService.editPoint(data.pro_code, data.pro_point);
+  async editProductFree(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      pro_code: string;
+      pro_point: number;
+      pro_redeem_display_quantity?: number;
+    },
+  ) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.editProduct(data.pro_code, {
+      pro_point: data.pro_point,
+      pro_redeem_display_quantity: data.pro_redeem_display_quantity,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/reorder')
+  async reorderProductFree(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { pro_codes: string[] },
+  ) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.reorderProducts(data.pro_codes);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/clear-ranks')
+  async clearProductFreeRanks(@Req() req: Request & { user: JwtPayload }) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.clearRanks();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/settings')
+  async updateProductFreeSettings(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { display_limit: number },
+  ) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.updateDisplayLimit(data.display_limit);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/backup')
+  async setProductFreeBackup(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      redeem_product_code: string;
+      backup_product_code: string | null;
+    },
+  ) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.setBackup(
+      data.redeem_product_code,
+      data.backup_product_code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/product-free/status')
+  async updateProductFreeStatus(
+    @Req() req: Request & { user: JwtPayload },
+    @Body()
+    data: {
+      redeem_product_code: string;
+      is_redeem_hidden: boolean;
+      is_redeem_coming_soon: boolean;
+    },
+  ) {
+    this.requireRedeemAdmin(req);
+    return await this.fixFreeService.updateDisplayStatus(
+      data.redeem_product_code,
+      data.is_redeem_hidden,
+      data.is_redeem_coming_soon,
+    );
   }
 
   // @Get('/ip')
@@ -2032,9 +2332,20 @@ export class AppController {
   }
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/data/product-free')
-  async getProductFree(
-    @Req() req: Request & { user: JwtPayload },
-  ): Promise<{ pro_code: string; pro_name: string; pro_point: number }[]> {
+  async getProductFree(@Req() req: Request & { user: JwtPayload }): Promise<
+    {
+      pro_code: string;
+      pro_name: string;
+      pro_point: number;
+      pro_stock: number;
+      pro_supplier: string;
+      pro_free: boolean;
+      pro_redeem_display_quantity: number;
+      pro_redeem_rank: number | null;
+      source: 'pro_free' | 'supplier_00';
+      is_visible: boolean;
+    }[]
+  > {
     const permission = req.user.permission;
     if (permission !== true) {
       throw new Error('You do not have permission to access this resource');

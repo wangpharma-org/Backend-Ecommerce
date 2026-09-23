@@ -42,6 +42,21 @@ export class ShoppingOrderEntity {
   @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
   spo_total_decimal: number;
 
+  /**
+   * ราคาปกติต่อหน่วยจาก price list ก่อนหักส่วนลด (ECWC-567)
+   * ต่างจาก spo_price_unit ตรงที่ตัวนั้นเป็นราคาที่เก็บจริงหลังลดแล้ว
+   */
+  @Column({ type: 'decimal', precision: 16, scale: 2, nullable: true })
+  spo_price_list: number | null;
+
+  /**
+   * ส่วนลดของบรรทัดเป็นเปอร์เซ็นต์ — 0 = ขายราคาปกติ · 100 = ของแถม
+   * ใช้แสดงบนบิลเท่านั้น ยอดที่เก็บจริงคือ spo_total_decimal ห้ามคำนวณใหม่จาก %
+   * เพราะ % เก็บได้ 2 ตำแหน่ง บรรทัดมูลค่าสูงจะคลาดเคลื่อนถึงหลักบาท
+   */
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  spo_discount: number | null;
+
   @Column({ type: 'boolean', default: false, nullable: true })
   is_rt: boolean;
 

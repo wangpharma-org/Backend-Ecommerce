@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ShoppingCartService } from './shopping-cart.service';
 import { ShoppingCartEntity } from './shopping-cart.entity';
@@ -12,6 +13,7 @@ import { ProductsService } from 'src/products/products.service';
 import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -67,6 +69,7 @@ describe('ShoppingCartService — unit helpers', () => {
         { provide: getRepositoryToken(UserEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(ProductEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(DeleteCartEntity), useValue: mockRepo() },
+        { provide: getRepositoryToken(HotdealEntity), useValue: mockRepo() },
         { provide: ProductsService, useValue: { transformProductWithUnits: jest.fn() } },
         { provide: HotdealService, useValue: {} },
         { provide: CompanyDayAnalyticService, useValue: {} },
@@ -184,19 +187,26 @@ describe('ShoppingCartService — unit helpers', () => {
       expect((service as any).convertUnitNameToEnum('ลัง', product)).toBe('3');
     });
 
-    it('defaults to "1" when unit name is not found', () => {
+    // หน่วยไม่ตรง/ไม่มี ต้องปฏิเสธ (400) ไม่ใช่เดาเป็น level 1 — ไม่งั้นราคาคิดผิดหน่วยเงียบๆ
+    it('throws BadRequest when unit name is not found', () => {
       const product = mockProduct();
-      expect((service as any).convertUnitNameToEnum('ไม่มีหน่วยนี้', product)).toBe('1');
+      expect(() => (service as any).convertUnitNameToEnum('ไม่มีหน่วยนี้', product)).toThrow(
+        BadRequestException,
+      );
     });
 
-    it('defaults to "1" when product has no units', () => {
+    it('throws BadRequest when product has no units', () => {
       const product = mockProduct([]);
-      expect((service as any).convertUnitNameToEnum('ชิ้น', product)).toBe('1');
+      expect(() => (service as any).convertUnitNameToEnum('ชิ้น', product)).toThrow(
+        BadRequestException,
+      );
     });
 
-    it('defaults to "1" when units is undefined on product', () => {
+    it('throws BadRequest when units is undefined on product', () => {
       const product = { pro_code: 'A001', units: undefined } as unknown as ProductEntity;
-      expect((service as any).convertUnitNameToEnum('ชิ้น', product)).toBe('1');
+      expect(() => (service as any).convertUnitNameToEnum('ชิ้น', product)).toThrow(
+        BadRequestException,
+      );
     });
 
     it('returns correct enum for product with only 1 unit', () => {
