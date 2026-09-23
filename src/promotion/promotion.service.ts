@@ -17,6 +17,7 @@ import {
   LessThanOrEqual,
   DataSource,
   In,
+  EntityManager,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
@@ -36,6 +37,10 @@ import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { rethrowAsHttp } from 'src/common/http-error.util';
+import {
+  PromotionType,
+  PromotionTypePolicyEntity,
+} from './promotion-type-policy.entity';
 
 // Extended types for transformed product data
 export type ProductWithUnits = ProductEntity & {
@@ -115,12 +120,136 @@ export class PromotionService {
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(PromotionTypePolicyEntity)
+    private readonly promotionTypePolicyRepo: Repository<PromotionTypePolicyEntity>,
     private readonly dataSource: DataSource,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
       accessKeyId: process.env.DO_SPACES_KEY,
       secretAccessKey: process.env.DO_SPACES_SECRET,
+    });
+  }
+
+  private getPromotionType(promotion: PromotionEntity): PromotionType {
+    return promotion.creditor ? 'company' : 'wang';
+  }
+
+  private async getLockedPromotionTypePolicy(
+    manager: EntityManager,
+  ): Promise<PromotionTypePolicyEntity> {
+    const policy = await manager
+      .getRepository(PromotionTypePolicyEntity)
+      .createQueryBuilder('policy')
+      .where('policy.id = :id', { id: 1 })
+      .setLock('pessimistic_write')
+      .getOne();
+
+    if (!policy) {
+      throw new InternalServerErrorException(
+        'Promotion type policy is not initialized',
+      );
+    }
+
+    return policy;
+  }
+
+  private async assertPromotionTypeAllowed(
+    manager: EntityManager,
+    requestedType: PromotionType,
+  ): Promise<void> {
+    const policy = await this.getLockedPromotionTypePolicy(manager);
+    if (policy.locked_type && policy.locked_type !== requestedType) {
+      const lockedName =
+        policy.locked_type === 'company' ? 'Company Day' : 'Wang Day';
+      throw new BadRequestException(
+        `ไม่สามารถดำเนินการได้ เนื่องจากระบบล็อกให้ใช้ ${lockedName} เท่านั้น`,
+      );
+    }
+  }
+
+  async getPromotionTypePolicy(): Promise<{
+    locked_type: PromotionType | null;
+    locked_promo_id: number | null;
+    active_promotion_count: number;
+    active_promotion: {
+      promo_id: number;
+      promo_name: string;
+      type: PromotionType;
+    } | null;
+  }> {
+    const [policy, activePromotions] = await Promise.all([
+      this.promotionTypePolicyRepo.findOneBy({ id: 1 }),
+      this.promotionRepo.find({
+        where: { status: true },
+        relations: { creditor: true },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          creditor: { creditor_code: true },
+        },
+      }),
+    ]);
+
+    if (!policy) {
+      throw new InternalServerErrorException(
+        'Promotion type policy is not initialized',
+      );
+    }
+
+    return {
+      locked_type: policy.locked_type,
+      locked_promo_id: policy.locked_promo_id,
+      active_promotion_count: activePromotions.length,
+      active_promotion:
+        activePromotions.length === 1
+          ? {
+              promo_id: activePromotions[0].promo_id,
+              promo_name: activePromotions[0].promo_name,
+              type: this.getPromotionType(activePromotions[0]),
+            }
+          : null,
+    };
+  }
+
+  async lockPromotionTypePolicy(): Promise<{
+    locked_type: PromotionType;
+    locked_promo_id: number;
+  }> {
+    return this.dataSource.transaction(async (manager) => {
+      const policy = await this.getLockedPromotionTypePolicy(manager);
+      if (policy.locked_type && policy.locked_promo_id) {
+        return {
+          locked_type: policy.locked_type,
+          locked_promo_id: policy.locked_promo_id,
+        };
+      }
+
+      const activePromotions = await manager
+        .getRepository(PromotionEntity)
+        .createQueryBuilder('promotion')
+        .leftJoinAndSelect('promotion.creditor', 'creditor')
+        .where('promotion.status = :status', { status: true })
+        .setLock('pessimistic_write')
+        .getMany();
+
+      if (activePromotions.length !== 1) {
+        throw new BadRequestException(
+          'กรุณาปิดโปรโมชั่นด้วยตนเองให้เหลือรายการที่เปิดใช้งานเพียง 1 รายการก่อนยืนยัน',
+        );
+      }
+
+      const activePromotion = activePromotions[0];
+      const lockedType = this.getPromotionType(activePromotion);
+      policy.locked_type = lockedType;
+      policy.locked_promo_id = activePromotion.promo_id;
+      policy.locked_at = new Date();
+      await manager.save(policy);
+
+      return {
+        locked_type: lockedType,
+        locked_promo_id: activePromotion.promo_id,
+      };
     });
   }
 
@@ -613,18 +742,23 @@ export class PromotionService {
         promo_poster = imgData.Location;
       }
 
-      const newPromotion = this.promotionRepo.create({
-        promo_name: data.promo_name,
-        creditor: data.creditor_code
-          ? { creditor_code: data.creditor_code }
-          : undefined,
-        start_date: toUtcStart(data.start_date),
-        end_date: toUtcEnd(data.end_date),
-        status: data.status,
-        promo_poster,
+      return this.dataSource.transaction(async (manager) => {
+        await this.assertPromotionTypeAllowed(
+          manager,
+          data.creditor_code ? 'company' : 'wang',
+        );
+        const newPromotion = manager.create(PromotionEntity, {
+          promo_name: data.promo_name,
+          creditor: data.creditor_code
+            ? { creditor_code: data.creditor_code }
+            : undefined,
+          start_date: toUtcStart(data.start_date),
+          end_date: toUtcEnd(data.end_date),
+          status: data.status,
+          promo_poster,
+        });
+        return manager.save(newPromotion);
       });
-      const savedPromotion = await this.promotionRepo.save(newPromotion);
-      return savedPromotion;
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to add promotion');
     }
@@ -755,14 +889,27 @@ export class PromotionService {
 
   async updateStatus(promo_id: number, status: boolean) {
     try {
-      const promotion = await this.promotionRepo.findOne({
-        where: { promo_id },
+      await this.dataSource.transaction(async (manager) => {
+        await this.getLockedPromotionTypePolicy(manager);
+        const promotion = await manager
+          .getRepository(PromotionEntity)
+          .createQueryBuilder('promotion')
+          .leftJoinAndSelect('promotion.creditor', 'creditor')
+          .where('promotion.promo_id = :promoId', { promoId: promo_id })
+          .setLock('pessimistic_write')
+          .getOne();
+        if (!promotion) {
+          throw new NotFoundException(`Promotion with id ${promo_id} not found`);
+        }
+        if (status) {
+          await this.assertPromotionTypeAllowed(
+            manager,
+            this.getPromotionType(promotion),
+          );
+        }
+        promotion.status = status;
+        await manager.save(promotion);
       });
-      if (!promotion) {
-        throw new Error(`Promotion with id ${promo_id} not found`);
-      }
-      promotion.status = status;
-      await this.promotionRepo.save(promotion);
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to update promotion status');
     }
@@ -1586,6 +1733,10 @@ export class PromotionService {
     }
 
     return await this.dataSource.transaction(async (manager) => {
+      await this.assertPromotionTypeAllowed(
+        manager,
+        this.getPromotionType(source),
+      );
       const savedPromotion = await manager.save(
         manager.create(PromotionEntity, {
           promo_name: source.promo_name,
