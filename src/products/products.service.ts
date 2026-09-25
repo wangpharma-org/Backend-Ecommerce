@@ -3170,18 +3170,11 @@ export class ProductsService {
         }
       }
 
-      if (data.product_nameTH !== undefined) {
-        const productNameTH = data.product_nameTH?.trim() || null;
-        productData.pro_nameTH = productNameTH;
-        if (productNameTH) {
-          productData.pro_name = productNameTH;
-        } else if (data.product_name !== undefined) {
-          productData.pro_name = data.product_name;
-        }
-      } else if (data.product_name !== undefined) {
+      // ECWC-421: pro_name คงเป็นชื่อจาก EasyAcc เสมอ ชื่อไทยเก็บแยกใน pro_nameTH ให้หน้าบ้านเลือกแสดง
+      if (data.product_name !== undefined)
         productData.pro_name = data.product_name;
       if (data.product_nameTH !== undefined)
-        productData.pro_nameTH = data.product_nameTH;
+        productData.pro_nameTH = data.product_nameTH?.trim() || null;
       if (data.product_nameEN !== undefined)
         productData.pro_nameEN = data.product_nameEN as string;
       if (data.product_nameSale !== undefined)
@@ -3223,10 +3216,8 @@ export class ProductsService {
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
       if (data.product_name !== undefined)
         esFields.pro_name = data.product_name ?? null;
-      if (data.product_nameTH !== undefined) {
+      if (data.product_nameTH !== undefined)
         esFields.pro_nameTH = data.product_nameTH?.trim() || null;
-        if (esFields.pro_nameTH) esFields.pro_name = esFields.pro_nameTH;
-      }
       if (data.product_nameEN !== undefined)
         esFields.pro_nameEN = data.product_nameEN ?? null;
       if (data.product_nameSale !== undefined)

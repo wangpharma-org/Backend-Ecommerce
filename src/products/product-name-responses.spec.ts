@@ -54,6 +54,11 @@ describe('ECWC-421 product name responses', () => {
       Object.create(ProductsService.prototype) as ProductsService,
       {
         productRepo: { createQueryBuilder: () => qb, increment: jest.fn() },
+        productLabelRulesService: {
+          attachToProducts: jest.fn((products: unknown[]) =>
+            Promise.resolve(products),
+          ),
+        },
         isL16Member: jest.fn(() => Promise.resolve(false)),
         transformProductWithUnits: jest.fn((value: unknown) =>
           Promise.resolve(value),
