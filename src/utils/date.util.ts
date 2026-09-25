@@ -22,6 +22,11 @@ export function toThaiDate(date: Date): string {
   return dayjs(date).tz(TZ).format('YYYY-MM-DD');
 }
 
+/** UTC Date → Bangkok date-time string 'DD/MM/YYYY HH:mm' for reports */
+export function toThaiDateTime(date: Date): string {
+  return dayjs(date).tz(TZ).format('DD/MM/YYYY HH:mm');
+}
+
 /** UTC Date range covering today in Bangkok timezone */
 export function getTodayRange(): { startOfDay: Date; endOfDay: Date } {
   const today = dayjs().tz(TZ);

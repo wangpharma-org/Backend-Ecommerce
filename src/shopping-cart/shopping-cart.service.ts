@@ -36,6 +36,8 @@ import {
   type PriceOption,
 } from 'src/promotion/promo-line-value';
 import * as dayjs from 'dayjs';
+import { PreorderProductEntity } from 'src/preorder/preorder-product.entity';
+import { PreorderCampaignStatus } from 'src/preorder/preorder-campaign.entity';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 
 export interface ShoppingProductCart {
@@ -331,7 +333,38 @@ export class ShoppingCartService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     @InjectRepository(DeleteCartEntity)
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
+    @InjectRepository(PreorderProductEntity)
+    private readonly preorderProductRepo: Repository<PreorderProductEntity>,
   ) {}
+
+  /** pro_code ที่กำลังเปิดจองล่วงหน้า (campaign เปิดและเริ่มแล้ว) ต้องสั่งผ่านหน้า Pre-order เท่านั้น ห้ามเข้าตะกร้าปกติ */
+  private async getActivePreorderProCodes(
+    proCodes: string[],
+  ): Promise<Set<string>> {
+    const codes = [...new Set(proCodes.filter(Boolean))];
+    if (!codes.length) return new Set();
+    const now = new Date();
+    const rows = await this.preorderProductRepo
+      .createQueryBuilder('p')
+      .innerJoin('p.campaign', 'c')
+      .where('p.pro_code IN (:...codes)', { codes })
+      .andWhere('p.is_active = 1')
+      .andWhere('c.status = :status', { status: PreorderCampaignStatus.OPEN })
+      .andWhere('(c.starts_at IS NULL OR c.starts_at <= :now)', { now })
+      .andWhere('(c.ends_at IS NULL OR c.ends_at >= :now)', { now })
+      .select('p.pro_code', 'pro_code')
+      .getRawMany<{ pro_code: string }>();
+    return new Set(rows.map((r) => r.pro_code));
+  }
+
+  private async ensureNotPreorderRestricted(pro_code: string) {
+    const restricted = await this.getActivePreorderProCodes([pro_code]);
+    if (restricted.has(pro_code)) {
+      throw new BadRequestException(
+        'สินค้านี้เปิดจองล่วงหน้า (Pre-order) แล้ว กรุณาสั่งซื้อผ่านหน้า Pre-order',
+      );
+    }
+  }
 
   private convertUnitNameToEnum(
     unitName: string,
@@ -942,6 +975,8 @@ export class ShoppingCartService {
     flashsale_end?: string;
     clientVersion?: string | number;
     company_day_source?: string;
+    /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
+    isPreorderFulfillment?: boolean;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -949,6 +984,9 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      if (Number(data.amount) > 0 && !data.isPreorderFulfillment) {
+        await this.ensureNotPreorderRestricted(data.pro_code);
+      }
 
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
@@ -1022,6 +1060,7 @@ export class ShoppingCartService {
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
         syncHotdeal: false,
+        isPreorderFulfillment: data.isPreorderFulfillment,
       });
 
       const cart = await this.getProductCart(data.mem_code, {
@@ -1072,6 +1111,7 @@ export class ShoppingCartService {
     const touchVersion = options?.touchVersion ?? true;
     try {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureNotPreorderRestricted(data.pro_code);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
       const product = await this.productRepo.findOne({
@@ -1497,11 +1537,16 @@ export class ShoppingCartService {
     mem_route?: string;
     clientVersion?: string | number;
     syncHotdeal?: boolean;
+    /** true เฉพาะตอนเรียกจาก addProductCart ที่เป็นการส่งสินค้าที่จัดสรรแล้วของ PreorderService เข้าตะกร้า */
+    isPreorderFulfillment?: boolean;
   }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       if (data.type === 'check') {
+        if (!data.isPreorderFulfillment) {
+          await this.ensureNotPreorderRestricted(data.pro_code);
+        }
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
           { spc_checked: true },
@@ -1650,11 +1695,22 @@ export class ShoppingCartService {
           .andWhere('cart.mem_code = :mem_code', { mem_code: data.mem_code })
           .select('cart.pro_code')
           .getMany();
+        const cartProCodes = await this.shoppingCartRepo.find({
+          where: { mem_code: data.mem_code, is_reward: false },
+          select: ['pro_code'],
+        });
+        const preorderRestricted = await this.getActivePreorderProCodes(
+          cartProCodes.map((c) => c.pro_code),
+        );
+        const excludeProCodes = new Set([
+          ...productCanNotCheck.map((p) => p.pro_code),
+          ...preorderRestricted,
+        ]);
         await this.shoppingCartRepo.update(
           {
             mem_code: data.mem_code,
             is_reward: false,
-            pro_code: Not(In(productCanNotCheck.map((p) => p.pro_code))),
+            pro_code: Not(In([...excludeProCodes])),
           },
           { spc_checked: true },
         );

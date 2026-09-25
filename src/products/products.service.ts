@@ -3201,6 +3201,9 @@ export class ProductsService {
         productData.pro_priceB = data.product_price_b as number;
       if (data.product_price_c !== undefined)
         productData.pro_priceC = data.product_price_c as number;
+      // pro_cost เป็น NOT NULL จึงข้ามเมื่อส่ง null มา ไม่ให้ทั้ง UPDATE ล้ม
+      if (data.product_cost !== undefined && data.product_cost !== null)
+        productData.pro_cost = data.product_cost;
       if (data.pro_category !== undefined)
         productData.pro_category = data.pro_category as number;
       if (data.drugregister !== undefined)
