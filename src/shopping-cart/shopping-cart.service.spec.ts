@@ -14,6 +14,7 @@ import { HotdealService } from 'src/hotdeal/hotdeal.service';
 import { CompanyDayAnalyticService } from 'src/company-day-analytic/company-day-analytic.service';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
+import { PreorderProductEntity } from 'src/preorder/preorder-product.entity';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -70,6 +71,7 @@ describe('ShoppingCartService — unit helpers', () => {
         { provide: getRepositoryToken(ProductEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(DeleteCartEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(HotdealEntity), useValue: mockRepo() },
+        { provide: getRepositoryToken(PreorderProductEntity), useValue: mockRepo() },
         { provide: ProductsService, useValue: { transformProductWithUnits: jest.fn() } },
         { provide: HotdealService, useValue: {} },
         { provide: CompanyDayAnalyticService, useValue: {} },
