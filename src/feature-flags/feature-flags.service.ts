@@ -8,6 +8,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 const DEFAULT_DISABLED_FLAGS = new Set([
   'new_order_list_api',
   'new_order_detail_api',
+  // ECWC-643: lot ในหน้ารายละเอียดสินค้าเป็นของใหม่ — ปิดไว้จนกว่าแอดมินจะเปิดเอง
+  // (lot_display_cart ไม่อยู่ในนี้ เพราะตะกร้าแสดง lot อยู่แล้ว default เปิดเหมือนเดิม)
+  'lot_display_product_detail',
 ]);
 
 @Injectable()
