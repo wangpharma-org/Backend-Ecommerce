@@ -12,6 +12,7 @@ import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
+import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -73,6 +74,14 @@ describe('ProductsService — unit helpers', () => {
         { provide: ElasticsearchService, useValue: {} },
         { provide: ShoppingCartService, useValue: {} },
         {
+          provide: ProductLabelRulesService,
+          useValue: {
+            attachToProducts: jest.fn((products: unknown[]) =>
+              Promise.resolve(products),
+            ),
+          },
+        },
+        {
           provide: RedeemProductSetService,
           useValue: { getCustomerSet: jest.fn() },
         },
@@ -84,6 +93,40 @@ describe('ProductsService — unit helpers', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('includes the English name in the product detail response', async () => {
+    const product = {
+      pro_code: 'P001',
+      pro_name: 'Thai product name',
+      pro_nameEN: 'English product name',
+    };
+    const queryBuilder: Record<string, jest.Mock> = {};
+    for (const method of ['leftJoinAndSelect', 'select', 'where']) {
+      queryBuilder[method] = jest.fn(() => queryBuilder);
+    }
+    queryBuilder.getOne = jest.fn().mockResolvedValue(product);
+
+    Object.assign(service, {
+      productRepo: {
+        increment: jest.fn().mockResolvedValue(undefined),
+        createQueryBuilder: jest.fn(() => queryBuilder),
+      },
+      isL16Member: jest.fn().mockResolvedValue(false),
+      transformProductWithUnits: jest
+        .fn()
+        .mockImplementation((value) => Promise.resolve(value)),
+    });
+
+    const result = await service.getProductDetail({
+      pro_code: product.pro_code,
+      mem_code: 'TEST',
+    });
+
+    expect(result.pro_nameEN).toBe(product.pro_nameEN);
+    expect(queryBuilder.select).toHaveBeenCalledWith(
+      expect.arrayContaining(['product.pro_nameEN']),
+    );
   });
 
   // ─── convertEnumToUnitName ────────────────────────────────────────────────

@@ -36,6 +36,7 @@ import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
+import { rethrowAsHttp } from 'src/common/http-error.util';
 
 // Extended types for transformed product data
 export type ProductWithUnits = ProductEntity & {
@@ -242,8 +243,8 @@ export class PromotionService {
           await this.promotionRepo.softDelete({ promo_id: p.promo_id });
         }),
       );
-    } catch {
-      throw new Error('Something Error in Delete Promotion');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Something Error in Delete Promotion');
     }
   }
 
@@ -264,8 +265,7 @@ export class PromotionService {
       await this.codeRepo.save(newCode);
       return code_text;
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to generate promotion code');
+      rethrowAsHttp(error, this.logger, 'Failed to generate promotion code');
     }
   }
 
@@ -300,8 +300,7 @@ export class PromotionService {
       );
       await this.shoppingCartService.markCartAsChanged(mem_code);
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to check reward in cart');
+      rethrowAsHttp(error, this.logger, 'Failed to check reward in cart');
     }
   }
 
@@ -342,6 +341,8 @@ export class PromotionService {
 
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -412,8 +413,8 @@ export class PromotionService {
         });
       }
       return transformedTier;
-    } catch {
-      throw new Error(`Failed to get tier products`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tier products');
     }
   }
 
@@ -481,6 +482,8 @@ export class PromotionService {
           'tier.tier_id',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_imgmain',
         ]);
 
@@ -544,8 +547,7 @@ export class PromotionService {
 
       return { poster, reward: limitedReward };
     } catch (error) {
-      this.logger.error('Error in getAllTiers:', error);
-      throw new Error(`Failed to get tiers: ${error}`);
+      rethrowAsHttp(error, this.logger, 'Failed to get tiers');
     }
   }
 
@@ -579,8 +581,8 @@ export class PromotionService {
       );
 
       return proCodes;
-    } catch {
-      throw new Error(`Failed to get tiers`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tiers');
     }
   }
 
@@ -589,8 +591,8 @@ export class PromotionService {
       return await this.promotionTierRepo.findOne({
         where: { tier_id },
       });
-    } catch {
-      throw new Error(`Failed to get tier by id`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tier by id');
     }
   }
 
@@ -630,8 +632,7 @@ export class PromotionService {
       const savedPromotion = await this.promotionRepo.save(newPromotion);
       return savedPromotion;
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to add promotion`);
+      rethrowAsHttp(error, this.logger, 'Failed to add promotion');
     }
   }
 
@@ -661,8 +662,7 @@ export class PromotionService {
         { promo_poster: imgData.Location },
       );
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to update promotion poster`);
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion poster');
     }
   }
 
@@ -690,8 +690,8 @@ export class PromotionService {
         start_date: toThaiDate(promo.start_date),
         end_date: toThaiDate(promo.end_date),
       }));
-    } catch {
-      throw new Error(`Failed to get promotions`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get promotions');
     }
   }
 
@@ -707,8 +707,8 @@ export class PromotionService {
         start_date: toThaiDate(promotion.start_date),
         end_date: toThaiDate(promotion.end_date),
       };
-    } catch {
-      throw new Error(`Failed to get promotion by id`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get promotion by id');
     }
   }
 
@@ -788,17 +788,16 @@ export class PromotionService {
       }
 
       await this.promotionRepo.update(promo_id, { status });
-    } catch (error: unknown) {
-      if (error instanceof HttpException) throw error;
-      throw new Error(`Failed to update promotion status`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion status');
     }
   }
 
   async deleteTier(tier_id: number) {
     try {
       return await this.promotionTierRepo.softDelete({ tier_id });
-    } catch {
-      throw new Error(`Failed to delete tier`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete tier');
     }
   }
 
@@ -811,8 +810,8 @@ export class PromotionService {
         throw new Error(`Promotion with id ${promo_id} not found`);
       }
       await this.promotionRepo.softDelete({ promo_id });
-    } catch {
-      throw new Error(`Failed to delete promotion`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete promotion');
     }
   }
 
@@ -874,16 +873,16 @@ export class PromotionService {
   async deleteCondition(cond_id: number) {
     try {
       return this.promotionConditionRepo.delete({ cond_id });
-    } catch {
-      throw new Error(`Failed to delete condition`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete condition');
     }
   }
 
   async deleteReward(reward_id: number) {
     try {
       return this.promotionRewardRepo.delete({ reward_id });
-    } catch {
-      throw new Error(`Failed to delete reward`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete reward');
     }
   }
 
@@ -911,8 +910,7 @@ export class PromotionService {
       });
       return 'Reward updated successfully';
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to update reward');
+      rethrowAsHttp(error, this.logger, 'Failed to update reward');
     }
   }
 
@@ -958,9 +956,8 @@ export class PromotionService {
         unit: unitEnum,
       } as DeepPartial<PromotionRewardEntity>);
       await this.promotionRewardRepo.save(newReward);
-    } catch (error: unknown) {
-      if (error instanceof HttpException) throw error;
-      throw new Error(`Failed to create reward`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to create reward');
     }
   }
 
@@ -982,6 +979,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
           'giftProduct.free_product_count',
@@ -1038,8 +1037,7 @@ export class PromotionService {
         };
       }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to get rewards by tier`);
+      rethrowAsHttp(error, this.logger, 'Failed to get rewards by tier');
     }
   }
 
@@ -1053,12 +1051,14 @@ export class PromotionService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_genericname: true,
           },
         },
       });
-    } catch {
-      throw new Error(`Failed to get conditions by tier`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get conditions by tier');
     }
   }
 
@@ -1078,8 +1078,7 @@ export class PromotionService {
       });
       return 'Promotion updated successfully';
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to update promotion');
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion');
     }
   }
 
@@ -1098,8 +1097,7 @@ export class PromotionService {
       });
       return 'Tier updated successfully';
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to update tier');
+      rethrowAsHttp(error, this.logger, 'Failed to update tier');
     }
   }
 
@@ -1147,6 +1145,8 @@ export class PromotionService {
               product: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_priceA: true,
                 pro_priceB: true,
@@ -1161,6 +1161,8 @@ export class PromotionService {
               giftProduct: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_imgmain: true,
               },
@@ -1186,8 +1188,7 @@ export class PromotionService {
         })),
       };
     } catch (error) {
-      this.logger.error('Error fetching promotions:', error);
-      throw new Error('Failed to get active promotions');
+      rethrowAsHttp(error, this.logger, 'Failed to get active promotions');
     }
   }
 
@@ -1223,8 +1224,7 @@ export class PromotionService {
         return 'Tier set to specific products successfully';
       }
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to set all products for the tier');
+      rethrowAsHttp(error, this.logger, 'Failed to set all products for the tier');
     }
   }
 
@@ -1273,6 +1273,8 @@ export class PromotionService {
           // ข้อมูล product
           'tier_product.pro_code',
           'tier_product.pro_name',
+          'tier_product.pro_nameTH',
+          'tier_product.pro_nameSale',
           'tier_product.pro_priceA',
           'tier_product.pro_priceB',
           'tier_product.pro_priceC',
@@ -1298,6 +1300,8 @@ export class PromotionService {
           'rewards.unit',
           'gift_product.pro_code',
           'gift_product.pro_name',
+          'gift_product.pro_nameTH',
+          'gift_product.pro_nameSale',
           'gift_product.pro_imgmain',
         ])
         .getMany();
@@ -1366,8 +1370,7 @@ export class PromotionService {
         },
       })) as TierConditionWithTransformedTier[];
     } catch (error) {
-      this.logger.error('Error in getTierWithProCode:', error);
-      throw new Error('Failed to get tier with product code');
+      rethrowAsHttp(error, this.logger, 'Failed to get tier with product code');
     }
   }
 
@@ -1399,8 +1402,8 @@ export class PromotionService {
           },
         },
       });
-    } catch {
-      throw new Error(`Failed to get tier with all products`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tier with all products');
     }
   }
 
@@ -1422,6 +1425,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
         ]);
@@ -1471,8 +1476,7 @@ export class PromotionService {
         };
       }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to get reward by tier id`);
+      rethrowAsHttp(error, this.logger, 'Failed to get reward by tier id');
     }
   }
 
@@ -1484,8 +1488,8 @@ export class PromotionService {
           free_product_limit: limit,
         },
       );
-    } catch {
-      throw new Error(`Failed to update reward limit`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update reward limit');
     }
   }
 
@@ -1497,8 +1501,8 @@ export class PromotionService {
           free_product_count: 0,
         },
       );
-    } catch {
-      throw new Error(`Failed to update reward limit`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update reward limit');
     }
   }
 
@@ -1543,8 +1547,7 @@ export class PromotionService {
         url: imgData.Location,
       };
     } catch (error) {
-      this.logger.error('Error updating tier poster:', error);
-      throw new Error(`Failed to update tier poster`);
+      rethrowAsHttp(error, this.logger, 'Failed to update tier poster');
     }
   }
 
@@ -1581,8 +1584,7 @@ export class PromotionService {
 
       return { minAmount: minAmount };
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to get tier price`);
+      rethrowAsHttp(error, this.logger, 'Failed to get tier price');
     }
   }
 
@@ -1626,8 +1628,8 @@ export class PromotionService {
           promo_id: 'DESC',
         },
       });
-    } catch {
-      throw new Error(`Failed to get promotions for duplicate`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get promotions for duplicate');
     }
   }
 

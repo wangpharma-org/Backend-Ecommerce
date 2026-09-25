@@ -20,6 +20,7 @@ export interface UpdateProductImageEcommercePayload {
 export interface ProductEasyAcc {
   product_code: string;
   product_name?: string;
+  product_nameTH?: string | null;
   product_nameEN?: string | null;
   product_nameSale?: string | null;
   product_genericname?: string | null;
@@ -165,7 +166,9 @@ export class ProductListner {
     @Payload() message: UpdateProductImageEcommercePayload,
   ) {
     try {
-      const oldImages = await this.productServerce.getProductImageUrls(message.product_code);
+      const oldImages = await this.productServerce.getProductImageUrls(
+        message.product_code,
+      );
       await this.productServerce.updateProductImageFromCentral(message);
 
       if (message.reply_id) {
