@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export type BannerLocation =
   | 'store_carousel'
@@ -111,4 +111,10 @@ export class BannerEntity {
 
   @Column({ nullable: true })
   product_list?: string;
+
+  /** ผูกกับโปรโมชั่นเพื่อมีปุ่ม "สรุปโปร" บนแบนเนอร์ (ECWC-532) — null = แบนเนอร์ธรรมดา */
+  // สร้างใน migration release-1.48.0 — ต้องประกาศไว้ ไม่งั้น migration:generate จะ drop ทิ้ง
+  @Index('IDX_banner_promo')
+  @Column({ type: 'int', nullable: true, default: null })
+  promo_id?: number | null;
 }

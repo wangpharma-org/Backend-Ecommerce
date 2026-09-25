@@ -76,6 +76,8 @@ export class RecommendService {
           products: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_nameEN: true,
             pro_genericname: true,
             pro_priceA: true,
@@ -146,6 +148,8 @@ export class RecommendService {
       const replacedProducts: Array<{
         pro_code: string;
         pro_name: string;
+        pro_nameTH?: string | null;
+        pro_nameSale?: string | null;
         pro_genericname: string;
         pro_priceA: number;
         pro_priceB: number;
@@ -194,6 +198,8 @@ export class RecommendService {
         .select([
           'mainProduct.pro_code AS pro_code',
           'mainProduct.pro_name AS pro_name',
+          'mainProduct.pro_nameTH AS pro_nameTH',
+          'mainProduct.pro_nameSale AS pro_nameSale',
           'mainProduct.pro_genericname AS pro_genericname',
           'mainProduct.pro_priceA AS pro_priceA',
           'mainProduct.pro_priceB AS pro_priceB',
@@ -223,6 +229,8 @@ export class RecommendService {
       const RecommendMany: Array<{
         pro_code: string;
         pro_name: string;
+        pro_nameTH?: string | null;
+        pro_nameSale?: string | null;
         pro_genericname: string;
         pro_priceA: number;
         pro_priceB: number;
@@ -270,6 +278,8 @@ export class RecommendService {
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',
+          'product.pro_nameTH AS pro_nameTH',
+          'product.pro_nameSale AS pro_nameSale',
           'product.pro_genericname AS pro_genericname',
           'product.pro_priceA AS pro_priceA',
           'product.pro_priceB AS pro_priceB',
@@ -334,11 +344,15 @@ export class RecommendService {
         select: {
           pro_code: true,
           pro_name: true,
+          pro_nameTH: true,
+          pro_nameSale: true,
           pro_genericname: true,
           pro_imgmain: true,
           replace: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_genericname: true,
             pro_imgmain: true,
           },

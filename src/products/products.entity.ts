@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   ManyToMany,
+  Index,
 } from 'typeorm';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
@@ -29,7 +30,19 @@ import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
 import { ProductUnitEntity } from './product-unit.entity';
 
 @Entity({ name: 'product' })
+// index สำหรับหน้าสินค้าแลกแต้ม (redeem-product.criteria.ts) — สร้างใน migration release-1.48.0
+// ต้องประกาศไว้ที่นี่ ไม่งั้น migration:generate จะมองว่าเกินแล้ว drop ทิ้ง
+@Index('IDX_product_redeem', ['product_type', 'pro_point', 'pro_stock'])
+@Index('IDX_product_free_redeem', ['pro_free', 'pro_point', 'pro_stock'])
+@Index('IDX_product_redeem_supplier', [
+  'pro_supplier',
+  'pro_point',
+  'pro_stock',
+])
+@Index('IDX_product_redeem_rank', ['pro_redeem_rank'])
 export class ProductEntity {
+  productLabels?: string[];
+
   @PrimaryColumn({ unique: true, length: 20 })
   pro_code!: string;
 
@@ -97,6 +110,27 @@ export class ProductEntity {
   @Column({ default: false })
   pro_free!: boolean;
 
+  // จำนวนสูงสุดที่เปิดให้ลูกค้าเห็น/เลือกในหน้าแลกแต้ม
+  // null = ใช้ stock จริง เพื่อคงพฤติกรรมของข้อมูลเดิม
+  @Column({ type: 'int', nullable: true, default: null })
+  pro_redeem_display_quantity!: number | null;
+
+  // ลำดับที่แอดมินกำหนดสำหรับหน้าแลกแต้ม; null = ต่อท้ายตาม sort เดิม
+  @Column({ type: 'int', nullable: true, default: null })
+  pro_redeem_rank!: number | null;
+
+  // ซ่อนเฉพาะสินค้าหลักจากหน้าแลกแต้ม โดยยังเก็บค่าตั้งค่า/สินค้าสำรองเดิมไว้
+  @Column({ default: false })
+  pro_redeem_hidden!: boolean;
+
+  // Coming Soon เป็นสถานะแยกจาก stock และมีลำดับสูงกว่าการแสดงสินค้าสำรอง
+  @Column({ default: false })
+  pro_redeem_coming_soon!: boolean;
+
+  // '00' = สินค้าแลกแต้ม, '01' = สินค้าขายปกติ (ECWC-444)
+  @Column({ length: 10, default: '01' })
+  product_type!: string;
+
   @Column({ length: 120, nullable: true })
   pro_drugregister!: string;
 
@@ -143,8 +177,8 @@ export class ProductEntity {
   @Column({ nullable: true })
   pro_drugmain4!: string;
 
-  @Column({ nullable: true, type: 'varchar' })
-  pro_nameTH!: string;
+  @Column({ nullable: true, type: 'varchar', length: 255 })
+  pro_nameTH!: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
   pro_nameMain!: string;

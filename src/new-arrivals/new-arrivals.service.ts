@@ -6,6 +6,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { ClientKafka } from '@nestjs/microservices';
 import * as dayjs from 'dayjs';
 import { PreorderService } from 'src/preorder/preorder.service';
+import { rethrowAsHttp } from 'src/common/http-error.util';
 
 @Injectable()
 export class NewArrivalsService {
@@ -120,9 +121,9 @@ export class NewArrivalsService {
           );
       }
       return { message: 'New arrival added successfully' };
-    } catch {
+    } catch (error) {
       await queryRunner.rollbackTransaction();
-      throw new Error('Error adding new arrival');
+      rethrowAsHttp(error, this.logger, 'Error adding new arrival');
     } finally {
       await queryRunner.release();
     }
@@ -170,6 +171,8 @@ export class NewArrivalsService {
         'newArrival.createdAt',
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_priceA',
         'product.pro_priceB',
         'product.pro_priceC',

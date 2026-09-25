@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { UserEntity } from '../users/users.entity';
 import { ProductEntity } from '../products/products.entity';
@@ -57,6 +58,26 @@ export class ShoppingCartEntity {
 
   @Column({ default: false })
   hotdeal_free!: boolean;
+
+  /** แถวที่มี basket_id เดียวกันคือกระเช้าเดียวกัน — null = สินค้าเดี่ยวปกติ */
+  // สร้างใน migration release-1.48.0 — ต้องประกาศไว้ ไม่งั้น migration:generate จะ drop ทิ้ง
+  @Index('IDX_shopping_cart_basket')
+  @Column({ type: 'int', nullable: true, default: null })
+  basket_id!: number | null;
+
+  /**
+   * ราคารวมของบรรทัดนี้ที่ล็อกไว้ (กระเช้าสำเร็จรูปเฉลี่ยราคาชุดลงมา)
+   * null = คิดจาก product.pro_priceA/B/C ตามปกติ · 0 = ของแถมในชุด
+   * mysql คืน decimal เป็น string ต้อง Number() ก่อนใช้เสมอ
+   */
+  @Column({
+    type: 'decimal',
+    precision: 16,
+    scale: 2,
+    nullable: true,
+    default: null,
+  })
+  spc_fixed_total!: string | number | null;
 
   @ManyToOne(() => UserEntity, (member) => member.shoppingCartItems)
   @JoinColumn({ name: 'mem_code' }) // Using ID for relation

@@ -6,6 +6,8 @@ import { ShoppingOrderService } from './shopping-order.service';
 import { ShoppingCartModule } from '../shopping-cart/shopping-cart.module';
 import { ShoppingHeadEntity } from './../shopping-head/shopping-head.entity';
 import { HttpModule } from '@nestjs/axios';
+import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { FailedEntity } from '../failed-api/failed-api.entity';
 import { ProductEntity } from '../products/products.entity';
 import { SaleLogEntity } from './salelog-order.entity';
@@ -15,6 +17,7 @@ import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-a
 import { PromotionModule } from 'src/promotion/promotion.module';
 import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
+import { FixFreeModule } from 'src/fix-free/fix-free.module';
 
 @Module({
   imports: [
@@ -30,10 +33,38 @@ import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
     ]),
     ShoppingCartModule,
     HttpModule,
+    ClientsModule.registerAsync([
+      {
+        name: 'ECOMMERCE_KAFKA_SERVICE',
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.KAFKA,
+          options: {
+            client: {
+              clientId: configService.get<string>(
+                'KAFKA_CLIENT_ID',
+                'ecommerce',
+              ),
+              brokers: configService
+                .get<string>('KAFKA_BROKERS', 'localhost:9092')
+                .split(','),
+            },
+            consumer: {
+              groupId: configService.get<string>(
+                'KAFKA_GROUP_ID',
+                'ecommerce-producer',
+              ),
+            },
+          },
+        }),
+      },
+    ]),
     LoggerModule,
     CompanyDayAnalyticModule,
     PromotionModule,
     HappyHourModule,
+    FixFreeModule,
   ],
   providers: [ShoppingOrderService],
   exports: [ShoppingOrderService],
