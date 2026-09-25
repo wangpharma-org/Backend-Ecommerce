@@ -36,6 +36,7 @@ import { AuthService } from 'src/auth/auth.service';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 
 // Extended types for transformed product data
@@ -119,6 +120,7 @@ export class PromotionService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly dataSource: DataSource,
+    private readonly promoOverlapService: PromoOverlapService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -764,12 +766,31 @@ export class PromotionService {
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id },
+        relations: {
+          tiers: {
+            conditions: { product: true },
+            rewards: { giftProduct: true },
+          },
+        },
       });
       if (!promotion) {
         throw new Error(`Promotion with id ${promo_id} not found`);
       }
-      promotion.status = status;
-      await this.promotionRepo.save(promotion);
+
+      // เปิดใช้งานต้องเช็คซ้ำ เพราะตอนสร้างเป็น draft ยังไม่ถูกนับเป็น active
+      if (status) {
+        for (const tier of promotion.tiers ?? []) {
+          await this.promoOverlapService.assertPromotionPairAvailable({
+            promo_id,
+            start_date: promotion.start_date,
+            end_date: promotion.end_date,
+            buyCodes: (tier.conditions ?? []).map((c) => c.product.pro_code),
+            giftCodes: (tier.rewards ?? []).map((r) => r.giftProduct.pro_code),
+          });
+        }
+      }
+
+      await this.promotionRepo.update(promo_id, { status });
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to update promotion status');
     }
@@ -824,6 +845,19 @@ export class PromotionService {
         throw new BadRequestException(
           'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
         );
+
+      const rewards = await this.promotionRewardRepo.find({
+        where: { tier: { tier_id: data.tier_id } },
+        relations: { giftProduct: true },
+        select: { reward_id: true, giftProduct: { pro_code: true } },
+      });
+      await this.promoOverlapService.assertPromotionPairAvailable({
+        promo_id: tier.promotion.promo_id,
+        start_date: tier.promotion.start_date,
+        end_date: tier.promotion.end_date,
+        buyCodes: [data.product_gcode],
+        giftCodes: rewards.map((r) => r.giftProduct.pro_code),
+      });
 
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
@@ -890,6 +924,25 @@ export class PromotionService {
     unit: string;
   }) {
     try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        relations: { promotion: true },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+
+      const conditions = await this.promotionConditionRepo.find({
+        where: { tier: { tier_id: data.tier_id } },
+        relations: { product: true },
+        select: { cond_id: true, product: { pro_code: true } },
+      });
+      await this.promoOverlapService.assertPromotionPairAvailable({
+        promo_id: tier.promotion.promo_id,
+        start_date: tier.promotion.start_date,
+        end_date: tier.promotion.end_date,
+        buyCodes: conditions.map((c) => c.product.pro_code),
+        giftCodes: [data.product_gcode],
+      });
+
       // แปลง unit name → enum level ก่อน save
       let unitEnum = data.unit;
       const unitEntity = await this.productRepo.manager
