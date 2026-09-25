@@ -37,6 +37,7 @@ import {
 } from 'src/promotion/promo-line-value';
 import * as dayjs from 'dayjs';
 import { rethrowAsHttp } from 'src/common/http-error.util';
+import { selectCurrentLots } from 'src/lot/lot-display.util';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -89,6 +90,9 @@ export interface LotItem {
   lot: string;
   mfg: string;
   exp: string;
+  // ECWC-643: ใช้เลือก lot ที่แสดง ไม่ส่งออกไปหน้าเว็บ
+  amount?: number | null;
+  received_at?: Date | null;
 }
 
 export interface ShoppingCart {
@@ -132,6 +136,8 @@ interface RawProductCart {
   mfg: string;
   exp: string;
   lot_pro_code: string;
+  lot_amount: number | null;
+  lot_received_at: Date | null;
   spc_id: number;
   spc_amount: string;
   spc_unit_enum: '1' | '2' | '3';
@@ -186,6 +192,8 @@ export interface TransformedProductCart {
   mfg: any;
   exp: any;
   lot_pro_code: any;
+  lot_amount: number | null;
+  lot_received_at: Date | null;
   spc_id: number;
   spc_amount: string;
   spc_unit_enum: string;
@@ -403,7 +411,10 @@ export class ShoppingCartService {
   private async calculateSmallestUnitWithTransformed(
     orderItems: Array<{ unit: string; quantity: number; pro_code: string }>,
     pro_code: string,
-    unitsMap?: Map<string, { level: number; unit_name: string; ratio: number }[]>,
+    unitsMap?: Map<
+      string,
+      { level: number; unit_name: string; ratio: number }[]
+    >,
   ): Promise<number> {
     let total = 0;
     try {
@@ -840,7 +851,10 @@ export class ShoppingCartService {
           this.shoppingCartRepo.update(
             { spc_id: line.spc_id },
             // คอลัมน์ทั้งคู่เป็น int NULL ใน DB แต่ entity ประกาศเป็น number จึงต้อง cast
-            { promo_id: null, tier_id: null } as unknown as Partial<ShoppingCartEntity>,
+            {
+              promo_id: null,
+              tier_id: null,
+            } as unknown as Partial<ShoppingCartEntity>,
           ),
         );
       }
@@ -1562,7 +1576,11 @@ export class ShoppingCartService {
         order: { pro_code: 'ASC' },
       });
     } catch (error) {
-      rethrowAsHttp(error, this.logger, 'Somthing wrong in handleGetCartToOrder');
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Somthing wrong in handleGetCartToOrder',
+      );
     }
   }
 
@@ -1713,7 +1731,8 @@ export class ShoppingCartService {
       const raw: RawProductCart[] = await this.shoppingCartRepo
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')
-        .leftJoinAndSelect('product.lot', 'lot')
+        // ECWC-643: ตะกร้าแสดงเฉพาะ lot ปัจจุบัน ไม่เอาประวัติ lot
+        .leftJoinAndSelect('product.lot', 'lot', 'lot.is_active = 1')
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect(
           'fs.flashsale',
@@ -1757,6 +1776,8 @@ export class ShoppingCartService {
           'lot.mfg AS mfg',
           'lot.exp AS exp',
           'lot.pro_code AS lot_pro_code',
+          'lot.amount AS lot_amount',
+          'lot.received_at AS lot_received_at',
           'cart.spc_id AS spc_id',
           'cart.spc_amount AS spc_amount',
           'cart.spc_unit_enum AS spc_unit_enum',
@@ -1872,7 +1893,10 @@ export class ShoppingCartService {
         ),
       );
       const usedPointsMap = new Map(
-        allProCodes.map((proCode, index) => [proCode, usedPointsResults[index]]),
+        allProCodes.map((proCode, index) => [
+          proCode,
+          usedPointsResults[index],
+        ]),
       );
       // getHotdealPointsInfo reuse ค่านี้ ไม่คำนวณ used points ซ้ำ
       hotdealPointsContext.usedPointsMap = usedPointsMap;
@@ -1946,6 +1970,8 @@ export class ShoppingCartService {
               lot: row.lot,
               mfg: row.mfg,
               exp: row.exp,
+              amount: row.lot_amount,
+              received_at: row.lot_received_at,
             });
           }
         }
@@ -2023,6 +2049,13 @@ export class ShoppingCartService {
         if (grouped[key].shopping_cart.length === 0) {
           delete grouped[key];
         }
+      }
+
+      // ECWC-643: แสดงเฉพาะ lot ปัจจุบันตาม amount ที่รับเข้าเทียบกับ stock (กติกาเดียวกับหน้ารายละเอียดสินค้า)
+      for (const group of Object.values(grouped)) {
+        group.lots = selectCurrentLots(group.lots, group.pro_stock).map(
+          ({ lot_id, lot, mfg, exp }) => ({ lot_id, lot, mfg, exp }),
+        );
       }
 
       const totalSmallestUnit = Object.values(grouped).map((group) => {
@@ -2661,8 +2694,7 @@ export class ShoppingCartService {
 
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
-      const lines: { spc_id: number; pro_code: string; amount: number }[] =
-        [];
+      const lines: { spc_id: number; pro_code: string; amount: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
         const productTotalAmounts = new Map<string, number>();
@@ -2762,7 +2794,11 @@ export class ShoppingCartService {
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
             const amount = lineValue(item, t);
-            lines.push({ spc_id: item.spc_id, pro_code: item.pro_code, amount });
+            lines.push({
+              spc_id: item.spc_id,
+              pro_code: item.pro_code,
+              amount,
+            });
             return sum + amount;
           }, 0);
 
