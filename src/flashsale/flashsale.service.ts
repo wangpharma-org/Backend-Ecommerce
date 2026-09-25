@@ -35,7 +35,10 @@ export const flashsaleDate = (value: string | Date): string =>
 
 /** กำลังลดอยู่ตอนนี้ไหม — เปิดใช้ + วันนี้ + อยู่ในช่วงเวลา */
 export const isFlashsaleLive = (
-  flash: Pick<FlashSaleEntity, 'date' | 'time_start' | 'time_end' | 'is_active'>,
+  flash: Pick<
+    FlashSaleEntity,
+    'date' | 'time_start' | 'time_end' | 'is_active'
+  >,
   clock: FlashsaleClock = flashsaleClock(),
 ): boolean =>
   flash.is_active &&
@@ -289,6 +292,8 @@ export class FlashsaleService {
         'fsp.limit',
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_priceA',
         'product.pro_imgmain',
         'product.pro_promotion_amount',
