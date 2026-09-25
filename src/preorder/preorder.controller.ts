@@ -14,6 +14,7 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -219,6 +220,38 @@ export class PreorderController {
   ) {
     assertAdmin(req);
     return this.service.purchaseSummaryCsv(id);
+  }
+
+  /** ร้านทั้งหมดที่จองในรอบนี้ พร้อมยอดจอง/จัดสรรรวมต่อร้าน */
+  @Get('admin/preorder/campaigns/:id/members')
+  campaignMembers(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    assertAdmin(req);
+    return this.service.listCampaignMembers(id, {
+      page: Number(page),
+      limit: Number(limit),
+      q,
+    });
+  }
+
+  /** รายงานการจองของร้านเดียวในรอบนี้ (Excel .xlsx) */
+  @Get('admin/preorder/campaigns/:id/members/:memCode/report.xlsx')
+  async memberReportXlsx(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('memCode') memCode: string,
+  ) {
+    assertAdmin(req);
+    const buffer = await this.service.memberReportXlsx(id, memCode);
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment; filename="preorder-member-report.xlsx"',
+    });
   }
 
   /** เจ้าหน้าที่/เซลล์จองแทนร้าน */

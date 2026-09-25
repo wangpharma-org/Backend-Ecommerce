@@ -24,6 +24,8 @@ import {
 } from './preorder-item-log.entity';
 import { PreorderNotifierService } from './preorder-notifier.service';
 import { computeAllocation } from './preorder.allocation';
+import { toThaiDateTime } from '../utils/date.util';
+import * as ExcelJS from 'exceljs';
 import {
   AddProductDto,
   AdminUpdateItemDto,
@@ -132,6 +134,14 @@ export interface QueueRowOut {
   first_ordered_at: Date;
   updated_at: Date;
 }
+
+const ITEM_STATUS_TH: Record<PreorderItemStatus, string> = {
+  [PreorderItemStatus.RESERVED]: 'จองแล้ว',
+  [PreorderItemStatus.LOCKED]: 'ล็อค',
+  [PreorderItemStatus.ALLOCATED]: 'จัดสรรแล้ว',
+  [PreorderItemStatus.FULFILLED]: 'จัดส่งแล้ว',
+  [PreorderItemStatus.CANCELLED]: 'ยกเลิก',
+};
 
 const STATUS_TRANSITIONS: Record<
   PreorderCampaignStatus,
@@ -1801,6 +1811,378 @@ export class PreorderService {
         ...lines,
       ].join('\n')
     );
+  }
+
+  /** ร้านทั้งหมดที่จองในรอบนี้ (ไม่นับรายการที่ยกเลิก) สรุปยอดต่อร้าน มี pagination และค้นด้วยรหัส/ชื่อร้าน */
+  async listCampaignMembers(
+    campaignId: number,
+    opts: { page?: number; limit?: number; q?: string } = {},
+  ) {
+    await this.findCampaignOrFail(campaignId);
+    const page = Math.max(1, Math.floor(Number(opts.page)) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Math.floor(Number(opts.limit)) || 20),
+    );
+    const term = String(opts.q ?? '').trim();
+
+    const base = () => {
+      const qb = this.itemRepo
+        .createQueryBuilder('i')
+        .innerJoin('i.preorderProduct', 'p')
+        .leftJoin('i.member', 'm')
+        .where('p.campaign_id = :campaignId', { campaignId })
+        .andWhere('i.status != :cancelled', {
+          cancelled: PreorderItemStatus.CANCELLED,
+        });
+      if (term)
+        qb.andWhere('(i.mem_code LIKE :t OR m.mem_nameSite LIKE :t)', {
+          t: `%${term}%`,
+        });
+      return qb;
+    };
+
+    const [totalRow, rows] = await Promise.all([
+      base()
+        .select('COUNT(DISTINCT i.mem_code)', 'cnt')
+        .getRawOne<{ cnt: string }>(),
+      base()
+        .select('i.mem_code', 'mem_code')
+        .addSelect('COUNT(*)', 'product_count')
+        .addSelect('SUM(i.amount)', 'total_reserved')
+        .addSelect('SUM(COALESCE(i.allocated_qty, 0))', 'total_allocated')
+        .addSelect('COUNT(i.allocated_qty)', 'allocated_count')
+        .addSelect('MIN(i.ordered_at)', 'first_ordered_at')
+        .groupBy('i.mem_code')
+        .orderBy('i.mem_code', 'ASC')
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .getRawMany<{
+          mem_code: string;
+          product_count: string;
+          total_reserved: string;
+          total_allocated: string;
+          allocated_count: string;
+          first_ordered_at: Date | string;
+        }>(),
+    ]);
+
+    const members = rows.length
+      ? await this.userRepo.find({
+          where: { mem_code: In(rows.map((r) => r.mem_code)) },
+          relations: { employee: true },
+          select: {
+            mem_code: true,
+            mem_nameSite: true,
+            mem_phone: true,
+            mem_price: true,
+            mem_route: true,
+            employee: { emp_code: true, emp_nickname: true },
+          },
+        })
+      : [];
+    const memberByCode = new Map(members.map((m) => [m.mem_code, m]));
+
+    return {
+      page,
+      limit,
+      total: Number(totalRow?.cnt ?? 0),
+      items: rows.map((r) => {
+        const m = memberByCode.get(r.mem_code);
+        return {
+          mem_code: r.mem_code,
+          mem_name: m?.mem_nameSite ?? null,
+          mem_phone: m?.mem_phone ?? null,
+          mem_price: m?.mem_price ?? null,
+          mem_route: m?.mem_route ?? null,
+          sale_emp: m?.employee
+            ? `${m.employee.emp_code ?? ''} ${m.employee.emp_nickname ?? ''}`.trim()
+            : null,
+          product_count: Number(r.product_count),
+          total_reserved: Number(r.total_reserved),
+          // allocated_count = 0 คือยังไม่เคยจัดสรรเลย แยกจากจัดสรรแล้วได้ 0
+          total_allocated:
+            Number(r.allocated_count) > 0 ? Number(r.total_allocated) : null,
+          first_ordered_at: new Date(r.first_ordered_at),
+        };
+      }),
+    };
+  }
+
+  /** รายงานการจองของร้านเดียวในรอบนี้: ข้อมูลร้าน + รายการสินค้าที่จอง/จัดสรร (ไม่นับรายการที่ยกเลิก) */
+  async getMemberReport(campaignId: number, memCode: string) {
+    const campaign = await this.findCampaignOrFail(campaignId);
+    const [member, items] = await Promise.all([
+      this.userRepo.findOne({
+        where: { mem_code: memCode },
+        relations: { employee: true },
+        select: {
+          mem_code: true,
+          mem_nameSite: true,
+          mem_phone: true,
+          mem_price: true,
+          mem_route: true,
+          employee: { emp_code: true, emp_nickname: true },
+        },
+      }),
+      this.itemRepo
+        .createQueryBuilder('i')
+        .innerJoinAndSelect('i.preorderProduct', 'p')
+        .leftJoinAndSelect('p.product', 'prod')
+        .where('p.campaign_id = :campaignId', { campaignId })
+        .andWhere('i.mem_code = :memCode', { memCode })
+        .andWhere('i.status != :cancelled', {
+          cancelled: PreorderItemStatus.CANCELLED,
+        })
+        .orderBy('p.sort_order', 'ASC')
+        .addOrderBy('p.id', 'ASC')
+        .getMany(),
+    ]);
+    if (!items.length) {
+      throw new NotFoundException(`ร้าน ${memCode} ไม่มีรายการจองในรอบนี้`);
+    }
+    return {
+      campaign: { id: campaign.id, name: campaign.name },
+      member: {
+        mem_code: memCode,
+        mem_name: member?.mem_nameSite ?? null,
+        mem_phone: member?.mem_phone ?? null,
+        mem_price: member?.mem_price ?? null,
+        mem_route: member?.mem_route ?? null,
+        sale_emp: member?.employee
+          ? `${member.employee.emp_code ?? ''} ${member.employee.emp_nickname ?? ''}`.trim()
+          : null,
+      },
+      generated_at: new Date(),
+      items: items.map((i) => ({
+        pro_code: i.preorderProduct.pro_code,
+        pro_name:
+          i.preorderProduct.product?.pro_nameTH ||
+          i.preorderProduct.product?.pro_name ||
+          null,
+        unit: i.unit,
+        amount: i.amount,
+        allocated_qty: i.allocated_qty,
+        short_qty:
+          i.allocated_qty === null
+            ? null
+            : Math.max(0, i.amount - i.allocated_qty),
+        status: i.status,
+        is_paid: i.is_paid,
+        cart_pushed_at: i.cart_pushed_at,
+        ordered_at: i.ordered_at,
+      })),
+    };
+  }
+
+  /** รายงานการจองของร้านเดียวเป็นไฟล์ Excel จัดหน้าพร้อมพิมพ์ (A4 แนวนอน) */
+  async memberReportXlsx(campaignId: number, memCode: string): Promise<Buffer> {
+    const r = await this.getMemberReport(campaignId, memCode);
+    const FONT = 'Tahoma';
+    const NAVY = 'FF1F3864';
+    const LIGHT = 'FFE9EEF7';
+    const GRID = 'FFBFC7D5';
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: GRID } },
+      left: { style: 'thin', color: { argb: GRID } },
+      bottom: { style: 'thin', color: { argb: GRID } },
+      right: { style: 'thin', color: { argb: GRID } },
+    };
+    const fill = (argb: string): ExcelJS.Fill => ({
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb },
+    });
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('รายงานการจอง', {
+      pageSetup: {
+        paperSize: 9,
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        margins: {
+          left: 0.4,
+          right: 0.4,
+          top: 0.5,
+          bottom: 0.5,
+          header: 0.3,
+          footer: 0.3,
+        },
+      },
+      views: [{ showGridLines: false }],
+    });
+    const widths = [7, 16, 46, 10, 13, 13, 10, 14, 15, 19, 19];
+    ws.columns = widths.map((width) => ({ width }));
+    const lastCol = widths.length;
+
+    ws.mergeCells(1, 1, 1, lastCol);
+    const title = ws.getCell(1, 1);
+    title.value = 'รายงานการจองสินค้า';
+    title.font = {
+      name: FONT,
+      size: 16,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    title.fill = fill(NAVY);
+    title.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    ws.getRow(1).height = 30;
+
+    ws.mergeCells(2, 1, 2, lastCol);
+    const sub = ws.getCell(2, 1);
+    sub.value = `รอบจอง: ${r.campaign.name} (#${r.campaign.id})`;
+    sub.font = { name: FONT, size: 11, bold: true, color: { argb: NAVY } };
+    sub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    ws.getRow(2).height = 22;
+
+    const info: Array<[string, string]> = [
+      ['รหัสลูกค้า', r.member.mem_code],
+      ['ชื่อร้าน', r.member.mem_name ?? '-'],
+      ['เบอร์โทร', r.member.mem_phone ?? '-'],
+      ['ระดับราคา', r.member.mem_price ?? '-'],
+      ['เส้นทาง', r.member.mem_route ?? '-'],
+      ['เซลล์ผู้ดูแล', r.member.sale_emp ?? '-'],
+      ['ออกรายงานเมื่อ', toThaiDateTime(r.generated_at)],
+    ];
+    info.forEach(([label, value], idx) => {
+      const row = 4 + idx;
+      ws.mergeCells(row, 1, row, 2);
+      ws.mergeCells(row, 3, row, 6);
+      const l = ws.getCell(row, 1);
+      l.value = label;
+      l.font = { name: FONT, size: 10, bold: true, color: { argb: NAVY } };
+      l.fill = fill(LIGHT);
+      l.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      const v = ws.getCell(row, 3);
+      // ตั้งเป็นข้อความ กัน Excel ตัดเลข 0 นำหน้า (0539 → 539)
+      v.value = value;
+      v.numFmt = '@';
+      v.font = { name: FONT, size: 10 };
+      v.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      for (let c = 1; c <= 6; c++) ws.getCell(row, c).border = border;
+      ws.getRow(row).height = 20;
+    });
+
+    const headerRow = 4 + info.length + 1;
+    const headers = [
+      'ลำดับ',
+      'รหัสสินค้า',
+      'ชื่อสินค้า',
+      'หน่วย',
+      'จองเข้ามา',
+      'จัดสรรได้',
+      'ขาด',
+      'สถานะ',
+      'การชำระเงิน',
+      'ตะกร้า',
+      'เวลาจอง',
+    ];
+    headers.forEach((h, idx) => {
+      const c = ws.getCell(headerRow, idx + 1);
+      c.value = h;
+      c.font = {
+        name: FONT,
+        size: 10,
+        bold: true,
+        color: { argb: 'FFFFFFFF' },
+      };
+      c.fill = fill(NAVY);
+      c.alignment = {
+        vertical: 'middle',
+        horizontal: 'center',
+        wrapText: true,
+      };
+      c.border = border;
+    });
+    ws.getRow(headerRow).height = 24;
+
+    const center: Partial<ExcelJS.Alignment> = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
+    const right: Partial<ExcelJS.Alignment> = {
+      vertical: 'middle',
+      horizontal: 'right',
+    };
+    r.items.forEach((i, idx) => {
+      const rowNo = headerRow + 1 + idx;
+      const values: Array<string | number> = [
+        idx + 1,
+        i.pro_code,
+        i.pro_name ?? '-',
+        i.unit ?? '-',
+        i.amount,
+        i.allocated_qty ?? '-',
+        i.short_qty ?? '-',
+        ITEM_STATUS_TH[i.status],
+        i.is_paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ',
+        i.cart_pushed_at ? 'อยู่ในตะกร้าแล้ว' : '-',
+        i.ordered_at ? toThaiDateTime(i.ordered_at) : '-',
+      ];
+      values.forEach((val, c) => {
+        const cell = ws.getCell(rowNo, c + 1);
+        cell.value = val;
+        cell.font = { name: FONT, size: 10 };
+        cell.border = border;
+        if (idx % 2 === 1) cell.fill = fill('FFF7F9FC');
+        if (c === 2) {
+          cell.alignment = {
+            vertical: 'middle',
+            horizontal: 'left',
+            wrapText: true,
+          };
+        } else if (c === 4) {
+          cell.alignment = right;
+        } else if (c === 5 || c === 6) {
+          cell.alignment = typeof val === 'number' ? right : center;
+        } else {
+          cell.alignment = center;
+        }
+      });
+      ws.getCell(rowNo, 2).numFmt = '@';
+      if (i.short_qty !== null && i.short_qty > 0) {
+        ws.getCell(rowNo, 7).font = {
+          name: FONT,
+          size: 10,
+          bold: true,
+          color: { argb: 'FFC00000' },
+        };
+      }
+    });
+
+    const totalRow = headerRow + 1 + r.items.length;
+    const anyAllocated = r.items.some((i) => i.allocated_qty !== null);
+    const totals: Array<string | number> = [
+      '',
+      '',
+      'รวมทั้งหมด',
+      '',
+      r.items.reduce((s, i) => s + i.amount, 0),
+      anyAllocated
+        ? r.items.reduce((s, i) => s + (i.allocated_qty ?? 0), 0)
+        : '-',
+      anyAllocated ? r.items.reduce((s, i) => s + (i.short_qty ?? 0), 0) : '-',
+      '',
+      '',
+      '',
+      '',
+    ];
+    totals.forEach((val, c) => {
+      const cell = ws.getCell(totalRow, c + 1);
+      cell.value = val;
+      cell.font = { name: FONT, size: 10, bold: true, color: { argb: NAVY } };
+      cell.fill = fill(LIGHT);
+      cell.border = {
+        ...border,
+        top: { style: 'medium', color: { argb: NAVY } },
+      };
+      cell.alignment = c === 2 ? right : c >= 4 && c <= 6 ? right : center;
+    });
+    ws.getRow(totalRow).height = 22;
+
+    return Buffer.from(await wb.xlsx.writeBuffer());
   }
 
   /**

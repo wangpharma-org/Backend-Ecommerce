@@ -15,6 +15,7 @@
  * ผลลัพธ์เขียนลง docs/e2e/preorder-<timestamp>.md
  */
 import axios, { AxiosError, AxiosInstance } from 'axios';
+import * as ExcelJS from 'exceljs';
 import { execSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -1021,6 +1022,89 @@ async function main() {
       detail: `${body.split('\n').length} lines`,
     };
   });
+
+  await step(
+    `C15m1 admin ดูรายชื่อร้านที่จองในรอบ C → เจอ ${userJwt.mem_code} และ ${MEM2} · ค้นด้วย q=${MEM2} เหลือ 1 ร้าน`,
+    async () => {
+      const all = await admin.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/members`,
+      );
+      const filtered = await admin.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/members`,
+        { params: { q: MEM2 } },
+      );
+      const codes = ((all.data?.items ?? []) as any[]).map((x) => x.mem_code);
+      const mem2 = ((all.data?.items ?? []) as any[]).find(
+        (x) => x.mem_code === MEM2,
+      );
+      return {
+        status: all.status,
+        ok:
+          all.status === 200 &&
+          codes.includes(userJwt.mem_code) &&
+          codes.includes(MEM2) &&
+          mem2?.total_reserved === 4 &&
+          filtered.status === 200 &&
+          filtered.data?.total === 1 &&
+          filtered.data?.items?.[0]?.mem_code === MEM2,
+        detail: `total=${all.data?.total} codes=${codes.join(',')} mem2.reserved=${mem2?.total_reserved}`,
+      };
+    },
+  );
+
+  await step(
+    `C15m2 admin Excel รายร้าน ${MEM2} → มีรหัสลูกค้า (เป็นข้อความ) + รหัสสินค้า + ยอดรวม 4`,
+    async () => {
+      const r = await admin.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/members/${MEM2}/report.xlsx`,
+        { responseType: 'arraybuffer' },
+      );
+      const wb = new ExcelJS.Workbook();
+      let texts: string[] = [];
+      if (r.status === 200) {
+        await wb.xlsx.load(r.data as ArrayBuffer);
+        wb.worksheets[0].eachRow((row) =>
+          row.eachCell((c) => texts.push(String(c.value ?? ''))),
+        );
+      } else texts = [];
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          String(r.headers['content-type']).includes('spreadsheetml') &&
+          texts.includes('รหัสลูกค้า') &&
+          texts.includes(MEM2) &&
+          texts.includes(PRO_CODE) &&
+          texts.includes('จองเข้ามา') &&
+          texts.includes('รวมทั้งหมด') &&
+          texts.includes('4'),
+        detail: `${texts.length} cells`,
+      };
+    },
+  );
+
+  await step(
+    'C15m3 Excel รายร้านของร้านที่ไม่มีรายการในรอบ → 404',
+    async () => {
+      const r = await admin.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/members/E2E_NO_SUCH_MEM/report.xlsx`,
+      );
+      return { status: r.status, ok: r.status === 404 };
+    },
+  );
+
+  await step(
+    'C15m4 ลูกค้า (ไม่ใช่ admin) เรียกรายชื่อร้าน/Excel รายร้าน → 403',
+    async () => {
+      const a = await user.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/members`,
+      );
+      const b = await user.get(
+        `/ecom/admin/preorder/campaigns/${campaignC}/members/${MEM2}/report.xlsx`,
+      );
+      return { status: a.status, ok: a.status === 403 && b.status === 403 };
+    },
+  );
 
   // --- feedback ผู้บริหาร 10 ก.ย. 69: สแกนบาร์โค้ดในหน้าแอดมิน + ประเภทราคา (admin เท่านั้น) ---
   let barcodeOfProduct = '';

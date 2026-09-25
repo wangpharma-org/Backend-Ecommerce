@@ -86,6 +86,8 @@ admin (`req.user.permission === true`)
 | GET | `/admin/preorder/products/:id/queue.csv` | export CSV |
 | POST | `/admin/preorder/products/:id/allocate` | จัดสรร `{ strategy: fifo/prorata/equal, supply_qty?, apply }` apply=false คือ preview (`equal` = วนแจกทีละ 1 ตามคิว fair share) |
 | GET | `/admin/preorder/campaigns/:id/purchase-summary` (+ `.csv`) | ใบสรุปยอดสั่งซื้อของรอบ จัดกลุ่มตาม supplier (creditor_name ?? pro_supplier) ราคาขาย (tier/ประมาณ/ปกติ) ต้นทุน มูลค่า MOQ ขาดเท่าไร |
+| GET | `/admin/preorder/campaigns/:id/members?page&limit&q` | ร้านทั้งหมดที่จองในรอบ (ไม่นับที่ยกเลิก) สรุปต่อร้าน: จำนวนสินค้า ยอดจอง ยอดจัดสรร (null = ยังไม่เคยจัดสรร) ค้นด้วยรหัส/ชื่อร้าน มี pagination |
+| GET | `/admin/preorder/campaigns/:id/members/:memCode/report.xlsx` | รายงานการจองของร้านเดียวในรอบเป็นไฟล์ Excel (จัดคอลัมน์/สี/พิมพ์ A4 แนวนอน): หัวรายงาน (รหัสลูกค้า ชื่อ เบอร์ ระดับราคา เส้นทาง เซลล์) + รายการสินค้า จองเข้ามา/จัดสรรได้/ขาด + แถวรวม เวลาเป็นเวลาไทย สถานะเป็นภาษาไทย · 404 ถ้าร้านไม่มีรายการในรอบ |
 | PUT | `/admin/preorder/campaigns/:id/products/:proCode/members/:memCode` | เจ้าหน้าที่/เซลล์ (`permission` หรือ `role=Sales`) จองแทนร้าน `{ amount, note? }` ข้ามการยอมรับเงื่อนไข log `staff_book` และแจ้งร้าน |
 | POST | `/admin/preorder/items/:id/to-cart` · `/admin/preorder/products/:id/to-cart` | ส่งจำนวนที่จัดสรรเข้าตะกร้าร้าน รายแถว / ทุกร้านของสินค้า (ข้ามที่ส่งแล้ว/ไม่ได้รับจัดสรร) |
 | — | **เซลล์ (`role=Sales`; admin เรียกได้ด้วย = ไม่จำกัดขอบเขต)** ขอบเขต = ร้านที่ `users.emp_id_ref` ตรงกับรหัสเซลล์ (`emp_id_ref` ของบัญชีเซลล์ หรือ `mem_code` ถ้าไม่ได้ผูก) บังคับที่ service ทั้ง endpoint เซลล์และ endpoint admin | |
