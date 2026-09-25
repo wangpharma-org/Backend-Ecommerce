@@ -11,21 +11,48 @@ Format per entry: `### G-NNN <statement>` then **Why:** / **Example:** / **Sourc
 **Source:** PR#143 @MossOcelot — github.com/wangpharma-org/Backend-Ecommerce/pull/143
 **Added:** 2026-05-19
 
-### G-002  Index/FK ที่ migration เขียนมือสร้าง ต้องประกาศชื่อเดียวกันใน entity ด้วย
-**Why:** `migration:generate` เทียบ entity กับ DB — index/FK ที่ migration เขียนมือตั้งชื่อเอง (เช่น `IDX_product_redeem`, `FK_redeem_product_backup_primary`) แต่ entity ไม่ได้ประกาศ หรือประกาศ `@Index()` แบบไม่มีชื่อ จะถูกมองว่าเกินแล้ว generate คำสั่ง DROP ออกมา (บางตัวไม่สร้างกลับ เช่น unique/FK ของ redeem_product_backup) พบตอนทำ release-1.49.0
+### G-002  `String(null)` coerces to the literal string `"null"` — comparisons against `'null'` silently trigger on DB-null values
+**Why:** PR#139 — `shopping-cart.service.ts` converted a nullable `spc_unit_enum` column with `String()` then checked `displayUnit === 'null'`, which deleted cart items whenever the column was NULL in the DB. Any pattern that stringifies a nullable field before a string comparison will silently match real nulls.
 **Example:**
 ```ts
-// ✗ no — ได้ชื่อ hash, generate จะ drop IDX_cart_basket_member แล้วสร้าง IDX_f3549... ใหม่
-@Index()
-@Column({ length: 30 }) mem_code!: string;
+// ✗ no
+const displayUnit = String(row.spc_unit_enum); // null → "null"
+if (displayUnit === 'null') await repo.delete(row.spc_id); // fires on DB null!
 
-// ✓ ชื่อตรงกับ migration
-@Index('IDX_cart_basket_member')
-@Column({ length: 30 }) mem_code!: string;
-
-// ✓ FK ตั้งชื่อ + onDelete/onUpdate ให้ตรง DB
-@JoinColumn({ name: 'set_code', foreignKeyConstraintName: 'FK_bundle_set_item_set' })
+// ✓ check the original nullable value first
+if (row.spc_unit_enum == null) { /* handle null */ }
 ```
-**Also:** generate เทียบกับ DB ใน `.env` (ปกติคือ local) ไม่ใช่ prod — ผลที่ได้ต้องอ่านทุกบรรทัดก่อนใช้ และเช็คว่า generate เปล่าๆ ได้ "No changes" ก่อนเริ่มแก้ entity เสมอ
-**Source:** release-1.49.0 session
-**Added:** 2026-09-24
+**Source:** PR#139 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/139
+**Added:** 2026-08-10
+
+### G-003  TypeORM query builder crashes at runtime on duplicate `.leftJoinAndSelect` alias
+**Why:** PR#139 — `products.service.ts` called `.leftJoinAndSelect('product.units', 'units')` twice on the same query builder. TypeORM silently accepts the duplicate during build but throws at query execution time.
+**Example:**
+```ts
+// ✗ no — second call with same alias 'units' causes a runtime error
+qb.leftJoinAndSelect('product.units', 'units')
+  .leftJoinAndSelect('product.units', 'units')
+
+// ✓ join once
+qb.leftJoinAndSelect('product.units', 'units')
+```
+**Source:** PR#139 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/139
+**Added:** 2026-08-10
+
+### G-004  `import { console } from 'node:inspector'` makes all `console.*` calls silent in production
+**Why:** PR#139 — a stray import brought in the inspector's `console` object, which only activates when Node's debugger is attached. In production the import silently replaced the global console, making every `console.log/error` in the service a no-op. Use the NestJS `Logger` (see R-001); if you must use the global console, do not import it.
+**Example:**
+```ts
+// ✗ no — inspector console is a no-op outside debugger sessions
+import { console } from 'node:inspector';
+
+// ✓ inject NestJS Logger instead
+private readonly logger = new Logger(MyService.name);
+```
+**Source:** PR#139 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/139
+**Added:** 2026-08-10
+
+### G-005  Inconsistent `convertEnumToUnitName` fallback writes raw enum integers into saved order data
+**Why:** PR#139 — `products.service.ts` returned `''` when no unit mapping was found while `promotion.service.ts` and `shopping-order.service.ts` returned `String(unitEnum)` (yielding `"1"`, `"2"`, `"3"`). Orders saved through the latter path stored numeric strings as unit names. The fallback must be consistent: either always `''` or always the real name — and all callers must handle the empty-string case before persisting.
+**Source:** PR#139 @Sasit-Nine — github.com/wangpharma-org/Backend-Ecommerce/pull/139
+**Added:** 2026-08-10
