@@ -21,6 +21,7 @@ import {
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
+import { PromotionTierExclusionEntity } from './promotion-tier-exclusion.entity';
 import * as AWS from 'aws-sdk';
 import {
   getTodayRange,
@@ -109,6 +110,8 @@ export class PromotionService {
     private readonly promotionConditionRepo: Repository<PromotionConditionEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardRepo: Repository<PromotionRewardEntity>,
+    @InjectRepository(PromotionTierExclusionEntity)
+    private readonly exclusionRepo: Repository<PromotionTierExclusionEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly authService: AuthService,
     @InjectRepository(ProductEntity)
@@ -1139,6 +1142,65 @@ export class PromotionService {
     }
   }
 
+  async addExclusion(data: { tier_id: number; product_gcode: string }) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        select: { tier_id: true, all_products: true },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+      if (!tier.all_products)
+        throw new BadRequestException(
+          'เลือกสินค้าที่ไม่เข้าร่วมได้เฉพาะ tier ที่เป็นสินค้าทั้งหมด',
+        );
+
+      const existing = await this.exclusionRepo.findOne({
+        where: { tier_id: data.tier_id, product_code: data.product_gcode },
+        select: { exclusion_id: true },
+      });
+      if (existing) return existing;
+
+      return await this.exclusionRepo.save(
+        this.exclusionRepo.create({
+          tier_id: data.tier_id,
+          product_code: data.product_gcode,
+        }),
+      );
+    } catch (error: unknown) {
+      this.logger.error(error);
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to add exclusion');
+    }
+  }
+
+  async deleteExclusion(exclusion_id: number) {
+    try {
+      return await this.exclusionRepo.delete({ exclusion_id });
+    } catch {
+      throw new Error('Failed to delete exclusion');
+    }
+  }
+
+  async getExclusionsByTier(tier_id: number) {
+    try {
+      return await this.exclusionRepo.find({
+        where: { tier_id },
+        relations: { product: true },
+        select: {
+          exclusion_id: true,
+          product: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+          },
+        },
+        order: { exclusion_id: 'ASC' },
+      });
+    } catch {
+      throw new Error('Failed to get exclusions by tier');
+    }
+  }
+
   async setAllProducts(tier_id: number, status: boolean) {
     try {
       const tier = await this.promotionTierRepo.findOne({
@@ -1160,11 +1222,14 @@ export class PromotionService {
 
       if (status === true) {
         await this.promotionConditionRepo.delete({ tier: { tier_id } });
+        await this.exclusionRepo.delete({ tier_id });
         await this.promotionTierRepo.update(tier_id, {
           all_products: true,
         });
         return 'All products set successfully for the tier';
       } else {
+        // รายการยกเว้นใช้ได้เฉพาะโหมดสินค้าทั้งหมด ต้องล้างตอนออกจากโหมดนี้
+        await this.exclusionRepo.delete({ tier_id });
         await this.promotionTierRepo.update(tier_id, {
           all_products: false,
         });
@@ -1321,10 +1386,10 @@ export class PromotionService {
     }
   }
 
-  async getTierAllProduct() {
+  async getTierAllProduct(mem_code?: string) {
     try {
       const { startOfDay, endOfDay } = getTodayRange();
-      return await this.promotionTierRepo.find({
+      const tiers = await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
@@ -1335,6 +1400,7 @@ export class PromotionService {
         },
         relations: {
           promotion: true,
+          exclusions: true,
         },
         select: {
           tier_id: true,
@@ -1347,7 +1413,26 @@ export class PromotionService {
             promo_id: true,
             promo_name: true,
           },
+          exclusions: {
+            exclusion_id: true,
+            product_code: true,
+          },
         },
+      });
+
+      // ยอดที่ progress bar ใช้ต้องไม่รวมสินค้าที่ tier นั้นยกเว้น
+      const lines = mem_code
+        ? (await this.shoppingCartService.summaryCartDetailed(mem_code)).lines
+        : [];
+      return tiers.map(({ exclusions, ...tier }) => {
+        const excludedCodes = new Set(exclusions.map((e) => e.product_code));
+        return {
+          ...tier,
+          current_amount: lines.reduce(
+            (sum, l) => (excludedCodes.has(l.pro_code) ? sum : sum + l.amount),
+            0,
+          ),
+        };
       });
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to get tier with all products');
@@ -1593,6 +1678,7 @@ export class PromotionService {
         tiers: {
           conditions: { product: true },
           rewards: { giftProduct: true },
+          exclusions: true,
         },
       },
     });
@@ -1635,6 +1721,17 @@ export class PromotionService {
                 tier: savedTier,
                 product: { pro_code: c.product.pro_code },
               } as DeepPartial<PromotionConditionEntity>),
+            ),
+          );
+        }
+
+        if (tier.exclusions?.length) {
+          await manager.save(
+            tier.exclusions.map((e) =>
+              manager.create(PromotionTierExclusionEntity, {
+                tier_id: savedTier.tier_id,
+                product_code: e.product_code,
+              }),
             ),
           );
         }
