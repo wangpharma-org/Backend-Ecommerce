@@ -354,11 +354,58 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/admin/product-l16/list')
+  async listProductL16Status(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('visibility') visibility?: string,
+  ) {
+    const permission = req.user.permission;
+    if (permission !== true) {
+      throw new Error('You not have Permission to Accesss');
+    }
+
+    if (
+      visibility !== undefined &&
+      visibility !== 'all' &&
+      visibility !== 'hidden' &&
+      visibility !== 'visible'
+    ) {
+      throw new BadRequestException('สถานะตัวกรองไม่ถูกต้อง');
+    }
+
+    return this.productsService.getPaginatedProductL16Status({
+      page,
+      limit,
+      search,
+      visibility,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/admin/product-l16/export')
   async exportProductL16Status(@Req() req: Request & { user: JwtPayload }) {
     const permission = req.user.permission;
     if (permission === true) {
       return await this.productsService.getProductL16Status();
+    } else {
+      throw new Error('You not have Permission to Accesss');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/admin/product-l16/status')
+  async updateProductL16Status(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { products: { pro_code: string; status: number }[] },
+  ) {
+    const permission = req.user.permission;
+    if (permission === true) {
+      return await this.productsService.updateProductL16OnlyStatus(
+        data.products,
+      );
     } else {
       throw new Error('You not have Permission to Accesss');
     }
@@ -1029,6 +1076,17 @@ export class AppController {
 
   // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-status/delivering-count')
+  async getDeliveringOrderCount(
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<{ count: number }> {
+    const count = await this.orderStatusV2Service.getDeliveringCount(
+      req.user.mem_code,
+    );
+    return { count };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/order-status/:soh_running')
   async getOrderStatusV2(
     @Param('soh_running') soh_running: string,
@@ -1200,6 +1258,26 @@ export class AppController {
     },
   ) {
     return this.promotionService.createCondition(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/exclusion/add')
+  async addPromotionExclusion(
+    @Body() data: { tier_id: number; product_gcode: string },
+  ) {
+    return this.promotionService.addExclusion(data);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/exclusion/delete')
+  async deletePromotionExclusion(@Body() data: { exclusion_id: number }) {
+    return this.promotionService.deleteExclusion(data.exclusion_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/exclusion/list/:tier_id')
+  async listPromotionExclusions(@Param('tier_id') tier_id: string) {
+    return this.promotionService.getExclusionsByTier(Number(tier_id));
   }
 
   @UseGuards(JwtAuthGuard)
@@ -2651,8 +2729,8 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tier-list-all-product')
-  async getPromotionTierList() {
-    return await this.promotionService.getTierAllProduct();
+  async getPromotionTierList(@Req() req: Request & { user: JwtPayload }) {
+    return await this.promotionService.getTierAllProduct(req.user?.mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -4575,12 +4653,13 @@ export class AppController {
   @Post('/ecom/qc/add-token-for-notification')
   async addTokenForNotification(
     @Req() req: Request & { user: JwtPayload },
-    @Body() body: { token: string },
+    @Body() body: { token: string; refresh_token?: string | null },
   ) {
     const mem_code = req.user.mem_code;
     return await this.notifyRtService.addTokenForNotification({
       mem_code,
       token: body.token,
+      refresh_token: body.refresh_token,
     });
   }
 

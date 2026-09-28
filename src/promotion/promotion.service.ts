@@ -23,6 +23,7 @@ import {
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
+import { PromotionTierExclusionEntity } from './promotion-tier-exclusion.entity';
 import * as AWS from 'aws-sdk';
 import {
   getTodayRange,
@@ -37,6 +38,7 @@ import { AuthService } from 'src/auth/auth.service';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import {
   PromotionType,
@@ -115,6 +117,8 @@ export class PromotionService {
     private readonly promotionConditionRepo: Repository<PromotionConditionEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardRepo: Repository<PromotionRewardEntity>,
+    @InjectRepository(PromotionTierExclusionEntity)
+    private readonly exclusionRepo: Repository<PromotionTierExclusionEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly authService: AuthService,
     @InjectRepository(ProductEntity)
@@ -124,6 +128,7 @@ export class PromotionService {
     @InjectRepository(PromotionTypePolicyEntity)
     private readonly promotionTypePolicyRepo: Repository<PromotionTypePolicyEntity>,
     private readonly dataSource: DataSource,
+    private readonly promoOverlapService: PromoOverlapService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -524,6 +529,8 @@ export class PromotionService {
 
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -663,6 +670,8 @@ export class PromotionService {
           'tier.tier_id',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_imgmain',
         ]);
 
@@ -951,6 +960,11 @@ export class PromotionService {
           .getRepository(PromotionEntity)
           .createQueryBuilder('promotion')
           .leftJoinAndSelect('promotion.creditor', 'creditor')
+          .leftJoinAndSelect('promotion.tiers', 'tiers')
+          .leftJoinAndSelect('tiers.conditions', 'conditions')
+          .leftJoinAndSelect('conditions.product', 'conditionProduct')
+          .leftJoinAndSelect('tiers.rewards', 'rewards')
+          .leftJoinAndSelect('rewards.giftProduct', 'giftProduct')
           .where('promotion.promo_id = :promoId', { promoId: promo_id })
           .setLock('pessimistic_write')
           .getOne();
@@ -962,6 +976,19 @@ export class PromotionService {
             manager,
             this.getPromotionType(promotion),
           );
+          for (const tier of promotion.tiers ?? []) {
+            await this.promoOverlapService.assertPromotionPairAvailable({
+              promo_id,
+              start_date: promotion.start_date,
+              end_date: promotion.end_date,
+              buyCodes: (tier.conditions ?? []).map(
+                (condition) => condition.product.pro_code,
+              ),
+              giftCodes: (tier.rewards ?? []).map(
+                (reward) => reward.giftProduct.pro_code,
+              ),
+            });
+          }
         }
         promotion.status = status;
         await manager.save(promotion);
@@ -1020,6 +1047,19 @@ export class PromotionService {
         throw new BadRequestException(
           'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
         );
+
+      const rewards = await this.promotionRewardRepo.find({
+        where: { tier: { tier_id: data.tier_id } },
+        relations: { giftProduct: true },
+        select: { reward_id: true, giftProduct: { pro_code: true } },
+      });
+      await this.promoOverlapService.assertPromotionPairAvailable({
+        promo_id: tier.promotion.promo_id,
+        start_date: tier.promotion.start_date,
+        end_date: tier.promotion.end_date,
+        buyCodes: [data.product_gcode],
+        giftCodes: rewards.map((r) => r.giftProduct.pro_code),
+      });
 
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
@@ -1086,6 +1126,25 @@ export class PromotionService {
     unit: string;
   }) {
     try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        relations: { promotion: true },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+
+      const conditions = await this.promotionConditionRepo.find({
+        where: { tier: { tier_id: data.tier_id } },
+        relations: { product: true },
+        select: { cond_id: true, product: { pro_code: true } },
+      });
+      await this.promoOverlapService.assertPromotionPairAvailable({
+        promo_id: tier.promotion.promo_id,
+        start_date: tier.promotion.start_date,
+        end_date: tier.promotion.end_date,
+        buyCodes: conditions.map((c) => c.product.pro_code),
+        giftCodes: [data.product_gcode],
+      });
+
       // แปลง unit name → enum level ก่อน save
       let unitEnum = data.unit;
       const unitEntity = await this.productRepo.manager
@@ -1125,6 +1184,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
           'giftProduct.free_product_count',
@@ -1195,6 +1256,8 @@ export class PromotionService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_genericname: true,
           },
         },
@@ -1287,6 +1350,8 @@ export class PromotionService {
               product: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_priceA: true,
                 pro_priceB: true,
@@ -1301,6 +1366,8 @@ export class PromotionService {
               giftProduct: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_imgmain: true,
               },
@@ -1330,6 +1397,65 @@ export class PromotionService {
     }
   }
 
+  async addExclusion(data: { tier_id: number; product_gcode: string }) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        select: { tier_id: true, all_products: true },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+      if (!tier.all_products)
+        throw new BadRequestException(
+          'เลือกสินค้าที่ไม่เข้าร่วมได้เฉพาะ tier ที่เป็นสินค้าทั้งหมด',
+        );
+
+      const existing = await this.exclusionRepo.findOne({
+        where: { tier_id: data.tier_id, product_code: data.product_gcode },
+        select: { exclusion_id: true },
+      });
+      if (existing) return existing;
+
+      return await this.exclusionRepo.save(
+        this.exclusionRepo.create({
+          tier_id: data.tier_id,
+          product_code: data.product_gcode,
+        }),
+      );
+    } catch (error: unknown) {
+      this.logger.error(error);
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to add exclusion');
+    }
+  }
+
+  async deleteExclusion(exclusion_id: number) {
+    try {
+      return await this.exclusionRepo.delete({ exclusion_id });
+    } catch {
+      throw new Error('Failed to delete exclusion');
+    }
+  }
+
+  async getExclusionsByTier(tier_id: number) {
+    try {
+      return await this.exclusionRepo.find({
+        where: { tier_id },
+        relations: { product: true },
+        select: {
+          exclusion_id: true,
+          product: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+          },
+        },
+        order: { exclusion_id: 'ASC' },
+      });
+    } catch {
+      throw new Error('Failed to get exclusions by tier');
+    }
+  }
+
   async setAllProducts(tier_id: number, status: boolean) {
     try {
       const tier = await this.promotionTierRepo.findOne({
@@ -1351,11 +1477,14 @@ export class PromotionService {
 
       if (status === true) {
         await this.promotionConditionRepo.delete({ tier: { tier_id } });
+        await this.exclusionRepo.delete({ tier_id });
         await this.promotionTierRepo.update(tier_id, {
           all_products: true,
         });
         return 'All products set successfully for the tier';
       } else {
+        // รายการยกเว้นใช้ได้เฉพาะโหมดสินค้าทั้งหมด ต้องล้างตอนออกจากโหมดนี้
+        await this.exclusionRepo.delete({ tier_id });
         await this.promotionTierRepo.update(tier_id, {
           all_products: false,
         });
@@ -1411,6 +1540,8 @@ export class PromotionService {
           // ข้อมูล product
           'tier_product.pro_code',
           'tier_product.pro_name',
+          'tier_product.pro_nameTH',
+          'tier_product.pro_nameSale',
           'tier_product.pro_priceA',
           'tier_product.pro_priceB',
           'tier_product.pro_priceC',
@@ -1436,6 +1567,8 @@ export class PromotionService {
           'rewards.unit',
           'gift_product.pro_code',
           'gift_product.pro_name',
+          'gift_product.pro_nameTH',
+          'gift_product.pro_nameSale',
           'gift_product.pro_imgmain',
         ])
         .getMany();
@@ -1508,10 +1641,10 @@ export class PromotionService {
     }
   }
 
-  async getTierAllProduct() {
+  async getTierAllProduct(mem_code?: string) {
     try {
       const { startOfDay, endOfDay } = getTodayRange();
-      return await this.promotionTierRepo.find({
+      const tiers = await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
@@ -1522,6 +1655,7 @@ export class PromotionService {
         },
         relations: {
           promotion: true,
+          exclusions: true,
         },
         select: {
           tier_id: true,
@@ -1534,7 +1668,26 @@ export class PromotionService {
             promo_id: true,
             promo_name: true,
           },
+          exclusions: {
+            exclusion_id: true,
+            product_code: true,
+          },
         },
+      });
+
+      // ยอดที่ progress bar ใช้ต้องไม่รวมสินค้าที่ tier นั้นยกเว้น
+      const lines = mem_code
+        ? (await this.shoppingCartService.summaryCartDetailed(mem_code)).lines
+        : [];
+      return tiers.map(({ exclusions, ...tier }) => {
+        const excludedCodes = new Set(exclusions.map((e) => e.product_code));
+        return {
+          ...tier,
+          current_amount: lines.reduce(
+            (sum, l) => (excludedCodes.has(l.pro_code) ? sum : sum + l.amount),
+            0,
+          ),
+        };
       });
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to get tier with all products');
@@ -1559,6 +1712,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
         ]);
@@ -1778,6 +1933,7 @@ export class PromotionService {
         tiers: {
           conditions: { product: true },
           rewards: { giftProduct: true },
+          exclusions: true,
         },
       },
     });
@@ -1824,6 +1980,17 @@ export class PromotionService {
                 tier: savedTier,
                 product: { pro_code: c.product.pro_code },
               } as DeepPartial<PromotionConditionEntity>),
+            ),
+          );
+        }
+
+        if (tier.exclusions?.length) {
+          await manager.save(
+            tier.exclusions.map((e) =>
+              manager.create(PromotionTierExclusionEntity, {
+                tier_id: savedTier.tier_id,
+                product_code: e.product_code,
+              }),
             ),
           );
         }

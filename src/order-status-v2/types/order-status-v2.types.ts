@@ -129,6 +129,7 @@ export interface EcomOrderDetailV2Res {
 
 export interface EcomOrderStatusV2Res {
   soh_running: string;
+  bill_number: string | null;
   status: EcomOrderTimelineStatus;
   status_label: string;
   picking: {
@@ -142,7 +143,9 @@ export interface EcomOrderStatusV2Res {
   delivery: {
     store_name: string;
     driver_name: string | null;
+    driver_emp_code: string | null;
     driver_tel: string | null;
+    departure_time: string | null;
     checkpoint: EcomOrderStatusV2Checkpoint | null;
     store_latitude: string | null;
     store_longitude: string | null;

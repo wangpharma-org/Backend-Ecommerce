@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { UserEntity } from '../users/users.entity';
 import { ProductEntity } from '../products/products.entity';
@@ -59,6 +60,8 @@ export class ShoppingCartEntity {
   hotdeal_free!: boolean;
 
   /** แถวที่มี basket_id เดียวกันคือกระเช้าเดียวกัน — null = สินค้าเดี่ยวปกติ */
+  // สร้างใน migration release-1.48.0 — ต้องประกาศไว้ ไม่งั้น migration:generate จะ drop ทิ้ง
+  @Index('IDX_shopping_cart_basket')
   @Column({ type: 'int', nullable: true, default: null })
   basket_id!: number | null;
 

@@ -36,6 +36,9 @@ describe('PromotionService promotion type policy', () => {
   let policyBuilder: QueryBuilderResult<PromotionTypePolicyEntity>;
   let promotionBuilder: QueryBuilderResult<PromotionEntity>;
   let promotionRepo: jest.Mocked<Pick<Repository<PromotionEntity>, 'find' | 'findOne'>>;
+  let promoOverlapService: {
+    assertPromotionPairAvailable: jest.Mock<Promise<void>>;
+  };
   let manager: {
     getRepository: jest.Mock;
     create: jest.Mock;
@@ -58,6 +61,9 @@ describe('PromotionService promotion type policy', () => {
     promotionRepo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
+    };
+    promoOverlapService = {
+      assertPromotionPairAvailable: jest.fn().mockResolvedValue(undefined),
     };
     manager = {
       getRepository: jest.fn((entity: unknown) => {
@@ -83,8 +89,10 @@ describe('PromotionService promotion type policy', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       { findOneBy: jest.fn().mockResolvedValue(policy) } as unknown as Repository<PromotionTypePolicyEntity>,
       dataSource,
+      promoOverlapService as never,
     );
   });
 

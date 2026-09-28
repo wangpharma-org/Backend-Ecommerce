@@ -6,11 +6,13 @@ import { ProductsModule } from 'src/products/products.module';
 import { UserEntity } from 'src/users/users.entity';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+import { PreorderModule } from 'src/preorder/preorder.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([NewArrival, UserEntity]),
     ProductsModule,
+    PreorderModule,
     ClientsModule.registerAsync([
       {
         name: 'OrderPickingService',
