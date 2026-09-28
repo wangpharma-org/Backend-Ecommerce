@@ -35,7 +35,10 @@ export const flashsaleDate = (value: string | Date): string =>
 
 /** กำลังลดอยู่ตอนนี้ไหม — เปิดใช้ + วันนี้ + อยู่ในช่วงเวลา */
 export const isFlashsaleLive = (
-  flash: Pick<FlashSaleEntity, 'date' | 'time_start' | 'time_end' | 'is_active'>,
+  flash: Pick<
+    FlashSaleEntity,
+    'date' | 'time_start' | 'time_end' | 'is_active'
+  >,
   clock: FlashsaleClock = flashsaleClock(),
 ): boolean =>
   flash.is_active &&
@@ -289,6 +292,8 @@ export class FlashsaleService {
         'fsp.limit',
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_priceA',
         'product.pro_imgmain',
         'product.pro_promotion_amount',
@@ -363,39 +368,6 @@ export class FlashsaleService {
           nowTime: clock.time,
         })
         .andWhere('flash.is_active = :active', { active: true })
-        .andWhere(
-          isL16
-            ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
-            : '1=1',
-        )
-        .select([
-          'flash.promotion_id',
-          'flash.promotion_name',
-          'flash.date',
-          'flash.time_start',
-          'flash.time_end',
-          'flash.is_active',
-          'fsp.id',
-          'fsp.limit',
-          'product.pro_code',
-          'product.pro_name',
-          'product.pro_nameTH',
-          'product.pro_nameSale',
-          'product.pro_priceA',
-          'product.pro_imgmain',
-          'product.pro_promotion_amount',
-          'product.pro_stock',
-          'product.pro_lowest_stock',
-          'product.order_quantity',
-          'units.id',
-          'units.unit_name',
-          'units.level',
-          'units.ratio',
-          'cart.spc_id',
-          'cart.spc_amount',
-          'cart.spc_unit_enum',
-          'cart.mem_code',
-        ])
         .take(Number(limit))
         .getMany();
 

@@ -17,6 +17,7 @@ import * as AWS from 'aws-sdk';
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -51,6 +52,7 @@ export class HotdealService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(BannerHotdealEntity)
     private readonly bannerHotdealRepo: Repository<BannerHotdealEntity>,
+    private readonly promoOverlapService: PromoOverlapService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -347,6 +349,10 @@ export class HotdealService {
           ),
         };
         await this.assertProductsAreAvailableForNewHotdeal(normalizedInput);
+        await this.promoOverlapService.assertHotdealPairAvailable(
+          normalizedInput.pro1_code,
+          normalizedInput.pro2_code,
+        );
         const existingHotdeal = await this.hotdealRepo.findOne({
           where: {
             product: { pro_code: normalizedInput.pro1_code },

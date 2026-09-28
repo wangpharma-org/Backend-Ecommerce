@@ -12,6 +12,7 @@ import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
+import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -72,6 +73,14 @@ describe('ProductsService — unit helpers', () => {
         { provide: BackendService, useValue: {} },
         { provide: ElasticsearchService, useValue: {} },
         { provide: ShoppingCartService, useValue: {} },
+        {
+          provide: ProductLabelRulesService,
+          useValue: {
+            attachToProducts: jest.fn((products: unknown[]) =>
+              Promise.resolve(products),
+            ),
+          },
+        },
         {
           provide: RedeemProductSetService,
           useValue: { getCustomerSet: jest.fn() },

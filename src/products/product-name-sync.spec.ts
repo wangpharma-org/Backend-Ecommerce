@@ -31,17 +31,19 @@ describe('ECWC-421 Thai-name Kafka consumer', () => {
         product_code: 'P001',
         product_nameTH: name,
       });
+      // ชื่อไทยว่าง/มีแต่ช่องว่าง เก็บเป็น null
+      const storedName = name?.trim() || null;
       expect(update).toHaveBeenCalledWith(
         { pro_code: 'P001' },
         expect.objectContaining({
-          pro_nameTH: name,
+          pro_nameTH: storedName,
           pro_name: 'EasyAcc original',
           pro_priceA: 50,
           pro_stock: 10,
         }),
       );
       expect(updateProductDoc).toHaveBeenCalledWith('P001', {
-        pro_nameTH: name,
+        pro_nameTH: storedName,
       });
     },
   );

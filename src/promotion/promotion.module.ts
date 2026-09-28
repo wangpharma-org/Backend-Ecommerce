@@ -4,6 +4,7 @@ import { PromotionEntity } from './promotion.entity';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
+import { PromotionTierExclusionEntity } from './promotion-tier-exclusion.entity';
 import { CreditorEntity } from '../products/creditor.entity';
 import { PromotionService } from './promotion.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
@@ -12,6 +13,7 @@ import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
+import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
 
 @Module({
   imports: [
@@ -20,6 +22,7 @@ import { UserEntity } from 'src/users/users.entity';
       PromotionTierEntity,
       PromotionConditionEntity,
       PromotionRewardEntity,
+      PromotionTierExclusionEntity,
       CreditorEntity,
       ShoppingCartEntity,
       CodePromotionEntity,
@@ -28,6 +31,7 @@ import { UserEntity } from 'src/users/users.entity';
     ]),
     ShoppingCartModule,
     AuthModule,
+    PromoOverlapModule,
   ],
   controllers: [],
   providers: [PromotionService],

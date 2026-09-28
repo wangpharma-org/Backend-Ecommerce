@@ -56,6 +56,7 @@ import { ReviewRequestModule } from './review-request/review-request.module';
 import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
+import { PreorderModule } from './preorder/preorder.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
@@ -165,6 +166,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ReviewRequestModule,
     ProductRequestModule,
     WatermarkAuditModule,
+    PreorderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

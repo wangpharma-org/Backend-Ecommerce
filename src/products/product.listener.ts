@@ -38,6 +38,7 @@ export interface ProductEasyAcc {
   product_price_a?: number | null;
   product_price_b?: number | null;
   product_price_c?: number | null;
+  product_cost?: number | null;
 
   product_ratio_1?: number | null;
   product_ratio_2?: number | null;

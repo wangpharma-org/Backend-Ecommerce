@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { ClientKafka } from '@nestjs/microservices';
 import * as dayjs from 'dayjs';
+import { PreorderService } from 'src/preorder/preorder.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import { LotArrivalInput, LotService } from 'src/lot/lot.service';
 
@@ -20,6 +21,7 @@ export class NewArrivalsService {
     @Inject('OrderPickingService')
     private readonly kafkaClient: ClientKafka,
     private readonly lotService: LotService,
+    private readonly preorderService: PreorderService,
   ) {}
 
   private async isL16Member(
@@ -124,6 +126,15 @@ export class NewArrivalsService {
       this.kafkaClient.emit('newArrival_insert', { kafkaEvents });
 
       await queryRunner.commitTransaction();
+
+      // แจ้งร้านที่จอง pre-order สินค้าเหล่านี้ (ไม่ทำให้การรับของล้มถ้าแจ้งไม่สำเร็จ)
+      if (kafkaEvents.length) {
+        this.preorderService
+          .handleArrivals(kafkaEvents.map((e) => e.pro_code))
+          .catch((err: unknown) =>
+            this.logger.error('preorder handleArrivals failed', String(err)),
+          );
+      }
       return { message: 'New arrival added successfully' };
     } catch (error) {
       await queryRunner.rollbackTransaction();
