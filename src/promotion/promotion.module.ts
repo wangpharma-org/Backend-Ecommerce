@@ -13,6 +13,7 @@ import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
+import { PromotionTypePolicyEntity } from './promotion-type-policy.entity';
 import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
       CodePromotionEntity,
       ProductEntity,
       UserEntity,
+      PromotionTypePolicyEntity,
     ]),
     ShoppingCartModule,
     AuthModule,
