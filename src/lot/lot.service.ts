@@ -58,7 +58,8 @@ export class LotService {
   // เก็บ amount (หน่วยเล็กสุด) + received_at ไว้ให้ selectCurrentLots ใช้ตัดสินตอนแสดงผล
   //  - lot เดิมที่ยัง active รับเข้าซ้ำ → amount บวกเพิ่ม (ของทั้งสองรอบเป็น lot เดียวกัน)
   //  - lot ที่ถูกปิดไปแล้ว (ประวัติ) รับเข้าใหม่ → amount เริ่มนับใหม่ เพราะของรอบเก่าหมดไปแล้ว
-  // เขียน SQL เองเพราะ upsert ของ TypeORM ทำ amount = amount + ใหม่ ไม่ได้
+  // upsert ของ TypeORM ทำได้แค่ col = VALUES(col) (เขียนทับ) คำนวณ amount = amount + ใหม่ ไม่ได้
+  // จึงให้ QueryBuilder สร้างส่วน INSERT จาก entity แล้วต่อ ON DUPLICATE KEY UPDATE เอง — ยิง query เดียว atomic
   // รับ manager จาก caller เพื่อให้อยู่ใน transaction เดียวกับการบันทึก new arrival
   async upsertArrivedLots(
     data: LotArrivalInput[],
@@ -73,22 +74,27 @@ export class LotService {
       .filter((row) => row.lot);
     if (rows.length === 0) return;
 
+    const [insertSql, params] = manager
+      .createQueryBuilder()
+      .insert()
+      .into(LotEntity)
+      .values(
+        rows.map(({ pro_code, ...row }) => ({
+          ...row,
+          product: { pro_code },
+          is_active: true,
+        })),
+      )
+      .getQueryAndParameters();
+
     // ลำดับใน ON DUPLICATE KEY UPDATE มีผล: amount ต้องอ่าน is_active ค่าเดิมก่อนถูกตั้งเป็น 1
     await manager.query(
-      `INSERT INTO \`lot\` (\`pro_code\`, \`lot\`, \`mfg\`, \`exp\`, \`is_active\`, \`amount\`, \`received_at\`)
-       VALUES ${rows.map(() => '(?, ?, ?, ?, 1, ?, ?)').join(', ')}
+      `${insertSql}
        ON DUPLICATE KEY UPDATE
          \`amount\` = IF(\`is_active\` = 1, COALESCE(\`amount\`, 0) + VALUES(\`amount\`), VALUES(\`amount\`)),
          \`received_at\` = GREATEST(COALESCE(\`received_at\`, VALUES(\`received_at\`)), VALUES(\`received_at\`)),
          \`is_active\` = 1`,
-      rows.flatMap((r) => [
-        r.pro_code,
-        r.lot,
-        r.mfg,
-        r.exp,
-        r.amount,
-        r.received_at,
-      ]),
+      params,
     );
   }
 

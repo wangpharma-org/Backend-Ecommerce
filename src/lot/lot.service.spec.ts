@@ -11,6 +11,10 @@ describe('LotService', () => {
     set: jest.Mock;
     where: jest.Mock;
     andWhere: jest.Mock;
+    insert: jest.Mock;
+    into: jest.Mock;
+    values: jest.Mock;
+    getQueryAndParameters: jest.Mock;
     execute: jest.Mock;
   };
   let manager: {
@@ -29,6 +33,12 @@ describe('LotService', () => {
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      getQueryAndParameters: jest
+        .fn()
+        .mockReturnValue(['INSERT INTO `lot` (...) VALUES (...)', ['p']]),
       execute: jest.fn().mockResolvedValue(undefined),
     };
     manager = {
@@ -99,31 +109,53 @@ describe('LotService', () => {
 
   describe('upsertArrivedLots (new-arrivals)', () => {
     const receivedAt = new Date('2026-09-25T00:00:00Z');
+    const arrival = (lot: string, amount: number) => ({
+      pro_code: 'P1',
+      lot,
+      mfg: '02/25',
+      exp: '02/27',
+      amount,
+      received_at: receivedAt,
+    });
     const queryCall = () => manager.query.mock.calls[0] as [string, unknown[]];
 
-    it('insert lot พร้อม amount + received_at โดยไม่ปิด lot อื่น', async () => {
+    it('insert lot พร้อม amount + received_at ใน query เดียว โดยไม่ปิด lot อื่น', async () => {
       await service.upsertArrivedLots(
-        [
-          {
-            pro_code: 'P1',
-            lot: 'B',
-            mfg: '02/25',
-            exp: '02/27',
-            amount: 120,
-            received_at: receivedAt,
-          },
-        ],
+        [arrival('B', 120), arrival('C', 5)],
         asManager(),
       );
 
-      expect(manager.createQueryBuilder).not.toHaveBeenCalled();
+      expect(updateQb.values).toHaveBeenCalledWith([
+        {
+          lot: 'B',
+          mfg: '02/25',
+          exp: '02/27',
+          amount: 120,
+          received_at: receivedAt,
+          product: { pro_code: 'P1' },
+          is_active: true,
+        },
+        expect.objectContaining({ lot: 'C', amount: 5 }),
+      ]);
+      expect(updateQb.execute).not.toHaveBeenCalled();
+      expect(updateQb.update).not.toHaveBeenCalled();
       expect(manager.upsert).not.toHaveBeenCalled();
+      expect(manager.query).toHaveBeenCalledTimes(1);
+
       const [sql, params] = queryCall();
-      expect(params).toEqual(['P1', 'B', '02/25', '02/27', 120, receivedAt]);
-      // lot เดิมที่ active → บวก amount, lot ที่เป็นประวัติ → เริ่มนับใหม่
-      // และต้องคำนวณ amount ก่อนตั้ง is_active = 1
+      expect(sql.startsWith('INSERT INTO `lot` (...) VALUES (...)')).toBe(true);
+      expect(params).toEqual(['p']);
+    });
+
+    it('lot เดิมที่ active → บวก amount, lot ที่เป็นประวัติ → เริ่มนับใหม่ และคำนวณก่อนตั้ง is_active = 1', async () => {
+      await service.upsertArrivedLots([arrival('B', 120)], asManager());
+
+      const [sql] = queryCall();
       expect(sql).toMatch(
         /amount`\s*=\s*IF\(`is_active` = 1, COALESCE\(`amount`, 0\) \+ VALUES\(`amount`\), VALUES\(`amount`\)\)/,
+      );
+      expect(sql).toMatch(
+        /received_at`\s*=\s*GREATEST\(COALESCE\(`received_at`, VALUES\(`received_at`\)\), VALUES\(`received_at`\)\)/,
       );
       expect(sql.indexOf('`amount` = IF')).toBeLessThan(
         sql.indexOf('`is_active` = 1'),
@@ -133,43 +165,32 @@ describe('LotService', () => {
     it('ข้าม LOT ว่าง, trim ค่า และแปลง mfg/exp ที่ไม่มีค่าเป็นค่าว่าง', async () => {
       await service.upsertArrivedLots(
         [
+          { ...arrival(' ', 1), mfg: '', exp: '' },
           {
-            pro_code: 'P1',
-            lot: ' ',
-            mfg: '',
-            exp: '',
-            amount: 1,
-            received_at: receivedAt,
-          },
-          {
-            pro_code: 'P1',
-            lot: ' C ',
+            ...arrival(' C ', 5),
             mfg: undefined as unknown as string,
             exp: undefined as unknown as string,
-            amount: 5,
-            received_at: receivedAt,
           },
         ],
         asManager(),
       );
 
-      expect(queryCall()[1]).toEqual(['P1', 'C', '', '', 5, receivedAt]);
+      expect(updateQb.values).toHaveBeenCalledWith([
+        {
+          lot: 'C',
+          mfg: '',
+          exp: '',
+          amount: 5,
+          received_at: receivedAt,
+          product: { pro_code: 'P1' },
+          is_active: true,
+        },
+      ]);
     });
 
     it('ไม่มี lot ที่ใช้ได้เลย ไม่ยิง query', async () => {
-      await service.upsertArrivedLots(
-        [
-          {
-            pro_code: 'P1',
-            lot: '',
-            mfg: '',
-            exp: '',
-            amount: 1,
-            received_at: receivedAt,
-          },
-        ],
-        asManager(),
-      );
+      await service.upsertArrivedLots([arrival('', 1)], asManager());
+      expect(manager.createQueryBuilder).not.toHaveBeenCalled();
       expect(manager.query).not.toHaveBeenCalled();
     });
   });
