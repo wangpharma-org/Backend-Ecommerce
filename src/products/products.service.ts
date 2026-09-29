@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
+import { toCurrentLots } from 'src/lot/lot-display.util';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
@@ -1027,6 +1028,8 @@ export class ProductsService {
         )
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
+        // ECWC-643: แสดงเฉพาะ lot ปัจจุบัน — lot ที่ถูกปิด (ประวัติ) เก็บไว้ใน DB แต่ไม่ต้อง join มา
+        .leftJoinAndSelect('product.lot', 'lot', 'lot.is_active = 1')
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -1109,6 +1112,12 @@ export class ProductsService {
           'fs_products.time_start',
           'fs_products.time_end',
           'fs_products.date',
+          'lot.lot_id',
+          'lot.lot',
+          'lot.mfg',
+          'lot.exp',
+          'lot.amount',
+          'lot.received_at',
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
 
@@ -1122,6 +1131,9 @@ export class ProductsService {
       if (!product) {
         throw new Error('Not found Product');
       }
+
+      // ECWC-643: เลือก lot ปัจจุบันจาก amount ที่รับเข้าเทียบกับ stock (กติกาเดียวกับตะกร้า)
+      product.lot = toCurrentLots(product.lot ?? [], product.pro_stock);
 
       const transformedProduct = await this.transformProductWithUnits(product);
       await this.attachProductLabels([

@@ -1140,6 +1140,46 @@ export class AppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('/ecom/promotion/type-policy')
+  async getPromotionTypePolicy(@Req() req: Request & { user: JwtPayload }) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Admin permission is required');
+    }
+    return this.promotionService.getPromotionTypePolicy();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/type-policy/lock')
+  async lockPromotionTypePolicy(@Req() req: Request & { user: JwtPayload }) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Admin permission is required');
+    }
+    return this.promotionService.lockPromotionTypePolicy();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/ecom/promotion/type-policy/unlock')
+  async unlockPromotionTypePolicy(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { expected_locked_type?: unknown },
+  ) {
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Admin permission is required');
+    }
+    if (
+      data.expected_locked_type !== 'company' &&
+      data.expected_locked_type !== 'wang'
+    ) {
+      throw new BadRequestException(
+        'expected_locked_type ต้องเป็น company หรือ wang',
+      );
+    }
+    return this.promotionService.unlockPromotionTypePolicy(
+      data.expected_locked_type,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/detail/:promo_id')
   async getPromotion(@Param('promo_id') promo_id: string) {
     return this.promotionService.getPromotionById(Number(promo_id));
@@ -1174,9 +1214,12 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/update-status')
   async updatePromotionStatus(
-    @Body() data: { promo_id: number; status: boolean },
+    @Body() data: { promo_id: number; status: boolean | string },
   ) {
-    return this.promotionService.updateStatus(data.promo_id, data.status);
+    return this.promotionService.updateStatus(
+      data.promo_id,
+      data.status === true || data.status === 'true',
+    );
   }
 
   @UseGuards(JwtAuthGuard)
