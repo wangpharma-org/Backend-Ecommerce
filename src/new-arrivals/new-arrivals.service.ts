@@ -7,6 +7,7 @@ import { ClientKafka } from '@nestjs/microservices';
 import * as dayjs from 'dayjs';
 import { PreorderService } from 'src/preorder/preorder.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
+import { LotArrivalInput, LotService } from 'src/lot/lot.service';
 
 @Injectable()
 export class NewArrivalsService {
@@ -19,6 +20,7 @@ export class NewArrivalsService {
     private readonly userRepo: Repository<UserEntity>,
     @Inject('OrderPickingService')
     private readonly kafkaClient: ClientKafka,
+    private readonly lotService: LotService,
     private readonly preorderService: PreorderService,
   ) {}
 
@@ -61,6 +63,7 @@ export class NewArrivalsService {
         amount: number;
         unit: string;
       }[] = [];
+      const arrivedLots: LotArrivalInput[] = [];
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
@@ -104,8 +107,20 @@ export class NewArrivalsService {
         });
 
         arrData.push(newArrivalEntity);
+        arrivedLots.push({
+          pro_code,
+          lot: LOT,
+          mfg: MFG,
+          exp: EXP,
+          amount,
+          received_at: normalizedDate,
+        });
       }
       await queryRunner.manager.save(arrData);
+
+      // ECWC-643: เก็บ lot + จำนวนรับเข้าลงตาราง lot ด้วย — เฉพาะรายการใหม่ (รายการซ้ำถูกข้ามด้านบน
+      // ไม่งั้น amount จะถูกบวกซ้ำ)
+      await this.lotService.upsertArrivedLots(arrivedLots, queryRunner.manager);
 
       // ส่ง Kafka event เฉพาะเมื่อบันทึกข้อมูลใหม่สำเร็จ
       this.kafkaClient.emit('newArrival_insert', { kafkaEvents });
