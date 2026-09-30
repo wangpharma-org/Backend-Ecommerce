@@ -20,9 +20,17 @@ export class DhlTrackingService {
     private readonly shoppingHeadRepo: Repository<ShoppingHeadEntity>,
   ) {}
 
-  async upsert(
-    dto: UpsertDhlTrackingDto,
-  ): Promise<UpsertDhlTrackingResult> {
+  async findTrackingNumbers(soh_running: string): Promise<string[]> {
+    const records = await this.dhlTrackingRepo.find({
+      where: { soh_running },
+      select: { tracking_number: true },
+      order: { created_at: 'ASC' },
+    });
+
+    return records.map((record) => record.tracking_number);
+  }
+
+  async upsert(dto: UpsertDhlTrackingDto): Promise<UpsertDhlTrackingResult> {
     const order = await this.shoppingHeadRepo.findOne({
       where: { soh_running: dto.soh_running },
       select: { soh_running: true },
