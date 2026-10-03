@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { HappyHourService } from './happy-hour.service';
 import { HappyHourConfigEntity } from './happy-hour-config.entity';
 import { HappyHourSlotEntity } from './happy-hour-slot.entity';
@@ -11,6 +11,7 @@ import { ProductEntity } from 'src/products/products.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
 import { CreditorEntity } from 'src/products/creditor.entity';
+import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 
 /**
  * HappyHourService unit tests
@@ -69,6 +70,10 @@ const createProductQbMock = (rows: unknown[] = []) => ({
 
 describe('HappyHourService', () => {
   let service: HappyHourService;
+  let summaryCartDetailed: jest.Mock<
+    ReturnType<ShoppingCartService['summaryCartDetailed']>,
+    Parameters<ShoppingCartService['summaryCartDetailed']>
+  >;
   let configRepo: any;
   let slotRepo: any;
   let rewardRepo: any;
@@ -79,6 +84,7 @@ describe('HappyHourService', () => {
   let productUnitRepo: any;
 
   beforeEach(async () => {
+    summaryCartDetailed = jest.fn();
     configRepo = {
       findOneBy: jest.fn(),
       create: jest.fn((x) => x),
@@ -126,6 +132,7 @@ describe('HappyHourService', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         HappyHourService,
+        { provide: ShoppingCartService, useValue: { summaryCartDetailed } },
         { provide: getRepositoryToken(HappyHourConfigEntity), useValue: configRepo },
         { provide: getRepositoryToken(HappyHourSlotEntity), useValue: slotRepo },
         { provide: getRepositoryToken(HappyHourSlotRewardEntity), useValue: rewardRepo },
@@ -145,6 +152,76 @@ describe('HappyHourService', () => {
     }).compile();
 
     service = moduleRef.get(HappyHourService);
+  });
+
+  describe('getCartPreview basket scope', () => {
+    it('uses scoped server lines for product eligibility instead of client totals', async () => {
+      configRepo.findOneBy.mockResolvedValue({ id: 1, is_enabled: true });
+      const slot = buildSlot({
+        min_order_amount: 100,
+        card_value: 10,
+        excess_threshold: 50,
+        discount_per_step: 1,
+        min_order_scope: 'specific',
+      });
+      slot.minOrderProducts = [{ id: 1, pro_code: 'TARGET', pro_name: null, slot }];
+      slotRepo.createQueryBuilder.mockReturnValue(createQbMock(slot));
+      summaryCartDetailed.mockResolvedValue({
+        total: 1250,
+        items: [],
+        lines: [
+          { spc_id: 10, pro_code: 'TARGET', amount: 250 },
+          { spc_id: 11, pro_code: 'OTHER', amount: 1000 },
+        ],
+      });
+
+      const result = await service.getCartPreview({
+        basket_id: 81,
+        order_amount: 99999,
+        cart_items: [{ pro_code: 'TARGET', amount: 99999 }],
+      }, 'M01');
+
+      expect(summaryCartDetailed).toHaveBeenCalledTimes(1);
+      expect(summaryCartDetailed).toHaveBeenCalledWith('M01', 81);
+      expect(result).toMatchObject({
+        is_happy_hour: true,
+        qualifying_amount: 250,
+        num_cards: 2,
+        excess_discount: 1,
+        total_reward: 21,
+      });
+    });
+
+    it.each([
+      new NotFoundException('Basket not found'),
+      new ConflictException('Basket already consumed'),
+    ])('propagates scope errors even when Happy Hour is disabled: %s', async (error) => {
+      configRepo.findOneBy.mockResolvedValue({ id: 1, is_enabled: false });
+      summaryCartDetailed.mockRejectedValue(error);
+      await expect(service.getCartPreview({ basket_id: 81 }, 'M01')).rejects.toBe(error);
+      expect(summaryCartDetailed).toHaveBeenCalledTimes(1);
+      expect(summaryCartDetailed).toHaveBeenCalledWith('M01', 81);
+    });
+
+    it('does not accept a scoped preview without an authenticated member', async () => {
+      await expect(service.getCartPreview({ basket_id: 81 })).rejects.toBeInstanceOf(BadRequestException);
+      expect(summaryCartDetailed).not.toHaveBeenCalled();
+    });
+
+    it('keeps legacy inactive preview free of cart reads when scope is omitted', async () => {
+      configRepo.findOneBy.mockResolvedValue({ id: 1, is_enabled: false });
+      await expect(service.getCartPreview({}, 'M01')).resolves.toEqual({ is_happy_hour: false });
+      expect(summaryCartDetailed).not.toHaveBeenCalled();
+    });
+
+    it('keeps legacy active preview on the authenticated full cart', async () => {
+      configRepo.findOneBy.mockResolvedValue({ id: 1, is_enabled: true });
+      slotRepo.createQueryBuilder.mockReturnValue(createQbMock(buildSlot({ min_order_amount: 100 })));
+      summaryCartDetailed.mockResolvedValue({ total: 250, items: [], lines: [] });
+      await service.getCartPreview({ order_amount: 99999 }, 'M01');
+      expect(summaryCartDetailed).toHaveBeenCalledTimes(1);
+      expect(summaryCartDetailed).toHaveBeenCalledWith('M01');
+    });
   });
 
   describe('onModuleInit (seeding)', () => {

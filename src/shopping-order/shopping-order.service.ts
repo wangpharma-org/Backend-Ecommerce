@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Inject,
   Injectable,
   Logger,
@@ -196,6 +197,7 @@ export class ShoppingOrderService {
   async submitOrder(
     data: {
       emp_code?: string;
+      basket_id?: number;
       mem_code: string;
       mem_route?: string;
       listFree:
@@ -217,9 +219,17 @@ export class ShoppingOrderService {
     ip?: string,
   ): Promise<string[] | undefined> {
     const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
-    const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
-      data.mem_code,
-    );
+    const initialBasket =
+      data.basket_id === undefined
+        ? undefined
+        : await this.shoppingCartService.getBasketCheckoutSnapshot(
+            data.mem_code,
+            data.basket_id,
+          );
+    let totalsummaryfromCart = initialBasket
+      ? this.shoppingCartService.calculateCartSummary(initialBasket.cart)
+      : await this.shoppingCartService.summaryCart(data.mem_code);
+    let purchasedBasketCart: ShoppingCartEntity[] | undefined;
     let orderContext: {
       memberCode: string;
       priceOption: string;
@@ -254,9 +264,9 @@ export class ShoppingOrderService {
     let runningNumbers: string[] = [];
     const submitLogContext: Array<{ [mem_code: string]: any }> = [];
     try {
-      const cartSnapshot = await this.shoppingCartService.handleGetCartToOrder(
-        data.mem_code,
-      );
+      const cartSnapshot =
+        initialBasket?.cart ??
+        (await this.shoppingCartService.handleGetCartToOrder(data.mem_code));
       const items = (cartSnapshot ?? []).map((item) => ({
         spc_id: item.spc_id,
         pro_code: item.pro_code,
@@ -304,8 +314,26 @@ export class ShoppingOrderService {
 
       await this.dataSource.transaction(async (manager) => {
         submitLogContext.push({ transaction: 'start' });
+        const scopedBasket =
+          data.basket_id === undefined
+            ? undefined
+            : await this.shoppingCartService.getBasketCheckoutSnapshot(
+                data.mem_code,
+                data.basket_id,
+                manager,
+                true,
+              );
         const cart: ShoppingCartEntity[] | undefined =
-          await this.shoppingCartService.handleGetCartToOrder(data.mem_code);
+          scopedBasket?.cart ??
+          (await this.shoppingCartService.handleGetCartToOrder(data.mem_code));
+
+        if (scopedBasket) {
+          totalsummaryfromCart = this.shoppingCartService.calculateCartSummary(
+            scopedBasket.cart,
+          );
+          orderContext.totalPrice = totalsummaryfromCart.total;
+          purchasedBasketCart = scopedBasket.cart;
+        }
 
         if (!cart || cart.length === 0) {
           orderContext = {
@@ -331,8 +359,9 @@ export class ShoppingOrderService {
           }
         }
 
-        const checkFreebies =
-          await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
+        const checkFreebies = scopedBasket
+          ? cart.filter((row) => row.hotdeal_free)
+          : await this.shoppingCartService.getProFreebieHotdeal(data.mem_code);
 
         const groupCartArray = groupCart(cart, 80);
 
@@ -886,13 +915,29 @@ export class ShoppingOrderService {
           });
           throw new Error('Total price mismatch');
         }
+        if (scopedBasket && data.basket_id !== undefined) {
+          await this.shoppingCartService.clearBasketCheckout(
+            data.mem_code,
+            data.basket_id,
+            scopedBasket.sourceIds,
+            data.priceOption,
+            manager,
+          );
+        }
       });
       submitLogContext.push({
         transaction: 'end',
         allIdCartForDeleteCount: allIdCartForDelete.length,
       });
-      for (const id of allIdCartForDelete) {
-        await this.shoppingCartService.clearCheckoutCart(id);
+      if (data.basket_id === undefined) {
+        for (const id of allIdCartForDelete) {
+          await this.shoppingCartService.clearCheckoutCart(id);
+        }
+      } else if (purchasedBasketCart) {
+        await this.sendPurchaseEventToAnalytics(
+          data.mem_code,
+          purchasedBasketCart,
+        );
       }
       this.logger.log('submit_order_trace', {
         event: 'submit_order_trace',
@@ -936,6 +981,9 @@ export class ShoppingOrderService {
         basket_snapshot_error: basketSnapshotError,
       });
       this.logger.error('Error: ', error);
+      if (data.basket_id !== undefined && error instanceof HttpException) {
+        throw error;
+      }
       const payload = {
         text: `❌ *Order Error* \n> Message: ${error instanceof Error ? error.message : String(error)}\n> Member: ${orderContext?.memberCode || data.mem_code}\n> Total Price: ${totalsummaryfromCart.total}\n> Price Option: ${orderContext?.priceOption || data.priceOption}`,
         attachments: [
@@ -951,7 +999,10 @@ export class ShoppingOrderService {
       } catch (e) {
         this.logger.error('Failed to notify Slack', e);
       }
-      if (error instanceof BadRequestException) {
+      if (
+        error instanceof BadRequestException ||
+        (data.basket_id !== undefined && error instanceof HttpException)
+      ) {
         throw error;
       }
       throw new Error('Failed to submit order. ' + error);
@@ -1106,10 +1157,14 @@ export class ShoppingOrderService {
     }
   }
 
-  async sendPurchaseEventToAnalytics(mem_code: string): Promise<void> {
+  async sendPurchaseEventToAnalytics(
+    mem_code: string,
+    checkoutCart?: ShoppingCartEntity[],
+  ): Promise<void> {
     try {
       const cart =
-        await this.shoppingCartService.handleGetCartToOrder(mem_code);
+        checkoutCart ??
+        (await this.shoppingCartService.handleGetCartToOrder(mem_code));
       if (!cart?.length) return;
 
       const taggedTierIds = Array.from(

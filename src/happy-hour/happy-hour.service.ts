@@ -24,6 +24,7 @@ import {
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { SimulateDto } from './dto/simulate.dto';
+import { CartPreviewDto } from './dto/cart-preview.dto';
 import { SlotLogQueryDto } from './dto/slot-log-query.dto';
 import { ConfigLogQueryDto } from './dto/config-log-query.dto';
 import { ProductEntity } from 'src/products/products.entity';
@@ -726,10 +727,7 @@ export class HappyHourService implements OnModuleInit {
    * (กระเช้าสำเร็จรูปนับที่ราคาชุด ไม่ใช่ราคาเต็ม) — payload จาก client ใช้แค่ตอนไม่มี memCode
    */
   async getCartPreview(
-    dto: {
-      order_amount?: number;
-      cart_items?: { pro_code: string; amount: number }[];
-    },
+    dto: CartPreviewDto,
     memCode?: string,
   ): Promise<{
     is_happy_hour: boolean;
@@ -747,6 +745,14 @@ export class HappyHourService implements OnModuleInit {
       amount: number;
     }[];
   }> {
+    if (dto.basket_id !== undefined && !memCode) {
+      throw new BadRequestException('Basket checkout requires a member');
+    }
+    // Resolve scoped carts even when Happy Hour is inactive: a consumed or
+    // foreign basket must not look like a valid checkout with no reward.
+    const scopedCart = dto.basket_id !== undefined && memCode
+      ? await this.shoppingCartService.summaryCartDetailed(memCode, dto.basket_id)
+      : undefined;
     const config = await this.getConfig();
     if (!config.is_enabled) return { is_happy_hour: false };
 
@@ -776,7 +782,7 @@ export class HappyHourService implements OnModuleInit {
     let orderAmount = Number(dto.order_amount ?? 0);
     let items = dto.cart_items ?? [];
     if (memCode) {
-      const cart = await this.shoppingCartService.summaryCartDetailed(memCode);
+      const cart = scopedCart ?? await this.shoppingCartService.summaryCartDetailed(memCode);
       orderAmount = cart.total;
       items = cart.lines.map((line) => ({
         pro_code: line.pro_code,
