@@ -1521,8 +1521,9 @@ export class PreorderService {
       const nameOf = (p: PreorderProductEntity) =>
         p.product?.pro_nameTH || p.product?.pro_name || p.pro_code;
       const single = c.products.length === 1 ? c.products[0] : null;
-      const subject = single
-        ? `"${nameOf(single)}"`
+      const title = '🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!';
+      const message = single
+        ? `${nameOf(single)}\nรหัสสินค้า : ${single.pro_code}`
         : `รอบ "${c.name}" ${c.products.length} รายการ`;
       const url = `${this.webUrl}/preorder?campaign=${c.id}${
         single ? `&pro_code=${encodeURIComponent(single.pro_code)}` : ''
@@ -1530,7 +1531,7 @@ export class PreorderService {
       // ข้อความ LINE ตามรูปแบบประกาศสินค้าขาดตลาดที่ฝ่ายขายใช้อยู่ — notification-service ส่งเป็น text ตามนี้ทั้งก้อน
       const listed = c.products.slice(0, OPEN_NOTIFY_LINE_MAX_PRODUCTS);
       const lineText = [
-        '🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!',
+        title,
         ...(single
           ? [nameOf(single), '-----------', `รหัสสินค้า : ${single.pro_code}`]
           : [
@@ -1549,8 +1550,8 @@ export class PreorderService {
       const sent = await this.notifier.sendMany(
         memCodes.map((memCode) => ({
           memCode,
-          title: 'เปิดรับจองสินค้าแล้ว',
-          message: `${subject} เปิดให้สั่งจองล่วงหน้าแล้ว กดเพื่อดูรายละเอียดและแจ้งจำนวนที่ต้องการ`,
+          title,
+          message,
           data: {
             type: 'preorder',
             event: 'campaign_opened',

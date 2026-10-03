@@ -166,10 +166,16 @@ describe('PreorderService', () => {
       await expect(service.notifyCampaignOpened(7)).resolves.toBe(3);
 
       const [list] = notifier.sendMany.mock.calls[0] as [
-        { memCode: string; message: string; data: Record<string, unknown> }[],
+        {
+          memCode: string;
+          title: string;
+          message: string;
+          data: Record<string, unknown>;
+        }[],
       ];
       expect(list.map((n) => n.memCode)).toEqual(['A', 'B', 'C']);
-      expect(list[0].message).toContain('ยาแก้ไอ');
+      expect(list[0].title).toBe('🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!');
+      expect(list[0].message).toBe('ยาแก้ไอ\nรหัสสินค้า : P1');
       expect(list[0].data).toEqual({
         type: 'preorder',
         event: 'campaign_opened',
@@ -207,7 +213,7 @@ describe('PreorderService', () => {
       const [list] = notifier.sendMany.mock.calls[0] as [
         { message: string; data: Record<string, unknown> }[],
       ];
-      expect(list[0].message).toContain('รอบ "รอบ ต.ค." 2 รายการ');
+      expect(list[0].message).toBe('รอบ "รอบ ต.ค." 2 รายการ');
       expect(list[0].data).not.toHaveProperty('pro_code');
       expect(list[0].data.url).toBe(
         'https://store.wangpharma.com/preorder?campaign=7',
