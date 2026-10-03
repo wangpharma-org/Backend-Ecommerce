@@ -1405,6 +1405,7 @@ export class AppController {
           start_date: toDateOnly(data.start_date, currentPromotion.start_date),
           end_date: toDateOnly(data.end_date, currentPromotion.end_date),
         },
+        { mem_code: req.user.mem_code, username: req.user.username },
       );
 
       if (data.promo_name !== undefined || data.status !== undefined) {

@@ -17,6 +17,7 @@ import { PromotionTypePolicyEntity } from './promotion-type-policy.entity';
 import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
 import { PromotionController } from './promotion.controller';
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
+import { PromotionDateChangeLogEntity } from './promotion-date-change-log.entity';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
       ProductEntity,
       UserEntity,
       PromotionTypePolicyEntity,
+      PromotionDateChangeLogEntity,
     ]),
     ShoppingCartModule,
     AuthModule,

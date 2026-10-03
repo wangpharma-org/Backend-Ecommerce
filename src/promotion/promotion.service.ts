@@ -28,6 +28,7 @@ import * as AWS from 'aws-sdk';
 import {
   getTodayRange,
   toThaiDate,
+  toThaiDateTime,
   toUtcStart,
   toUtcEnd,
 } from 'src/utils/date.util';
@@ -44,6 +45,7 @@ import {
   PromotionType,
   PromotionTypePolicyEntity,
 } from './promotion-type-policy.entity';
+import { PromotionDateChangeLogEntity } from './promotion-date-change-log.entity';
 
 // Extended types for transformed product data
 export type ProductWithUnits = ProductEntity & {
@@ -872,19 +874,52 @@ export class PromotionService {
           start_date: true,
           end_date: true,
           status: true,
-          updated_at: true,
           creditor: {
             creditor_code: true,
             creditor_name: true,
           },
         },
       });
-      return promotions.map((promo) => ({
-        ...promo,
-        start_date: toThaiDate(promo.start_date),
-        end_date: toThaiDate(promo.end_date),
-        updated_at: promo.updated_at,
-      }));
+      const promoIds = promotions.map((promotion) => promotion.promo_id);
+      const latestDateChanges =
+        promoIds.length === 0
+          ? []
+          : await this.dataSource
+              .getRepository(PromotionDateChangeLogEntity)
+              .createQueryBuilder('date_change')
+              .where('date_change.promo_id IN (:...promoIds)', { promoIds })
+              .andWhere(
+                `date_change.id = (
+                  SELECT latest_date_change.id
+                  FROM promotion_date_change_log latest_date_change
+                  WHERE latest_date_change.promo_id = date_change.promo_id
+                  ORDER BY latest_date_change.created_at DESC, latest_date_change.id DESC
+                  LIMIT 1
+                )`,
+              )
+              .getMany();
+      const latestDateChangeByPromo = new Map(
+        latestDateChanges.map((dateChange) => [
+          dateChange.promo_id,
+          dateChange,
+        ]),
+      );
+
+      return promotions.map((promo) => {
+        const latestDateChange = latestDateChangeByPromo.get(promo.promo_id);
+
+        return {
+          ...promo,
+          start_date: toThaiDate(promo.start_date),
+          end_date: toThaiDate(promo.end_date),
+          latest_date_change: latestDateChange
+            ? {
+                admin_username: latestDateChange.admin_username,
+                created_at: toThaiDateTime(latestDateChange.created_at),
+              }
+            : null,
+        };
+      });
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to get promotions');
     }
@@ -1291,6 +1326,7 @@ export class PromotionService {
 
   async updatePromotionDates(
     data: { promo_id: number; start_date: string; end_date: string },
+    admin: { mem_code: string; username: string },
   ) {
     if (data.start_date > data.end_date) {
       throw new BadRequestException('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
@@ -1352,6 +1388,16 @@ export class PromotionService {
         promotion.start_date = newStartDate;
         promotion.end_date = newEndDate;
         await manager.save(promotion);
+
+        await manager.getRepository(PromotionDateChangeLogEntity).save({
+          promo_id: promotion.promo_id,
+          admin_mem_code: admin.mem_code,
+          admin_username: admin.username,
+          old_start_date: oldStartDate,
+          old_end_date: oldEndDate,
+          new_start_date: newStartDate,
+          new_end_date: newEndDate,
+        });
 
         return {
           promo_id: promotion.promo_id,

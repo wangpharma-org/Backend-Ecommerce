@@ -36,6 +36,9 @@ export class PromotionController {
       throw new ForbiddenException('Admin permission is required');
     }
 
-    return this.promotionService.updatePromotionDates(data);
+    return this.promotionService.updatePromotionDates(data, {
+      mem_code: req.user.mem_code,
+      username: req.user.username,
+    });
   }
 }

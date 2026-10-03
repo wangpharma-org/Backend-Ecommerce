@@ -6,7 +6,6 @@ import {
   ManyToOne,
   JoinColumn,
   DeleteDateColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { CreditorEntity } from '../products/creditor.entity';
@@ -40,9 +39,6 @@ export class PromotionEntity {
 
   @DeleteDateColumn({ nullable: true })
   deleted_at!: Date;
-
-  @UpdateDateColumn({ nullable: true })
-  updated_at!: Date | null;
 
   @OneToMany(() => PromotionTierEntity, (tier) => tier.promotion)
   tiers!: PromotionTierEntity[];
