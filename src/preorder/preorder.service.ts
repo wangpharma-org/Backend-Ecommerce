@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import {
   PreorderCampaignEntity,
   PreorderCampaignStatus,
@@ -41,6 +41,7 @@ import {
 import { ProductEntity } from '../products/products.entity';
 import { ProductUnitEntity } from '../products/product-unit.entity';
 import { UserEntity } from '../users/users.entity';
+import { NotificationTokenEntity } from '../notifyapp/notification-token.entity';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { Cron } from '@nestjs/schedule';
 import {
@@ -193,6 +194,9 @@ function toDateOrNull(value: unknown, field: string): Date | null {
 @Injectable()
 export class PreorderService {
   private readonly logger = new Logger(PreorderService.name);
+  private readonly webUrl = (
+    process.env.ECOMMERCE_WEB_URL ?? 'https://store.wangpharma.com'
+  ).replace(/\/+$/, '');
 
   constructor(
     @InjectRepository(PreorderCampaignEntity)
@@ -207,6 +211,8 @@ export class PreorderService {
     private readonly catalogRepo: Repository<ProductEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(NotificationTokenEntity)
+    private readonly notificationTokenRepo: Repository<NotificationTokenEntity>,
     private readonly dataSource: DataSource,
     private readonly notifier: PreorderNotifierService,
     private readonly cartService: ShoppingCartService,
@@ -617,10 +623,7 @@ export class PreorderService {
 
       // supply ของรอบ เฉพาะโหมด allocation (ของขาด จำกัดจำนวน): ยอดคนอื่น + ของเรา ต้องไม่เกิน
       // โหมด aggregation (รวบรวมยอดสั่งผลิต) ไม่จำกัดยอดจองรายร้าน ใช้ moq เป็นเกณฑ์แทน — ไม่ใช่ supply_qty
-      if (
-        pp.supply_qty !== null &&
-        campaign.mode === PreorderMode.ALLOCATION
-      ) {
+      if (pp.supply_qty !== null && campaign.mode === PreorderMode.ALLOCATION) {
         const others = await manager
           .createQueryBuilder(PreorderItemEntity, 'i')
           .select('COALESCE(SUM(i.amount), 0)', 'qty')
@@ -1161,6 +1164,10 @@ export class PreorderService {
         )
         .execute();
     }
+    // ไม่ await เพราะผู้รับคือลูกค้าทั้งหมด — รอบที่ starts_at ยังไม่ถึง cron จะแจ้งเมื่อถึงเวลา
+    if (status === PreorderCampaignStatus.OPEN) {
+      void this.notifyCampaignOpened(id);
+    }
     if (status === PreorderCampaignStatus.CANCELLED) {
       await this.notifyCampaignMembers(
         id,
@@ -1447,6 +1454,94 @@ export class PreorderService {
       );
     }
     return { campaigns: campaigns.length, notified };
+  }
+
+  /** รอบ open ที่ starts_at เพิ่งถึง หรือที่แจ้งตอนกดเปิดไม่สำเร็จ → แจ้งลูกค้าว่าเปิดรับจองแล้ว */
+  @Cron('* * * * *', { timeZone: 'Asia/Bangkok' })
+  async notifyStartedCampaigns(): Promise<{
+    campaigns: number;
+    notified: number;
+  }> {
+    const now = new Date();
+    const campaigns = await this.campaignRepo
+      .createQueryBuilder('c')
+      .select(['c.id'])
+      .where('c.status = :open', { open: PreorderCampaignStatus.OPEN })
+      .andWhere('c.open_notified_at IS NULL')
+      .andWhere('(c.starts_at IS NULL OR c.starts_at <= :now)', { now })
+      .andWhere('(c.ends_at IS NULL OR c.ends_at >= :now)', { now })
+      .getMany();
+    let notified = 0;
+    for (const c of campaigns) {
+      notified += await this.notifyCampaignOpened(c.id);
+    }
+    return { campaigns: campaigns.length, notified };
+  }
+
+  /**
+   * แจ้งลูกค้าที่ผูก LINE หรือมี FCM token ว่ารอบเปิดรับจองแล้ว ครั้งเดียวต่อรอบ (ไม่ throw)
+   * ข้ามโดยไม่ตั้ง open_notified_at เมื่อรอบยังไม่รับจองจริง ยังไม่มีสินค้า หรือดึงรายชื่อผู้รับไม่ได้ — cron จะลองใหม่
+   */
+  async notifyCampaignOpened(campaignId: number): Promise<number> {
+    try {
+      const c = await this.campaignRepo
+        .createQueryBuilder('c')
+        .leftJoinAndSelect('c.products', 'p', 'p.is_active = 1')
+        .leftJoinAndSelect('p.product', 'prod')
+        .where('c.id = :id', { id: campaignId })
+        .getOne();
+      if (!c || c.open_notified_at || !this.isCampaignAcceptingOrders(c)) {
+        return 0;
+      }
+      if (!c.products.length) return 0;
+
+      const [lineMemCodes, fcmTokens] = await Promise.all([
+        this.notifier.getLineRegisteredMemCodes(),
+        this.notificationTokenRepo.find({
+          where: { is_active: true },
+          select: { mem_code: true },
+        }),
+      ]);
+      const memCodes = [
+        ...new Set([...lineMemCodes, ...fcmTokens.map((t) => t.mem_code)]),
+      ];
+
+      // claim แบบ atomic กัน cron กับปุ่มเปิดรอบ (หรือหลาย instance) แจ้งซ้ำ
+      const claimed = await this.campaignRepo.update(
+        { id: c.id, open_notified_at: IsNull() },
+        { open_notified_at: new Date() },
+      );
+      if (!claimed.affected) return 0;
+
+      const single = c.products.length === 1 ? c.products[0] : null;
+      const subject = single
+        ? `"${single.product?.pro_nameTH || single.product?.pro_name || single.pro_code}"`
+        : `รอบ "${c.name}" ${c.products.length} รายการ`;
+      const sent = await this.notifier.sendMany(
+        memCodes.map((memCode) => ({
+          memCode,
+          title: 'เปิดรับจองสินค้าแล้ว',
+          message: `${subject} เปิดให้สั่งจองล่วงหน้าแล้ว กดเพื่อดูรายละเอียดและแจ้งจำนวนที่ต้องการ`,
+          data: {
+            type: 'preorder',
+            event: 'campaign_opened',
+            campaign_id: c.id,
+            ...(single ? { pro_code: single.pro_code } : {}),
+            url: `${this.webUrl}/preorder?campaign=${c.id}`,
+          },
+        })),
+        10,
+      );
+      this.logger.log(
+        `campaign ${c.id} open notify sent ${sent}/${memCodes.length}`,
+      );
+      return sent;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `campaign ${campaignId} open notify skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
+    }
   }
 
   /**

@@ -111,6 +111,16 @@ admin (`req.user.permission === true`)
 
 แจ้งเตือนอื่น: ผลจัดสรร (หลัง allocate apply), ยกเลิกรอบ, ETA เลื่อน (เมื่อ admin แก้ `eta_date` ของสินค้าที่มีคนจอง), เตือนก่อนปิดรอบ (cron 09:00), เจ้าหน้าที่จองแทนให้
 
+## เปิดรับจอง → แจ้งลูกค้า (ECWC-653 / ECWC-673)
+
+`PreorderService.notifyCampaignOpened(campaignId)` แจ้งครั้งเดียวต่อรอบ (เก็บเวลาใน `preorder_campaigns.open_notified_at`) เมื่อรอบ **รับจองได้จริง** คือ `status = open` และอยู่ในช่วง `starts_at`–`ends_at`
+
+- เรียกจาก 2 ทาง: ตอน admin กด "เปิดรับจอง" (ทำเบื้องหลัง ไม่ block response) และ cron ทุกนาที `notifyStartedCampaigns` สำหรับรอบที่ `starts_at` เพิ่งถึง หรือที่แจ้งรอบแรกไม่สำเร็จ
+- ผู้รับ = ร้านที่ผูก LINE OA (`GET /api/notifications/admin/users/line-registered` ของ notification-service) รวมกับร้านที่มี FCM token active ใน `notification_tokens`
+- ข้ามโดยไม่ตั้ง `open_notified_at` (cron จะลองใหม่) เมื่อรอบยังไม่มีสินค้า active หรือเรียก notification-service ไม่ได้
+- เปิดรอบใหม่จาก `closed` ไม่แจ้งซ้ำ
+- payload `data`: `{ type: 'preorder', event: 'campaign_opened', campaign_id, pro_code? (เฉพาะรอบที่มีสินค้าเดียว), url }` โดย `url = ${ECOMMERCE_WEB_URL}/preorder?campaign=<id>` (default `https://store.wangpharma.com`) — LINE ใช้ `url` เป็นปุ่มใน flex message, แอปใช้ `campaign_id`/`pro_code` เพื่อ scroll ไปที่รอบนั้น
+
 ## ทดสอบ
 
 - unit: `npx jest src/preorder`
