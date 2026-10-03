@@ -872,6 +872,7 @@ export class PromotionService {
           start_date: true,
           end_date: true,
           status: true,
+          updated_at: true,
           creditor: {
             creditor_code: true,
             creditor_name: true,
@@ -882,6 +883,7 @@ export class PromotionService {
         ...promo,
         start_date: toThaiDate(promo.start_date),
         end_date: toThaiDate(promo.end_date),
+        updated_at: promo.updated_at,
       }));
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to get promotions');
@@ -1284,6 +1286,81 @@ export class PromotionService {
       return 'Promotion updated successfully';
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to update promotion');
+    }
+  }
+
+  async updatePromotionDates(
+    data: { promo_id: number; start_date: string; end_date: string },
+  ) {
+    if (data.start_date > data.end_date) {
+      throw new BadRequestException('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
+    }
+
+    const newStartDate = toUtcStart(data.start_date);
+    const newEndDate = toUtcEnd(data.end_date);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const promotion = await manager
+          .getRepository(PromotionEntity)
+          .createQueryBuilder('promotion')
+          .leftJoinAndSelect('promotion.tiers', 'tiers')
+          .leftJoinAndSelect('tiers.conditions', 'conditions')
+          .leftJoinAndSelect('conditions.product', 'conditionProduct')
+          .leftJoinAndSelect('tiers.rewards', 'rewards')
+          .leftJoinAndSelect('rewards.giftProduct', 'giftProduct')
+          .where('promotion.promo_id = :promoId', { promoId: data.promo_id })
+          .setLock('pessimistic_write')
+          .getOne();
+
+        if (!promotion) {
+          throw new NotFoundException(
+            `Promotion with id ${data.promo_id} not found`,
+          );
+        }
+
+        const oldStartDate = promotion.start_date;
+        const oldEndDate = promotion.end_date;
+        const hasDateChanged =
+          oldStartDate.getTime() !== newStartDate.getTime() ||
+          oldEndDate.getTime() !== newEndDate.getTime();
+
+        if (!hasDateChanged) {
+          return {
+            promo_id: promotion.promo_id,
+            start_date: toThaiDate(promotion.start_date),
+            end_date: toThaiDate(promotion.end_date),
+          };
+        }
+
+        if (promotion.status) {
+          for (const tier of promotion.tiers ?? []) {
+            await this.promoOverlapService.assertPromotionPairAvailable({
+              promo_id: promotion.promo_id,
+              start_date: newStartDate,
+              end_date: newEndDate,
+              buyCodes: (tier.conditions ?? []).map(
+                (condition) => condition.product.pro_code,
+              ),
+              giftCodes: (tier.rewards ?? []).map(
+                (reward) => reward.giftProduct.pro_code,
+              ),
+            });
+          }
+        }
+
+        promotion.start_date = newStartDate;
+        promotion.end_date = newEndDate;
+        await manager.save(promotion);
+
+        return {
+          promo_id: promotion.promo_id,
+          start_date: toThaiDate(newStartDate),
+          end_date: toThaiDate(newEndDate),
+        };
+      });
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion dates');
     }
   }
 

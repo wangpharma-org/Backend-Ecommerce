@@ -15,6 +15,8 @@ import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { PromotionTypePolicyEntity } from './promotion-type-policy.entity';
 import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
+import { PromotionController } from './promotion.controller';
+import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 
 @Module({
   imports: [
@@ -33,9 +35,10 @@ import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
     ]),
     ShoppingCartModule,
     AuthModule,
+    FeatureFlagsModule,
     PromoOverlapModule,
   ],
-  controllers: [],
+  controllers: [PromotionController],
   providers: [PromotionService],
   exports: [PromotionService],
 })
