@@ -144,6 +144,9 @@ const ITEM_STATUS_TH: Record<PreorderItemStatus, string> = {
   [PreorderItemStatus.CANCELLED]: 'ยกเลิก',
 };
 
+/** จำนวนสินค้าสูงสุดที่ไล่ชื่อในข้อความ LINE ตอนเปิดรอบ ที่เหลือสรุปเป็น "และอีก N รายการ" */
+const OPEN_NOTIFY_LINE_MAX_PRODUCTS = 10;
+
 const STATUS_TRANSITIONS: Record<
   PreorderCampaignStatus,
   PreorderCampaignStatus[]
@@ -1489,6 +1492,8 @@ export class PreorderService {
         .leftJoinAndSelect('c.products', 'p', 'p.is_active = 1')
         .leftJoinAndSelect('p.product', 'prod')
         .where('c.id = :id', { id: campaignId })
+        .orderBy('p.sort_order', 'ASC')
+        .addOrderBy('p.id', 'ASC')
         .getOne();
       if (!c || c.open_notified_at || !this.isCampaignAcceptingOrders(c)) {
         return 0;
@@ -1513,10 +1518,34 @@ export class PreorderService {
       );
       if (!claimed.affected) return 0;
 
+      const nameOf = (p: PreorderProductEntity) =>
+        p.product?.pro_nameTH || p.product?.pro_name || p.pro_code;
       const single = c.products.length === 1 ? c.products[0] : null;
       const subject = single
-        ? `"${single.product?.pro_nameTH || single.product?.pro_name || single.pro_code}"`
+        ? `"${nameOf(single)}"`
         : `รอบ "${c.name}" ${c.products.length} รายการ`;
+      const url = `${this.webUrl}/preorder?campaign=${c.id}${
+        single ? `&pro_code=${encodeURIComponent(single.pro_code)}` : ''
+      }`;
+      // ข้อความ LINE ตามรูปแบบประกาศสินค้าขาดตลาดที่ฝ่ายขายใช้อยู่ — notification-service ส่งเป็น text ตามนี้ทั้งก้อน
+      const listed = c.products.slice(0, OPEN_NOTIFY_LINE_MAX_PRODUCTS);
+      const lineText = [
+        '🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!',
+        ...(single
+          ? [nameOf(single), '-----------', `รหัสสินค้า : ${single.pro_code}`]
+          : [
+              `รอบ "${c.name}" ${c.products.length} รายการ`,
+              '-----------',
+              ...listed.map((p) => `• ${p.pro_code} ${nameOf(p)}`),
+              ...(c.products.length > listed.length
+                ? [`และอีก ${c.products.length - listed.length} รายการ`]
+                : []),
+            ]),
+        `ลิ้งค์สั่งจอง : ${url}`,
+        '🛒 สั่งจองออนไลน์ได้ที่ 👇',
+        `🌐 Website: ${this.webUrl}/login`,
+        '📱 สั่งจองผ่านแอปพลิเคชัน Wangpharma (รองรับทั้ง iOS และ Android)',
+      ].join('\n');
       const sent = await this.notifier.sendMany(
         memCodes.map((memCode) => ({
           memCode,
@@ -1527,7 +1556,8 @@ export class PreorderService {
             event: 'campaign_opened',
             campaign_id: c.id,
             ...(single ? { pro_code: single.pro_code } : {}),
-            url: `${this.webUrl}/preorder?campaign=${c.id}`,
+            url,
+            line_text: lineText,
           },
         })),
         10,

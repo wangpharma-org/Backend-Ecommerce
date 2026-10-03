@@ -119,7 +119,8 @@ admin (`req.user.permission === true`)
 - ผู้รับ = ร้านที่ผูก LINE OA (`GET /api/notifications/admin/users/line-registered` ของ notification-service) รวมกับร้านที่มี FCM token active ใน `notification_tokens`
 - ข้ามโดยไม่ตั้ง `open_notified_at` (cron จะลองใหม่) เมื่อรอบยังไม่มีสินค้า active หรือเรียก notification-service ไม่ได้
 - เปิดรอบใหม่จาก `closed` ไม่แจ้งซ้ำ
-- payload `data`: `{ type: 'preorder', event: 'campaign_opened', campaign_id, pro_code? (เฉพาะรอบที่มีสินค้าเดียว), url }` โดย `url = ${ECOMMERCE_WEB_URL}/preorder?campaign=<id>` (default `https://store.wangpharma.com`) — LINE ใช้ `url` เป็นปุ่มใน flex message, แอปใช้ `campaign_id`/`pro_code` เพื่อ scroll ไปที่รอบนั้น
+- payload `data`: `{ type: 'preorder', event: 'campaign_opened', campaign_id, pro_code? (เฉพาะรอบที่มีสินค้าเดียว), url, line_text }` โดย `url = ${ECOMMERCE_WEB_URL}/preorder?campaign=<id>` (รอบสินค้าเดียวต่อ `&pro_code=<code>`; default `https://store.wangpharma.com`) — แอปใช้ `campaign_id`/`pro_code` เพื่อ scroll ไปที่รอบนั้น
+- `line_text` คือข้อความ LINE ทั้งก้อนตามรูปแบบประกาศ "🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!" (ชื่อสินค้า, รหัสสินค้า, ลิ้งค์สั่งจอง = `url`, ลิงก์ `${ECOMMERCE_WEB_URL}/login`) รอบหลายสินค้าไล่รายการได้สูงสุด 10 ตัว ที่เหลือสรุปเป็น "และอีก N รายการ" notification-service ส่งเป็น text ตามนี้และไม่ส่ง `line_text` ไป FCM
 
 ## ทดสอบ
 

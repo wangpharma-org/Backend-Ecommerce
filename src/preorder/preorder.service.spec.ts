@@ -149,6 +149,8 @@ describe('PreorderService', () => {
       const qb = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         getOne: jest.fn().mockResolvedValue(c),
       };
       campaignRepo.createQueryBuilder.mockReturnValue(qb);
@@ -173,7 +175,17 @@ describe('PreorderService', () => {
         event: 'campaign_opened',
         campaign_id: 7,
         pro_code: 'P1',
-        url: 'https://store.wangpharma.com/preorder?campaign=7',
+        url: 'https://store.wangpharma.com/preorder?campaign=7&pro_code=P1',
+        line_text: [
+          '🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!',
+          'ยาแก้ไอ',
+          '-----------',
+          'รหัสสินค้า : P1',
+          'ลิ้งค์สั่งจอง : https://store.wangpharma.com/preorder?campaign=7&pro_code=P1',
+          '🛒 สั่งจองออนไลน์ได้ที่ 👇',
+          '🌐 Website: https://store.wangpharma.com/login',
+          '📱 สั่งจองผ่านแอปพลิเคชัน Wangpharma (รองรับทั้ง iOS และ Android)',
+        ].join('\n'),
       });
     });
 
@@ -197,6 +209,12 @@ describe('PreorderService', () => {
       ];
       expect(list[0].message).toContain('รอบ "รอบ ต.ค." 2 รายการ');
       expect(list[0].data).not.toHaveProperty('pro_code');
+      expect(list[0].data.url).toBe(
+        'https://store.wangpharma.com/preorder?campaign=7',
+      );
+      expect(list[0].data.line_text).toContain(
+        'รอบ "รอบ ต.ค." 2 รายการ\n-----------\n• P1 P1\n• P2 P2\nลิ้งค์สั่งจอง : https://store.wangpharma.com/preorder?campaign=7',
+      );
     });
 
     it('starts_at ยังไม่ถึง / แจ้งไปแล้ว / ยังไม่มีสินค้า → ไม่แจ้งและไม่ claim', async () => {
