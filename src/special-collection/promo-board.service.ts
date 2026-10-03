@@ -54,6 +54,7 @@ export interface BoardTier {
 export interface BoardProduct {
   pro_code: string;
   pro_name: string;
+  pro_nameEN: string | null;
   pro_imgmain: string | null;
   /** ราคาต่อหน่วยเล็กสุด — ราคาของหน่วยอื่นอยู่ใน units[].price */
   price: number;
@@ -305,6 +306,7 @@ export class PromoBoardService {
         return {
           pro_code: product.pro_code,
           pro_name: product.pro_name,
+          pro_nameEN: product.pro_nameEN ?? null,
           pro_imgmain: product.pro_imgmain ?? null,
           price: basePrice,
           pro_stock: Number(product.pro_stock ?? 0),
