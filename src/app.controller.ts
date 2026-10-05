@@ -4845,4 +4845,9 @@ export class AppController {
       throw new ForbiddenException('You not have Permission to Accesss');
     }
   }
+
+  @Get('/health')
+  health() {
+    return { status: 'ok' };
+  }
 }
