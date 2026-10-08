@@ -74,6 +74,7 @@ import { ContractLogService } from './contract-log/contract-log.service';
 import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log/contract-log-person.entity';
 import { CreditorEntity } from './products/creditor.entity';
+import { parseCreditorCodes } from './promotion/creditor-codes.util';
 import { ContractLogCompanyDay } from './contract-log/contract-log-company-day.entity';
 import { ImagedebugService } from './imagedebug/imagedebug.service';
 import { CampaignsService } from './campaigns/campaigns.service';
@@ -1106,16 +1107,17 @@ export class AppController {
     @Body()
     data: {
       promo_name: string;
-      creditor_code: string;
+      creditor_code?: string | string[];
       start_date: Date;
       end_date: Date;
       status: string;
     },
   ) {
+    const { creditor_code, ...rest } = data;
     return this.promotionService.addPromotion({
-      ...data,
+      ...rest,
       status: data.status === 'true',
-      creditor_code: data.creditor_code || null,
+      creditor_codes: parseCreditorCodes(creditor_code),
       file,
     });
   }
@@ -1288,8 +1290,10 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/condition/list/:tier_id')
-  async listPromotionConditions(@Param('tier_id') tier_id: string) {
-    return this.promotionService.getConditionsByTier(Number(tier_id));
+  async listPromotionConditions(
+    @Param('tier_id', ParseIntPipe) tier_id: number,
+  ) {
+    return this.promotionService.getConditionsByTier(tier_id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1309,11 +1313,11 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/reward/list/:tier_id')
   async listPromotionRewards(
-    @Param('tier_id') tier_id: string,
+    @Param('tier_id', ParseIntPipe) tier_id: number,
     @Req() req: Request & { user: JwtPayload },
   ) {
     return this.promotionService.getRewardsByTier(
-      Number(tier_id),
+      tier_id,
       req.user.mem_code,
       req.user.mem_route,
     );
@@ -1321,8 +1325,14 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/product/creditor')
-  async getProductByCreditor(@Body() data: { creditor_code: string }) {
-    return this.productsService.getProductByCreditor(data.creditor_code);
+  async getProductByCreditor(
+    @Body() data: { creditor_code?: string | string[] },
+  ) {
+    const creditorCodes = parseCreditorCodes(data.creditor_code);
+    if (creditorCodes.length === 0) {
+      throw new BadRequestException('creditor_code is required');
+    }
+    return this.productsService.getProductByCreditor(creditorCodes);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1351,7 +1361,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tiers/:tier_id')
-  async getTierByID(@Param('tier_id') tier_id: number) {
+  async getTierByID(@Param('tier_id', ParseIntPipe) tier_id: number) {
     return this.promotionService.getTierOneById(tier_id);
   }
 
@@ -1925,7 +1935,7 @@ export class AppController {
   async getInvisibleProductByCreditor(
     @Param('creditor_code') creditor_code: string,
   ) {
-    return this.productsService.getProductByCreditor(creditor_code);
+    return this.productsService.getProductByCreditor([creditor_code]);
   }
 
   @Get('/ecom/invisible/product/creditor/list/:invisible_id')

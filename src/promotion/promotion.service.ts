@@ -10,6 +10,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
+import { CreditorEntity } from 'src/products/creditor.entity';
+import {
+  findBuyGiftConflicts,
+  formatBuyGiftConflicts,
+} from './buy-gift-conflict.util';
 import {
   Repository,
   DeepPartial,
@@ -100,6 +105,12 @@ export type GetAllTiersResult = {
   reward: PromotionRewardWithTransformedProduct[];
 };
 
+type PromotionProductUsage = {
+  pro_code: string;
+  tier_id: number;
+  tier_name: string;
+};
+
 @Injectable()
 export class PromotionService {
   private readonly logger = new Logger(PromotionService.name);
@@ -139,6 +150,62 @@ export class PromotionService {
 
   private getPromotionType(promotion: PromotionEntity): PromotionType {
     return promotion.creditor ? 'company' : 'wang';
+  }
+
+  /**
+   * สินค้าที่ถูกใช้แล้วในทุก tier ของโปรโมชั่น แยกฝั่งสินค้าเข้าร่วมรายการ (conditions) / ของแถม (rewards)
+   * ใช้กันไม่ให้สินค้าตัวเดียวกันเป็นทั้งสองฝั่งในโปรเดียวกัน (แม้อยู่คนละ tier)
+   */
+  private async getPromotionProductUsage(promo_id: number): Promise<{
+    conditions: PromotionProductUsage[];
+    rewards: PromotionProductUsage[];
+  }> {
+    const [conditions, rewards] = await Promise.all([
+      this.promotionConditionRepo
+        .createQueryBuilder('cond')
+        .innerJoin('cond.tier', 'tier')
+        .innerJoin('cond.product', 'product')
+        .where('tier.promo_id = :promo_id', { promo_id })
+        .select([
+          'product.pro_code AS pro_code',
+          'tier.tier_id AS tier_id',
+          'tier.tier_name AS tier_name',
+        ])
+        .getRawMany<PromotionProductUsage>(),
+      this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .innerJoin('reward.tier', 'tier')
+        .innerJoin('reward.giftProduct', 'product')
+        .where('tier.promo_id = :promo_id', { promo_id })
+        .select([
+          'product.pro_code AS pro_code',
+          'tier.tier_id AS tier_id',
+          'tier.tier_name AS tier_name',
+        ])
+        .getRawMany<PromotionProductUsage>(),
+    ]);
+    return { conditions, rewards };
+  }
+
+  private async findCreditorsOrThrow(
+    manager: EntityManager,
+    creditor_codes: string[],
+  ): Promise<CreditorEntity[]> {
+    if (creditor_codes.length === 0) return [];
+    const creditors = await manager
+      .getRepository(CreditorEntity)
+      .findBy({ creditor_code: In(creditor_codes) });
+    // MySQL เทียบตัวพิมพ์เล็ก/ใหญ่แบบไม่สนใจ (collation) — ฝั่ง JS ต้องเทียบแบบเดียวกัน ไม่งั้นรหัสที่มีจริงจะถูกบอกว่าไม่พบ
+    const found = new Set(creditors.map((c) => c.creditor_code.toLowerCase()));
+    const missing = creditor_codes.filter(
+      (code) => !found.has(code.toLowerCase()),
+    );
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `ไม่พบรหัสเจ้าหนี้: ${missing.join(', ')}`,
+      );
+    }
+    return creditors;
   }
 
   private async getLockedPromotionTypePolicy(
@@ -776,9 +843,26 @@ export class PromotionService {
 
   async getTierOneById(tier_id: number) {
     try {
-      return await this.promotionTierRepo.findOne({
+      const tier = await this.promotionTierRepo.findOne({
         where: { tier_id },
+        relations: { promotion: true },
+        select: { promotion: { promo_id: true } },
       });
+      if (!tier) return null;
+      const { promotion, ...rest } = tier;
+      const usage = promotion
+        ? await this.getPromotionProductUsage(promotion.promo_id)
+        : { conditions: [], rewards: [] };
+      const isOtherTier = (u: PromotionProductUsage) =>
+        Number(u.tier_id) !== tier_id;
+      return {
+        ...rest,
+        // สินค้าที่ tier อื่นในโปรเดียวกันใช้ไปแล้ว — หน้าเงื่อนไขใช้กันเลือกข้ามฝั่ง
+        other_tier_usage: {
+          conditions: usage.conditions.filter(isOtherTier),
+          rewards: usage.rewards.filter(isOtherTier),
+        },
+      };
     } catch (error) {
       rethrowAsHttp(error, this.logger, 'Failed to get tier by id');
     }
@@ -786,7 +870,7 @@ export class PromotionService {
 
   async addPromotion(data: {
     promo_name: string;
-    creditor_code: string | null;
+    creditor_codes: string[];
     start_date: Date;
     end_date: Date;
     status: boolean;
@@ -808,15 +892,21 @@ export class PromotionService {
       }
 
       return this.dataSource.transaction(async (manager) => {
+        const isCompany = data.creditor_codes.length > 0;
         await this.assertPromotionTypeAllowed(
           manager,
-          data.creditor_code ? 'company' : 'wang',
+          isCompany ? 'company' : 'wang',
+        );
+        const creditors = await this.findCreditorsOrThrow(
+          manager,
+          data.creditor_codes,
         );
         const newPromotion = manager.create(PromotionEntity, {
           promo_name: data.promo_name,
-          creditor: data.creditor_code
-            ? { creditor_code: data.creditor_code }
+          creditor: isCompany
+            ? { creditor_code: data.creditor_codes[0] }
             : undefined,
+          creditors,
           start_date: toUtcStart(data.start_date),
           end_date: toUtcEnd(data.end_date),
           status: data.status,
@@ -864,6 +954,7 @@ export class PromotionService {
       const promotions = await this.promotionRepo.find({
         relations: {
           creditor: true,
+          creditors: true,
         },
         select: {
           promo_id: true,
@@ -873,6 +964,10 @@ export class PromotionService {
           end_date: true,
           status: true,
           creditor: {
+            creditor_code: true,
+            creditor_name: true,
+          },
+          creditors: {
             creditor_code: true,
             creditor_name: true,
           },
@@ -892,7 +987,13 @@ export class PromotionService {
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id },
-        relations: ['creditor', 'tiers', 'tiers.conditions', 'tiers.rewards'],
+        relations: [
+          'creditor',
+          'creditors',
+          'tiers',
+          'tiers.conditions',
+          'tiers.rewards',
+        ],
       });
       if (!promotion) return null;
       return {
@@ -1053,6 +1154,17 @@ export class PromotionService {
         relations: { giftProduct: true },
         select: { reward_id: true, giftProduct: { pro_code: true } },
       });
+      // สินค้าตัวเดียวกันเป็นทั้งสินค้าเงื่อนไขและของแถมในโปรเดียวกันไม่ได้ (ทุก tier)
+      const usage = await this.getPromotionProductUsage(
+        tier.promotion.promo_id,
+      );
+      const usedAsReward = usage.rewards.find(
+        (r) => r.pro_code === data.product_gcode,
+      );
+      if (usedAsReward)
+        throw new BadRequestException(
+          `สินค้า ${data.product_gcode} เป็นของแถมใน ${usedAsReward.tier_name} ของโปรนี้อยู่แล้ว ไม่สามารถเลือกเป็นสินค้าเข้าร่วมรายการได้`,
+        );
       await this.promoOverlapService.assertPromotionPairAvailable({
         promo_id: tier.promotion.promo_id,
         start_date: tier.promotion.start_date,
@@ -1137,6 +1249,17 @@ export class PromotionService {
         relations: { product: true },
         select: { cond_id: true, product: { pro_code: true } },
       });
+      // สินค้าตัวเดียวกันเป็นทั้งสินค้าเงื่อนไขและของแถมในโปรเดียวกันไม่ได้ (ทุก tier)
+      const usage = await this.getPromotionProductUsage(
+        tier.promotion.promo_id,
+      );
+      const usedAsCondition = usage.conditions.find(
+        (c) => c.pro_code === data.product_gcode,
+      );
+      if (usedAsCondition)
+        throw new BadRequestException(
+          `สินค้า ${data.product_gcode} เป็นสินค้าเข้าร่วมรายการใน ${usedAsCondition.tier_name} ของโปรนี้อยู่แล้ว ไม่สามารถเลือกเป็นของแถมได้`,
+        );
       await this.promoOverlapService.assertPromotionPairAvailable({
         promo_id: tier.promotion.promo_id,
         start_date: tier.promotion.start_date,
@@ -1898,6 +2021,7 @@ export class PromotionService {
         withDeleted: true,
         relations: {
           creditor: true,
+          creditors: true,
         },
         select: {
           promo_id: true,
@@ -1907,6 +2031,10 @@ export class PromotionService {
           status: true,
           deleted_at: true,
           creditor: {
+            creditor_code: true,
+            creditor_name: true,
+          },
+          creditors: {
             creditor_code: true,
             creditor_name: true,
           },
@@ -1930,6 +2058,7 @@ export class PromotionService {
       where: { promo_id: data.promo_id },
       relations: {
         creditor: true,
+        creditors: true,
         tiers: {
           conditions: { product: true },
           rewards: { giftProduct: true },
@@ -1944,6 +2073,28 @@ export class PromotionService {
       );
     }
 
+    // โปรเก่าที่ตั้งก่อนมีกฎห้ามซ้ำอาจมีสินค้าเป็นทั้งสองฝั่ง — ไม่คัดลอกข้อมูลผิดกฎไปโปรใหม่
+    const tiers = source.tiers ?? [];
+    const conflicts = findBuyGiftConflicts(
+      tiers.flatMap((t) =>
+        (t.conditions ?? []).map((c) => ({
+          pro_code: c.product.pro_code,
+          tier_name: t.tier_name,
+        })),
+      ),
+      tiers.flatMap((t) =>
+        (t.rewards ?? []).map((r) => ({
+          pro_code: r.giftProduct.pro_code,
+          tier_name: t.tier_name,
+        })),
+      ),
+    );
+    if (conflicts.length > 0) {
+      throw new BadRequestException(
+        `คัดลอกไม่ได้ เพราะโปรต้นฉบับมีสินค้าเป็นทั้งสินค้าเข้าร่วมรายการและของแถม: ${formatBuyGiftConflicts(conflicts)} — กรุณาแก้โปรต้นฉบับก่อน`,
+      );
+    }
+
     return await this.dataSource.transaction(async (manager) => {
       await this.assertPromotionTypeAllowed(
         manager,
@@ -1953,6 +2104,7 @@ export class PromotionService {
         manager.create(PromotionEntity, {
           promo_name: source.promo_name,
           creditor: source.creditor ?? undefined,
+          creditors: source.creditors ?? [],
           start_date: toUtcStart(data.start_date),
           end_date: toUtcEnd(data.end_date),
           status: false,
