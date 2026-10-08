@@ -1957,6 +1957,7 @@ export class ProductsService {
           'product.pro_sale_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
+          'product.eng_chiew',
           'product.order_quantity',
           'product.viwers',
           'cart.spc_id',
@@ -3205,6 +3206,9 @@ export class ProductsService {
         productData.pro_stock = data.product_stock as number;
       if (data.product_lowest_stock !== undefined)
         productData.pro_lowest_stock = data.product_lowest_stock as number;
+      // eng_chiew เป็น NOT NULL จึงข้ามเมื่อส่ง null มา ไม่ให้ทั้ง UPDATE ล้ม
+      if (data.eng_chiew !== undefined && data.eng_chiew !== null)
+        productData.eng_chiew = data.eng_chiew;
       if (data.creditor_code !== undefined)
         productData.creditor = toCreditorReference(data.creditor_code);
       if (data.product_price_a !== undefined)

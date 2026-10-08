@@ -46,6 +46,7 @@ export interface ProductEasyAcc {
 
   product_stock?: number | null;
   product_lowest_stock?: number | null;
+  eng_chiew?: boolean | null;
   creditor_code?: string | null;
   pro_category?: number | null;
   drugregister?: string | null;
