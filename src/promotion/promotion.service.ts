@@ -13,8 +13,8 @@ import { PromotionEntity } from './promotion.entity';
 import {
   Repository,
   DeepPartial,
-  LessThan,
   MoreThanOrEqual,
+  Between,
   LessThanOrEqual,
   DataSource,
   In,
@@ -185,7 +185,7 @@ export class PromotionService {
     const [policy, activePromotions] = await Promise.all([
       this.promotionTypePolicyRepo.findOneBy({ id: 1 }),
       this.promotionRepo.find({
-        where: { status: true },
+        where: { status: true, end_date: MoreThanOrEqual(new Date()) },
         relations: { creditor: true },
         select: {
           promo_id: true,
@@ -246,6 +246,7 @@ export class PromotionService {
         .createQueryBuilder('promotion')
         .leftJoinAndSelect('promotion.creditor', 'creditor')
         .where('promotion.status = :status', { status: true })
+        .andWhere('promotion.end_date >= :now', { now: new Date() })
         .setLock('pessimistic_write')
         .getMany();
 
@@ -400,15 +401,22 @@ export class PromotionService {
     };
   }
 
+  /**
+   * เคลียร์ของแถมในตะกร้าของโปรที่หมดเวลาแล้ว — ไม่ลบโปร (แอดมินลบเองจากหลังบ้าน)
+   * โปรที่หมดเวลาแต่ยังไม่ถูกลบจึงต้องกรองด้วย end_date ทุกที่ที่หมายถึง "โปรที่ใช้งานอยู่"
+   */
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   // @Cron(CronExpression.EVERY_30_SECONDS)
-  async cronDeletePromotionOutOfDate() {
+  async cronCleanupExpiredPromotions() {
     try {
       const today = new Date();
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
+      // โปรไม่ถูกลบแล้ว ถ้าไม่จำกัดช่วง จะวนโปรที่หมดเวลาทั้งหมดทุกคืน — ย้อนดู 7 วันเผื่อ cron พลาดบางคืน
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const promo = await this.promotionRepo.find({
-        where: { end_date: LessThan(today) },
+        where: { end_date: Between(sevenDaysAgo, today) },
       });
       if (promo.length === 0) return;
 
@@ -428,11 +436,14 @@ export class PromotionService {
               reward_expire: tomorrow,
             },
           );
-          await this.promotionRepo.softDelete({ promo_id: p.promo_id });
         }),
       );
     } catch (error) {
-      rethrowAsHttp(error, this.logger, 'Something Error in Delete Promotion');
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Something Error in Cleanup Expired Promotion',
+      );
     }
   }
 
@@ -1313,7 +1324,9 @@ export class PromotionService {
       this.logger.log('Fetching active promotions with all relations');
 
       // ดึงข้อมูลพร้อม relations ทั้งหมดในครั้งเดียว
+      // ตัดโปรที่หมดเวลาแล้ว (ไม่ถูกลบอัตโนมัติแล้ว รอแอดมินลบเอง)
       const promotions = await this.promotionRepo.find({
+        where: { end_date: MoreThanOrEqual(new Date()) },
         relations: {
           tiers: {
             conditions: {
