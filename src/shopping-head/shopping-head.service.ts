@@ -140,6 +140,8 @@ export class ShoppingHeadService {
           // 'order.spo_id',
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_imgmain',
         ])
         .orderBy('head.soh_datetime', 'DESC')

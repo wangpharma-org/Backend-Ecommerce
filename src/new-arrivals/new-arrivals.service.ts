@@ -1,13 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { NewArrival } from './new-arrival.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { ClientKafka } from '@nestjs/microservices';
 import * as dayjs from 'dayjs';
+import { PreorderService } from 'src/preorder/preorder.service';
+import { rethrowAsHttp } from 'src/common/http-error.util';
+import { LotArrivalInput, LotService } from 'src/lot/lot.service';
 
 @Injectable()
 export class NewArrivalsService {
+  private readonly logger = new Logger(NewArrivalsService.name);
+
   constructor(
     @InjectRepository(NewArrival)
     private readonly newArrivalsRepository: Repository<NewArrival>,
@@ -15,6 +20,8 @@ export class NewArrivalsService {
     private readonly userRepo: Repository<UserEntity>,
     @Inject('OrderPickingService')
     private readonly kafkaClient: ClientKafka,
+    private readonly lotService: LotService,
+    private readonly preorderService: PreorderService,
   ) {}
 
   private async isL16Member(
@@ -56,6 +63,7 @@ export class NewArrivalsService {
         amount: number;
         unit: string;
       }[] = [];
+      const arrivedLots: LotArrivalInput[] = [];
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
@@ -99,17 +107,38 @@ export class NewArrivalsService {
         });
 
         arrData.push(newArrivalEntity);
+        arrivedLots.push({
+          pro_code,
+          lot: LOT,
+          mfg: MFG,
+          exp: EXP,
+          amount,
+          received_at: normalizedDate,
+        });
       }
       await queryRunner.manager.save(arrData);
+
+      // ECWC-643: เก็บ lot + จำนวนรับเข้าลงตาราง lot ด้วย — เฉพาะรายการใหม่ (รายการซ้ำถูกข้ามด้านบน
+      // ไม่งั้น amount จะถูกบวกซ้ำ)
+      await this.lotService.upsertArrivedLots(arrivedLots, queryRunner.manager);
 
       // ส่ง Kafka event เฉพาะเมื่อบันทึกข้อมูลใหม่สำเร็จ
       this.kafkaClient.emit('newArrival_insert', { kafkaEvents });
 
       await queryRunner.commitTransaction();
+
+      // แจ้งร้านที่จอง pre-order สินค้าเหล่านี้ (ไม่ทำให้การรับของล้มถ้าแจ้งไม่สำเร็จ)
+      if (kafkaEvents.length) {
+        this.preorderService
+          .handleArrivals(kafkaEvents.map((e) => e.pro_code))
+          .catch((err: unknown) =>
+            this.logger.error('preorder handleArrivals failed', String(err)),
+          );
+      }
       return { message: 'New arrival added successfully' };
-    } catch {
+    } catch (error) {
       await queryRunner.rollbackTransaction();
-      throw new Error('Error adding new arrival');
+      rethrowAsHttp(error, this.logger, 'Error adding new arrival');
     } finally {
       await queryRunner.release();
     }
@@ -157,6 +186,8 @@ export class NewArrivalsService {
         'newArrival.createdAt',
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_priceA',
         'product.pro_priceB',
         'product.pro_priceC',

@@ -9,6 +9,8 @@ import { HappyHourSlotLogEntity } from './happy-hour-slot-log.entity';
 import { HappyHourConfigLogEntity } from './happy-hour-config-log.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
+import { CreditorEntity } from 'src/products/creditor.entity';
 
 /**
  * HappyHourService unit tests
@@ -36,15 +38,34 @@ const buildSlot = (overrides: SlotRow = {}): HappyHourSlotEntity => ({
   ...overrides,
 }) as HappyHourSlotEntity;
 
+/**
+ * mock QueryBuilder ตามที่ service ใช้จริง: join rewards/minOrderProducts แล้ว getOne (slot ที่ตรงเวลา)
+ * หรือ getMany ตอนเช็ค overlap — countValue > 0 = มี slot ตลอดวันชนอยู่แน่ๆ
+ */
 const createQbMock = (returnSlot: HappyHourSlotEntity | null, countValue = 0) => {
   const qb = {
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
     getOne: jest.fn().mockResolvedValue(returnSlot),
     getCount: jest.fn().mockResolvedValue(countValue),
+    getMany: jest.fn().mockResolvedValue(
+      countValue > 0
+        ? [buildSlot({ id: 999, start_time: '00:00:00', end_time: '23:59:00' })]
+        : [],
+    ),
   };
   return qb;
 };
+
+/** productRepo.createQueryBuilder ตอน enrich reward ด้วยชื่อ/รูปสินค้า — ไม่มีสินค้าเป็นค่าเริ่มต้น */
+const createProductQbMock = (rows: unknown[] = []) => ({
+  select: jest.fn().mockReturnThis(),
+  where: jest.fn().mockReturnThis(),
+  getMany: jest.fn().mockResolvedValue(rows),
+});
 
 describe('HappyHourService', () => {
   let service: HappyHourService;
@@ -71,7 +92,8 @@ describe('HappyHourService', () => {
       create: jest.fn((x) => x),
       save: jest.fn(async (x) => (Array.isArray(x) ? x : { id: 1, ...x })),
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
-      createQueryBuilder: jest.fn(),
+      // ค่าเริ่มต้น: ไม่มี slot ชนเวลา — เทสที่ต้องการชนใช้ mockReturnValueOnce ทับ
+      createQueryBuilder: jest.fn(() => createQbMock(null, 0)),
     };
     rewardRepo = {
       create: jest.fn((x) => x),
@@ -95,7 +117,7 @@ describe('HappyHourService', () => {
     };
     productRepo = {
       findOne: jest.fn(),
-      createQueryBuilder: jest.fn(),
+      createQueryBuilder: jest.fn(() => createProductQbMock()),
     };
     productUnitRepo = {
       findOne: jest.fn().mockResolvedValue(null),
@@ -111,6 +133,14 @@ describe('HappyHourService', () => {
         { provide: getRepositoryToken(HappyHourConfigLogEntity), useValue: configLogRepo },
         { provide: getRepositoryToken(ProductEntity), useValue: productRepo },
         { provide: getRepositoryToken(ProductUnitEntity), useValue: productUnitRepo },
+        {
+          provide: getRepositoryToken(HappyHourSlotMinProductEntity),
+          useValue: { find: jest.fn().mockResolvedValue([]), save: jest.fn(), delete: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(CreditorEntity),
+          useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -121,10 +151,11 @@ describe('HappyHourService', () => {
     it('seeds DEFAULT_SLOTS when slot table empty', async () => {
       slotRepo.count.mockResolvedValueOnce(0);
       await service.onModuleInit();
+      // save ทีละ slot เพื่อเอา id ไปผูก reward ต่อ
       expect(slotRepo.create).toHaveBeenCalledTimes(4);
-      expect(slotRepo.save).toHaveBeenCalledTimes(1);
-      const savedArg = slotRepo.save.mock.calls[0][0];
-      expect(savedArg).toHaveLength(4);
+      expect(slotRepo.save).toHaveBeenCalledTimes(4);
+      // DEFAULT_SLOTS ปัจจุบันไม่มี reward_pro_codes จึงไม่แตะ rewardRepo
+      expect(rewardRepo.save).not.toHaveBeenCalled();
     });
 
     it('does not seed when slots already exist', async () => {
@@ -139,7 +170,7 @@ describe('HappyHourService', () => {
     it('BUG-002: default slots contain end_time "24:00" (non-canonical clock value)', async () => {
       slotRepo.count.mockResolvedValueOnce(0);
       await service.onModuleInit();
-      const savedSlots = slotRepo.save.mock.calls[0][0] as SlotRow[];
+      const savedSlots = slotRepo.save.mock.calls.map((c: unknown[]) => c[0]) as SlotRow[];
       const has2400 = savedSlots.some((s) => s.end_time === '24:00');
       expect(has2400).toBe(true);
     });
@@ -185,7 +216,8 @@ describe('HappyHourService', () => {
       slotRepo.find.mockResolvedValueOnce(rows);
       const result = await service.getSlots();
       expect(slotRepo.find).toHaveBeenCalledWith({ order: { start_time: 'ASC' } });
-      expect(result).toBe(rows);
+      // ผลลัพธ์ถูก enrich (rewards มีชื่อ/รูปสินค้า) จึงเป็น object ใหม่ เทียบด้วย id
+      expect(result.map((s) => s?.id)).toEqual([1, 2]);
     });
   });
 
@@ -221,14 +253,18 @@ describe('HappyHourService', () => {
       );
     });
 
-    it('throws BadRequest when start_time >= end_time', async () => {
+    it('throws BadRequest when start_time equals end_time', async () => {
       await expect(
         service.createSlot({ ...baseDto, start_time: '12:00', end_time: '12:00' } as any, 'test-user'),
       ).rejects.toThrow(BadRequestException);
+    });
 
+    it('allows cross-midnight slot (start_time > end_time)', async () => {
+      // 22:00–02:00 คือช่วง happy hour จริงของร้าน ห้ามปัดตก
+      slotRepo.save.mockResolvedValueOnce({ id: 3 });
       await expect(
-        service.createSlot({ ...baseDto, start_time: '13:00', end_time: '10:00' } as any, 'test-user'),
-      ).rejects.toThrow(BadRequestException);
+        service.createSlot({ ...baseDto, start_time: '22:00', end_time: '02:00' } as any, 'test-user'),
+      ).resolves.toBeDefined();
     });
 
     it('throws BadRequest on overlap', async () => {
@@ -286,7 +322,8 @@ describe('HappyHourService', () => {
       slotRepo.save.mockImplementationOnce(async (s: any) => s);
 
       await service.updateSlot(1, { start_time: '10:30', end_time: '11:30' }, 'test-user');
-      expect(qb.andWhere).toHaveBeenCalledWith(
+      // validateNoOverlap ใช้ where (ไม่ใช่ andWhere) ตัดตัวเองออกก่อน getMany
+      expect(qb.where).toHaveBeenCalledWith(
         expect.stringContaining('slot.id != :excludeId'),
         { excludeId: 1 },
       );
@@ -391,7 +428,7 @@ describe('HappyHourService', () => {
      * BUG-003: shape mismatch — calc ไม่คืน totalReward; simulate คืน
      * Test นี้เพียง assert shape ปัจจุบันเพื่อ pin documentation ของ bug
      */
-    it('BUG-003: return shape lacks total_reward (calc vs simulate divergence)', async () => {
+    it('BUG-003 (fixed): calc returns totalReward like simulate does', async () => {
       configRepo.findOneBy.mockResolvedValueOnce({ id: 1, is_enabled: true });
       const slot = buildSlot({
         min_order_amount: '1000' as unknown as number,
@@ -403,8 +440,8 @@ describe('HappyHourService', () => {
 
       const result = await service.calcHappyHourReward(2500);
       expect(result).not.toBeNull();
-      expect(result).not.toHaveProperty('total_reward');
-      expect(result).not.toHaveProperty('totalReward');
+      // 2 cards × 100 + excess 500/500 × 10 = 210
+      expect(result!.totalReward).toBe(210);
     });
   });
 

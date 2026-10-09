@@ -20,6 +20,7 @@ export interface UpdateProductImageEcommercePayload {
 export interface ProductEasyAcc {
   product_code: string;
   product_name?: string;
+  product_nameTH?: string | null;
   product_nameEN?: string | null;
   product_nameSale?: string | null;
   product_genericname?: string | null;
@@ -37,6 +38,7 @@ export interface ProductEasyAcc {
   product_price_a?: number | null;
   product_price_b?: number | null;
   product_price_c?: number | null;
+  product_cost?: number | null;
 
   product_ratio_1?: number | null;
   product_ratio_2?: number | null;
@@ -44,6 +46,7 @@ export interface ProductEasyAcc {
 
   product_stock?: number | null;
   product_lowest_stock?: number | null;
+  eng_chiew?: boolean | null;
   creditor_code?: string | null;
   pro_category?: number | null;
   drugregister?: string | null;
@@ -165,7 +168,9 @@ export class ProductListner {
     @Payload() message: UpdateProductImageEcommercePayload,
   ) {
     try {
-      const oldImages = await this.productServerce.getProductImageUrls(message.product_code);
+      const oldImages = await this.productServerce.getProductImageUrls(
+        message.product_code,
+      );
       await this.productServerce.updateProductImageFromCentral(message);
 
       if (message.reply_id) {

@@ -3,14 +3,18 @@ import { NewArrivalsService } from './new-arrivals.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { NewArrival } from './new-arrival.entity';
 import { ProductsModule } from 'src/products/products.module';
+import { LotModule } from 'src/lot/lot.module';
 import { UserEntity } from 'src/users/users.entity';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+import { PreorderModule } from 'src/preorder/preorder.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([NewArrival, UserEntity]),
     ProductsModule,
+    LotModule,
+    PreorderModule,
     ClientsModule.registerAsync([
       {
         name: 'OrderPickingService',

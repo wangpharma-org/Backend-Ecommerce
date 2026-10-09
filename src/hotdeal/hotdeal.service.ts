@@ -17,6 +17,7 @@ import * as AWS from 'aws-sdk';
 import { BannerHotdealEntity } from './hotdeal-banner.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
+import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -51,6 +52,7 @@ export class HotdealService {
     private readonly shoppingCartService: ShoppingCartService,
     @InjectRepository(BannerHotdealEntity)
     private readonly bannerHotdealRepo: Repository<BannerHotdealEntity>,
+    private readonly promoOverlapService: PromoOverlapService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -347,6 +349,10 @@ export class HotdealService {
           ),
         };
         await this.assertProductsAreAvailableForNewHotdeal(normalizedInput);
+        await this.promoOverlapService.assertHotdealPairAvailable(
+          normalizedInput.pro1_code,
+          normalizedInput.pro2_code,
+        );
         const existingHotdeal = await this.hotdealRepo.findOne({
           where: {
             product: { pro_code: normalizedInput.pro1_code },
@@ -551,6 +557,8 @@ export class HotdealService {
       return {
         pro_code: product.pro_code,
         pro_name: product.pro_name,
+        pro_nameTH: product.pro_nameTH,
+        pro_nameSale: product.pro_nameSale,
         pro_priceA: product.pro_priceA,
         pro_priceB: product.pro_priceB,
         pro_priceC: product.pro_priceC,
@@ -654,7 +662,7 @@ export class HotdealService {
       pro_code: string;
       match: boolean;
       countFreeBies: string;
-      product2: { pro_code: string; pro_name: string; pro_imgmain?: string };
+      product2: { pro_code: string; pro_name: string; pro_nameTH?: string | null; pro_nameSale?: string | null; pro_imgmain?: string };
       hotdeal: {
         pro1_amount: string;
         pro1_unit: string;
@@ -727,6 +735,8 @@ export class HotdealService {
           product2: {
             pro_code: found.product2?.pro_code || '',
             pro_name: found.product2?.pro_name || '',
+            pro_nameTH: found.product2?.pro_nameTH,
+            pro_nameSale: found.product2?.pro_nameSale,
             pro_imgmain: found.product2?.pro_imgmain || '',
           },
           hotdeal: {
@@ -964,10 +974,14 @@ export class HotdealService {
         product: {
           pro_code: true,
           pro_name: true,
+          pro_nameTH: true,
+          pro_nameSale: true,
         },
         product2: {
           pro_code: true,
           pro_name: true,
+          pro_nameTH: true,
+          pro_nameSale: true,
         },
       },
     });
@@ -1098,10 +1112,14 @@ export class HotdealService {
         product: {
           pro_code: true,
           pro_name: true,
+          pro_nameTH: true,
+          pro_nameSale: true,
         },
         product2: {
           pro_code: true,
           pro_name: true,
+          pro_nameTH: true,
+          pro_nameSale: true,
         },
       },
       order: { pro1_amount: 'ASC' },

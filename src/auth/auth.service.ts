@@ -4,6 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from 'src/users/users.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
+import * as dayjs from 'dayjs';
 import { lastValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import * as AWS from 'aws-sdk';
@@ -18,6 +20,9 @@ export interface SigninResponse {
 }
 
 export const ExpireSessionResponse = 15;
+
+// refresh_token อายุนานสุด 7 วัน (mobile_app) — record ที่เก่ากว่านี้ verify JWT ไม่ผ่านแน่นอนแล้ว
+const REFRESH_TOKEN_CLEANUP_DAYS = 7;
 
 @Injectable()
 export class AuthService {
@@ -529,6 +534,21 @@ export class AuthService {
       this.logger.error('refreshToken failed', error);
       throw new Error('Refresh token expired');
     }
+  }
+
+  // record ที่ created_at เป็น null คือของเก่าก่อน ECWC-631 — ไม่แตะ ให้ทีมเคลียร์เองภายหลัง
+  @Cron('0 1 * * *')
+  async cleanupExpiredRefreshTokens(): Promise<void> {
+    const cutoff = dayjs()
+      .subtract(REFRESH_TOKEN_CLEANUP_DAYS, 'day')
+      .toDate();
+
+    await this.refreshTokenRepo
+      .createQueryBuilder()
+      .delete()
+      .where('created_at IS NOT NULL')
+      .andWhere('created_at < :cutoff', { cutoff })
+      .execute();
   }
 
   async hashpassword() {

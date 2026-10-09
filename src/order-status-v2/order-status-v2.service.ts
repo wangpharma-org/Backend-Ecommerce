@@ -15,6 +15,7 @@ import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { UserEntity } from '../users/users.entity';
 import { ProductsService } from '../products/products.service';
 import { StoreVisibilityService } from '../store-visibility/store-visibility.service';
+import { DhlTrackingService } from '../dhl-tracking/dhl-tracking.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
   EcomLastDeliveredStore,
@@ -106,6 +107,8 @@ interface PickingOrderDetailBatchItem {
 
 interface OrderPickingStatusRes {
   sh_running: string;
+  // Order-picking-service เพิ่มภายหลัง จึงรองรับ response จาก instance ที่ยังไม่ได้ deploy field นี้ด้วย
+  bill_number?: string | null;
   status: 'picking' | 'checking' | 'ready' | 'blocked';
   picking_time: string | null;
   picked_time: string | null;
@@ -119,7 +122,9 @@ interface LogisticTrackingV2Res {
   status: 'DELIVERING' | 'DONE' | 'BACK';
   store_name: string;
   driver_name: string;
+  driver_emp_code: string | null;
   driver_tel: string | null;
+  departure_time: string | null;
   finished_at: string | null;
   checkpoint: {
     type: 'DEPARTURE' | 'STORE_DELIVERED';
@@ -161,6 +166,7 @@ export class OrderStatusV2Service {
     private readonly userRepo: Repository<UserEntity>,
     private readonly productService: ProductsService,
     private readonly storeVisibilityService: StoreVisibilityService,
+    private readonly dhlTrackingService: DhlTrackingService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
@@ -177,7 +183,6 @@ export class OrderStatusV2Service {
       this.configService.get<string>('OLD_WEBSITE_URL') ??
       'https://wangpharma.com';
   }
-
 
   // ECWC-398/406/4xx: รายการ order พร้อม filter วันที่ (เลือกเป็นช่วงได้) + pagination — รวมทั้งบิล
   // ปกติของ ecommerce เองและบิลที่มีฝั่ง order-picking-service แต่ไม่มีใน shopping_head ของ
@@ -379,73 +384,73 @@ export class OrderStatusV2Service {
     const [orders, fetchedPickingBatch] = await Promise.all([
       Promise.all(
         result.map(async (item) => {
-            const groupedDetails: Record<
-              string,
-              {
-                pro_code: string;
-                product: { pro_code: string; pro_imgmain: string };
-                items: { spo_id: number; spo_qty: number; spo_unit: string }[];
-              }
-            > = {};
-
-            for (const detail of item.details) {
-              const proCode = detail.product.pro_code;
-              if (!groupedDetails[proCode]) {
-                groupedDetails[proCode] = {
-                  pro_code: proCode,
-                  product: detail.product,
-                  items: [],
-                };
-              }
-              groupedDetails[proCode].items.push({
-                spo_id: detail.spo_id,
-                spo_qty: detail.spo_qty,
-                spo_unit: detail.spo_unit,
-              });
+          const groupedDetails: Record<
+            string,
+            {
+              pro_code: string;
+              product: { pro_code: string; pro_imgmain: string };
+              items: { spo_id: number; spo_qty: number; spo_unit: string }[];
             }
+          > = {};
 
-            // สินค้าเก่า/ยกเลิกขายบางตัวไม่มีข้อมูล unit แล้ว calculateSmallestUnit จะ throw
-            // ทั้งบิล — กันไม่ให้บิลอื่นในหน้าเดียวกันแสดงผลไม่ได้ไปด้วย fallback เป็น 0 ต่อรายการ
-            const totalSmallestUnit = await Promise.all(
-              Object.values(groupedDetails).map(async (group) => {
-                const orderItems = group.items.map((line) => ({
-                  unit: line.spo_unit,
-                  quantity: parseFloat(String(line.spo_qty)),
-                  pro_code: group.pro_code,
-                }));
-                try {
-                  return await this.productService.calculateSmallestUnit(
-                    orderItems,
-                  );
-                } catch (error: unknown) {
-                  this.logger.error(
-                    `Error calculating smallest unit for pro_code ${group.pro_code} (soh_running ${item.soh_running})`,
-                    error,
-                  );
-                  return 0;
-                }
+          for (const detail of item.details) {
+            const proCode = detail.product.pro_code;
+            if (!groupedDetails[proCode]) {
+              groupedDetails[proCode] = {
+                pro_code: proCode,
+                product: detail.product,
+                items: [],
+              };
+            }
+            groupedDetails[proCode].items.push({
+              spo_id: detail.spo_id,
+              spo_qty: detail.spo_qty,
+              spo_unit: detail.spo_unit,
+            });
+          }
+
+          // สินค้าเก่า/ยกเลิกขายบางตัวไม่มีข้อมูล unit แล้ว calculateSmallestUnit จะ throw
+          // ทั้งบิล — กันไม่ให้บิลอื่นในหน้าเดียวกันแสดงผลไม่ได้ไปด้วย fallback เป็น 0 ต่อรายการ
+          const totalSmallestUnit = await Promise.all(
+            Object.values(groupedDetails).map(async (group) => {
+              const orderItems = group.items.map((line) => ({
+                unit: line.spo_unit,
+                quantity: parseFloat(String(line.spo_qty)),
+                pro_code: group.pro_code,
+              }));
+              try {
+                return await this.productService.calculateSmallestUnit(
+                  orderItems,
+                );
+              } catch (error: unknown) {
+                this.logger.error(
+                  `Error calculating smallest unit for pro_code ${group.pro_code} (soh_running ${item.soh_running})`,
+                  error,
+                );
+                return 0;
+              }
+            }),
+          );
+
+          return {
+            soh_running: item.soh_running,
+            soh_datetime: item.soh_datetime,
+            soh_sumprice: item.soh_sumprice,
+            soh_coin_recieve: item.soh_coin_recieve,
+            details: item.details.length,
+            totalSmallestUnit: Object.values(groupedDetails).map(
+              (group, index) => ({
+                pro_code: group.pro_code,
+                totalSmallestUnit: totalSmallestUnit[index],
               }),
-            );
-
-            return {
-              soh_running: item.soh_running,
-              soh_datetime: item.soh_datetime,
-              soh_sumprice: item.soh_sumprice,
-              soh_coin_recieve: item.soh_coin_recieve,
-              details: item.details.length,
-              totalSmallestUnit: Object.values(groupedDetails).map(
-                (group, index) => ({
-                  pro_code: group.pro_code,
-                  totalSmallestUnit: totalSmallestUnit[index],
-                }),
-              ),
-              Newdetails: Object.values(groupedDetails),
-            };
-          }),
-        ),
+            ),
+            Newdetails: Object.values(groupedDetails),
+          };
+        }),
+      ),
       unknownStatusRunnings.length > 0
         ? this.fetchPickingStatusBatch(unknownStatusRunnings, mem_code)
-        : Promise.resolve({}),
+        : Promise.resolve<Record<string, PickingBatchStatus>>({}),
     ]);
 
     // status/status_label ตรงนี้เป็นค่า placeholder เท่านั้น — getOrderList resolve ค่าจริงจาก
@@ -552,7 +557,8 @@ export class OrderStatusV2Service {
     // เฉยๆ ไม่งั้นยอดรวมในหน้ารายการจะไม่ตรงกับยอดที่คิดจริงหลัง QC
     const soh_sumprice = detail.items.reduce(
       (sum, i) =>
-        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
+        sum +
+        (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -638,7 +644,8 @@ export class OrderStatusV2Service {
     // ยอดรวมเต็มจำนวนทั้งที่สินค้าบางรายการโดน RT (ตัดเป็น 0) หรือตรวจนับได้ไม่ครบ (คิดตามจำนวนจริง)
     const soh_sumprice = items.reduce(
       (sum, i) =>
-        sum + (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
+        sum +
+        (i.qc_price_total ?? i.price_total ?? (i.price_unit ?? 0) * i.qty),
       0,
     );
 
@@ -754,6 +761,8 @@ export class OrderStatusV2Service {
       throw new NotFoundException(`Order ${soh_running} not found`);
     }
 
+    const dhl_tracking_numbers =
+      await this.dhlTrackingService.findTrackingNumbers(soh_running);
     const picking = pickingRaw
       ? await this.fillFallbackPrices(pickingRaw, soh_running)
       : pickingRaw;
@@ -763,6 +772,8 @@ export class OrderStatusV2Service {
 
     return {
       soh_running,
+      bill_number: picking?.bill_number ?? null,
+      dhl_tracking_numbers,
       status,
       status_label: ECOM_ORDER_TIMELINE_LABEL[status],
       picking: picking
@@ -779,6 +790,7 @@ export class OrderStatusV2Service {
         ? {
             store_name: delivery.store_name,
             driver_name: delivery.driver_name || null,
+            driver_emp_code: delivery.driver_emp_code,
             driver_tel: delivery.driver_tel,
             // map ทีละ field — checkpoint จาก logistics มี mem_code ของร้านอื่นติดมา ห้ามส่งต่อ
             checkpoint: delivery.checkpoint
@@ -789,6 +801,7 @@ export class OrderStatusV2Service {
                   time: delivery.checkpoint.time,
                 }
               : null,
+            departure_time: delivery.departure_time,
             store_latitude: delivery.store_latitude,
             store_longitude: delivery.store_longitude,
             finished_at: delivery.finished_at,
@@ -1166,6 +1179,21 @@ export class OrderStatusV2Service {
     }
   }
 
+  async getDeliveringCount(mem_code: string): Promise<number> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<{ count: number }>(
+          `${this.logisticUrl}/api/logistic/tracking/delivering-count`,
+          { params: { mem_code } },
+        ),
+      );
+      return response.data.count;
+    } catch (error: unknown) {
+      this.logger.error('Error fetch delivering count', error);
+      return 0;
+    }
+  }
+
   private formatThaiDate(date: Date, withTime = false): string {
     const d = String(date.getDate()).padStart(2, '0');
     const m = THAI_MONTHS_ABBR[date.getMonth()];
@@ -1372,7 +1400,9 @@ export class OrderStatusV2Service {
     const addressText = member ? this.buildMemberAddressText(member) : '';
     const page = filtered.slice(offset, offset + limit);
 
-    return page.map((order) => this.buildLegacyOrderListItem(order, addressText));
+    return page.map((order) =>
+      this.buildLegacyOrderListItem(order, addressText),
+    );
   }
 
   private buildLegacyOrderListItem(
@@ -1433,19 +1463,17 @@ export class OrderStatusV2Service {
       this.userRepo.findOne({ where: { mem_code } }),
     ]);
 
-    const products: LegacyOrderDetailProduct[] = detail.details.map(
-      (item) => ({
-        thumbnail: this.resolveLegacyImageUrl(item.product.pro_imgmain),
-        pro_code: item.product.pro_code,
-        pro_name: item.product.pro_name,
-        order_amount: String(item.spo_qty),
-        Unit: item.spo_unit,
-        price_unit: (item.spo_price_unit ?? 0).toFixed(2),
-        discount: '0.00',
-        price_total: (item.spo_total_decimal ?? 0).toFixed(2),
-        qc_amount: 0,
-      }),
-    );
+    const products: LegacyOrderDetailProduct[] = detail.details.map((item) => ({
+      thumbnail: this.resolveLegacyImageUrl(item.product.pro_imgmain),
+      pro_code: item.product.pro_code,
+      pro_name: item.product.pro_name,
+      order_amount: String(item.spo_qty),
+      Unit: item.spo_unit,
+      price_unit: (item.spo_price_unit ?? 0).toFixed(2),
+      discount: '0.00',
+      price_total: (item.spo_total_decimal ?? 0).toFixed(2),
+      qc_amount: 0,
+    }));
 
     const timeline = this.buildLegacyTimeline(detail);
     const netPrice = detail.soh_sumprice - detail.discount;

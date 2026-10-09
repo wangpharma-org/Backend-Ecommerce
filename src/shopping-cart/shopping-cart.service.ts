@@ -36,10 +36,16 @@ import {
   type PriceOption,
 } from 'src/promotion/promo-line-value';
 import * as dayjs from 'dayjs';
+import { PreorderProductEntity } from 'src/preorder/preorder-product.entity';
+import { PreorderCampaignStatus } from 'src/preorder/preorder-campaign.entity';
+import { rethrowAsHttp } from 'src/common/http-error.util';
+import { selectCurrentLots } from 'src/lot/lot-display.util';
 
 export interface ShoppingProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -76,6 +82,8 @@ export interface RecommendedProduct {
   pro_code: string;
   pro_imgmain: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   recommend_rank?: number | null;
 }
 
@@ -84,6 +92,9 @@ export interface LotItem {
   lot: string;
   mfg: string;
   exp: string;
+  // ECWC-643: ใช้เลือก lot ที่แสดง ไม่ส่งออกไปหน้าเว็บ
+  amount?: number | null;
+  received_at?: Date | null;
 }
 
 export interface ShoppingCart {
@@ -108,6 +119,8 @@ export interface FlashSale {
 interface RawProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -125,6 +138,8 @@ interface RawProductCart {
   mfg: string;
   exp: string;
   lot_pro_code: string;
+  lot_amount: number | null;
+  lot_received_at: Date | null;
   spc_id: number;
   spc_amount: string;
   spc_unit_enum: '1' | '2' | '3';
@@ -140,6 +155,8 @@ interface RawProductCart {
   recommended_id: number;
   recommended_pro_imgmain?: string;
   recommended_pro_name?: string;
+  recommended_pro_nameTH?: string | null;
+  recommended_pro_nameSale?: string | null;
   recommended_pro_code?: string;
   pro_stock: number;
   order_quantity: number;
@@ -147,6 +164,8 @@ interface RawProductCart {
   recommend_rank?: number;
   replace_pro_code?: string;
   replace_pro_name?: string;
+  replace_pro_nameTH?: string | null;
+  replace_pro_nameSale?: string | null;
   replace_pro_imgmain?: string;
   recommended_replace_pro_code?: string;
 }
@@ -154,6 +173,8 @@ interface RawProductCart {
 export interface TransformedProductCart {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -166,11 +187,15 @@ export interface TransformedProductCart {
   replace_pro_code: any;
   replace_pro_imgmain: any;
   replace_pro_name: any;
+  replace_pro_nameTH?: string | null;
+  replace_pro_nameSale?: string | null;
   lot_id: any;
   lot: any;
   mfg: any;
   exp: any;
   lot_pro_code: any;
+  lot_amount: number | null;
+  lot_received_at: Date | null;
   spc_id: number;
   spc_amount: string;
   spc_unit_enum: string;
@@ -189,6 +214,8 @@ export interface TransformedProductCart {
   recommended_pro_code: any;
   recommended_pro_imgmain: any;
   recommended_pro_name: any;
+  recommended_pro_nameTH?: string | null;
+  recommended_pro_nameSale?: string | null;
   recommend_rank: any;
   recommended_replace_pro_code: any;
   pro_unit1: string;
@@ -269,6 +296,8 @@ export interface CartMutationWithCompanyDayContext extends CartMutationResult {
 export interface ShoppingCartItemWithProduct extends ShoppingCartEntity {
   pro_code: string;
   pro_name: string;
+  pro_nameTH?: string | null;
+  pro_nameSale?: string | null;
   pro_imgmain: string;
   pro_priceA: string;
   pro_priceB: string;
@@ -312,7 +341,38 @@ export class ShoppingCartService {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     @InjectRepository(DeleteCartEntity)
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
+    @InjectRepository(PreorderProductEntity)
+    private readonly preorderProductRepo: Repository<PreorderProductEntity>,
   ) {}
+
+  /** pro_code ที่กำลังเปิดจองล่วงหน้า (campaign เปิดและเริ่มแล้ว) ต้องสั่งผ่านหน้า Pre-order เท่านั้น ห้ามเข้าตะกร้าปกติ */
+  private async getActivePreorderProCodes(
+    proCodes: string[],
+  ): Promise<Set<string>> {
+    const codes = [...new Set(proCodes.filter(Boolean))];
+    if (!codes.length) return new Set();
+    const now = new Date();
+    const rows = await this.preorderProductRepo
+      .createQueryBuilder('p')
+      .innerJoin('p.campaign', 'c')
+      .where('p.pro_code IN (:...codes)', { codes })
+      .andWhere('p.is_active = 1')
+      .andWhere('c.status = :status', { status: PreorderCampaignStatus.OPEN })
+      .andWhere('(c.starts_at IS NULL OR c.starts_at <= :now)', { now })
+      .andWhere('(c.ends_at IS NULL OR c.ends_at >= :now)', { now })
+      .select('p.pro_code', 'pro_code')
+      .getRawMany<{ pro_code: string }>();
+    return new Set(rows.map((r) => r.pro_code));
+  }
+
+  private async ensureNotPreorderRestricted(pro_code: string) {
+    const restricted = await this.getActivePreorderProCodes([pro_code]);
+    if (restricted.has(pro_code)) {
+      throw new BadRequestException(
+        'สินค้านี้เปิดจองล่วงหน้า (Pre-order) แล้ว กรุณาสั่งซื้อผ่านหน้า Pre-order',
+      );
+    }
+  }
 
   private convertUnitNameToEnum(
     unitName: string,
@@ -384,7 +444,10 @@ export class ShoppingCartService {
   private async calculateSmallestUnitWithTransformed(
     orderItems: Array<{ unit: string; quantity: number; pro_code: string }>,
     pro_code: string,
-    unitsMap?: Map<string, { level: number; unit_name: string; ratio: number }[]>,
+    unitsMap?: Map<
+      string,
+      { level: number; unit_name: string; ratio: number }[]
+    >,
   ): Promise<number> {
     let total = 0;
     try {
@@ -690,7 +753,9 @@ export class ShoppingCartService {
     const toRemove = cart.filter(
       (c) =>
         c.is_reward &&
-        Object.entries(filter).every(([k, v]) => (c as any)[k] === v),
+        Object.entries(filter).every(
+          ([k, v]) => (c as unknown as Record<string, unknown>)[k] === v,
+        ),
     );
     if (toRemove.length) await this.shoppingCartRepo.remove(toRemove);
   }
@@ -818,7 +883,11 @@ export class ShoppingCartService {
         ops.push(
           this.shoppingCartRepo.update(
             { spc_id: line.spc_id },
-            { promo_id: null as any, tier_id: null as any },
+            // คอลัมน์ทั้งคู่เป็น int NULL ใน DB แต่ entity ประกาศเป็น number จึงต้อง cast
+            {
+              promo_id: null,
+              tier_id: null,
+            } as unknown as Partial<ShoppingCartEntity>,
           ),
         );
       }
@@ -906,8 +975,7 @@ export class ShoppingCartService {
         await this.checkPromotionReward(member.mem_code, member.mem_price);
       }
     } catch (error) {
-      this.logger.error('Error in Check Cart Promotion:', error);
-      throw new Error('Error in Check Cart Promotion');
+      rethrowAsHttp(error, this.logger, 'Error in Check Cart Promotion');
     }
   }
 
@@ -921,6 +989,8 @@ export class ShoppingCartService {
     flashsale_end?: string;
     clientVersion?: string | number;
     company_day_source?: string;
+    /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
+    isPreorderFulfillment?: boolean;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -928,6 +998,9 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      if (Number(data.amount) > 0 && !data.isPreorderFulfillment) {
+        await this.ensureNotPreorderRestricted(data.pro_code);
+      }
 
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
@@ -1001,6 +1074,7 @@ export class ShoppingCartService {
         priceOption: data.priceCondition,
         mem_route: data.mem_route,
         syncHotdeal: false,
+        isPreorderFulfillment: data.isPreorderFulfillment,
       });
 
       const cart = await this.getProductCart(data.mem_code, {
@@ -1051,6 +1125,7 @@ export class ShoppingCartService {
     const touchVersion = options?.touchVersion ?? true;
     try {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureNotPreorderRestricted(data.pro_code);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
       const product = await this.productRepo.findOne({
@@ -1348,18 +1423,16 @@ export class ShoppingCartService {
       (l) => !usedSpcIds.has(l.spc_id),
     );
 
-    const totalRemainingBudget = remainingEligibleCart.reduce(
-      (sum, l) => sum + (remainingValuePerItem.get(l.spc_id) ?? 0),
-      0,
-    );
-    const totalRemainingUnits = remainingEligibleCart.reduce((sum, l) => {
+    const remainingUnitsPerItem = new Map<number, number>();
+    for (const l of remainingEligibleCart) {
       const ratio = this.getUnitRatio(l.product, l.spc_unit_enum);
-      return sum + Number(l.spc_amount) * ratio;
-    }, 0);
+      remainingUnitsPerItem.set(l.spc_id, Number(l.spc_amount) * ratio);
+    }
 
     const allProductTiers = await this.tierRepo
       .createQueryBuilder('tier')
       .innerJoinAndSelect('tier.promotion', 'promo')
+      .leftJoinAndSelect('tier.exclusions', 'exclusion')
       .leftJoinAndSelect('tier.rewards', 'reward')
       .leftJoinAndSelect('reward.giftProduct', 'giftProduct')
       .where('tier.all_products = :all', { all: true })
@@ -1373,21 +1446,38 @@ export class ShoppingCartService {
         (a, b) => Number(b.min_amount) - Number(a.min_amount),
       );
 
-      let remainingBudget = totalRemainingBudget;
-      let remainingUnits = totalRemainingUnits;
-
       for (const tier of sortedAllTiers) {
         const threshold = Number(tier.min_amount);
         if (!threshold) continue;
 
-        const pool = tier.is_unit ? remainingUnits : remainingBudget;
+        // แต่ละ tier มีรายการสินค้าที่ไม่เข้าร่วมต่างกัน จึงต้องนับ pool แยก
+        const excludedCodes = new Set(
+          (tier.exclusions ?? []).map((e) => e.product_code),
+        );
+        const tierCart = remainingEligibleCart.filter(
+          (l) => !excludedCodes.has(l.pro_code),
+        );
+        const poolMap = tier.is_unit
+          ? remainingUnitsPerItem
+          : remainingValuePerItem;
+
+        const pool = tierCart.reduce(
+          (sum, l) => sum + (poolMap.get(l.spc_id) ?? 0),
+          0,
+        );
         if (pool < threshold) continue;
 
         const multiplier = Math.floor(pool / threshold);
         if (multiplier <= 0) continue;
 
-        if (tier.is_unit) remainingUnits -= multiplier * threshold;
-        else remainingBudget -= multiplier * threshold;
+        let toDeduct = multiplier * threshold;
+        for (const line of tierCart) {
+          if (toDeduct <= 0) break;
+          const avail = poolMap.get(line.spc_id) ?? 0;
+          const deduct = Math.min(avail, toDeduct);
+          poolMap.set(line.spc_id, avail - deduct);
+          toDeduct -= deduct;
+        }
 
         selectedTierContexts.push({
           promo_id: tier.promotion.promo_id,
@@ -1398,7 +1488,7 @@ export class ShoppingCartService {
           min_amount: threshold,
         });
 
-        for (const line of remainingEligibleCart) {
+        for (const line of tierCart) {
           if (!conditionTagMap.has(line.spc_id)) {
             conditionTagMap.set(line.spc_id, {
               promo_id: tier.promotion.promo_id,
@@ -1461,11 +1551,16 @@ export class ShoppingCartService {
     mem_route?: string;
     clientVersion?: string | number;
     syncHotdeal?: boolean;
+    /** true เฉพาะตอนเรียกจาก addProductCart ที่เป็นการส่งสินค้าที่จัดสรรแล้วของ PreorderService เข้าตะกร้า */
+    isPreorderFulfillment?: boolean;
   }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
       if (data.type === 'check') {
+        if (!data.isPreorderFulfillment) {
+          await this.ensureNotPreorderRestricted(data.pro_code);
+        }
         await this.shoppingCartRepo.update(
           { pro_code: data.pro_code, mem_code: data.mem_code },
           { spc_checked: true },
@@ -1524,11 +1619,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version, companyDayRewardContext };
     } catch (e) {
-      this.logger.error('Error in checkedProductCart', e);
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Something wrong in checkedProductCart');
+      rethrowAsHttp(e, this.logger, 'Something wrong in checkedProductCart');
     }
   }
 
@@ -1544,8 +1635,12 @@ export class ShoppingCartService {
         relations: ['product', 'product.units'],
         order: { pro_code: 'ASC' },
       });
-    } catch {
-      throw new Error('Somthing wrong in handleGetCartToOrder');
+    } catch (error) {
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Somthing wrong in handleGetCartToOrder',
+      );
     }
   }
 
@@ -1579,10 +1674,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Somthing wrong in delete product cart');
+      rethrowAsHttp(e, this.logger, 'Somthing wrong in delete product cart');
     }
   }
 
@@ -1596,8 +1688,8 @@ export class ShoppingCartService {
       if (cartItem?.mem_code) {
         await this.incrementCartVersion(cartItem.mem_code);
       }
-    } catch {
-      throw new Error('Clear Checkout Cart Failed');
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Clear Checkout Cart Failed');
     }
   }
 
@@ -1621,11 +1713,22 @@ export class ShoppingCartService {
           .andWhere('cart.mem_code = :mem_code', { mem_code: data.mem_code })
           .select('cart.pro_code')
           .getMany();
+        const cartProCodes = await this.shoppingCartRepo.find({
+          where: { mem_code: data.mem_code, is_reward: false },
+          select: ['pro_code'],
+        });
+        const preorderRestricted = await this.getActivePreorderProCodes(
+          cartProCodes.map((c) => c.pro_code),
+        );
+        const excludeProCodes = new Set([
+          ...productCanNotCheck.map((p) => p.pro_code),
+          ...preorderRestricted,
+        ]);
         await this.shoppingCartRepo.update(
           {
             mem_code: data.mem_code,
             is_reward: false,
-            pro_code: Not(In(productCanNotCheck.map((p) => p.pro_code))),
+            pro_code: Not(In([...excludeProCodes])),
           },
           { spc_checked: true },
         );
@@ -1644,11 +1747,7 @@ export class ShoppingCartService {
       const version = await this.incrementCartVersion(data.mem_code);
       return { cart, ...version };
     } catch (e) {
-      this.logger.error('Error in checkedProductCartAll', e);
-      if (e instanceof ConflictException) {
-        throw e;
-      }
-      throw new Error('Somthing wrong in checkedProductCartAll');
+      rethrowAsHttp(e, this.logger, 'Somthing wrong in checkedProductCartAll');
     }
   }
 
@@ -1667,8 +1766,7 @@ export class ShoppingCartService {
         return 0;
       }
     } catch (error) {
-      this.logger.error('Error getting cart item count:', error);
-      throw new Error('Error in getCartItemCount');
+      rethrowAsHttp(error, this.logger, 'Error in getCartItemCount');
     }
   }
 
@@ -1704,7 +1802,8 @@ export class ShoppingCartService {
       const raw: RawProductCart[] = await this.shoppingCartRepo
         .createQueryBuilder('cart')
         .leftJoinAndSelect('cart.product', 'product')
-        .leftJoinAndSelect('product.lot', 'lot')
+        // ECWC-643: ตะกร้าแสดงเฉพาะ lot ปัจจุบัน ไม่เอาประวัติ lot
+        .leftJoinAndSelect('product.lot', 'lot', 'lot.is_active = 1')
         .leftJoinAndSelect('product.flashsale', 'fs')
         .leftJoinAndSelect(
           'fs.flashsale',
@@ -1727,6 +1826,8 @@ export class ShoppingCartService {
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',
+          'product.pro_nameTH AS pro_nameTH',
+          'product.pro_nameSale AS pro_nameSale',
           'product.pro_imgmain AS pro_imgmain',
           'product.pro_priceA AS pro_priceA',
           'product.pro_priceB AS pro_priceB',
@@ -1739,11 +1840,15 @@ export class ShoppingCartService {
           'replace.pro_code AS replace_pro_code',
           'replace.pro_imgmain AS replace_pro_imgmain',
           'replace.pro_name AS replace_pro_name',
+          'replace.pro_nameTH AS replace_pro_nameTH',
+          'replace.pro_nameSale AS replace_pro_nameSale',
           'lot.lot_id AS lot_id',
           'lot.lot AS lot',
           'lot.mfg AS mfg',
           'lot.exp AS exp',
           'lot.pro_code AS lot_pro_code',
+          'lot.amount AS lot_amount',
+          'lot.received_at AS lot_received_at',
           'cart.spc_id AS spc_id',
           'cart.spc_amount AS spc_amount',
           'cart.spc_unit_enum AS spc_unit_enum',
@@ -1762,6 +1867,8 @@ export class ShoppingCartService {
           'recommendedProducts.pro_code AS recommended_pro_code',
           'recommendedProducts.pro_imgmain AS recommended_pro_imgmain',
           'recommendedProducts.pro_name AS recommended_pro_name',
+          'recommendedProducts.pro_nameTH AS recommended_pro_nameTH',
+          'recommendedProducts.pro_nameSale AS recommended_pro_nameSale',
           'recommendedProducts.recommend_rank AS recommend_rank',
           'recommendedProductsReplace.pro_code AS recommended_replace_pro_code',
         ])
@@ -1857,7 +1964,10 @@ export class ShoppingCartService {
         ),
       );
       const usedPointsMap = new Map(
-        allProCodes.map((proCode, index) => [proCode, usedPointsResults[index]]),
+        allProCodes.map((proCode, index) => [
+          proCode,
+          usedPointsResults[index],
+        ]),
       );
       // getHotdealPointsInfo reuse ค่านี้ ไม่คำนวณ used points ซ้ำ
       hotdealPointsContext.usedPointsMap = usedPointsMap;
@@ -1891,6 +2001,8 @@ export class ShoppingCartService {
           grouped[key] = {
             pro_code: row.pro_code,
             pro_name: row.pro_name,
+            pro_nameTH: row.pro_nameTH,
+            pro_nameSale: row.pro_nameSale,
             pro_imgmain: row.pro_imgmain,
             pro_priceA: row.pro_priceA,
             pro_priceB: row.pro_priceB,
@@ -1929,6 +2041,8 @@ export class ShoppingCartService {
               lot: row.lot,
               mfg: row.mfg,
               exp: row.exp,
+              amount: row.lot_amount,
+              received_at: row.lot_received_at,
             });
           }
         }
@@ -1940,6 +2054,8 @@ export class ShoppingCartService {
               pro_code: row.replace_pro_code,
               pro_imgmain: row.replace_pro_imgmain ?? '',
               pro_name: row.replace_pro_name ?? '',
+              pro_nameTH: row.replace_pro_nameTH,
+              pro_nameSale: row.replace_pro_nameSale,
               recommend_rank: 1,
             },
           ];
@@ -1958,6 +2074,8 @@ export class ShoppingCartService {
               pro_code: row.recommended_pro_code,
               pro_imgmain: row.recommended_pro_imgmain ?? '',
               pro_name: row.recommended_pro_name,
+              pro_nameTH: row.recommended_pro_nameTH,
+              pro_nameSale: row.recommended_pro_nameSale,
               recommend_rank: row.recommend_rank ?? null,
             });
           }
@@ -2002,6 +2120,13 @@ export class ShoppingCartService {
         if (grouped[key].shopping_cart.length === 0) {
           delete grouped[key];
         }
+      }
+
+      // ECWC-643: แสดงเฉพาะ lot ปัจจุบันตาม amount ที่รับเข้าเทียบกับ stock (กติกาเดียวกับหน้ารายละเอียดสินค้า)
+      for (const group of Object.values(grouped)) {
+        group.lots = selectCurrentLots(group.lots, group.pro_stock).map(
+          ({ lot_id, lot, mfg, exp }) => ({ lot_id, lot, mfg, exp }),
+        );
       }
 
       const totalSmallestUnit = Object.values(grouped).map((group) => {
@@ -2062,8 +2187,7 @@ export class ShoppingCartService {
 
       return result;
     } catch (error) {
-      this.logger.error('Error get product cart:', error);
-      throw new Error(`Error in Get product Cart`);
+      rethrowAsHttp(error, this.logger, 'Error in Get product Cart');
     }
   }
 
@@ -2374,8 +2498,7 @@ export class ShoppingCartService {
       });
       return 'Remove All Cart Hotdeal Cart Success';
     } catch (error) {
-      this.logger.error('Error removing all hotdeal cart items:', error);
-      throw new Error('Error in removeAllCarthotdeal');
+      rethrowAsHttp(error, this.logger, 'Error in removeAllCarthotdeal');
     }
   }
 
@@ -2397,8 +2520,7 @@ export class ShoppingCartService {
       });
       return freebies;
     } catch (error) {
-      this.logger.error('Error fetching freebie products:', error);
-      throw new Error('Error in getProFreebie');
+      rethrowAsHttp(error, this.logger, 'Error in getProFreebie');
     }
   }
 
@@ -2643,8 +2765,7 @@ export class ShoppingCartService {
 
       let total = 0;
       const itemsArray: { index: number; grandTotalItems: number }[] = [];
-      const lines: { spc_id: number; pro_code: string; amount: number }[] =
-        [];
+      const lines: { spc_id: number; pro_code: string; amount: number }[] = [];
 
       for (const [index, dataGroup] of splitData.entries()) {
         const productTotalAmounts = new Map<string, number>();
@@ -2744,7 +2865,11 @@ export class ShoppingCartService {
         const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
           items.reduce((sum, item) => {
             const amount = lineValue(item, t);
-            lines.push({ spc_id: item.spc_id, pro_code: item.pro_code, amount });
+            lines.push({
+              spc_id: item.spc_id,
+              pro_code: item.pro_code,
+              amount,
+            });
             return sum + amount;
           }, 0);
 
@@ -3187,6 +3312,8 @@ export class ShoppingCartService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_imgmain: true,
           },
         },

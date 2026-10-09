@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { of } from 'rxjs';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
@@ -85,11 +86,12 @@ describe('ShoppingOrderService — unit helpers', () => {
         { provide: CompanyDayAnalyticService, useValue: {} },
         { provide: PromotionService, useValue: {} },
         { provide: HappyHourService, useValue: {} },
+        // ClientKafka ของ ecommerce_order_created — emit คืน Observable
+        { provide: 'ECOMMERCE_KAFKA_SERVICE', useValue: { emit: jest.fn(() => of(undefined)) } },
         {
           provide: RedeemProductSetService,
           useValue: { getCustomerSet: jest.fn() },
         },
-        { provide: 'ECOMMERCE_KAFKA_SERVICE', useValue: {} },
       ],
     }).compile();
 

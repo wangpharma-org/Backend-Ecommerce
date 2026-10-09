@@ -1,6 +1,7 @@
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -9,22 +10,30 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
+import { CreditorEntity } from 'src/products/creditor.entity';
+import {
+  findBuyGiftConflicts,
+  formatBuyGiftConflicts,
+} from './buy-gift-conflict.util';
 import {
   Repository,
   DeepPartial,
-  LessThan,
   MoreThanOrEqual,
+  Between,
   LessThanOrEqual,
   DataSource,
   In,
+  EntityManager,
 } from 'typeorm';
 import { PromotionTierEntity } from './promotion-tier.entity';
 import { PromotionConditionEntity } from './promotion-condition.entity';
 import { PromotionRewardEntity } from './promotion-reward.entity';
+import { PromotionTierExclusionEntity } from './promotion-tier-exclusion.entity';
 import * as AWS from 'aws-sdk';
 import {
   getTodayRange,
   toThaiDate,
+  toThaiDateTime,
   toUtcStart,
   toUtcEnd,
 } from 'src/utils/date.util';
@@ -35,6 +44,13 @@ import { AuthService } from 'src/auth/auth.service';
 import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
+import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
+import { rethrowAsHttp } from 'src/common/http-error.util';
+import {
+  PromotionType,
+  PromotionTypePolicyEntity,
+} from './promotion-type-policy.entity';
+import { PromotionDateChangeLogEntity } from './promotion-date-change-log.entity';
 
 // Extended types for transformed product data
 export type ProductWithUnits = ProductEntity & {
@@ -91,6 +107,12 @@ export type GetAllTiersResult = {
   reward: PromotionRewardWithTransformedProduct[];
 };
 
+type PromotionProductUsage = {
+  pro_code: string;
+  tier_id: number;
+  tier_name: string;
+};
+
 @Injectable()
 export class PromotionService {
   private readonly logger = new Logger(PromotionService.name);
@@ -108,18 +130,257 @@ export class PromotionService {
     private readonly promotionConditionRepo: Repository<PromotionConditionEntity>,
     @InjectRepository(PromotionRewardEntity)
     private readonly promotionRewardRepo: Repository<PromotionRewardEntity>,
+    @InjectRepository(PromotionTierExclusionEntity)
+    private readonly exclusionRepo: Repository<PromotionTierExclusionEntity>,
     private readonly shoppingCartService: ShoppingCartService,
     private readonly authService: AuthService,
     @InjectRepository(ProductEntity)
     private readonly productRepo: Repository<ProductEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(PromotionTypePolicyEntity)
+    private readonly promotionTypePolicyRepo: Repository<PromotionTypePolicyEntity>,
     private readonly dataSource: DataSource,
+    private readonly promoOverlapService: PromoOverlapService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
       accessKeyId: process.env.DO_SPACES_KEY,
       secretAccessKey: process.env.DO_SPACES_SECRET,
+    });
+  }
+
+  private getPromotionType(promotion: PromotionEntity): PromotionType {
+    return promotion.creditor ? 'company' : 'wang';
+  }
+
+  /**
+   * สินค้าที่ถูกใช้แล้วในทุก tier ของโปรโมชั่น แยกฝั่งสินค้าเข้าร่วมรายการ (conditions) / ของแถม (rewards)
+   * ใช้กันไม่ให้สินค้าตัวเดียวกันเป็นทั้งสองฝั่งในโปรเดียวกัน (แม้อยู่คนละ tier)
+   */
+  private async getPromotionProductUsage(promo_id: number): Promise<{
+    conditions: PromotionProductUsage[];
+    rewards: PromotionProductUsage[];
+  }> {
+    const [conditions, rewards] = await Promise.all([
+      this.promotionConditionRepo
+        .createQueryBuilder('cond')
+        .innerJoin('cond.tier', 'tier')
+        .innerJoin('cond.product', 'product')
+        .where('tier.promo_id = :promo_id', { promo_id })
+        .select([
+          'product.pro_code AS pro_code',
+          'tier.tier_id AS tier_id',
+          'tier.tier_name AS tier_name',
+        ])
+        .getRawMany<PromotionProductUsage>(),
+      this.promotionRewardRepo
+        .createQueryBuilder('reward')
+        .innerJoin('reward.tier', 'tier')
+        .innerJoin('reward.giftProduct', 'product')
+        .where('tier.promo_id = :promo_id', { promo_id })
+        .select([
+          'product.pro_code AS pro_code',
+          'tier.tier_id AS tier_id',
+          'tier.tier_name AS tier_name',
+        ])
+        .getRawMany<PromotionProductUsage>(),
+    ]);
+    return { conditions, rewards };
+  }
+
+  private async findCreditorsOrThrow(
+    manager: EntityManager,
+    creditor_codes: string[],
+  ): Promise<CreditorEntity[]> {
+    if (creditor_codes.length === 0) return [];
+    const creditors = await manager
+      .getRepository(CreditorEntity)
+      .findBy({ creditor_code: In(creditor_codes) });
+    // MySQL เทียบตัวพิมพ์เล็ก/ใหญ่แบบไม่สนใจ (collation) — ฝั่ง JS ต้องเทียบแบบเดียวกัน ไม่งั้นรหัสที่มีจริงจะถูกบอกว่าไม่พบ
+    const found = new Set(creditors.map((c) => c.creditor_code.toLowerCase()));
+    const missing = creditor_codes.filter(
+      (code) => !found.has(code.toLowerCase()),
+    );
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `ไม่พบรหัสเจ้าหนี้: ${missing.join(', ')}`,
+      );
+    }
+    return creditors;
+  }
+
+  private async getLockedPromotionTypePolicy(
+    manager: EntityManager,
+  ): Promise<PromotionTypePolicyEntity> {
+    const policy = await manager
+      .getRepository(PromotionTypePolicyEntity)
+      .createQueryBuilder('policy')
+      .where('policy.id = :id', { id: 1 })
+      .setLock('pessimistic_write')
+      .getOne();
+
+    if (!policy) {
+      throw new InternalServerErrorException(
+        'Promotion type policy is not initialized',
+      );
+    }
+
+    return policy;
+  }
+
+  private async assertPromotionTypeAllowed(
+    manager: EntityManager,
+    requestedType: PromotionType,
+  ): Promise<void> {
+    const policy = await this.getLockedPromotionTypePolicy(manager);
+    if (policy.locked_type && policy.locked_type !== requestedType) {
+      const lockedName =
+        policy.locked_type === 'company' ? 'Company Day' : 'Wang Day';
+      throw new BadRequestException(
+        `ไม่สามารถดำเนินการได้ เนื่องจากระบบล็อกให้ใช้ ${lockedName} เท่านั้น`,
+      );
+    }
+  }
+
+  async getPromotionTypePolicy(): Promise<{
+    locked_type: PromotionType | null;
+    locked_promo_id: number | null;
+    active_promotion_count: number;
+    active_promotion_counts: Record<PromotionType, number>;
+    eligible_type: PromotionType | null;
+    eligible_promotion_count: number;
+  }> {
+    const [policy, activePromotions] = await Promise.all([
+      this.promotionTypePolicyRepo.findOneBy({ id: 1 }),
+      this.promotionRepo.find({
+        where: { status: true, end_date: MoreThanOrEqual(new Date()) },
+        relations: { creditor: true },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          creditor: { creditor_code: true },
+        },
+      }),
+    ]);
+
+    if (!policy) {
+      throw new InternalServerErrorException(
+        'Promotion type policy is not initialized',
+      );
+    }
+
+    const activePromotionCounts: Record<PromotionType, number> = {
+      company: 0,
+      wang: 0,
+    };
+    for (const promotion of activePromotions) {
+      activePromotionCounts[this.getPromotionType(promotion)] += 1;
+    }
+
+    const eligibleType =
+      activePromotionCounts.company > 0 && activePromotionCounts.wang === 0
+        ? 'company'
+        : activePromotionCounts.wang > 0 && activePromotionCounts.company === 0
+          ? 'wang'
+          : null;
+
+    return {
+      locked_type: policy.locked_type,
+      locked_promo_id: policy.locked_promo_id,
+      active_promotion_count: activePromotions.length,
+      active_promotion_counts: activePromotionCounts,
+      eligible_type: eligibleType,
+      eligible_promotion_count: eligibleType
+        ? activePromotionCounts[eligibleType]
+        : 0,
+    };
+  }
+
+  async lockPromotionTypePolicy(): Promise<{
+    locked_type: PromotionType;
+    locked_promo_id: number | null;
+  }> {
+    return this.dataSource.transaction(async (manager) => {
+      const policy = await this.getLockedPromotionTypePolicy(manager);
+      if (policy.locked_type) {
+        return {
+          locked_type: policy.locked_type,
+          locked_promo_id: policy.locked_promo_id,
+        };
+      }
+
+      const activePromotions = await manager
+        .getRepository(PromotionEntity)
+        .createQueryBuilder('promotion')
+        .leftJoinAndSelect('promotion.creditor', 'creditor')
+        .where('promotion.status = :status', { status: true })
+        .andWhere('promotion.end_date >= :now', { now: new Date() })
+        .setLock('pessimistic_write')
+        .getMany();
+
+      const activePromotionCounts: Record<PromotionType, number> = {
+        company: 0,
+        wang: 0,
+      };
+      for (const promotion of activePromotions) {
+        activePromotionCounts[this.getPromotionType(promotion)] += 1;
+      }
+
+      const lockedType =
+        activePromotionCounts.company > 0 && activePromotionCounts.wang === 0
+          ? 'company'
+          : activePromotionCounts.wang > 0 && activePromotionCounts.company === 0
+            ? 'wang'
+            : null;
+
+      if (!lockedType) {
+        throw new BadRequestException(
+          activePromotions.length === 0
+            ? 'กรุณาเปิดใช้งานโปรโมชั่น Company Day หรือ Wang Day อย่างน้อย 1 รายการก่อนยืนยัน'
+            : 'กรุณาปิดโปรโมชั่นของ Company Day หรือ Wang Day ให้เหลือเปิดใช้งานเพียงประเภทเดียวก่อนยืนยัน',
+        );
+      }
+
+      const representativePromotion = activePromotions.find(
+        (promotion) => this.getPromotionType(promotion) === lockedType,
+      );
+      policy.locked_type = lockedType;
+      policy.locked_promo_id = representativePromotion?.promo_id ?? null;
+      policy.locked_at = new Date();
+      await manager.save(policy);
+
+      return {
+        locked_type: lockedType,
+        locked_promo_id: policy.locked_promo_id,
+      };
+    });
+  }
+
+  async unlockPromotionTypePolicy(
+    expectedLockedType: PromotionType,
+  ): Promise<{
+    locked_type: null;
+    locked_promo_id: null;
+  }> {
+    return this.dataSource.transaction(async (manager) => {
+      const policy = await this.getLockedPromotionTypePolicy(manager);
+
+      if (policy.locked_type !== expectedLockedType) {
+        throw new ConflictException(
+          'สถานะการล็อกโปรโมชั่นมีการเปลี่ยนแปลง กรุณารีเฟรชข้อมูลแล้วลองใหม่อีกครั้ง',
+        );
+      }
+
+      policy.locked_type = null;
+      policy.locked_promo_id = null;
+      policy.locked_at = null;
+      await manager.save(policy);
+
+      return {
+        locked_type: null,
+        locked_promo_id: null,
+      };
     });
   }
 
@@ -209,15 +470,22 @@ export class PromotionService {
     };
   }
 
+  /**
+   * เคลียร์ของแถมในตะกร้าของโปรที่หมดเวลาแล้ว — ไม่ลบโปร (แอดมินลบเองจากหลังบ้าน)
+   * โปรที่หมดเวลาแต่ยังไม่ถูกลบจึงต้องกรองด้วย end_date ทุกที่ที่หมายถึง "โปรที่ใช้งานอยู่"
+   */
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   // @Cron(CronExpression.EVERY_30_SECONDS)
-  async cronDeletePromotionOutOfDate() {
+  async cronCleanupExpiredPromotions() {
     try {
       const today = new Date();
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
+      // โปรไม่ถูกลบแล้ว ถ้าไม่จำกัดช่วง จะวนโปรที่หมดเวลาทั้งหมดทุกคืน — ย้อนดู 7 วันเผื่อ cron พลาดบางคืน
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const promo = await this.promotionRepo.find({
-        where: { end_date: LessThan(today) },
+        where: { end_date: Between(sevenDaysAgo, today) },
       });
       if (promo.length === 0) return;
 
@@ -237,11 +505,14 @@ export class PromotionService {
               reward_expire: tomorrow,
             },
           );
-          await this.promotionRepo.softDelete({ promo_id: p.promo_id });
         }),
       );
-    } catch {
-      throw new Error('Something Error in Delete Promotion');
+    } catch (error) {
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Something Error in Cleanup Expired Promotion',
+      );
     }
   }
 
@@ -262,8 +533,7 @@ export class PromotionService {
       await this.codeRepo.save(newCode);
       return code_text;
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to generate promotion code');
+      rethrowAsHttp(error, this.logger, 'Failed to generate promotion code');
     }
   }
 
@@ -298,8 +568,7 @@ export class PromotionService {
       );
       await this.shoppingCartService.markCartAsChanged(mem_code);
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to check reward in cart');
+      rethrowAsHttp(error, this.logger, 'Failed to check reward in cart');
     }
   }
 
@@ -340,6 +609,8 @@ export class PromotionService {
 
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -410,8 +681,8 @@ export class PromotionService {
         });
       }
       return transformedTier;
-    } catch {
-      throw new Error(`Failed to get tier products`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tier products');
     }
   }
 
@@ -447,6 +718,8 @@ export class PromotionService {
             promo_id: true,
             promo_name: true,
             promo_poster: true,
+            start_date: true,
+            end_date: true,
             creditor: {
               creditor_code: true,
             },
@@ -479,6 +752,8 @@ export class PromotionService {
           'tier.tier_id',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_imgmain',
         ]);
 
@@ -542,8 +817,7 @@ export class PromotionService {
 
       return { poster, reward: limitedReward };
     } catch (error) {
-      this.logger.error('Error in getAllTiers:', error);
-      throw new Error(`Failed to get tiers: ${error}`);
+      rethrowAsHttp(error, this.logger, 'Failed to get tiers');
     }
   }
 
@@ -577,24 +851,41 @@ export class PromotionService {
       );
 
       return proCodes;
-    } catch {
-      throw new Error(`Failed to get tiers`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tiers');
     }
   }
 
   async getTierOneById(tier_id: number) {
     try {
-      return await this.promotionTierRepo.findOne({
+      const tier = await this.promotionTierRepo.findOne({
         where: { tier_id },
+        relations: { promotion: true },
+        select: { promotion: { promo_id: true } },
       });
-    } catch {
-      throw new Error(`Failed to get tier by id`);
+      if (!tier) return null;
+      const { promotion, ...rest } = tier;
+      const usage = promotion
+        ? await this.getPromotionProductUsage(promotion.promo_id)
+        : { conditions: [], rewards: [] };
+      const isOtherTier = (u: PromotionProductUsage) =>
+        Number(u.tier_id) !== tier_id;
+      return {
+        ...rest,
+        // สินค้าที่ tier อื่นในโปรเดียวกันใช้ไปแล้ว — หน้าเงื่อนไขใช้กันเลือกข้ามฝั่ง
+        other_tier_usage: {
+          conditions: usage.conditions.filter(isOtherTier),
+          rewards: usage.rewards.filter(isOtherTier),
+        },
+      };
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tier by id');
     }
   }
 
   async addPromotion(data: {
     promo_name: string;
-    creditor_code: string | null;
+    creditor_codes: string[];
     start_date: Date;
     end_date: Date;
     status: boolean;
@@ -615,21 +906,31 @@ export class PromotionService {
         promo_poster = imgData.Location;
       }
 
-      const newPromotion = this.promotionRepo.create({
-        promo_name: data.promo_name,
-        creditor: data.creditor_code
-          ? { creditor_code: data.creditor_code }
-          : undefined,
-        start_date: toUtcStart(data.start_date),
-        end_date: toUtcEnd(data.end_date),
-        status: data.status,
-        promo_poster,
+      return this.dataSource.transaction(async (manager) => {
+        const isCompany = data.creditor_codes.length > 0;
+        await this.assertPromotionTypeAllowed(
+          manager,
+          isCompany ? 'company' : 'wang',
+        );
+        const creditors = await this.findCreditorsOrThrow(
+          manager,
+          data.creditor_codes,
+        );
+        const newPromotion = manager.create(PromotionEntity, {
+          promo_name: data.promo_name,
+          creditor: isCompany
+            ? { creditor_code: data.creditor_codes[0] }
+            : undefined,
+          creditors,
+          start_date: toUtcStart(data.start_date),
+          end_date: toUtcEnd(data.end_date),
+          status: data.status,
+          promo_poster,
+        });
+        return manager.save(newPromotion);
       });
-      const savedPromotion = await this.promotionRepo.save(newPromotion);
-      return savedPromotion;
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to add promotion`);
+      rethrowAsHttp(error, this.logger, 'Failed to add promotion');
     }
   }
 
@@ -659,8 +960,7 @@ export class PromotionService {
         { promo_poster: imgData.Location },
       );
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to update promotion poster`);
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion poster');
     }
   }
 
@@ -669,6 +969,7 @@ export class PromotionService {
       const promotions = await this.promotionRepo.find({
         relations: {
           creditor: true,
+          creditors: true,
         },
         select: {
           promo_id: true,
@@ -681,15 +982,54 @@ export class PromotionService {
             creditor_code: true,
             creditor_name: true,
           },
+          creditors: {
+            creditor_code: true,
+            creditor_name: true,
+          },
         },
       });
-      return promotions.map((promo) => ({
-        ...promo,
-        start_date: toThaiDate(promo.start_date),
-        end_date: toThaiDate(promo.end_date),
-      }));
-    } catch {
-      throw new Error(`Failed to get promotions`);
+      const promoIds = promotions.map((promotion) => promotion.promo_id);
+      const latestDateChanges =
+        promoIds.length === 0
+          ? []
+          : await this.dataSource
+              .getRepository(PromotionDateChangeLogEntity)
+              .createQueryBuilder('date_change')
+              .where('date_change.promo_id IN (:...promoIds)', { promoIds })
+              .andWhere(
+                `date_change.id = (
+                  SELECT latest_date_change.id
+                  FROM promotion_date_change_log latest_date_change
+                  WHERE latest_date_change.promo_id = date_change.promo_id
+                  ORDER BY latest_date_change.created_at DESC, latest_date_change.id DESC
+                  LIMIT 1
+                )`,
+              )
+              .getMany();
+      const latestDateChangeByPromo = new Map(
+        latestDateChanges.map((dateChange) => [
+          dateChange.promo_id,
+          dateChange,
+        ]),
+      );
+
+      return promotions.map((promo) => {
+        const latestDateChange = latestDateChangeByPromo.get(promo.promo_id);
+
+        return {
+          ...promo,
+          start_date: toThaiDate(promo.start_date),
+          end_date: toThaiDate(promo.end_date),
+          latest_date_change: latestDateChange
+            ? {
+                admin_username: latestDateChange.admin_username,
+                created_at: toThaiDateTime(latestDateChange.created_at),
+              }
+            : null,
+        };
+      });
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get promotions');
     }
   }
 
@@ -697,7 +1037,13 @@ export class PromotionService {
     try {
       const promotion = await this.promotionRepo.findOne({
         where: { promo_id },
-        relations: ['creditor', 'tiers', 'tiers.conditions', 'tiers.rewards'],
+        relations: [
+          'creditor',
+          'creditors',
+          'tiers',
+          'tiers.conditions',
+          'tiers.rewards',
+        ],
       });
       if (!promotion) return null;
       return {
@@ -705,8 +1051,8 @@ export class PromotionService {
         start_date: toThaiDate(promotion.start_date),
         end_date: toThaiDate(promotion.end_date),
       };
-    } catch {
-      throw new Error(`Failed to get promotion by id`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get promotion by id');
     }
   }
 
@@ -759,24 +1105,55 @@ export class PromotionService {
 
   async updateStatus(promo_id: number, status: boolean) {
     try {
-      const promotion = await this.promotionRepo.findOne({
-        where: { promo_id },
+      await this.dataSource.transaction(async (manager) => {
+        await this.getLockedPromotionTypePolicy(manager);
+        const promotion = await manager
+          .getRepository(PromotionEntity)
+          .createQueryBuilder('promotion')
+          .leftJoinAndSelect('promotion.creditor', 'creditor')
+          .leftJoinAndSelect('promotion.tiers', 'tiers')
+          .leftJoinAndSelect('tiers.conditions', 'conditions')
+          .leftJoinAndSelect('conditions.product', 'conditionProduct')
+          .leftJoinAndSelect('tiers.rewards', 'rewards')
+          .leftJoinAndSelect('rewards.giftProduct', 'giftProduct')
+          .where('promotion.promo_id = :promoId', { promoId: promo_id })
+          .setLock('pessimistic_write')
+          .getOne();
+        if (!promotion) {
+          throw new NotFoundException(`Promotion with id ${promo_id} not found`);
+        }
+        if (status) {
+          await this.assertPromotionTypeAllowed(
+            manager,
+            this.getPromotionType(promotion),
+          );
+          for (const tier of promotion.tiers ?? []) {
+            await this.promoOverlapService.assertPromotionPairAvailable({
+              promo_id,
+              start_date: promotion.start_date,
+              end_date: promotion.end_date,
+              buyCodes: (tier.conditions ?? []).map(
+                (condition) => condition.product.pro_code,
+              ),
+              giftCodes: (tier.rewards ?? []).map(
+                (reward) => reward.giftProduct.pro_code,
+              ),
+            });
+          }
+        }
+        promotion.status = status;
+        await manager.save(promotion);
       });
-      if (!promotion) {
-        throw new Error(`Promotion with id ${promo_id} not found`);
-      }
-      promotion.status = status;
-      await this.promotionRepo.save(promotion);
-    } catch {
-      throw new Error(`Failed to update promotion status`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion status');
     }
   }
 
   async deleteTier(tier_id: number) {
     try {
       return await this.promotionTierRepo.softDelete({ tier_id });
-    } catch {
-      throw new Error(`Failed to delete tier`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete tier');
     }
   }
 
@@ -789,8 +1166,8 @@ export class PromotionService {
         throw new Error(`Promotion with id ${promo_id} not found`);
       }
       await this.promotionRepo.softDelete({ promo_id });
-    } catch {
-      throw new Error(`Failed to delete promotion`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete promotion');
     }
   }
 
@@ -822,6 +1199,30 @@ export class PromotionService {
           'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
         );
 
+      const rewards = await this.promotionRewardRepo.find({
+        where: { tier: { tier_id: data.tier_id } },
+        relations: { giftProduct: true },
+        select: { reward_id: true, giftProduct: { pro_code: true } },
+      });
+      // สินค้าตัวเดียวกันเป็นทั้งสินค้าเงื่อนไขและของแถมในโปรเดียวกันไม่ได้ (ทุก tier)
+      const usage = await this.getPromotionProductUsage(
+        tier.promotion.promo_id,
+      );
+      const usedAsReward = usage.rewards.find(
+        (r) => r.pro_code === data.product_gcode,
+      );
+      if (usedAsReward)
+        throw new BadRequestException(
+          `สินค้า ${data.product_gcode} เป็นของแถมใน ${usedAsReward.tier_name} ของโปรนี้อยู่แล้ว ไม่สามารถเลือกเป็นสินค้าเข้าร่วมรายการได้`,
+        );
+      await this.promoOverlapService.assertPromotionPairAvailable({
+        promo_id: tier.promotion.promo_id,
+        start_date: tier.promotion.start_date,
+        end_date: tier.promotion.end_date,
+        buyCodes: [data.product_gcode],
+        giftCodes: rewards.map((r) => r.giftProduct.pro_code),
+      });
+
       const newCondition = this.promotionConditionRepo.create({
         tier: { tier_id: data.tier_id },
         product: { pro_code: data.product_gcode },
@@ -839,16 +1240,16 @@ export class PromotionService {
   async deleteCondition(cond_id: number) {
     try {
       return this.promotionConditionRepo.delete({ cond_id });
-    } catch {
-      throw new Error(`Failed to delete condition`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete condition');
     }
   }
 
   async deleteReward(reward_id: number) {
     try {
       return this.promotionRewardRepo.delete({ reward_id });
-    } catch {
-      throw new Error(`Failed to delete reward`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to delete reward');
     }
   }
 
@@ -876,8 +1277,7 @@ export class PromotionService {
       });
       return 'Reward updated successfully';
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to update reward');
+      rethrowAsHttp(error, this.logger, 'Failed to update reward');
     }
   }
 
@@ -888,6 +1288,36 @@ export class PromotionService {
     unit: string;
   }) {
     try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        relations: { promotion: true },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+
+      const conditions = await this.promotionConditionRepo.find({
+        where: { tier: { tier_id: data.tier_id } },
+        relations: { product: true },
+        select: { cond_id: true, product: { pro_code: true } },
+      });
+      // สินค้าตัวเดียวกันเป็นทั้งสินค้าเงื่อนไขและของแถมในโปรเดียวกันไม่ได้ (ทุก tier)
+      const usage = await this.getPromotionProductUsage(
+        tier.promotion.promo_id,
+      );
+      const usedAsCondition = usage.conditions.find(
+        (c) => c.pro_code === data.product_gcode,
+      );
+      if (usedAsCondition)
+        throw new BadRequestException(
+          `สินค้า ${data.product_gcode} เป็นสินค้าเข้าร่วมรายการใน ${usedAsCondition.tier_name} ของโปรนี้อยู่แล้ว ไม่สามารถเลือกเป็นของแถมได้`,
+        );
+      await this.promoOverlapService.assertPromotionPairAvailable({
+        promo_id: tier.promotion.promo_id,
+        start_date: tier.promotion.start_date,
+        end_date: tier.promotion.end_date,
+        buyCodes: conditions.map((c) => c.product.pro_code),
+        giftCodes: [data.product_gcode],
+      });
+
       // แปลง unit name → enum level ก่อน save
       let unitEnum = data.unit;
       const unitEntity = await this.productRepo.manager
@@ -904,8 +1334,8 @@ export class PromotionService {
         unit: unitEnum,
       } as DeepPartial<PromotionRewardEntity>);
       await this.promotionRewardRepo.save(newReward);
-    } catch {
-      throw new Error(`Failed to create reward`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to create reward');
     }
   }
 
@@ -927,6 +1357,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
           'giftProduct.free_product_count',
@@ -983,8 +1415,7 @@ export class PromotionService {
         };
       }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to get rewards by tier`);
+      rethrowAsHttp(error, this.logger, 'Failed to get rewards by tier');
     }
   }
 
@@ -998,12 +1429,14 @@ export class PromotionService {
           product: {
             pro_code: true,
             pro_name: true,
+            pro_nameTH: true,
+            pro_nameSale: true,
             pro_genericname: true,
           },
         },
       });
-    } catch {
-      throw new Error(`Failed to get conditions by tier`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get conditions by tier');
     }
   }
 
@@ -1023,8 +1456,93 @@ export class PromotionService {
       });
       return 'Promotion updated successfully';
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to update promotion');
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion');
+    }
+  }
+
+  async updatePromotionDates(
+    data: { promo_id: number; start_date: string; end_date: string },
+    admin: { mem_code: string; username: string },
+  ) {
+    if (data.start_date > data.end_date) {
+      throw new BadRequestException('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
+    }
+
+    const newStartDate = toUtcStart(data.start_date);
+    const newEndDate = toUtcEnd(data.end_date);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const promotion = await manager
+          .getRepository(PromotionEntity)
+          .createQueryBuilder('promotion')
+          .leftJoinAndSelect('promotion.tiers', 'tiers')
+          .leftJoinAndSelect('tiers.conditions', 'conditions')
+          .leftJoinAndSelect('conditions.product', 'conditionProduct')
+          .leftJoinAndSelect('tiers.rewards', 'rewards')
+          .leftJoinAndSelect('rewards.giftProduct', 'giftProduct')
+          .where('promotion.promo_id = :promoId', { promoId: data.promo_id })
+          .setLock('pessimistic_write')
+          .getOne();
+
+        if (!promotion) {
+          throw new NotFoundException(
+            `Promotion with id ${data.promo_id} not found`,
+          );
+        }
+
+        const oldStartDate = promotion.start_date;
+        const oldEndDate = promotion.end_date;
+        const hasDateChanged =
+          oldStartDate.getTime() !== newStartDate.getTime() ||
+          oldEndDate.getTime() !== newEndDate.getTime();
+
+        if (!hasDateChanged) {
+          return {
+            promo_id: promotion.promo_id,
+            start_date: toThaiDate(promotion.start_date),
+            end_date: toThaiDate(promotion.end_date),
+          };
+        }
+
+        if (promotion.status) {
+          for (const tier of promotion.tiers ?? []) {
+            await this.promoOverlapService.assertPromotionPairAvailable({
+              promo_id: promotion.promo_id,
+              start_date: newStartDate,
+              end_date: newEndDate,
+              buyCodes: (tier.conditions ?? []).map(
+                (condition) => condition.product.pro_code,
+              ),
+              giftCodes: (tier.rewards ?? []).map(
+                (reward) => reward.giftProduct.pro_code,
+              ),
+            });
+          }
+        }
+
+        promotion.start_date = newStartDate;
+        promotion.end_date = newEndDate;
+        await manager.save(promotion);
+
+        await manager.getRepository(PromotionDateChangeLogEntity).save({
+          promo_id: promotion.promo_id,
+          admin_mem_code: admin.mem_code,
+          admin_username: admin.username,
+          old_start_date: oldStartDate,
+          old_end_date: oldEndDate,
+          new_start_date: newStartDate,
+          new_end_date: newEndDate,
+        });
+
+        return {
+          promo_id: promotion.promo_id,
+          start_date: toThaiDate(newStartDate),
+          end_date: toThaiDate(newEndDate),
+        };
+      });
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update promotion dates');
     }
   }
 
@@ -1043,8 +1561,7 @@ export class PromotionService {
       });
       return 'Tier updated successfully';
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to update tier');
+      rethrowAsHttp(error, this.logger, 'Failed to update tier');
     }
   }
 
@@ -1055,7 +1572,9 @@ export class PromotionService {
       this.logger.log('Fetching active promotions with all relations');
 
       // ดึงข้อมูลพร้อม relations ทั้งหมดในครั้งเดียว
+      // ตัดโปรที่หมดเวลาแล้ว (ไม่ถูกลบอัตโนมัติแล้ว รอแอดมินลบเอง)
       const promotions = await this.promotionRepo.find({
+        where: { end_date: MoreThanOrEqual(new Date()) },
         relations: {
           tiers: {
             conditions: {
@@ -1092,6 +1611,8 @@ export class PromotionService {
               product: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_priceA: true,
                 pro_priceB: true,
@@ -1106,6 +1627,8 @@ export class PromotionService {
               giftProduct: {
                 pro_code: true,
                 pro_name: true,
+                pro_nameTH: true,
+                pro_nameSale: true,
                 pro_genericname: true,
                 pro_imgmain: true,
               },
@@ -1131,8 +1654,66 @@ export class PromotionService {
         })),
       };
     } catch (error) {
-      this.logger.error('Error fetching promotions:', error);
-      throw new Error('Failed to get active promotions');
+      rethrowAsHttp(error, this.logger, 'Failed to get active promotions');
+    }
+  }
+
+  async addExclusion(data: { tier_id: number; product_gcode: string }) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id: data.tier_id },
+        select: { tier_id: true, all_products: true },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${data.tier_id}`);
+      if (!tier.all_products)
+        throw new BadRequestException(
+          'เลือกสินค้าที่ไม่เข้าร่วมได้เฉพาะ tier ที่เป็นสินค้าทั้งหมด',
+        );
+
+      const existing = await this.exclusionRepo.findOne({
+        where: { tier_id: data.tier_id, product_code: data.product_gcode },
+        select: { exclusion_id: true },
+      });
+      if (existing) return existing;
+
+      return await this.exclusionRepo.save(
+        this.exclusionRepo.create({
+          tier_id: data.tier_id,
+          product_code: data.product_gcode,
+        }),
+      );
+    } catch (error: unknown) {
+      this.logger.error(error);
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to add exclusion');
+    }
+  }
+
+  async deleteExclusion(exclusion_id: number) {
+    try {
+      return await this.exclusionRepo.delete({ exclusion_id });
+    } catch {
+      throw new Error('Failed to delete exclusion');
+    }
+  }
+
+  async getExclusionsByTier(tier_id: number) {
+    try {
+      return await this.exclusionRepo.find({
+        where: { tier_id },
+        relations: { product: true },
+        select: {
+          exclusion_id: true,
+          product: {
+            pro_code: true,
+            pro_name: true,
+            pro_genericname: true,
+          },
+        },
+        order: { exclusion_id: 'ASC' },
+      });
+    } catch {
+      throw new Error('Failed to get exclusions by tier');
     }
   }
 
@@ -1157,19 +1738,21 @@ export class PromotionService {
 
       if (status === true) {
         await this.promotionConditionRepo.delete({ tier: { tier_id } });
+        await this.exclusionRepo.delete({ tier_id });
         await this.promotionTierRepo.update(tier_id, {
           all_products: true,
         });
         return 'All products set successfully for the tier';
       } else {
+        // รายการยกเว้นใช้ได้เฉพาะโหมดสินค้าทั้งหมด ต้องล้างตอนออกจากโหมดนี้
+        await this.exclusionRepo.delete({ tier_id });
         await this.promotionTierRepo.update(tier_id, {
           all_products: false,
         });
         return 'Tier set to specific products successfully';
       }
     } catch (error) {
-      this.logger.error(error);
-      throw new Error('Failed to set all products for the tier');
+      rethrowAsHttp(error, this.logger, 'Failed to set all products for the tier');
     }
   }
 
@@ -1218,6 +1801,8 @@ export class PromotionService {
           // ข้อมูล product
           'tier_product.pro_code',
           'tier_product.pro_name',
+          'tier_product.pro_nameTH',
+          'tier_product.pro_nameSale',
           'tier_product.pro_priceA',
           'tier_product.pro_priceB',
           'tier_product.pro_priceC',
@@ -1243,6 +1828,8 @@ export class PromotionService {
           'rewards.unit',
           'gift_product.pro_code',
           'gift_product.pro_name',
+          'gift_product.pro_nameTH',
+          'gift_product.pro_nameSale',
           'gift_product.pro_imgmain',
         ])
         .getMany();
@@ -1311,15 +1898,14 @@ export class PromotionService {
         },
       })) as TierConditionWithTransformedTier[];
     } catch (error) {
-      this.logger.error('Error in getTierWithProCode:', error);
-      throw new Error('Failed to get tier with product code');
+      rethrowAsHttp(error, this.logger, 'Failed to get tier with product code');
     }
   }
 
-  async getTierAllProduct() {
+  async getTierAllProduct(mem_code?: string) {
     try {
       const { startOfDay, endOfDay } = getTodayRange();
-      return await this.promotionTierRepo.find({
+      const tiers = await this.promotionTierRepo.find({
         where: {
           all_products: true,
           promotion: {
@@ -1330,6 +1916,7 @@ export class PromotionService {
         },
         relations: {
           promotion: true,
+          exclusions: true,
         },
         select: {
           tier_id: true,
@@ -1342,10 +1929,29 @@ export class PromotionService {
             promo_id: true,
             promo_name: true,
           },
+          exclusions: {
+            exclusion_id: true,
+            product_code: true,
+          },
         },
       });
-    } catch {
-      throw new Error(`Failed to get tier with all products`);
+
+      // ยอดที่ progress bar ใช้ต้องไม่รวมสินค้าที่ tier นั้นยกเว้น
+      const lines = mem_code
+        ? (await this.shoppingCartService.summaryCartDetailed(mem_code)).lines
+        : [];
+      return tiers.map(({ exclusions, ...tier }) => {
+        const excludedCodes = new Set(exclusions.map((e) => e.product_code));
+        return {
+          ...tier,
+          current_amount: lines.reduce(
+            (sum, l) => (excludedCodes.has(l.pro_code) ? sum : sum + l.amount),
+            0,
+          ),
+        };
+      });
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get tier with all products');
     }
   }
 
@@ -1367,6 +1973,8 @@ export class PromotionService {
           'reward.unit',
           'giftProduct.pro_code',
           'giftProduct.pro_name',
+          'giftProduct.pro_nameTH',
+          'giftProduct.pro_nameSale',
           'giftProduct.pro_genericname',
           'giftProduct.pro_imgmain',
         ]);
@@ -1416,8 +2024,7 @@ export class PromotionService {
         };
       }) as PromotionRewardWithTransformedProduct[];
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to get reward by tier id`);
+      rethrowAsHttp(error, this.logger, 'Failed to get reward by tier id');
     }
   }
 
@@ -1429,8 +2036,8 @@ export class PromotionService {
           free_product_limit: limit,
         },
       );
-    } catch {
-      throw new Error(`Failed to update reward limit`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update reward limit');
     }
   }
 
@@ -1442,8 +2049,8 @@ export class PromotionService {
           free_product_count: 0,
         },
       );
-    } catch {
-      throw new Error(`Failed to update reward limit`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to update reward limit');
     }
   }
 
@@ -1488,8 +2095,7 @@ export class PromotionService {
         url: imgData.Location,
       };
     } catch (error) {
-      this.logger.error('Error updating tier poster:', error);
-      throw new Error(`Failed to update tier poster`);
+      rethrowAsHttp(error, this.logger, 'Failed to update tier poster');
     }
   }
 
@@ -1526,8 +2132,7 @@ export class PromotionService {
 
       return { minAmount: minAmount };
     } catch (error) {
-      this.logger.error(error);
-      throw new Error(`Failed to get tier price`);
+      rethrowAsHttp(error, this.logger, 'Failed to get tier price');
     }
   }
 
@@ -1554,6 +2159,7 @@ export class PromotionService {
         withDeleted: true,
         relations: {
           creditor: true,
+          creditors: true,
         },
         select: {
           promo_id: true,
@@ -1566,13 +2172,17 @@ export class PromotionService {
             creditor_code: true,
             creditor_name: true,
           },
+          creditors: {
+            creditor_code: true,
+            creditor_name: true,
+          },
         },
         order: {
           promo_id: 'DESC',
         },
       });
-    } catch {
-      throw new Error(`Failed to get promotions for duplicate`);
+    } catch (error) {
+      rethrowAsHttp(error, this.logger, 'Failed to get promotions for duplicate');
     }
   }
 
@@ -1586,9 +2196,11 @@ export class PromotionService {
       where: { promo_id: data.promo_id },
       relations: {
         creditor: true,
+        creditors: true,
         tiers: {
           conditions: { product: true },
           rewards: { giftProduct: true },
+          exclusions: true,
         },
       },
     });
@@ -1599,11 +2211,38 @@ export class PromotionService {
       );
     }
 
+    // โปรเก่าที่ตั้งก่อนมีกฎห้ามซ้ำอาจมีสินค้าเป็นทั้งสองฝั่ง — ไม่คัดลอกข้อมูลผิดกฎไปโปรใหม่
+    const tiers = source.tiers ?? [];
+    const conflicts = findBuyGiftConflicts(
+      tiers.flatMap((t) =>
+        (t.conditions ?? []).map((c) => ({
+          pro_code: c.product.pro_code,
+          tier_name: t.tier_name,
+        })),
+      ),
+      tiers.flatMap((t) =>
+        (t.rewards ?? []).map((r) => ({
+          pro_code: r.giftProduct.pro_code,
+          tier_name: t.tier_name,
+        })),
+      ),
+    );
+    if (conflicts.length > 0) {
+      throw new BadRequestException(
+        `คัดลอกไม่ได้ เพราะโปรต้นฉบับมีสินค้าเป็นทั้งสินค้าเข้าร่วมรายการและของแถม: ${formatBuyGiftConflicts(conflicts)} — กรุณาแก้โปรต้นฉบับก่อน`,
+      );
+    }
+
     return await this.dataSource.transaction(async (manager) => {
+      await this.assertPromotionTypeAllowed(
+        manager,
+        this.getPromotionType(source),
+      );
       const savedPromotion = await manager.save(
         manager.create(PromotionEntity, {
           promo_name: source.promo_name,
           creditor: source.creditor ?? undefined,
+          creditors: source.creditors ?? [],
           start_date: toUtcStart(data.start_date),
           end_date: toUtcEnd(data.end_date),
           status: false,
@@ -1631,6 +2270,17 @@ export class PromotionService {
                 tier: savedTier,
                 product: { pro_code: c.product.pro_code },
               } as DeepPartial<PromotionConditionEntity>),
+            ),
+          );
+        }
+
+        if (tier.exclusions?.length) {
+          await manager.save(
+            tier.exclusions.map((e) =>
+              manager.create(PromotionTierExclusionEntity, {
+                tier_id: savedTier.tier_id,
+                product_code: e.product_code,
+              }),
             ),
           );
         }

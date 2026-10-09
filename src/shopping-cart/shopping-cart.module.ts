@@ -12,6 +12,8 @@ import { ProductEntity } from 'src/products/products.entity';
 import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
 import { DeleteCartEntity } from './delete-cart.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
+import { PreorderProductEntity } from 'src/preorder/preorder-product.entity';
+import { PreorderCampaignEntity } from 'src/preorder/preorder-campaign.entity';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
       ProductEntity,
       DeleteCartEntity,
       HotdealEntity,
+      PreorderProductEntity,
+      PreorderCampaignEntity,
     ]),
     forwardRef(() => ProductsModule),
     forwardRef(() => HotdealModule),

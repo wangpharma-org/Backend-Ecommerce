@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { ProductEntity } from './products.entity';
+import { toCurrentLots } from 'src/lot/lot-display.util';
 import { ProductPharmaEntity } from './product-pharma.entity';
 import { Cron } from '@nestjs/schedule';
 import { CreditorEntity } from './creditor.entity';
@@ -39,6 +40,7 @@ import {
   sortRedeemProductsByRank,
 } from './redeem-product.criteria';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
+import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 
 interface OrderItem {
   pro_code: string;
@@ -54,6 +56,19 @@ export interface ProductEntityWithUnitEntity extends ProductEntity {
   pro_ratio2?: number;
   pro_ratio3?: number;
 }
+
+type ProductKafkaPayload = ProductEntityWithUnitEntity & {
+  creditor_code?: string | null;
+};
+
+const toCreditorReference = (
+  creditorCode: string | null,
+): CreditorEntity | null => {
+  const normalizedCode = creditorCode?.trim();
+  return normalizedCode
+    ? ({ creditor_code: normalizedCode } as CreditorEntity)
+    : null;
+};
 
 // interface UpdateProductInput {
 //   pro_code: string;
@@ -89,6 +104,21 @@ interface ApiResponse {
   }[];
 }
 
+type L16VisibilityFilter = 'all' | 'hidden' | 'visible';
+
+interface ProductL16StatusQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  visibility?: L16VisibilityFilter;
+}
+
+export interface ProductL16Status {
+  pro_code: string;
+  pro_name: string;
+  pro_l16_only: number;
+}
+
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -113,6 +143,7 @@ export class ProductsService {
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
     private readonly productLabelRulesService: ProductLabelRulesService,
     private readonly redeemProductSetService: RedeemProductSetService,
+    private readonly monthlyDealPublisher: MonthlyDealPublisherService,
   ) {}
 
   private convertEnumToUnitName(
@@ -278,7 +309,7 @@ export class ProductsService {
     }
   }
 
-  async getProductByCreditor(creditor_code: string) {
+  async getProductByCreditor(creditor_codes: string[]) {
     try {
       const qb = this.productRepo.createQueryBuilder('product');
 
@@ -288,7 +319,9 @@ export class ProductsService {
           'product.pro_name',
           'product.pro_genericname',
         ])
-        .where('product.creditor_code = :creditor_code', { creditor_code })
+        .where('product.creditor_code IN (:...creditor_codes)', {
+          creditor_codes,
+        })
         .andWhere('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
         .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
         .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
@@ -324,6 +357,8 @@ export class ProductsService {
       .select([
         'product.pro_code',
         'product.pro_name',
+        'product.pro_nameTH',
+        'product.pro_nameSale',
         'product.pro_imgmain',
         'product.pro_priceA',
         'product.pro_priceB',
@@ -541,6 +576,7 @@ export class ProductsService {
           is_detect_amount: false,
         },
       );
+      await this.monthlyDealPublisher.publishSnapshot();
     } catch (error) {
       this.logger.error('Error Reset FlashSale', error);
       throw new Error('Error Reset FlashSale');
@@ -616,6 +652,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_imgmain',
           'product.pro_promotion_amount',
@@ -697,6 +735,7 @@ export class ProductsService {
           );
         }),
       );
+      await this.monthlyDealPublisher.publishSnapshot();
       const responseData = this.productRepo.find({
         where: {
           pro_promotion_month: numberOfMonth,
@@ -739,6 +778,7 @@ export class ProductsService {
           );
         }),
       );
+      await this.monthlyDealPublisher.publishSnapshot();
       return 'Product Promotion Month Update Success (PO File)';
     } catch (error) {
       this.logger.error('Error updating product promotion month', error);
@@ -746,18 +786,10 @@ export class ProductsService {
     }
   }
 
-  async createProduct(
-    product: ProductEntity & {
-      pro_unit1?: string;
-      pro_unit2?: string;
-      pro_unit3?: string;
-      pro_ratio1?: number;
-      pro_ratio2?: number;
-      pro_ratio3?: number;
-    },
-  ) {
+  async createProduct(product: ProductKafkaPayload) {
     try {
       const {
+        creditor_code,
         pro_unit1,
         pro_unit2,
         pro_unit3,
@@ -769,6 +801,9 @@ export class ProductsService {
 
       const newProduct = this.productRepo.create({
         ...productData,
+        ...(creditor_code !== undefined && {
+          creditor: toCreditorReference(creditor_code),
+        }),
         pro_keysearch: Array.isArray(productData.pro_keysearch)
           ? (productData.pro_keysearch as string[]).join(',')
           : productData.pro_keysearch,
@@ -851,18 +886,11 @@ export class ProductsService {
     }
   }
 
-  async updateProduct(
-    product: ProductEntity & {
-      pro_unit1?: string;
-      pro_unit2?: string;
-      pro_unit3?: string;
-      pro_ratio1?: number;
-      pro_ratio2?: number;
-      pro_ratio3?: number;
-    },
-  ) {
+  async updateProduct(product: ProductKafkaPayload) {
     try {
       const {
+        pro_code,
+        creditor_code,
         pro_unit1,
         pro_unit2,
         pro_unit3,
@@ -872,15 +900,34 @@ export class ProductsService {
         ...productData
       } = product;
 
-      await this.productRepo.update(
-        { pro_code: product.pro_code },
-        {
-          ...productData,
+      const updateData: Partial<ProductEntity> = {
+        ...productData,
+        ...(productData.pro_keysearch !== undefined && {
           pro_keysearch: Array.isArray(productData.pro_keysearch)
             ? (productData.pro_keysearch as string[]).join(',')
             : productData.pro_keysearch,
-        },
-      );
+        }),
+      };
+      if (creditor_code !== undefined) {
+        updateData.creditor = toCreditorReference(creditor_code);
+      }
+
+      await this.productRepo.update({ pro_code }, updateData);
+
+      if (creditor_code !== undefined) {
+        const normalizedCreditorCode =
+          updateData.creditor?.creditor_code ?? null;
+        void this.elasticsearchService
+          .updateProductDoc(pro_code, {
+            creditor_code: normalizedCreditorCode,
+          })
+          .catch((err: unknown) =>
+            this.logger.error(
+              `Failed to sync creditor for product ${pro_code} in ES`,
+              err,
+            ),
+          );
+      }
 
       const hasUnitData =
         pro_unit1 !== undefined ||
@@ -988,9 +1035,14 @@ export class ProductsService {
         )
         .leftJoinAndSelect('products.flashsale', 'fsp_products')
         .leftJoinAndSelect('fsp_products.flashsale', 'fs_products')
+        // ECWC-643: แสดงเฉพาะ lot ปัจจุบัน — lot ที่ถูกปิด (ประวัติ) เก็บไว้ใน DB แต่ไม่ต้อง join มา
+        .leftJoinAndSelect('product.lot', 'lot', 'lot.is_active = 1')
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
+          'product.pro_nameEN',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -1026,6 +1078,8 @@ export class ProductsService {
           'recommend.id',
           'products.pro_code',
           'products.pro_name',
+          'products.pro_nameTH',
+          'products.pro_nameSale',
           'products.pro_imgmain',
           'products.pro_priceA',
           'products.pro_priceB',
@@ -1039,6 +1093,8 @@ export class ProductsService {
           'replaceInRecommend.pro_code',
           'replace.pro_code',
           'replace.pro_name',
+          'replace.pro_nameTH',
+          'replace.pro_nameSale',
           'replace.pro_imgmain',
           'replace.pro_priceA',
           'replace.pro_priceB',
@@ -1063,6 +1119,12 @@ export class ProductsService {
           'fs_products.time_start',
           'fs_products.time_end',
           'fs_products.date',
+          'lot.lot_id',
+          'lot.lot',
+          'lot.mfg',
+          'lot.exp',
+          'lot.amount',
+          'lot.received_at',
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
 
@@ -1076,6 +1138,9 @@ export class ProductsService {
       if (!product) {
         throw new Error('Not found Product');
       }
+
+      // ECWC-643: เลือก lot ปัจจุบันจาก amount ที่รับเข้าเทียบกับ stock (กติกาเดียวกับตะกร้า)
+      product.lot = toCurrentLots(product.lot ?? [], product.pro_stock);
 
       const transformedProduct = await this.transformProductWithUnits(product);
       await this.attachProductLabels([
@@ -1154,6 +1219,8 @@ export class ProductsService {
           // 'product.pro_id',
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -1343,6 +1410,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -1886,6 +1955,8 @@ export class ProductsService {
         .select([
           'product.pro_code',
           'product.pro_name',
+          'product.pro_nameTH',
+          'product.pro_nameSale',
           'product.pro_priceA',
           'product.pro_priceB',
           'product.pro_priceC',
@@ -1893,6 +1964,7 @@ export class ProductsService {
           'product.pro_sale_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
+          'product.eng_chiew',
           'product.order_quantity',
           'product.viwers',
           'cart.spc_id',
@@ -2482,9 +2554,7 @@ export class ProductsService {
     }
   }
 
-  async getProductL16Status(): Promise<
-    { pro_code: string; pro_name: string; pro_l16_only: number }[]
-  > {
+  private createProductL16StatusQuery() {
     return this.productRepo
       .createQueryBuilder('product')
       .select(['product.pro_code', 'product.pro_name', 'product.pro_l16_only'])
@@ -2498,8 +2568,146 @@ export class ProductsService {
       .andWhere('product.pro_code NOT LIKE :p8', { p8: '@%' })
       .andWhere('product.pro_priceA > 0')
       .andWhere('product.pro_priceB > 0')
-      .andWhere('product.pro_priceC > 0')
-      .getMany();
+      .andWhere('product.pro_priceC > 0');
+  }
+
+  async getProductL16Status(): Promise<ProductL16Status[]> {
+    return this.createProductL16StatusQuery().getMany();
+  }
+
+  async getPaginatedProductL16Status(query: ProductL16StatusQuery): Promise<{
+    data: ProductL16Status[];
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 50));
+    const qb = this.createProductL16StatusQuery();
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) =>
+          where
+            .where('product.pro_code LIKE :search', { search })
+            .orWhere('product.pro_name LIKE :search', { search }),
+        ),
+      );
+    }
+
+    if (query.visibility === 'hidden') {
+      qb.andWhere('product.pro_l16_only = :hiddenStatus', {
+        hiddenStatus: 1,
+      });
+    } else if (query.visibility === 'visible') {
+      qb.andWhere('product.pro_l16_only = :visibleStatus', {
+        visibleStatus: 0,
+      });
+    }
+
+    const [data, total] = await qb
+      .orderBy('product.pro_code', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit),
+    };
+  }
+
+  async updateProductL16OnlyStatus(
+    products: { pro_code: string; status: number }[],
+  ): Promise<{ message: string; total: number }> {
+    const statusesByCode = new Map<string, number>();
+
+    for (const product of products) {
+      const proCode = String(product.pro_code ?? '').trim();
+      if (proCode.length > 0) {
+        statusesByCode.set(proCode, Number(product.status) === 1 ? 1 : 0);
+      }
+    }
+
+    if (statusesByCode.size === 0) {
+      throw new BadRequestException('ไม่พบรายการสินค้าที่ต้องการอัปเดต');
+    }
+
+    const productCodes = Array.from(statusesByCode.keys());
+    const existingCodes = new Set<string>();
+    const chunkSize = 1000;
+
+    for (let i = 0; i < productCodes.length; i += chunkSize) {
+      const productCodeChunk = productCodes.slice(i, i + chunkSize);
+      const foundProducts = await this.productRepo.find({
+        where: { pro_code: In(productCodeChunk) },
+        select: { pro_code: true },
+      });
+      for (const foundProduct of foundProducts) {
+        existingCodes.add(foundProduct.pro_code);
+      }
+    }
+
+    const missingCodes = productCodes.filter(
+      (productCode) => !existingCodes.has(productCode),
+    );
+    if (missingCodes.length > 0) {
+      throw new BadRequestException({
+        message: 'พบรหัสสินค้าที่ไม่อยู่ในระบบ',
+        missingCodes,
+        totalMissing: missingCodes.length,
+      });
+    }
+
+    const codesToHide = productCodes.filter(
+      (productCode) => statusesByCode.get(productCode) === 1,
+    );
+    const codesToShow = productCodes.filter(
+      (productCode) => statusesByCode.get(productCode) === 0,
+    );
+    const queryRunner = this.productRepo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      if (codesToHide.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 1 })
+          .where('pro_code IN (:...codes)', { codes: codesToHide })
+          .execute();
+      }
+
+      if (codesToShow.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ProductEntity)
+          .set({ pro_l16_only: 0 })
+          .where('pro_code IN (:...codes)', { codes: codesToShow })
+          .execute();
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        message: 'L16 visibility updated',
+        total: productCodes.length,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        'Error updating L16 visibility from admin table:',
+        error,
+      );
+      throw new Error('Error updating L16 visibility');
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async keySearchProducts(mem_code?: string, mem_route?: string) {
@@ -2982,8 +3190,11 @@ export class ProductsService {
         }
       }
 
+      // ECWC-421: pro_name คงเป็นชื่อจาก EasyAcc เสมอ ชื่อไทยเก็บแยกใน pro_nameTH ให้หน้าบ้านเลือกแสดง
       if (data.product_name !== undefined)
         productData.pro_name = data.product_name;
+      if (data.product_nameTH !== undefined)
+        productData.pro_nameTH = data.product_nameTH?.trim() || null;
       if (data.product_nameEN !== undefined)
         productData.pro_nameEN = data.product_nameEN as string;
       if (data.product_nameSale !== undefined)
@@ -3002,16 +3213,20 @@ export class ProductsService {
         productData.pro_stock = data.product_stock as number;
       if (data.product_lowest_stock !== undefined)
         productData.pro_lowest_stock = data.product_lowest_stock as number;
+      // eng_chiew เป็น NOT NULL จึงข้ามเมื่อส่ง null มา ไม่ให้ทั้ง UPDATE ล้ม
+      if (data.eng_chiew !== undefined && data.eng_chiew !== null)
+        productData.eng_chiew = data.eng_chiew;
       if (data.creditor_code !== undefined)
-        productData.creditor = data.creditor_code
-          ? ({ creditor_code: data.creditor_code } as CreditorEntity)
-          : null;
+        productData.creditor = toCreditorReference(data.creditor_code);
       if (data.product_price_a !== undefined)
         productData.pro_priceA = data.product_price_a as number;
       if (data.product_price_b !== undefined)
         productData.pro_priceB = data.product_price_b as number;
       if (data.product_price_c !== undefined)
         productData.pro_priceC = data.product_price_c as number;
+      // pro_cost เป็น NOT NULL จึงข้ามเมื่อส่ง null มา ไม่ให้ทั้ง UPDATE ล้ม
+      if (data.product_cost !== undefined && data.product_cost !== null)
+        productData.pro_cost = data.product_cost;
       if (data.pro_category !== undefined)
         productData.pro_category = data.pro_category as number;
       if (data.drugregister !== undefined)
@@ -3027,6 +3242,8 @@ export class ProductsService {
       const esFields: Partial<Omit<EsProductDoc, 'pro_code'>> = {};
       if (data.product_name !== undefined)
         esFields.pro_name = data.product_name ?? null;
+      if (data.product_nameTH !== undefined)
+        esFields.pro_nameTH = data.product_nameTH?.trim() || null;
       if (data.product_nameEN !== undefined)
         esFields.pro_nameEN = data.product_nameEN ?? null;
       if (data.product_nameSale !== undefined)

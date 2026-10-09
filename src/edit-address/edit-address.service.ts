@@ -9,6 +9,9 @@ export interface CreateAddressDto {
   name?: string;
   fullName: string;
   mem_address?: string;
+  mem_moo?: string;
+  mem_building?: string;
+  mem_room?: string;
   mem_village?: string;
   mem_alley?: string;
   mem_road?: string;
