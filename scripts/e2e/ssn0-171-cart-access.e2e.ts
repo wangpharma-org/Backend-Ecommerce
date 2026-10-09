@@ -1,7 +1,7 @@
 /**
  * E2E: ordinary customer cart ownership gate (SSN0-171).
  * This does not cover the Sale -> Ecommerce internal read path; that needs
- * assigned and unassigned Sale users plus the shared internal token.
+ * assigned and unassigned Sale users plus their shared-signature access tokens.
  *
  * Usage:
  *   BASE_URL=http://localhost:3000/api USER_TOKEN=<customer JWT> OTHER_MEM_CODE=<other customer> \

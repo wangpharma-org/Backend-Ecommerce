@@ -1,6 +1,5 @@
 import { WangdayService } from './wangday/wangday.service';
 import {
-  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
@@ -22,10 +21,8 @@ import {
   Req,
   Res,
   UploadedFile,
-  UnauthorizedException,
   UseInterceptors,
 } from '@nestjs/common';
-import { timingSafeEqual } from 'node:crypto';
 import { Response } from 'express';
 import axios from 'axios';
 import { AppService } from './app.service';
@@ -98,6 +95,8 @@ import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service'
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
+import { CartConsentGatewayService } from './cart-consents/cart-consent-gateway.service';
+import { SaleJwtAuthGuard } from './auth/sale-jwt-auth.guard';
 
 export interface JwtPayload {
   username: string;
@@ -169,6 +168,7 @@ export class AppController {
     private readonly orderStatusV2Service: OrderStatusV2Service,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
+    private readonly cartConsentGatewayService: CartConsentGatewayService,
   ) {}
 
   private requireRedeemAdmin(req: Request & { user: JwtPayload }): void {
@@ -894,28 +894,22 @@ export class AppController {
     };
   }
 
+  @UseGuards(SaleJwtAuthGuard)
   @Get('/ecom/internal/sale/customers/:memCode/cart')
   @Header('Cache-Control', 'no-store')
   async getSaleCustomerCart(
     @Param('memCode') memCode: string,
-    @Headers('x-internal-token') internalToken?: string,
+    @Headers('authorization') authorization?: string,
   ) {
-    const expectedToken = process.env.SALE_ECOMMERCE_INTERNAL_TOKEN?.trim();
-    const receivedToken = internalToken?.trim();
-    if (!expectedToken || !receivedToken) {
-      throw new UnauthorizedException('Invalid internal credentials');
-    }
-
-    const expected = Buffer.from(expectedToken);
-    const received = Buffer.from(receivedToken);
-    if (
-      expected.length !== received.length ||
-      !timingSafeEqual(expected, received)
-    ) {
-      throw new UnauthorizedException('Invalid internal credentials');
-    }
-
-    return this.shoppingCartService.getSaleCartSnapshot(memCode);
+    const match = /^Bearer (\S+)$/.exec(authorization ?? '');
+    if (!match) throw new ForbiddenException('Customer cart access denied');
+    const code = memCode.trim();
+    if (!code) throw new ForbiddenException('Customer cart access denied');
+    await this.cartConsentGatewayService.assertSalespersonCartRead(
+      match[1],
+      code,
+    );
+    return this.shoppingCartService.getSaleCartSnapshot(code);
   }
 
   @UseGuards(JwtAuthGuard)

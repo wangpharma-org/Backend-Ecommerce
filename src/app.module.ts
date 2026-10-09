@@ -62,6 +62,8 @@ import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
+import { CartConsentsModule } from './cart-consents/cart-consents.module';
+import { SaleJwtAuthGuard } from './auth/sale-jwt-auth.guard';
 
 @Module({
   imports: [
@@ -167,8 +169,9 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ProductRequestModule,
     WatermarkAuditModule,
     PreorderModule,
+    CartConsentsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SaleJwtAuthGuard],
 })
 export class AppModule {}

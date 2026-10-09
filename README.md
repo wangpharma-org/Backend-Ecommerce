@@ -129,7 +129,9 @@ npm run start:dev
 | `DO_SPACES_KEY` | DigitalOcean Spaces access key |
 | `DO_SPACES_SECRET` | DigitalOcean Spaces secret |
 | `ELASTICSEARCH_NODE` | Elasticsearch endpoint |
-| `SALE_ECOMMERCE_INTERNAL_TOKEN` | Shared secret สำหรับ Sale backend อ่านตะกร้าแบบ read-only ผ่าน `/api/ecom/internal/sale/customers/:memCode/cart`; ไม่ตั้งค่าจะปฏิเสธทุกคำขอ |
+| `SALE_API_URL` | Base URL ของ Sale backend (รวม `/api/sale`) สำหรับตรวจ assignment ก่อนคืนตะกร้าและส่งต่อคำขอ consent ของลูกค้า; ไม่ตั้งค่าจะปฏิเสธคำขอ |
+
+SSN0-172 ใช้ access token ของลูกค้าผ่าน `GET /api/ecom/cart-consents` และ `POST /api/ecom/cart-consents/:id/accept|reject|revoke`; Ecommerce ส่ง token เดิมไปให้ Sale ตรวจ `mem_code` จาก JWT. Sale และ Ecommerce ต้องตั้ง secret สำหรับ access token ให้ตรงกัน. ทดสอบ API จริงด้วย `scripts/e2e/ssn0-172-consent.e2e.ts` บนลูกค้าทดสอบที่แยกไว้เท่านั้น; สคริปต์ต้องมี token ฝ่ายขาย/ลูกค้า/ลูกค้าอีกคน และ `ALLOW_CONSENT_MUTATION=YES` ก่อนเริ่ม
 
 ---
 
