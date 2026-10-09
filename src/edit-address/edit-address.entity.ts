@@ -21,6 +21,15 @@ export class EditAddress {
   @Column({ length: 120, nullable: false })
   mem_address: string;
 
+  @Column({ length: 120, nullable: true })
+  mem_moo: string;
+
+  @Column({ length: 120, nullable: true })
+  mem_building: string;
+
+  @Column({ length: 120, nullable: true })
+  mem_room: string;
+
   @Column({ length: 120, nullable: false })
   mem_village: string;
 

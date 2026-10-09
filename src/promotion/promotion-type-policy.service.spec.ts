@@ -8,21 +8,27 @@ type QueryBuilderResult<T> = {
   where: jest.Mock;
   leftJoinAndSelect: jest.Mock;
   setLock: jest.Mock;
+  andWhere: jest.Mock;
   getOne: jest.Mock<Promise<T | null>>;
   getMany: jest.Mock<Promise<T[]>>;
 };
 
-const queryBuilder = <T>(result: T | null, many: T[] = []): QueryBuilderResult<T> => {
+const queryBuilder = <T>(
+  result: T | null,
+  many: T[] = [],
+): QueryBuilderResult<T> => {
   const builder: QueryBuilderResult<T> = {
     where: jest.fn(),
     leftJoinAndSelect: jest.fn(),
     setLock: jest.fn(),
+    andWhere: jest.fn(),
     getOne: jest.fn().mockResolvedValue(result),
     getMany: jest.fn().mockResolvedValue(many),
   };
   builder.where.mockReturnValue(builder);
   builder.leftJoinAndSelect.mockReturnValue(builder);
   builder.setLock.mockReturnValue(builder);
+  builder.andWhere.mockReturnValue(builder);
   return builder;
 };
 
@@ -35,7 +41,9 @@ describe('PromotionService promotion type policy', () => {
   };
   let policyBuilder: QueryBuilderResult<PromotionTypePolicyEntity>;
   let promotionBuilder: QueryBuilderResult<PromotionEntity>;
-  let promotionRepo: jest.Mocked<Pick<Repository<PromotionEntity>, 'find' | 'findOne'>>;
+  let promotionRepo: jest.Mocked<
+    Pick<Repository<PromotionEntity>, 'find' | 'findOne'>
+  >;
   let promoOverlapService: {
     assertPromotionPairAvailable: jest.Mock<Promise<void>>;
   };
@@ -50,7 +58,12 @@ describe('PromotionService promotion type policy', () => {
     promo_id: number,
     creditor: PromotionEntity['creditor'] | null,
   ): PromotionEntity =>
-    ({ promo_id, promo_name: `Promo ${promo_id}`, creditor, status: true } as PromotionEntity);
+    ({
+      promo_id,
+      promo_name: `Promo ${promo_id}`,
+      creditor,
+      status: true,
+    }) as PromotionEntity;
 
   beforeEach(() => {
     policy.locked_type = null;
@@ -70,13 +83,18 @@ describe('PromotionService promotion type policy', () => {
         if (entity === PromotionTypePolicyEntity) {
           return { createQueryBuilder: jest.fn(() => policyBuilder) };
         }
-        return { createQueryBuilder: jest.fn(() => promotionBuilder) };
+        return {
+          createQueryBuilder: jest.fn(() => promotionBuilder),
+          findBy: jest.fn().mockResolvedValue([{ creditor_code: 'CRD001' }]),
+        };
       }),
       create: jest.fn((_entity: unknown, value: object) => value),
       save: jest.fn(async (value: object) => value),
     };
     const dataSource = {
-      transaction: jest.fn(async (work: (tx: typeof manager) => Promise<unknown>) => work(manager)),
+      transaction: jest.fn(
+        async (work: (tx: typeof manager) => Promise<unknown>) => work(manager),
+      ),
     } as unknown as DataSource;
     service = new PromotionService(
       promotionRepo as unknown as Repository<PromotionEntity>,
@@ -90,7 +108,9 @@ describe('PromotionService promotion type policy', () => {
       {} as never,
       {} as never,
       {} as never,
-      { findOneBy: jest.fn().mockResolvedValue(policy) } as unknown as Repository<PromotionTypePolicyEntity>,
+      {
+        findOneBy: jest.fn().mockResolvedValue(policy),
+      } as unknown as Repository<PromotionTypePolicyEntity>,
       dataSource,
       promoOverlapService as never,
     );
@@ -140,10 +160,12 @@ describe('PromotionService promotion type policy', () => {
     policy.locked_promo_id = 7;
     policy.locked_at = new Date();
 
-    await expect(service.unlockPromotionTypePolicy('company')).resolves.toEqual({
-      locked_type: null,
-      locked_promo_id: null,
-    });
+    await expect(service.unlockPromotionTypePolicy('company')).resolves.toEqual(
+      {
+        locked_type: null,
+        locked_promo_id: null,
+      },
+    );
     expect(policy).toMatchObject({
       locked_type: null,
       locked_promo_id: null,
@@ -157,9 +179,9 @@ describe('PromotionService promotion type policy', () => {
     policy.locked_type = 'company';
     policy.locked_promo_id = 7;
 
-    await expect(service.unlockPromotionTypePolicy('wang')).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      service.unlockPromotionTypePolicy('wang'),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(manager.save).not.toHaveBeenCalled();
   });
 
@@ -172,17 +194,72 @@ describe('PromotionService promotion type policy', () => {
 
     await expect(
       service.addPromotion({
-        promo_name: 'Wang blocked', creditor_code: null, start_date: new Date(), end_date: new Date(), status: false,
+        promo_name: 'Wang blocked',
+        creditor_codes: [],
+        start_date: new Date(),
+        end_date: new Date(),
+        status: false,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(service.updateStatus(8, true)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateStatus(8, true)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
     await expect(
-      service.duplicatePromotion({ promo_id: 8, start_date: new Date(), end_date: new Date() }),
+      service.duplicatePromotion({
+        promo_id: 8,
+        start_date: new Date(),
+        end_date: new Date(),
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       service.addPromotion({
-        promo_name: 'Company allowed', creditor_code: 'CRD001', start_date: new Date(), end_date: new Date(), status: false,
+        promo_name: 'Company allowed',
+        creditor_codes: ['CRD001'],
+        start_date: new Date(),
+        end_date: new Date(),
+        status: false,
       }),
     ).resolves.toMatchObject({ promo_name: 'Company allowed' });
+  });
+
+  it('rejects a company promotion when a creditor_code does not exist', async () => {
+    await expect(
+      service.addPromotion({
+        promo_name: 'Missing creditor',
+        creditor_codes: ['CRD001', 'NOPE'],
+        start_date: new Date(),
+        end_date: new Date(),
+        status: false,
+      }),
+    ).rejects.toThrow('ไม่พบรหัสเจ้าหนี้: NOPE');
+  });
+
+  it('saves every creditor and keeps the first one as the main creditor', async () => {
+    manager.getRepository.mockImplementation((entity: unknown) => {
+      if (entity === PromotionTypePolicyEntity) {
+        return { createQueryBuilder: jest.fn(() => policyBuilder) };
+      }
+      return {
+        findBy: jest
+          .fn()
+          .mockResolvedValue([
+            { creditor_code: 'CRD001' },
+            { creditor_code: 'CRD002' },
+          ]),
+      };
+    });
+
+    await expect(
+      service.addPromotion({
+        promo_name: 'Multi',
+        creditor_codes: ['CRD001', 'CRD002'],
+        start_date: new Date(),
+        end_date: new Date(),
+        status: false,
+      }),
+    ).resolves.toMatchObject({
+      creditor: { creditor_code: 'CRD001' },
+      creditors: [{ creditor_code: 'CRD001' }, { creditor_code: 'CRD002' }],
+    });
   });
 });

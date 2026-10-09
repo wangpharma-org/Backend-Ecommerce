@@ -58,4 +58,23 @@ describe('PreorderNotifierService', () => {
     ]);
     expect(n).toBe(1);
   });
+
+  it('sendMany แบบ concurrency ส่งครบทุกรายการ', async () => {
+    post.mockReturnValue(of({ data: {} }));
+    const n = await svc.sendMany(
+      ['a', 'b', 'c'].map((memCode) => ({ memCode, title: 't', message: 'm' })),
+      2,
+    );
+    expect(n).toBe(3);
+    expect(post).toHaveBeenCalledTimes(3);
+  });
+
+  it('getLineRegisteredMemCodes เรียก admin/users/line-registered ของ notification-service', async () => {
+    const get = jest.fn().mockReturnValue(of({ data: { memCodes: ['a'] } }));
+    svc = new PreorderNotifierService({ get } as unknown as HttpService);
+    await expect(svc.getLineRegisteredMemCodes()).resolves.toEqual(['a']);
+    expect((get.mock.calls[0] as [string])[0]).toBe(
+      'http://notify.test/api/notifications/admin/users/line-registered',
+    );
+  });
 });

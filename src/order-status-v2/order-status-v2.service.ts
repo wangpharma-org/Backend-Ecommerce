@@ -14,6 +14,7 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { UserEntity } from '../users/users.entity';
 import { ProductsService } from '../products/products.service';
+import { DhlTrackingService } from '../dhl-tracking/dhl-tracking.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
   EcomOrderDetailV2Res,
@@ -156,6 +157,7 @@ export class OrderStatusV2Service {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly productService: ProductsService,
+    private readonly dhlTrackingService: DhlTrackingService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
@@ -750,6 +752,8 @@ export class OrderStatusV2Service {
       throw new NotFoundException(`Order ${soh_running} not found`);
     }
 
+    const dhl_tracking_numbers =
+      await this.dhlTrackingService.findTrackingNumbers(soh_running);
     const picking = pickingRaw
       ? await this.fillFallbackPrices(pickingRaw, soh_running)
       : pickingRaw;
@@ -759,6 +763,7 @@ export class OrderStatusV2Service {
     return {
       soh_running,
       bill_number: picking?.bill_number ?? null,
+      dhl_tracking_numbers,
       status,
       status_label: ECOM_ORDER_TIMELINE_LABEL[status],
       picking: picking

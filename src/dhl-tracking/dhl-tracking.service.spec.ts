@@ -7,11 +7,14 @@ import { DhlTrackingService } from './dhl-tracking.service';
 
 describe('DhlTrackingService', () => {
   let service: DhlTrackingService;
-  let dhlTrackingRepo: { upsert: jest.Mock };
+  let dhlTrackingRepo: { upsert: jest.Mock; find: jest.Mock };
   let shoppingHeadRepo: { findOne: jest.Mock };
 
   beforeEach(async () => {
-    dhlTrackingRepo = { upsert: jest.fn().mockResolvedValue(undefined) };
+    dhlTrackingRepo = {
+      upsert: jest.fn().mockResolvedValue(undefined),
+      find: jest.fn(),
+    };
     shoppingHeadRepo = { findOne: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -51,6 +54,23 @@ describe('DhlTrackingService', () => {
       },
       ['soh_running', 'tracking_number'],
     );
+  });
+
+  it('returns all DHL tracking numbers for an order in creation order', async () => {
+    dhlTrackingRepo.find.mockResolvedValue([
+      { tracking_number: '7128083062012186' },
+      { tracking_number: '7128083062012187' },
+    ]);
+
+    await expect(service.findTrackingNumbers('SO-001')).resolves.toEqual([
+      '7128083062012186',
+      '7128083062012187',
+    ]);
+    expect(dhlTrackingRepo.find).toHaveBeenCalledWith({
+      where: { soh_running: 'SO-001' },
+      select: { tracking_number: true },
+      order: { created_at: 'ASC' },
+    });
   });
 
   it('does not store a DHL number for an unknown order', async () => {

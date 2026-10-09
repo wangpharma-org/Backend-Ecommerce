@@ -12,6 +12,7 @@ import { PreorderNotifierService } from './preorder-notifier.service';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ProductEntity } from '../products/products.entity';
 import { UserEntity } from '../users/users.entity';
+import { NotificationTokenEntity } from '../notifyapp/notification-token.entity';
 import { ShoppingCartModule } from '../shopping-cart/shopping-cart.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { ShoppingCartModule } from '../shopping-cart/shopping-cart.module';
       PreorderItemLotEntity,
       ProductEntity,
       UserEntity,
+      NotificationTokenEntity,
     ]),
     HttpModule,
     FeatureFlagsModule,

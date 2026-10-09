@@ -9,5 +9,6 @@ import { DhlTrackingService } from './dhl-tracking.service';
   imports: [TypeOrmModule.forFeature([DhlTrackingEntity, ShoppingHeadEntity])],
   controllers: [DhlTrackingController],
   providers: [DhlTrackingService],
+  exports: [DhlTrackingService],
 })
 export class DhlTrackingModule {}
