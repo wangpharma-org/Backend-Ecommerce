@@ -27,6 +27,7 @@ import { BundleSetModule } from 'src/bundle-set/bundle-set.module';
 import { FlashsaleModule } from 'src/flashsale/flashsale.module';
 // กระเช้าเปลี่ยนแล้วต้องให้ engine ของแถมคิดใหม่ (checkPromotionReward)
 import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
+import { CartConsentsModule } from '../cart-consents/cart-consents.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { ShoppingCartModule } from 'src/shopping-cart/shopping-cart.module';
     FeatureFlagsModule,
     BundleSetModule,
     ShoppingCartModule,
+    CartConsentsModule,
     FlashsaleModule,
   ],
   providers: [SpecialCollectionService, PromoBoardService, CartBasketService],

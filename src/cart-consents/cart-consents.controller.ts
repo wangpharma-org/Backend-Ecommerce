@@ -13,6 +13,7 @@ import {
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CartConsentGatewayService } from './cart-consent-gateway.service';
+import { SaleCartMutationService } from './sale-cart-mutation.service';
 
 function customerToken(user: unknown, authorization?: string): string {
   if (
@@ -89,7 +90,42 @@ export class CartConsentsController {
 @Controller('ecom/cart-sessions')
 @UseGuards(JwtAuthGuard)
 export class CartSessionsController {
-  constructor(private readonly gateway: CartConsentGatewayService) {}
+  constructor(
+    private readonly gateway: CartConsentGatewayService,
+    private readonly cartMutations: SaleCartMutationService,
+  ) {}
+
+  @Post('write-barrier')
+  async writeBarrier(
+    @Req() req: Request & { user?: unknown },
+    @Headers('authorization') authorization?: string,
+  ) {
+    customerToken(req.user, authorization);
+    const user = req.user;
+    if (
+      typeof user !== 'object' ||
+      user === null ||
+      !('mem_code' in user) ||
+      typeof user.mem_code !== 'string'
+    ) {
+      throw new UnauthorizedException('Customer token required');
+    }
+    await this.cartMutations.withCartMutationLock(
+      user.mem_code,
+      () => Promise.resolve(undefined),
+      30,
+    );
+    return { settled: true };
+  }
+
+  @Get('contact')
+  @Header('Cache-Control', 'no-store')
+  contact(
+    @Req() req: Request & { user?: unknown },
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.gateway.getCartContact(customerToken(req.user, authorization));
+  }
 
   @Get()
   @Header('Cache-Control', 'no-store')

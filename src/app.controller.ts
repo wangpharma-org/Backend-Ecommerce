@@ -14,6 +14,7 @@ import {
   Ip,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -96,7 +97,11 @@ import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
 import { CartConsentGatewayService } from './cart-consents/cart-consent-gateway.service';
-import { SaleJwtAuthGuard } from './auth/sale-jwt-auth.guard';
+import {
+  SaleJwtAuthGuard,
+  type AuthenticatedSaleUser,
+} from './auth/sale-jwt-auth.guard';
+import { SaleCartMutationService } from './cart-consents/sale-cart-mutation.service';
 
 export interface JwtPayload {
   username: string;
@@ -169,6 +174,7 @@ export class AppController {
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
     private readonly cartConsentGatewayService: CartConsentGatewayService,
+    private readonly saleCartMutationService: SaleCartMutationService,
   ) {}
 
   private requireRedeemAdmin(req: Request & { user: JwtPayload }): void {
@@ -703,50 +709,57 @@ export class AppController {
     },
   ) {
     this.assertOwnCart(req, data.mem_code);
-    const priceCondition = req.user.price_option ?? 'C';
-    const payload: {
-      mem_code: string;
-      pro_code: string;
-      pro_unit: string;
-      amount: number;
-      priceCondition: string;
-      mem_route?: string;
-      // is_reward: boolean;
-      flashsale_end: string;
-      // hotdeal_free: boolean;
-      clientVersion?: string | number;
-      company_day_source?: string;
-    } = {
-      mem_code: data.mem_code,
-      pro_code: data.pro_code,
-      pro_unit: data.pro_unit,
-      amount: data.amount,
-      priceCondition,
-      mem_route: req.user.mem_route,
-      flashsale_end: data.flashsale_end,
-      clientVersion: data.clientVersion ?? data.cartVersion,
-      company_day_source: data.company_day_source,
-    };
-    const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.addProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
+    return this.saleCartMutationService.withCartMutationLock(
       data.mem_code,
+      async () => {
+        const priceCondition = req.user.price_option ?? 'C';
+        const payload: {
+          mem_code: string;
+          pro_code: string;
+          pro_unit: string;
+          amount: number;
+          priceCondition: string;
+          mem_route?: string;
+          // is_reward: boolean;
+          flashsale_end: string;
+          // hotdeal_free: boolean;
+          clientVersion?: string | number;
+          company_day_source?: string;
+        } = {
+          mem_code: data.mem_code,
+          pro_code: data.pro_code,
+          pro_unit: data.pro_unit,
+          amount: data.amount,
+          priceCondition,
+          mem_route: req.user.mem_route,
+          flashsale_end: data.flashsale_end,
+          clientVersion: data.clientVersion ?? data.cartVersion,
+          company_day_source: data.company_day_source,
+        };
+        const { cart, cartVersion, cartSyncedAt } =
+          await this.shoppingCartService.addProductCart(payload);
+        const summaryCart = await this.shoppingCartService.summaryCart(
+          data.mem_code,
+        );
+        const addedProduct = cart.find(
+          (item) => item.pro_code === data.pro_code,
+        );
+        this.searchCartTrackingService.emitAddToCartEvent(data.mem_code, {
+          pro_code: data.pro_code,
+          pro_name: addedProduct?.pro_name,
+          pro_unit: data.pro_unit,
+          amount: data.amount,
+          source: data.source,
+          search_query: data.search_query,
+        });
+        return {
+          cart,
+          summaryCart: summaryCart.total,
+          cartVersion,
+          cartSyncedAt,
+        };
+      },
     );
-    const addedProduct = cart.find((item) => item.pro_code === data.pro_code);
-    this.searchCartTrackingService.emitAddToCartEvent(data.mem_code, {
-      pro_code: data.pro_code,
-      pro_name: addedProduct?.pro_name,
-      pro_unit: data.pro_unit,
-      amount: data.amount,
-      source: data.source,
-      search_query: data.search_query,
-    });
-    return {
-      cart,
-      summaryCart: summaryCart.total,
-      cartVersion,
-      cartSyncedAt,
-    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -778,25 +791,30 @@ export class AppController {
     },
   ) {
     this.assertOwnCart(req, data.mem_code);
-    const priceOption = req.user.price_option ?? 'C';
-    const payload: {
-      mem_code: string;
-      type: string;
-      priceOption: string;
-      clientVersion?: string;
-    } = { ...data, priceOption };
-    this.logger.log('Check all cart data:', data);
-    const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.checkedProductCartAll(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
+    return this.saleCartMutationService.withCartMutationLock(
       data.mem_code,
+      async () => {
+        const priceOption = req.user.price_option ?? 'C';
+        const payload: {
+          mem_code: string;
+          type: string;
+          priceOption: string;
+          clientVersion?: string;
+        } = { ...data, priceOption };
+        this.logger.log('Check all cart data:', data);
+        const { cart, cartVersion, cartSyncedAt } =
+          await this.shoppingCartService.checkedProductCartAll(payload);
+        const summaryCart = await this.shoppingCartService.summaryCart(
+          data.mem_code,
+        );
+        return {
+          cart,
+          summaryCart: summaryCart.total,
+          cartVersion,
+          cartSyncedAt,
+        };
+      },
     );
-    return {
-      cart,
-      summaryCart: summaryCart.total,
-      cartVersion,
-      cartSyncedAt,
-    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -811,24 +829,29 @@ export class AppController {
     },
   ) {
     this.assertOwnCart(req, data.mem_code);
-    const priceOption = req.user.price_option ?? 'C';
-    const payload: {
-      mem_code: string;
-      pro_code: string;
-      priceOption: string;
-      clientVersion?: string;
-    } = { ...data, priceOption };
-    const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.handleDeleteCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
+    return this.saleCartMutationService.withCartMutationLock(
       data.mem_code,
+      async () => {
+        const priceOption = req.user.price_option ?? 'C';
+        const payload: {
+          mem_code: string;
+          pro_code: string;
+          priceOption: string;
+          clientVersion?: string;
+        } = { ...data, priceOption };
+        const { cart, cartVersion, cartSyncedAt } =
+          await this.shoppingCartService.handleDeleteCart(payload);
+        const summaryCart = await this.shoppingCartService.summaryCart(
+          data.mem_code,
+        );
+        return {
+          cart,
+          summaryCart: summaryCart.total,
+          cartVersion,
+          cartSyncedAt,
+        };
+      },
     );
-    return {
-      cart,
-      summaryCart: summaryCart.total,
-      cartVersion,
-      cartSyncedAt,
-    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -844,54 +867,65 @@ export class AppController {
     },
   ) {
     this.assertOwnCart(req, data.mem_code);
-    this.logger.log('Check cart data:', data);
-    const priceOption = req.user.price_option ?? 'C';
-    const payload: {
-      mem_code: string;
-      pro_code: string;
-      type: string;
-      priceOption: string;
-      mem_route?: string;
-      clientVersion?: string;
-    } = { ...data, priceOption, mem_route: req.user.mem_route };
-    const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.checkedProductCart(payload);
-    const summaryCart = await this.shoppingCartService.summaryCart(
+    return this.saleCartMutationService.withCartMutationLock(
       data.mem_code,
+      async () => {
+        this.logger.log('Check cart data:', data);
+        const priceOption = req.user.price_option ?? 'C';
+        const payload: {
+          mem_code: string;
+          pro_code: string;
+          type: string;
+          priceOption: string;
+          mem_route?: string;
+          clientVersion?: string;
+        } = { ...data, priceOption, mem_route: req.user.mem_route };
+        const { cart, cartVersion, cartSyncedAt } =
+          await this.shoppingCartService.checkedProductCart(payload);
+        const summaryCart = await this.shoppingCartService.summaryCart(
+          data.mem_code,
+        );
+        return {
+          cart,
+          summaryCart: summaryCart.total,
+          cartVersion,
+          cartSyncedAt,
+        };
+      },
     );
-    return {
-      cart,
-      summaryCart: summaryCart.total,
-      cartVersion,
-      cartSyncedAt,
-    };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
   async getProductCart(@Req() req: Request & { user: JwtPayload }) {
     const memberCode = req.user.mem_code;
-    const { cart, cartVersion, cartSyncedAt } =
-      await this.shoppingCartService.getCartSnapshot(
-        memberCode,
-        req.user.mem_route,
-      );
-    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
-    const dataDeleteCart =
-      await this.shoppingCartService.getDeleteCartItem(memberCode);
-    for (const item of cart) {
-      await this.imagedebugService.UpsercetImg({
-        pro_code: item.pro_code,
-        imageUrl: item.pro_imgmain,
-      });
-    }
-    return {
-      cart,
-      summaryCart: summaryCart.total,
-      cartVersion,
-      cartSyncedAt,
-      deleteCartItems: dataDeleteCart,
-    };
+    return this.saleCartMutationService.withCartMutationLock(
+      memberCode,
+      async () => {
+        const { cart, cartVersion, cartSyncedAt } =
+          await this.shoppingCartService.getCartSnapshot(
+            memberCode,
+            req.user.mem_route,
+          );
+        const summaryCart =
+          await this.shoppingCartService.summaryCart(memberCode);
+        const dataDeleteCart =
+          await this.shoppingCartService.getDeleteCartItem(memberCode);
+        for (const item of cart) {
+          await this.imagedebugService.UpsercetImg({
+            pro_code: item.pro_code,
+            imageUrl: item.pro_imgmain,
+          });
+        }
+        return {
+          cart,
+          summaryCart: summaryCart.total,
+          cartVersion,
+          cartSyncedAt,
+          deleteCartItems: dataDeleteCart,
+        };
+      },
+    );
   }
 
   @UseGuards(SaleJwtAuthGuard)
@@ -909,7 +943,33 @@ export class AppController {
       match[1],
       code,
     );
-    return this.shoppingCartService.getSaleCartSnapshot(code);
+    return this.saleCartMutationService.withCartMutationLock(code, () =>
+      this.shoppingCartService.getSaleCartSnapshot(code),
+    );
+  }
+
+  @UseGuards(SaleJwtAuthGuard)
+  @Post(
+    '/ecom/internal/sale/customers/:memCode/cart-sessions/:sessionId/mutations',
+  )
+  @Header('Cache-Control', 'no-store')
+  mutateSaleCustomerCart(
+    @Param('memCode') memCode: string,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Req() req: Request & { saleUser?: AuthenticatedSaleUser },
+    @Headers('x-sale-cart-permit') permit: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: unknown,
+  ) {
+    if (!req.saleUser) throw new ForbiddenException('Sale user required');
+    return this.saleCartMutationService.mutate(
+      memCode.trim(),
+      sessionId,
+      req.saleUser,
+      permit,
+      authorization,
+      body,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -4807,9 +4867,9 @@ export class AppController {
       mem_code,
       freebies: body.freebies,
     });
-    const results = await this.shoppingCartService.addHotdealToCart(
+    const results = await this.saleCartMutationService.withCartMutationLock(
       mem_code,
-      body.freebies,
+      () => this.shoppingCartService.addHotdealToCart(mem_code, body.freebies),
     );
     return results;
   }

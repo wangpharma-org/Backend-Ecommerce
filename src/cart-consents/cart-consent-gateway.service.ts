@@ -41,6 +41,12 @@ export interface CartSessionRecord {
   endedAt: string | null;
 }
 
+export interface CartContact {
+  salespersonCode: string | null;
+  displayName: string | null;
+  email: string | null;
+}
+
 const scopes: string[] = [
   'ADD_PRODUCT',
   'CHANGE_QUANTITY',
@@ -105,6 +111,23 @@ export class CartConsentGatewayService {
     return payload.map((value: unknown) => this.parseSessionRecord(value));
   }
 
+  async getCartContact(token: string): Promise<CartContact> {
+    const payload = await this.forward('GET', '/customer/cart-contact', token);
+    if (
+      !this.isRecord(payload) ||
+      !this.isNullableString(payload.salespersonCode) ||
+      !this.isNullableString(payload.displayName) ||
+      !this.isNullableString(payload.email)
+    ) {
+      throw new BadGatewayException('Invalid cart contact response');
+    }
+    return {
+      salespersonCode: payload.salespersonCode,
+      displayName: payload.displayName,
+      email: payload.email,
+    };
+  }
+
   async sessionAction(
     token: string,
     id: string,
@@ -114,6 +137,7 @@ export class CartConsentGatewayService {
       'POST',
       `/customer/cart-sessions/${encodeURIComponent(id)}/${action}`,
       token,
+      action === 'stop' ? 60000 : 5000,
     );
     return this.parseSessionRecord(payload);
   }
@@ -136,10 +160,26 @@ export class CartConsentGatewayService {
     }
   }
 
+  async assertSalespersonCartMutation(
+    token: string,
+    customerCode: string,
+    sessionId: string,
+  ): Promise<void> {
+    const payload = await this.forward(
+      'GET',
+      `/customers/${encodeURIComponent(customerCode)}/cart-sessions/${encodeURIComponent(sessionId)}/mutation-authority`,
+      token,
+    );
+    if (!this.isRecord(payload) || payload.active !== true) {
+      throw new BadGatewayException('Invalid cart session authority response');
+    }
+  }
+
   private async forward(
     method: 'GET' | 'POST',
     path: string,
     token: string,
+    timeoutMs = 5000,
   ): Promise<unknown> {
     const baseUrl = this.config
       .get<string>('SALE_API_URL')
@@ -155,7 +195,7 @@ export class CartConsentGatewayService {
         method,
         url: `${baseUrl}${path}`,
         headers: { Authorization: `Bearer ${token}` },
-        timeout: 5000,
+        timeout: timeoutMs,
       });
       return response.data;
     } catch (error: unknown) {

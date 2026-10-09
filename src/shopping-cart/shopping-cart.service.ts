@@ -112,9 +112,11 @@ export interface ShoppingCart {
 }
 
 export interface SaleCartSnapshotLine {
+  spc_id: number;
   spc_amount: string;
   spc_unit: string;
   spc_checked: number;
+  editable: boolean;
 }
 
 export interface SaleCartSnapshotProduct {
@@ -132,6 +134,10 @@ interface SaleCartSnapshotRow {
   spc_amount: string | number;
   spc_unit_enum: string | null;
   spc_checked: number | boolean;
+  basket_id: number | null;
+  is_reward: number | boolean;
+  hotdeal_free: number | boolean;
+  spc_fixed_total: string | number | null;
   unit_level: number | null;
   unit_name: string | null;
 }
@@ -978,6 +984,10 @@ export class ShoppingCartService {
           'cart.spc_amount AS spc_amount',
           'cart.spc_unit_enum AS spc_unit_enum',
           'cart.spc_checked AS spc_checked',
+          'cart.basket_id AS basket_id',
+          'cart.is_reward AS is_reward',
+          'cart.hotdeal_free AS hotdeal_free',
+          'cart.spc_fixed_total AS spc_fixed_total',
           'unit.level AS unit_level',
           'unit.unit_name AS unit_name',
         ])
@@ -1012,9 +1022,16 @@ export class ShoppingCartService {
           String(unitRow.unit_level) === String(row.spc_unit_enum),
       )?.unit_name;
       product.shopping_cart.push({
+        spc_id: row.spc_id,
         spc_amount: String(row.spc_amount),
         spc_unit: unitName ?? '',
         spc_checked: row.spc_checked ? 1 : 0,
+        editable:
+          row.basket_id === null &&
+          !row.is_reward &&
+          !row.hotdeal_free &&
+          row.spc_fixed_total === null &&
+          Boolean(unitName),
       });
     }
 
@@ -1079,6 +1096,10 @@ export class ShoppingCartService {
     company_day_source?: string;
     /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
     isPreorderFulfillment?: boolean;
+    /** Sale cart mutations must not select basket, reward, or fixed-price lines. */
+    ordinaryOnly?: boolean;
+    /** ADD_PRODUCT authority permits a new ordinary line, not changing an old one. */
+    newLineOnly?: boolean;
   }): Promise<CartMutationResult> {
     try {
       if (data.flashsale_end) {
@@ -1114,8 +1135,15 @@ export class ShoppingCartService {
           hotdeal_free: false,
           is_reward: false,
           basket_id: IsNull(),
+          spc_fixed_total: IsNull(),
         },
       });
+
+      if (existing && data.newLineOnly) {
+        throw new ConflictException(
+          'Product already exists; change its quantity instead',
+        );
+      }
 
       if (existing) {
         const newAmount = Number(existing.spc_amount) + data.amount;
@@ -1163,6 +1191,7 @@ export class ShoppingCartService {
         mem_route: data.mem_route,
         syncHotdeal: false,
         isPreorderFulfillment: data.isPreorderFulfillment,
+        ordinaryOnly: data.ordinaryOnly,
       });
 
       const cart = await this.getProductCart(data.mem_code, {
@@ -1641,6 +1670,7 @@ export class ShoppingCartService {
     syncHotdeal?: boolean;
     /** true เฉพาะตอนเรียกจาก addProductCart ที่เป็นการส่งสินค้าที่จัดสรรแล้วของ PreorderService เข้าตะกร้า */
     isPreorderFulfillment?: boolean;
+    ordinaryOnly?: boolean;
   }): Promise<CartMutationWithCompanyDayContext> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
@@ -1650,7 +1680,18 @@ export class ShoppingCartService {
           await this.ensureNotPreorderRestricted(data.pro_code);
         }
         await this.shoppingCartRepo.update(
-          { pro_code: data.pro_code, mem_code: data.mem_code },
+          {
+            pro_code: data.pro_code,
+            mem_code: data.mem_code,
+            ...(data.ordinaryOnly
+              ? {
+                  is_reward: false,
+                  hotdeal_free: false,
+                  basket_id: IsNull(),
+                  spc_fixed_total: IsNull(),
+                }
+              : {}),
+          },
           { spc_checked: true },
         );
 
@@ -1737,6 +1778,7 @@ export class ShoppingCartService {
     mem_code: string;
     priceOption: string;
     clientVersion?: string | number;
+    ordinaryOnly?: boolean;
   }): Promise<CartMutationResult> {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
@@ -1756,6 +1798,9 @@ export class ShoppingCartService {
         mem_code: data.mem_code,
         hotdeal_free: false,
         basket_id: IsNull(),
+        ...(data.ordinaryOnly
+          ? { is_reward: false, spc_fixed_total: IsNull() }
+          : {}),
       });
       await this.checkPromotionReward(data.mem_code, data.priceOption ?? 'C');
       const cart = await this.getProductCart(data.mem_code);
