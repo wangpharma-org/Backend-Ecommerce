@@ -1986,6 +1986,9 @@ export class AppController {
       name?: string;
       fullName: string;
       mem_address?: string;
+      mem_moo?: string;
+      mem_building?: string;
+      mem_room?: string;
       mem_village?: string;
       mem_alley?: string;
       mem_road?: string;
@@ -4855,5 +4858,10 @@ export class AppController {
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }
+  }
+
+  @Get('/health')
+  health() {
+    return { status: 'ok' };
   }
 }
