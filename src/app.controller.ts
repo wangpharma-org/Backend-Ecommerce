@@ -37,6 +37,7 @@ import { FavoriteService } from './favorite/favorite.service';
 import { FlashsaleService } from './flashsale/flashsale.service';
 import { UseGuards, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { InternalTokenGuard } from './auth/internal-token.guard';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -650,6 +651,16 @@ export class AppController {
       });
     }
     return result;
+  }
+
+  // ให้ sale service ดึงชุดสินค้าแลกแต้มชุดเดียวกับที่ลูกค้าเห็น โดยไม่ต้องมี token ลูกค้า
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/product-coin')
+  async internalProductCoin(
+    @Query('mem_route') mem_route?: string,
+    @Query('sort_by') sort_by?: string,
+  ) {
+    return this.productsService.listFree(sort_by, undefined, mem_route ?? '');
   }
 
   // @UseGuards(JwtAuthGuard)
