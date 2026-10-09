@@ -10,6 +10,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  NotFoundException,
   Ip,
   Param,
   ParseIntPipe,
@@ -95,6 +96,7 @@ import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service'
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
+import { toThaiDate } from './utils/date.util';
 
 export interface JwtPayload {
   username: string;
@@ -1375,16 +1377,64 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/update/promotion')
   async updatePromotion(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       promo_id: number;
       promo_name?: string;
-      start_date?: Date;
-      end_date?: Date;
+      start_date?: string;
+      end_date?: string;
       status?: boolean;
     },
   ) {
-    return this.promotionService.updatePromotion(data);
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Admin permission is required');
+    }
+
+    if (data.start_date !== undefined || data.end_date !== undefined) {
+      const currentPromotion = await this.promotionService.getPromotionById(
+        data.promo_id,
+      );
+      if (!currentPromotion) {
+        throw new NotFoundException(
+          `Promotion with id ${data.promo_id} not found`,
+        );
+      }
+
+      const toDateOnly = (value: string | undefined, fallback: string) => {
+        if (value === undefined) return fallback;
+        const parsedDate = new Date(value);
+        if (Number.isNaN(parsedDate.getTime())) {
+          throw new BadRequestException('วันที่โปรโมชั่นไม่ถูกต้อง');
+        }
+        return toThaiDate(parsedDate);
+      };
+
+      const updatedDates = await this.promotionService.updatePromotionDates(
+        {
+          promo_id: data.promo_id,
+          start_date: toDateOnly(data.start_date, currentPromotion.start_date),
+          end_date: toDateOnly(data.end_date, currentPromotion.end_date),
+        },
+        { mem_code: req.user.mem_code, username: req.user.username },
+      );
+
+      if (data.promo_name !== undefined || data.status !== undefined) {
+        await this.promotionService.updatePromotion({
+          promo_id: data.promo_id,
+          promo_name: data.promo_name,
+          status: data.status,
+        });
+      }
+
+      return updatedDates;
+    }
+
+    return this.promotionService.updatePromotion({
+      promo_id: data.promo_id,
+      promo_name: data.promo_name,
+      status: data.status,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
