@@ -46,11 +46,28 @@ export class PreorderNotifierService {
     }
   }
 
-  async sendMany(list: PreorderNotification[]): Promise<number> {
+  async sendMany(
+    list: PreorderNotification[],
+    concurrency = 1,
+  ): Promise<number> {
     let ok = 0;
-    for (const n of list) {
-      if (await this.send(n)) ok += 1;
+    for (let i = 0; i < list.length; i += concurrency) {
+      const sent = await Promise.all(
+        list.slice(i, i + concurrency).map((n) => this.send(n)),
+      );
+      ok += sent.filter(Boolean).length;
     }
     return ok;
+  }
+
+  /** ร้านที่ผูก LINE OA ไว้ (ข้อมูลอยู่ฝั่ง notification-service) — throw เมื่อเรียกไม่ได้ ให้ผู้เรียกตัดสินใจ retry */
+  async getLineRegisteredMemCodes(): Promise<string[]> {
+    const res = await lastValueFrom(
+      this.http.get<{ memCodes?: string[] }>(
+        `${this.baseUrl}/api/notifications/admin/users/line-registered`,
+        { timeout: 10000 },
+      ),
+    );
+    return Array.isArray(res.data?.memCodes) ? res.data.memCodes : [];
   }
 }
