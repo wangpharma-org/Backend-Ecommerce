@@ -309,7 +309,7 @@ export class ProductsService {
     }
   }
 
-  async getProductByCreditor(creditor_code: string) {
+  async getProductByCreditor(creditor_codes: string[]) {
     try {
       const qb = this.productRepo.createQueryBuilder('product');
 
@@ -319,7 +319,9 @@ export class ProductsService {
           'product.pro_name',
           'product.pro_genericname',
         ])
-        .where('product.creditor_code = :creditor_code', { creditor_code })
+        .where('product.creditor_code IN (:...creditor_codes)', {
+          creditor_codes,
+        })
         .andWhere('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
         .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
         .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
