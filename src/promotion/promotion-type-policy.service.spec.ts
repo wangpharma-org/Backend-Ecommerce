@@ -8,6 +8,7 @@ type QueryBuilderResult<T> = {
   where: jest.Mock;
   leftJoinAndSelect: jest.Mock;
   setLock: jest.Mock;
+  andWhere: jest.Mock;
   getOne: jest.Mock<Promise<T | null>>;
   getMany: jest.Mock<Promise<T[]>>;
 };
@@ -20,12 +21,14 @@ const queryBuilder = <T>(
     where: jest.fn(),
     leftJoinAndSelect: jest.fn(),
     setLock: jest.fn(),
+    andWhere: jest.fn(),
     getOne: jest.fn().mockResolvedValue(result),
     getMany: jest.fn().mockResolvedValue(many),
   };
   builder.where.mockReturnValue(builder);
   builder.leftJoinAndSelect.mockReturnValue(builder);
   builder.setLock.mockReturnValue(builder);
+  builder.andWhere.mockReturnValue(builder);
   return builder;
 };
 
