@@ -40,6 +40,7 @@ import {
   sortRedeemProductsByRank,
 } from './redeem-product.criteria';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
+import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 
 interface OrderItem {
   pro_code: string;
@@ -142,6 +143,7 @@ export class ProductsService {
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
     private readonly productLabelRulesService: ProductLabelRulesService,
     private readonly redeemProductSetService: RedeemProductSetService,
+    private readonly monthlyDealPublisher: MonthlyDealPublisherService,
   ) {}
 
   private convertEnumToUnitName(
@@ -572,6 +574,7 @@ export class ProductsService {
           is_detect_amount: false,
         },
       );
+      await this.monthlyDealPublisher.publishSnapshot();
     } catch (error) {
       this.logger.error('Error Reset FlashSale', error);
       throw new Error('Error Reset FlashSale');
@@ -730,6 +733,7 @@ export class ProductsService {
           );
         }),
       );
+      await this.monthlyDealPublisher.publishSnapshot();
       const responseData = this.productRepo.find({
         where: {
           pro_promotion_month: numberOfMonth,
@@ -772,6 +776,7 @@ export class ProductsService {
           );
         }),
       );
+      await this.monthlyDealPublisher.publishSnapshot();
       return 'Product Promotion Month Update Success (PO File)';
     } catch (error) {
       this.logger.error('Error updating product promotion month', error);
