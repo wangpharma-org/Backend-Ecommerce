@@ -129,6 +129,7 @@ npm run start:dev
 | `DO_SPACES_KEY` | DigitalOcean Spaces access key |
 | `DO_SPACES_SECRET` | DigitalOcean Spaces secret |
 | `ELASTICSEARCH_NODE` | Elasticsearch endpoint |
+| `SALE_ECOMMERCE_INTERNAL_TOKEN` | Shared secret สำหรับ Sale backend อ่านตะกร้าแบบ read-only ผ่าน `/api/ecom/internal/sale/customers/:memCode/cart`; ไม่ตั้งค่าจะปฏิเสธทุกคำขอ |
 
 ---
 

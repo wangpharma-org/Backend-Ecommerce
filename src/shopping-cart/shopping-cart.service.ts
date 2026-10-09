@@ -111,6 +111,37 @@ export interface ShoppingCart {
   hotdeal_promain?: string;
 }
 
+export interface SaleCartSnapshotLine {
+  spc_amount: string;
+  spc_unit: string;
+  spc_checked: number;
+}
+
+export interface SaleCartSnapshotProduct {
+  pro_code: string;
+  pro_name: string | null;
+  pro_imgmain: string | null;
+  shopping_cart: SaleCartSnapshotLine[];
+}
+
+interface SaleCartSnapshotRow {
+  pro_code: string | null;
+  pro_name: string | null;
+  pro_imgmain: string | null;
+  spc_id: number;
+  spc_amount: string | number;
+  spc_unit_enum: string | null;
+  spc_checked: number | boolean;
+  unit_level: number | null;
+  unit_name: string | null;
+}
+
+export interface SaleCartSnapshot {
+  cart: SaleCartSnapshotProduct[];
+  cartVersion: string;
+  cartSyncedAt: Date | null;
+}
+
 export interface FlashSale {
   promotion_id: number;
   limit: number;
@@ -931,6 +962,63 @@ export class ShoppingCartService {
       cart,
       ...version,
     };
+  }
+
+  async getSaleCartSnapshot(mem_code: string): Promise<SaleCartSnapshot> {
+    const [rows, version] = await Promise.all([
+      this.shoppingCartRepo
+        .createQueryBuilder('cart')
+        .leftJoin('cart.product', 'product')
+        .leftJoin('product.units', 'unit')
+        .select([
+          'product.pro_code AS pro_code',
+          'product.pro_name AS pro_name',
+          'product.pro_imgmain AS pro_imgmain',
+          'cart.spc_id AS spc_id',
+          'cart.spc_amount AS spc_amount',
+          'cart.spc_unit_enum AS spc_unit_enum',
+          'cart.spc_checked AS spc_checked',
+          'unit.level AS unit_level',
+          'unit.unit_name AS unit_name',
+        ])
+        .where('cart.mem_code = :mem_code', { mem_code })
+        .orderBy('product.pro_code', 'ASC')
+        .addOrderBy('cart.spc_id', 'ASC')
+        .getRawMany<SaleCartSnapshotRow>(),
+      this.getCartVersionState(mem_code),
+    ]);
+
+    const products = new Map<string, SaleCartSnapshotProduct>();
+    const addedLines = new Set<number>();
+
+    for (const row of rows) {
+      if (!row.pro_code) continue;
+      let product = products.get(row.pro_code);
+      if (!product) {
+        product = {
+          pro_code: row.pro_code,
+          pro_name: row.pro_name,
+          pro_imgmain: row.pro_imgmain,
+          shopping_cart: [],
+        };
+        products.set(row.pro_code, product);
+      }
+      if (addedLines.has(row.spc_id)) continue;
+      addedLines.add(row.spc_id);
+
+      const unitName = rows.find(
+        (unitRow) =>
+          unitRow.spc_id === row.spc_id &&
+          String(unitRow.unit_level) === String(row.spc_unit_enum),
+      )?.unit_name;
+      product.shopping_cart.push({
+        spc_amount: String(row.spc_amount),
+        spc_unit: unitName ?? '',
+        spc_checked: row.spc_checked ? 1 : 0,
+      });
+    }
+
+    return { cart: [...products.values()], ...version };
   }
 
   private async handleCheckFlashsale(pro_code: string) {

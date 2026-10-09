@@ -219,3 +219,95 @@ describe('ShoppingCartService — unit helpers', () => {
     });
   });
 });
+
+describe('ShoppingCartService — Sale cart snapshot', () => {
+  it('returns a narrow projection without invoking cart mutation operations', async () => {
+    const rows = [
+      {
+        pro_code: 'A001',
+        pro_name: 'Product A',
+        pro_imgmain: 'a.jpg',
+        spc_id: 12,
+        spc_amount: '2.50',
+        spc_unit_enum: '2',
+        spc_checked: 1,
+        unit_level: 1,
+        unit_name: 'ชิ้น',
+      },
+      {
+        pro_code: 'A001',
+        pro_name: 'Product A',
+        pro_imgmain: 'a.jpg',
+        spc_id: 12,
+        spc_amount: '2.50',
+        spc_unit_enum: '2',
+        spc_checked: 1,
+        unit_level: 2,
+        unit_name: 'กล่อง',
+      },
+      {
+        pro_code: 'B002',
+        pro_name: null,
+        pro_imgmain: null,
+        spc_id: 13,
+        spc_amount: '1.00',
+        spc_unit_enum: '1',
+        spc_checked: 0,
+        unit_level: 1,
+        unit_name: 'แผ่น',
+      },
+    ];
+    const queryBuilder = {
+      leftJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue(rows),
+      delete: jest.fn(),
+      execute: jest.fn(),
+      save: jest.fn(),
+      remove: jest.fn(),
+      update: jest.fn(),
+    };
+    const testService = Object.assign(
+      Object.create(ShoppingCartService.prototype),
+      {
+        shoppingCartRepo: {
+          createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+        },
+      },
+    ) as ShoppingCartService;
+    jest
+      .spyOn(testService, 'getCartVersionState')
+      .mockResolvedValue({ cartVersion: '8', cartSyncedAt: null });
+
+    await expect(testService.getSaleCartSnapshot('M001')).resolves.toEqual({
+      cart: [
+        {
+          pro_code: 'A001',
+          pro_name: 'Product A',
+          pro_imgmain: 'a.jpg',
+          shopping_cart: [
+            { spc_amount: '2.50', spc_unit: 'กล่อง', spc_checked: 1 },
+          ],
+        },
+        {
+          pro_code: 'B002',
+          pro_name: null,
+          pro_imgmain: null,
+          shopping_cart: [
+            { spc_amount: '1.00', spc_unit: 'แผ่น', spc_checked: 0 },
+          ],
+        },
+      ],
+      cartVersion: '8',
+      cartSyncedAt: null,
+    });
+    expect(queryBuilder.delete).not.toHaveBeenCalled();
+    expect(queryBuilder.execute).not.toHaveBeenCalled();
+    expect(queryBuilder.save).not.toHaveBeenCalled();
+    expect(queryBuilder.remove).not.toHaveBeenCalled();
+    expect(queryBuilder.update).not.toHaveBeenCalled();
+  });
+});

@@ -8,8 +8,10 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Header,
   HttpException,
   HttpStatus,
+  Headers,
   Ip,
   Param,
   ParseIntPipe,
@@ -20,8 +22,10 @@ import {
   Req,
   Res,
   UploadedFile,
+  UnauthorizedException,
   UseInterceptors,
 } from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { Response } from 'express';
 import axios from 'axios';
 import { AppService } from './app.service';
@@ -172,6 +176,15 @@ export class AppController {
       throw new ForbiddenException(
         'You do not have permission to access this resource',
       );
+    }
+  }
+
+  private assertOwnCart(
+    req: Request & { user: JwtPayload },
+    requestedMemCode: string,
+  ): void {
+    if (!requestedMemCode || requestedMemCode !== req.user.mem_code) {
+      throw new ForbiddenException('Cannot access another customer cart');
     }
   }
 
@@ -607,7 +620,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/cart/count/:mem_code')
-  async CountCart(@Param('mem_code') mem_code: string) {
+  async CountCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    this.assertOwnCart(req, mem_code);
     return await this.shoppingCartService.getCartItemCount(mem_code);
   }
 
@@ -685,6 +702,7 @@ export class AppController {
       search_query?: string;
     },
   ) {
+    this.assertOwnCart(req, data.mem_code);
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -759,6 +777,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    this.assertOwnCart(req, data.mem_code);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -791,6 +810,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    this.assertOwnCart(req, data.mem_code);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -823,6 +843,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    this.assertOwnCart(req, data.mem_code);
     this.logger.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
@@ -871,6 +892,30 @@ export class AppController {
       cartSyncedAt,
       deleteCartItems: dataDeleteCart,
     };
+  }
+
+  @Get('/ecom/internal/sale/customers/:memCode/cart')
+  @Header('Cache-Control', 'no-store')
+  async getSaleCustomerCart(
+    @Param('memCode') memCode: string,
+    @Headers('x-internal-token') internalToken?: string,
+  ) {
+    const expectedToken = process.env.SALE_ECOMMERCE_INTERNAL_TOKEN?.trim();
+    const receivedToken = internalToken?.trim();
+    if (!expectedToken || !receivedToken) {
+      throw new UnauthorizedException('Invalid internal credentials');
+    }
+
+    const expected = Buffer.from(expectedToken);
+    const received = Buffer.from(receivedToken);
+    if (
+      expected.length !== received.length ||
+      !timingSafeEqual(expected, received)
+    ) {
+      throw new UnauthorizedException('Invalid internal credentials');
+    }
+
+    return this.shoppingCartService.getSaleCartSnapshot(memCode);
   }
 
   @UseGuards(JwtAuthGuard)
