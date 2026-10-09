@@ -40,6 +40,7 @@ import { AppVersionModule } from './app-version/app-version.module';
 import { LandingModule } from './landing/landing.module';
 import { TrackOrderModule } from './track-order/track-order.module';
 import { ProductReturnModule } from './product-return/product-return.module';
+import { CustomerReturnModule } from './customer-return/customer-return.module';
 import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.module';
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
@@ -124,6 +125,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     TrackOrderModule,
     OrderStatusV2Module,
     ProductReturnModule,
+    CustomerReturnModule,
     BehaviorTrackingModule,
     NotifyRtModule,
     CompanyDayAnalyticModule,

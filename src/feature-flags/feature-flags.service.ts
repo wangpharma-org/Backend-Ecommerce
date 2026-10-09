@@ -11,6 +11,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   // ECWC-643: lot ในหน้ารายละเอียดสินค้าเป็นของใหม่ — ปิดไว้จนกว่าแอดมินจะเปิดเอง
   // (lot_display_cart ไม่อยู่ในนี้ เพราะตะกร้าแสดง lot อยู่แล้ว default เปิดเหมือนเดิม)
   'lot_display_product_detail',
+  // ECWC-691: ระบบขอคืนสินค้า — ปิดไว้จนกว่า logistic app / ERP พร้อมรับงาน
+  'customer_return',
 ]);
 
 @Injectable()
