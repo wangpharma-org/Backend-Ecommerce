@@ -27,6 +27,20 @@ export interface CartConsentRecord {
   revokedAt: string | null;
 }
 
+export interface CartSessionRecord {
+  id: string;
+  customerCode: string;
+  salespersonCode: string;
+  consentId: string;
+  scopes: CartConsentScope[];
+  status: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'STOPPED' | 'EXPIRED';
+  requestedAt: string;
+  notifiedAt: string | null;
+  respondedAt: string | null;
+  expiresAt: string | null;
+  endedAt: string | null;
+}
+
 const scopes: string[] = [
   'ADD_PRODUCT',
   'CHANGE_QUANTITY',
@@ -40,6 +54,13 @@ const statuses: string[] = [
   'REVOKED',
   'EXPIRED',
 ];
+const sessionStatuses: string[] = [
+  'PENDING',
+  'ACTIVE',
+  'REJECTED',
+  'STOPPED',
+  'EXPIRED',
+];
 
 function isScope(value: unknown): value is CartConsentScope {
   return typeof value === 'string' && scopes.includes(value);
@@ -47,6 +68,10 @@ function isScope(value: unknown): value is CartConsentScope {
 
 function isStatus(value: unknown): value is CartConsentRecord['status'] {
   return typeof value === 'string' && statuses.includes(value);
+}
+
+function isSessionStatus(value: unknown): value is CartSessionRecord['status'] {
+  return typeof value === 'string' && sessionStatuses.includes(value);
 }
 
 @Injectable()
@@ -71,6 +96,26 @@ export class CartConsentGatewayService {
       token,
     );
     return this.parseRecord(payload);
+  }
+
+  async listSessions(token: string): Promise<CartSessionRecord[]> {
+    const payload = await this.forward('GET', '/customer/cart-sessions', token);
+    if (!Array.isArray(payload))
+      throw new BadGatewayException('Invalid cart session response');
+    return payload.map((value: unknown) => this.parseSessionRecord(value));
+  }
+
+  async sessionAction(
+    token: string,
+    id: string,
+    action: 'accept' | 'reject' | 'stop',
+  ): Promise<CartSessionRecord> {
+    const payload = await this.forward(
+      'POST',
+      `/customer/cart-sessions/${encodeURIComponent(id)}/${action}`,
+      token,
+    );
+    return this.parseSessionRecord(payload);
   }
 
   async assertSalespersonCartRead(
@@ -158,6 +203,44 @@ export class CartConsentGatewayService {
       grantedAt: value.grantedAt,
       expiresAt: value.expiresAt,
       revokedAt: value.revokedAt,
+    };
+  }
+
+  private parseSessionRecord(value: unknown): CartSessionRecord {
+    if (
+      !this.isRecord(value) ||
+      typeof value.id !== 'string' ||
+      typeof value.customerCode !== 'string' ||
+      typeof value.salespersonCode !== 'string' ||
+      typeof value.consentId !== 'string' ||
+      !Array.isArray(value.scopes) ||
+      !isSessionStatus(value.status) ||
+      typeof value.requestedAt !== 'string' ||
+      !this.isNullableString(value.notifiedAt) ||
+      !this.isNullableString(value.respondedAt) ||
+      !this.isNullableString(value.expiresAt) ||
+      !this.isNullableString(value.endedAt)
+    ) {
+      throw new BadGatewayException('Invalid cart session response');
+    }
+    const safeScopes: CartConsentScope[] = [];
+    for (const scope of value.scopes) {
+      if (!isScope(scope))
+        throw new BadGatewayException('Invalid cart session response');
+      safeScopes.push(scope);
+    }
+    return {
+      id: value.id,
+      customerCode: value.customerCode,
+      salespersonCode: value.salespersonCode,
+      consentId: value.consentId,
+      scopes: safeScopes,
+      status: value.status,
+      requestedAt: value.requestedAt,
+      notifiedAt: value.notifiedAt,
+      respondedAt: value.respondedAt,
+      expiresAt: value.expiresAt,
+      endedAt: value.endedAt,
     };
   }
 

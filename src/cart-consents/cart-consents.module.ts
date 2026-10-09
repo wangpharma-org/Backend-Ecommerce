@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { CartConsentGatewayService } from './cart-consent-gateway.service';
-import { CartConsentsController } from './cart-consents.controller';
+import {
+  CartConsentsController,
+  CartSessionsController,
+} from './cart-consents.controller';
 
 @Module({
-  controllers: [CartConsentsController],
+  controllers: [CartConsentsController, CartSessionsController],
   providers: [CartConsentGatewayService],
   exports: [CartConsentGatewayService],
 })
