@@ -81,14 +81,6 @@ export class SaleOrderRequestEntity {
   @Column({ name: 'otp_attempts', type: 'int', default: 0 })
   otpAttempts: number;
 
-  @Column({
-    name: 'notified_at',
-    type: 'datetime',
-    precision: 6,
-    nullable: true,
-  })
-  notifiedAt: Date | null;
-
   @Column({ name: 'expires_at', type: 'datetime', precision: 6 })
   expiresAt: Date;
 

@@ -19,7 +19,6 @@ export class CreateSaleOrderRequests20261010000000 implements MigrationInterface
         payment_option varchar(30) NOT NULL,
         quoted_total decimal(16,2) NOT NULL,
         otp_attempts int NOT NULL DEFAULT 0,
-        notified_at datetime(6) NULL,
         expires_at datetime(6) NOT NULL,
         confirmed_order_numbers json NULL,
         created_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),

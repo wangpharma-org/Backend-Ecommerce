@@ -16,7 +16,10 @@ import { CartConsentGatewayService } from '../cart-consents/cart-consent-gateway
 import { isRecord } from '../cart-consents/cart-mutation.types';
 import { SaleCartMutationService } from '../cart-consents/sale-cart-mutation.service';
 import { EditAddress } from '../edit-address/edit-address.entity';
-import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
+import {
+  ShoppingCartService,
+  type SaleCartSnapshot,
+} from '../shopping-cart/shopping-cart.service';
 import { ShoppingOrderService } from '../shopping-order/shopping-order.service';
 import { UserEntity } from '../users/users.entity';
 import {
@@ -32,6 +35,21 @@ import {
 } from './sale-order-request.types';
 
 const REQUEST_MS = 15 * 60 * 1000;
+const ADDRESS_FIELDS = [
+  'id',
+  'name',
+  'fullName',
+  'mem_address',
+  'mem_village',
+  'mem_alley',
+  'mem_road',
+  'mem_tumbon',
+  'mem_amphur',
+  'mem_province',
+  'mem_post',
+  'phoneNumber',
+  'Note',
+] as const satisfies ReadonlyArray<keyof SaleOrderAddressSnapshot>;
 
 @Injectable()
 export class SaleOrderRequestService {
@@ -112,9 +130,8 @@ export class SaleOrderRequestService {
         if (snapshot.cartVersion !== input.expectedCartVersion) {
           throw new ConflictException('Cart changed; refresh and try again');
         }
-        if (
-          !snapshot.cart.some((product) => product.shopping_cart.length > 0)
-        ) {
+        const checkoutSnapshot = this.checkoutSnapshot(snapshot);
+        if (checkoutSnapshot.cart.length === 0) {
           throw new BadRequestException('Cart is empty');
         }
         const total = Number((await this.cart.summaryCart(customerCode)).total);
@@ -152,14 +169,13 @@ export class SaleOrderRequestService {
             sessionId,
             status: SaleOrderRequestStatus.PENDING,
             cartVersion: input.expectedCartVersion,
-            cartSnapshot: snapshot,
+            cartSnapshot: checkoutSnapshot,
             addressSnapshot: this.addressSnapshot(address),
             priceOption: member.mem_price || 'C',
             shippingOption: input.shippingOption,
             paymentOption: input.paymentOption,
             quotedTotal: total.toFixed(2),
             otpAttempts: 0,
-            notifiedAt: null,
             expiresAt: new Date(Date.now() + REQUEST_MS),
             confirmedOrderNumbers: null,
           }),
@@ -221,10 +237,24 @@ export class SaleOrderRequestService {
       }
       const snapshot = await this.cart.getSaleCartSnapshot(customerCode);
       const total = Number((await this.cart.summaryCart(customerCode)).total);
+      const address = await this.addresses.findOne({
+        where: {
+          id: request.addressSnapshot.id,
+          user: { mem_code: customerCode },
+        },
+        relations: { user: true },
+      });
+      const currentAddress = address ? this.addressSnapshot(address) : null;
       if (
         snapshot.cartVersion !== request.cartVersion ||
+        this.checkoutFingerprint(snapshot) !==
+          this.checkoutFingerprint(request.cartSnapshot) ||
         !Number.isFinite(total) ||
-        total.toFixed(2) !== String(request.quotedTotal)
+        total.toFixed(2) !== String(request.quotedTotal) ||
+        !currentAddress ||
+        !ADDRESS_FIELDS.every(
+          (field) => currentAddress[field] === request.addressSnapshot[field],
+        )
       ) {
         await this.requests.update(
           { id, status: SaleOrderRequestStatus.PENDING },
@@ -247,7 +277,7 @@ export class SaleOrderRequestService {
             priceOption: request.priceOption,
             paymentOptions: request.paymentOption,
             shippingOptions: request.shippingOption,
-            addressed: JSON.stringify(request.addressSnapshot),
+            addressed: String(request.addressSnapshot.id),
             emp_code: request.salespersonCode,
           },
           undefined,
@@ -266,6 +296,10 @@ export class SaleOrderRequestService {
       }
       const confirmed = await this.requests.findOne({ where: { id } });
       if (confirmed?.status !== SaleOrderRequestStatus.CONFIRMED) {
+        await this.requests.update(
+          { id, status: SaleOrderRequestStatus.PROCESSING },
+          { status: SaleOrderRequestStatus.REVIEW_REQUIRED },
+        );
         throw new ServiceUnavailableException(
           'Order confirmation is pending review',
         );
@@ -356,6 +390,35 @@ export class SaleOrderRequestService {
       phoneNumber: address.phoneNumber,
       Note: address.Note ?? null,
     };
+  }
+
+  private checkoutSnapshot(snapshot: SaleCartSnapshot): SaleCartSnapshot {
+    return {
+      ...snapshot,
+      cart: snapshot.cart
+        .map((product) => ({
+          ...product,
+          shopping_cart: product.shopping_cart.filter(
+            (line) => line.spc_checked === 1,
+          ),
+        }))
+        .filter((product) => product.shopping_cart.length > 0),
+    };
+  }
+
+  private checkoutFingerprint(snapshot: SaleCartSnapshot): string {
+    const lines: Array<[number, string, string, string]> =
+      snapshot.cart.flatMap((product) =>
+        product.shopping_cart
+          .filter((line) => line.spc_checked === 1)
+          .map((line): [number, string, string, string] => [
+            line.spc_id,
+            product.pro_code,
+            line.spc_amount,
+            line.spc_unit,
+          ]),
+      );
+    return JSON.stringify(lines.sort((left, right) => left[0] - right[0]));
   }
 
   private reviewToken(request: SaleOrderRequestEntity): string {

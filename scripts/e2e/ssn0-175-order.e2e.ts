@@ -130,7 +130,14 @@ async function main(): Promise<void> {
     if (
       !isRecord(cart.data) ||
       !Array.isArray(cart.data.cart) ||
-      cart.data.cart.length === 0
+      !cart.data.cart.some(
+        (product: unknown) =>
+          isRecord(product) &&
+          Array.isArray(product.shopping_cart) &&
+          product.shopping_cart.some(
+            (line: unknown) => isRecord(line) && line.spc_checked === 1,
+          ),
+      )
     ) {
       throw new Error('Test cart is empty');
     }

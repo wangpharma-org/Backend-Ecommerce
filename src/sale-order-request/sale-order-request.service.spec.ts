@@ -156,6 +156,33 @@ describe('SaleOrderRequestService', () => {
     expect(requests.save).not.toHaveBeenCalled();
   });
 
+  it('shows only checked checkout items in the customer review', async () => {
+    cart.getSaleCartSnapshot.mockResolvedValueOnce({
+      ...snapshot,
+      cart: [
+        ...snapshot.cart,
+        {
+          ...snapshot.cart[0],
+          pro_code: 'P002',
+          shopping_cart: [
+            { ...snapshot.cart[0].shopping_cart[0], spc_id: 2, spc_checked: 0 },
+          ],
+        },
+      ],
+    });
+    await service.create(
+      'M001',
+      'session-id',
+      actor,
+      'sale-jwt',
+      'permit',
+      input,
+    );
+    expect(
+      getSavedRequest().cartSnapshot.cart.map((product) => product.pro_code),
+    ).toEqual(['P001']);
+  });
+
   it('rejects a forged permit before reading the cart', async () => {
     jwt.verifyAsync.mockResolvedValueOnce({
       purpose: 'sale-order-request',
@@ -203,6 +230,11 @@ describe('SaleOrderRequestService', () => {
     });
     await service.confirm(entity.id, 'M001', created.reviewToken, created.otp);
     expect(orders.submitOrder).toHaveBeenCalledTimes(1);
+    expect(orders.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ addressed: '7' }),
+      undefined,
+      entity.id,
+    );
   });
 
   it('does not submit an order for a wrong OTP', async () => {
@@ -241,6 +273,47 @@ describe('SaleOrderRequestService', () => {
     cart.getSaleCartSnapshot.mockResolvedValueOnce({
       ...snapshot,
       cartVersion: '5',
+    });
+    await expect(
+      service.confirm(entity.id, 'M001', created.reviewToken, created.otp),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(orders.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it('does not order to an address changed after the customer reviewed it', async () => {
+    const created = await service.create(
+      'M001',
+      'session-id',
+      actor,
+      'sale-jwt',
+      'permit',
+      input,
+    );
+    const entity = getSavedRequest();
+    requests.findOne.mockResolvedValue(entity);
+    addresses.findOne.mockResolvedValueOnce(
+      Object.assign(new EditAddress(), address, { mem_address: 'Changed' }),
+    );
+    await expect(
+      service.confirm(entity.id, 'M001', created.reviewToken, created.otp),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(orders.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects a changed checkout item even if version and total are unchanged', async () => {
+    const created = await service.create(
+      'M001',
+      'session-id',
+      actor,
+      'sale-jwt',
+      'permit',
+      input,
+    );
+    const entity = getSavedRequest();
+    requests.findOne.mockResolvedValue(entity);
+    cart.getSaleCartSnapshot.mockResolvedValueOnce({
+      ...snapshot,
+      cart: [{ ...snapshot.cart[0], pro_code: 'P999' }],
     });
     await expect(
       service.confirm(entity.id, 'M001', created.reviewToken, created.otp),
