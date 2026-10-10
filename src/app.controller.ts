@@ -573,6 +573,7 @@ export class AppController {
     @Body()
     data: {
       emp_code?: string;
+      basket_id?: number;
       mem_code: string;
       total_price: number;
       listFree:
@@ -593,8 +594,16 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
+    if (data.basket_id !== undefined && typeof data.basket_id !== 'number') {
+      throw new BadRequestException('basket_id must be a positive integer');
+    }
+    const basketId = this.shoppingCartService.parseBasketCheckoutId(
+      data.basket_id,
+    );
     try {
-      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      if (basketId === undefined) {
+        await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -603,7 +612,7 @@ export class AppController {
     }
 
     const result = await this.shoppingOrderService.submitOrder(
-      { ...data, mem_code, mem_route: req.user.mem_route },
+      { ...data, basket_id: basketId, mem_code, mem_route: req.user.mem_route },
       ip,
     );
     return result;
@@ -862,16 +871,26 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
+  async getProductCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
+  ) {
     const memberCode = req.user.mem_code;
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
         memberCode,
         req.user.mem_route,
+        basketId,
       );
-    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
-    const dataDeleteCart =
-      await this.shoppingCartService.getDeleteCartItem(memberCode);
+    const summaryCart = await this.shoppingCartService.summaryCartDetailed(
+      memberCode,
+      basketId,
+    );
+    const dataDeleteCart = basketId === undefined
+      ? await this.shoppingCartService.getDeleteCartItem(memberCode)
+      : [];
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -2692,9 +2711,15 @@ export class AppController {
   @Get('/ecom/cart/summary')
   async summaryCart(
     @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
   ): Promise<number> {
     const mem_code = req.user.mem_code;
-    const data = await this.shoppingCartService.summaryCart(mem_code);
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
+    const data = await this.shoppingCartService.summaryCartDetailed(
+      mem_code,
+      basketId,
+    );
     return data.total;
   }
 
