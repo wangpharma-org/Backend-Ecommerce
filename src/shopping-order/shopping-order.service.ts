@@ -27,6 +27,10 @@ import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { ClientKafka } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import { lineDiscountPercent } from 'src/promotion/promo-line-value';
+import {
+  SaleOrderRequestEntity,
+  SaleOrderRequestStatus,
+} from '../sale-order-request/sale-order-request.entity';
 
 interface CountSale {
   pro_code: string;
@@ -215,6 +219,7 @@ export class ShoppingOrderService {
       addressed: string | null;
     },
     ip?: string,
+    saleOrderRequestId?: string,
   ): Promise<string[] | undefined> {
     const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
     const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
@@ -342,6 +347,7 @@ export class ShoppingOrderService {
           const head = this.shoppingHeadEntity.create({
             soh_sumprice: 0,
             member: { mem_code: data.mem_code },
+            saleOrderRequestId: saleOrderRequestId ?? null,
             soh_payment_type: data.paymentOptions,
             soh_shipping_type: data.shippingOptions,
             editAddress: data.addressed ?? undefined,
@@ -885,6 +891,23 @@ export class ShoppingOrderService {
             expectedTotal: totalsummaryfromCart.total,
           });
           throw new Error('Total price mismatch');
+        }
+        if (saleOrderRequestId) {
+          const confirmed = await manager.update(
+            SaleOrderRequestEntity,
+            {
+              id: saleOrderRequestId,
+              customerCode: data.mem_code,
+              status: SaleOrderRequestStatus.PROCESSING,
+            },
+            {
+              status: SaleOrderRequestStatus.CONFIRMED,
+              confirmedOrderNumbers: runningNumbers,
+            },
+          );
+          if (confirmed.affected !== 1) {
+            throw new Error('Order request has changed');
+          }
         }
       });
       submitLogContext.push({

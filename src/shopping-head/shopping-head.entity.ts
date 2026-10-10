@@ -18,6 +18,9 @@ export class ShoppingHeadEntity {
   @Column({ length: 20, nullable: true, unique: true })
   soh_running: string;
 
+  @Column({ name: 'sale_order_request_id', length: 36, nullable: true })
+  saleOrderRequestId: string | null;
+
   @CreateDateColumn()
   soh_datetime: Date;
 
