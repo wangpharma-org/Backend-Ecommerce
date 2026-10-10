@@ -215,6 +215,7 @@ export class ShoppingOrderService {
       addressed: string | null;
     },
     ip?: string,
+    saleOrderRequestId?: string,
   ): Promise<string[] | undefined> {
     const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
     const totalsummaryfromCart = await this.shoppingCartService.summaryCart(
@@ -342,6 +343,7 @@ export class ShoppingOrderService {
           const head = this.shoppingHeadEntity.create({
             soh_sumprice: 0,
             member: { mem_code: data.mem_code },
+            saleOrderRequestId: saleOrderRequestId ?? null,
             soh_payment_type: data.paymentOptions,
             soh_shipping_type: data.shippingOptions,
             editAddress: data.addressed ?? undefined,
