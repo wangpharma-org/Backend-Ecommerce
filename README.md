@@ -133,6 +133,10 @@ npm run start:dev
 
 SSN0-172 ใช้ access token ของลูกค้าผ่าน `GET /api/ecom/cart-consents` และ `POST /api/ecom/cart-consents/:id/accept|reject|revoke`; Ecommerce ส่ง token เดิมไปให้ Sale ตรวจ `mem_code` จาก JWT. Sale และ Ecommerce ต้องตั้ง secret สำหรับ access token ให้ตรงกัน. ทดสอบ API จริงด้วย `scripts/e2e/ssn0-172-consent.e2e.ts` บนลูกค้าทดสอบที่แยกไว้เท่านั้น; สคริปต์ต้องมี token ฝ่ายขาย/ลูกค้า/ลูกค้าอีกคน และ `ALLOW_CONSENT_MUTATION=YES` ก่อนเริ่ม
 
+SSN0-175: ก่อนใช้งานรัน migration `20261010000000-CreateSaleOrderRequests` และ `20261010000001-TagSaleOrderHeads` แล้วตั้ง `SALE_API_URL` ให้ Ecommerce ตรวจ assignment/session กับ Sale; Sale ต้องตั้ง `ECOMMERCE_API_URL`, `ECOMMERCE_WEB_URL` และ `JWT_SECRET` ให้ตรงกับ `ACCESS_TOKEN_SECRET` ของ Ecommerce. ฝ่ายขายเลือกที่อยู่ที่ลูกค้าบันทึกไว้ วิธีส่ง และวิธีชำระเงินตอนสร้างคำขอ; ลูกค้าเปิดลิงก์ เข้าสู่ระบบ ตรวจรายละเอียดและยืนยันด้วย OTP ภายใน 15 นาทีจึงสร้าง `shopping_head` จริง. หากตะกร้าหรือยอดเปลี่ยน คำขอจะถูกยกเลิกและต้องสร้างใหม่. `PROCESSING`/`REVIEW_REQUIRED` ต้องตรวจสอบโดยผู้ดูแลก่อนสั่งซ้ำ.
+
+API-backed E2E อยู่ที่ `scripts/e2e/ssn0-175-order.e2e.ts` และ **สร้างออเดอร์จริง** เฉพาะลูกค้าทดสอบรหัสขึ้นต้น `E2E-`/`E2E_` ที่มี active `PLACE_ORDER` consent+session, ตะกร้า และที่อยู่แล้วเท่านั้น. ต้องระบุ `SALE_BASE_URL`, `ECOM_BASE_URL`, `SALE_TOKEN`, `CUSTOMER_TOKEN`, `OTHER_CUSTOMER_TOKEN`, `TEST_CUSTOMER_CODE`, `TEST_SESSION_ID`, `TEST_ADDRESS_ID`, `TEST_SHARED_JWT_SECRET`, `ALLOW_REAL_ORDER=YES` และ `E2E_ENV` สำหรับ URL ที่ไม่ใช่ localhost. สคริปต์บันทึกรายงานใน `docs/e2e/` โดยไม่บันทึก token/OTP; ผลคิวแจ้งเตือนไม่ใช่หลักฐานว่า LINE/EMAIL ส่งถึงผู้รับ ต้องตรวจจริงแยกต่างหาก. ก่อน merge ตาม R-003 ต้องรันกับ local และหลัง deploy แล้วลงรายงานใน Confluence.
+
 ---
 
 ## Migration
