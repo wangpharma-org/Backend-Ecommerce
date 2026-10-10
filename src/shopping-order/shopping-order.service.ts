@@ -27,6 +27,10 @@ import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { ClientKafka } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import { lineDiscountPercent } from 'src/promotion/promo-line-value';
+import {
+  SaleOrderRequestEntity,
+  SaleOrderRequestStatus,
+} from '../sale-order-request/sale-order-request.entity';
 
 interface CountSale {
   pro_code: string;
@@ -887,6 +891,23 @@ export class ShoppingOrderService {
             expectedTotal: totalsummaryfromCart.total,
           });
           throw new Error('Total price mismatch');
+        }
+        if (saleOrderRequestId) {
+          const confirmed = await manager.update(
+            SaleOrderRequestEntity,
+            {
+              id: saleOrderRequestId,
+              customerCode: data.mem_code,
+              status: SaleOrderRequestStatus.PROCESSING,
+            },
+            {
+              status: SaleOrderRequestStatus.CONFIRMED,
+              confirmedOrderNumbers: runningNumbers,
+            },
+          );
+          if (confirmed.affected !== 1) {
+            throw new Error('Order request has changed');
+          }
         }
       });
       submitLogContext.push({

@@ -617,9 +617,13 @@ export class AppController {
       );
     }
 
-    const result = await this.shoppingOrderService.submitOrder(
-      { ...data, mem_code, mem_route: req.user.mem_route },
-      ip,
+    const result = await this.saleCartMutationService.withCartMutationLock(
+      mem_code,
+      () =>
+        this.shoppingOrderService.submitOrder(
+          { ...data, mem_code, mem_route: req.user.mem_route },
+          ip,
+        ),
     );
     return result;
   }

@@ -113,6 +113,21 @@ export class SaleOrderRequestCustomerController {
     );
   }
 
+  @Post(':id/confirm')
+  @Header('Cache-Control', 'no-store')
+  confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request & { user?: unknown },
+    @Headers('x-sale-order-token') token: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const otp =
+      typeof body === 'object' && body !== null && 'otp' in body
+        ? body.otp
+        : undefined;
+    return this.requests.confirm(id, customerCode(req.user), token ?? '', otp);
+  }
+
   @Post(':id/reject')
   @Header('Cache-Control', 'no-store')
   reject(

@@ -17,6 +17,7 @@ import { isRecord } from '../cart-consents/cart-mutation.types';
 import { SaleCartMutationService } from '../cart-consents/sale-cart-mutation.service';
 import { EditAddress } from '../edit-address/edit-address.entity';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
+import { ShoppingOrderService } from '../shopping-order/shopping-order.service';
 import { UserEntity } from '../users/users.entity';
 import {
   SaleOrderRequestEntity,
@@ -40,6 +41,7 @@ export class SaleOrderRequestService {
     private readonly gateway: CartConsentGatewayService,
     private readonly cartMutations: SaleCartMutationService,
     private readonly cart: ShoppingCartService,
+    private readonly orders: ShoppingOrderService,
     @InjectRepository(SaleOrderRequestEntity)
     private readonly requests: Repository<SaleOrderRequestEntity>,
     @InjectRepository(UserEntity)
@@ -187,6 +189,89 @@ export class SaleOrderRequestService {
     }
     request.status = SaleOrderRequestStatus.REJECTED;
     return this.review(request);
+  }
+
+  async confirm(id: string, customerCode: string, token: string, otp: unknown) {
+    if (typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
+      throw new BadRequestException('Invalid confirmation code');
+    }
+    return this.cartMutations.withCartMutationLock(customerCode, async () => {
+      const request = await this.findForCustomer(id, customerCode, token);
+      if (request.status === SaleOrderRequestStatus.CONFIRMED) {
+        return this.review(request);
+      }
+      if (request.status !== SaleOrderRequestStatus.PENDING) {
+        throw new ConflictException('Order request is no longer pending');
+      }
+      if (request.otpAttempts >= 5) {
+        throw new ForbiddenException('Confirmation attempts exhausted');
+      }
+      if (!this.matches(otp, this.otp(request))) {
+        const attempts = request.otpAttempts + 1;
+        await this.requests.update(
+          { id, status: SaleOrderRequestStatus.PENDING },
+          {
+            otpAttempts: attempts,
+            ...(attempts >= 5
+              ? { status: SaleOrderRequestStatus.CANCELLED }
+              : {}),
+          },
+        );
+        throw new ForbiddenException('Invalid confirmation code');
+      }
+      const snapshot = await this.cart.getSaleCartSnapshot(customerCode);
+      const total = Number((await this.cart.summaryCart(customerCode)).total);
+      if (
+        snapshot.cartVersion !== request.cartVersion ||
+        !Number.isFinite(total) ||
+        total.toFixed(2) !== String(request.quotedTotal)
+      ) {
+        await this.requests.update(
+          { id, status: SaleOrderRequestStatus.PENDING },
+          { status: SaleOrderRequestStatus.CANCELLED },
+        );
+        throw new ConflictException('Cart changed; request a new order');
+      }
+      const claimed = await this.requests.update(
+        { id, status: SaleOrderRequestStatus.PENDING },
+        { status: SaleOrderRequestStatus.PROCESSING },
+      );
+      if (claimed.affected !== 1) {
+        throw new ConflictException('Order request has changed');
+      }
+      try {
+        await this.orders.submitOrder(
+          {
+            mem_code: customerCode,
+            listFree: null,
+            priceOption: request.priceOption,
+            paymentOptions: request.paymentOption,
+            shippingOptions: request.shippingOption,
+            addressed: JSON.stringify(request.addressSnapshot),
+            emp_code: request.salespersonCode,
+          },
+          undefined,
+          id,
+        );
+      } catch (error) {
+        const latest = await this.requests.findOne({ where: { id } });
+        if (latest?.status === SaleOrderRequestStatus.CONFIRMED) {
+          return this.review(latest);
+        }
+        await this.requests.update(
+          { id, status: SaleOrderRequestStatus.PROCESSING },
+          { status: SaleOrderRequestStatus.REVIEW_REQUIRED },
+        );
+        throw error;
+      }
+      const confirmed = await this.requests.findOne({ where: { id } });
+      if (confirmed?.status !== SaleOrderRequestStatus.CONFIRMED) {
+        throw new ServiceUnavailableException(
+          'Order confirmation is pending review',
+        );
+      }
+      return this.review(confirmed);
+    });
   }
 
   private async findForCustomer(
