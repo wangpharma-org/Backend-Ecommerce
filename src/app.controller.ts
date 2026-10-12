@@ -64,6 +64,7 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { assertOwnShop, sessionOwnerFilter } from './sessions/session-owner';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
@@ -966,9 +967,8 @@ export class AppController {
     @Query('pageSize') pageSize?: string,
     @Query('sort_order') sort_order?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getOrderListFromPhp(
         memCode,
@@ -1047,9 +1047,8 @@ export class AppController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
     }
@@ -2250,40 +2249,74 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/active/:session_token')
-  async getActiveSession(@Param('session_token') session_token: string) {
-    return await this.sessionsService.findActiveSession(session_token);
+  async getActiveSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    const session = await this.sessionsService.findActiveSession(session_token);
+    if (!session) return session;
+    assertOwnShop(req.user, session.mem_code);
+    // แถวผู้ใช้ที่ join มามีรหัสผ่าน (hash) — ไม่ส่งออก
+    if (session.user) {
+      return { ...session, user: { ...session.user, mem_password: undefined } };
+    }
+    return session;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/user-sessions/:mem_code')
-  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+  async getUserActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     return await this.sessionsService.findUserActiveSessions(mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/session/update-activity/:session_token')
-  async updateSessionActivity(@Param('session_token') session_token: string) {
-    await this.sessionsService.updateLastActivity(session_token);
+  async updateSessionActivity(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    await this.sessionsService.updateLastActivity(
+      session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Session activity updated successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout')
-  async logoutSession(@Body() data: { session_token: string }) {
-    await this.sessionsService.logoutSession(data.session_token);
+  async logoutSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { session_token: string },
+  ) {
+    await this.sessionsService.logoutSession(
+      data.session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Logout successful' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-all')
-  async logoutAllSessions(@Body() data: { mem_code: string }) {
+  async logoutAllSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutAllUserSessions(data.mem_code);
     return { message: 'All sessions logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-recent')
-  async logoutRecentSessions(@Body() data: { mem_code: string }) {
+  async logoutRecentSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutRecentUserSessions(data.mem_code);
     return { message: 'Recently active sessions logged out successfully' };
   }
@@ -2297,7 +2330,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/count/:mem_code')
-  async countActiveSessions(@Param('mem_code') mem_code: string) {
+  async countActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     const count = await this.sessionsService.countUserActiveSessions(mem_code);
     return { active_sessions_count: count };
   }
