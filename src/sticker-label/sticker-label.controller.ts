@@ -62,6 +62,15 @@ export class StickerLabelController {
     };
   }
 
+  /** ไม่เช็ค flag — ออเดอร์ที่สั่งไปแล้วต้องดูรูปแบบได้เสมอแม้ปิดขายภายหลัง */
+  @Get('sticker-label/orders/:soh_running')
+  getOrderStickers(
+    @Req() req: AuthedRequest,
+    @Param('soh_running') soh_running: string,
+  ) {
+    return this.service.getOrderStickers(req.user.mem_code, soh_running);
+  }
+
   @Post('sticker-label/cart')
   async addToCart(
     @Req() req: AuthedRequest,

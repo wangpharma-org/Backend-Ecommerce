@@ -441,6 +441,33 @@ async function main() {
     },
   );
 
+  await step(
+    'ประวัติออเดอร์: รูปแบบสติ๊กเกอร์ของออเดอร์นี้ (ECWC-701)',
+    async () => {
+      const r = await user.get(`/ecom/sticker-label/orders/${runnings[0]}`);
+      const rows = Array.isArray(r.data) ? r.data : [];
+      const other = await admin.get(
+        `/ecom/sticker-label/orders/${runnings[0]}`,
+      );
+      return {
+        status: r.status,
+        ok:
+          r.status === 200 &&
+          rows.length === 2 &&
+          rows.some(
+            (x: any) => x.pro_code === BW && x.custom_options?.sheets === 5,
+          ) &&
+          rows.some(
+            (x: any) => x.pro_code === COLOR && x.custom_options?.sheets === 50,
+          ) &&
+          other.status === 200 &&
+          Array.isArray(other.data) &&
+          other.data.length === 0,
+        detail: `rows=${rows.length} ร้านอื่นเห็น=${other.data?.length}`,
+      };
+    },
+  );
+
   // ---------------- ECWC-702 คิวพิมพ์ ----------------
 
   await step('ลูกค้าเรียก API admin → 403', async () => {

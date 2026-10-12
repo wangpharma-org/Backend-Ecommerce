@@ -260,6 +260,36 @@ export class StickerLabelService {
     return this.cartResponse(actor.mem_code, result);
   }
 
+  /**
+   * ECWC-701 รูปแบบสติ๊กเกอร์ของออเดอร์หนึ่ง สำหรับหน้าประวัติคำสั่งซื้อ
+   * (รายละเอียดออเดอร์ v2 มาจากระบบคลังซึ่งไม่มี custom_options) — เห็นได้เฉพาะออเดอร์ของร้านตัวเอง
+   */
+  async getOrderStickers(mem_code: string, soh_running: string) {
+    const rows = await this.orderRepo
+      .createQueryBuilder('spo')
+      .innerJoin('spo.orderHeader', 'soh')
+      .where('soh.soh_running = :soh_running', { soh_running })
+      .andWhere('soh.mem_code = :mem_code', { mem_code })
+      .andWhere('spo.pro_code IN (:...codes)', { codes: STICKER_PRO_CODES })
+      .andWhere('spo.custom_options IS NOT NULL')
+      .orderBy('spo.spo_id', 'ASC')
+      .select([
+        'spo.spo_id',
+        'spo.pro_code',
+        'spo.spo_qty',
+        'spo.spo_unit',
+        'spo.custom_options',
+      ])
+      .getMany();
+    return rows.map((r) => ({
+      spo_id: r.spo_id,
+      pro_code: r.pro_code,
+      spo_qty: Number(r.spo_qty),
+      spo_unit: r.spo_unit,
+      custom_options: parseStickerJson<StickerOrderSnapshot>(r.custom_options),
+    }));
+  }
+
   /** "ใช้ข้อมูลจากคำสั่งซื้อครั้งก่อน" — รูปแบบล่าสุดที่ร้านนี้เคยสั่ง */
   async getLastOptions(mem_code: string): Promise<StickerCustomOptions | null> {
     const line = await this.orderRepo
