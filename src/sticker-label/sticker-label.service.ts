@@ -6,7 +6,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Not, IsNull, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  Not,
+  IsNull,
+  Repository,
+} from 'typeorm';
 import { ProductEntity } from '../products/products.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
@@ -32,6 +39,8 @@ import {
   type StickerPackSize,
   type StickerPrintMode,
 } from './sticker-label.options';
+import { buildStickerSheetHtml } from './sticker-label.pdf';
+import { StickerPdfRendererService } from './sticker-pdf-renderer.service';
 
 export interface StickerActor {
   mem_code: string;
@@ -50,6 +59,15 @@ export interface StickerPrinter {
 export type StickerQueueStatus = 'pending' | 'printed' | 'all';
 
 const PRINT_TYPES: StickerPrintType[] = ['print', 'reprint', 'test'];
+
+/** กัน PDF ใหญ่จน server ค้าง — 50 แผ่น × 20 งาน */
+const MAX_PDF_PAGES = 1000;
+
+export interface PrintRequestBody {
+  order_line_ids: unknown;
+  print_type: unknown;
+  printer: unknown;
+}
 
 /** จำนวนเต็มบวก — ใช้กับ packs / id ที่มาจาก client (C-001) */
 function positiveInt(value: unknown, field: string, allowZero = false): number {
@@ -78,6 +96,7 @@ export class StickerLabelService {
     private readonly shoppingCartService: ShoppingCartService,
     private readonly featureFlags: FeatureFlagsService,
     private readonly dataSource: DataSource,
+    private readonly pdfRenderer: StickerPdfRendererService,
   ) {}
 
   async assertEnabled() {
@@ -453,10 +472,68 @@ export class StickerLabelService {
    * บันทึกการพิมพ์ — printed_by จาก token, printed_at เวลา server
    * print ครั้งแรกเปลี่ยนเป็นพิมพ์แล้ว · reprint/test ไม่เปลี่ยนสถานะ
    */
-  async recordPrint(
-    actor: StickerActor,
-    body: { order_line_ids: unknown; print_type: unknown; printer: unknown },
-  ) {
+  async recordPrint(actor: StickerActor, body: PrintRequestBody) {
+    return this.writeLogs(actor, await this.preparePrint(body));
+  }
+
+  /**
+   * ECWC-704 สร้าง PDF ของงานที่เลือกแล้วบันทึก log ในครั้งเดียว — กันพิมพ์โดยไม่ลงประวัติ
+   * สร้าง PDF ก่อน ถ้าสร้างไม่สำเร็จจะไม่มี log
+   */
+  async printPdf(actor: StickerActor, body: PrintRequestBody) {
+    const prep = await this.preparePrint(body);
+    if (prep.printType === 'print') {
+      await this.assertNotPrinted(this.logRepo.manager, prep.ids);
+    }
+    const jobs = prep.ids.map((id) => {
+      const snapshot = parseStickerJson<StickerOrderSnapshot>(
+        prep.found.get(id)?.custom_options,
+      ) as StickerOrderSnapshot;
+      return {
+        snapshot,
+        pages: prep.printType === 'test' ? 1 : Math.ceil(snapshot.sheets),
+      };
+    });
+    const totalPages = jobs.reduce((sum, j) => sum + j.pages, 0);
+    if (totalPages > MAX_PDF_PAGES) {
+      throw new BadRequestException(
+        `PDF ยาวได้ไม่เกิน ${MAX_PDF_PAGES} หน้าต่อครั้ง (เลือกไว้ ${totalPages} หน้า) — แบ่งพิมพ์ทีละชุด`,
+      );
+    }
+    const pdf = await this.pdfRenderer.render(buildStickerSheetHtml(jobs));
+    const { logs } = await this.writeLogs(actor, prep);
+    return { pdf, logs, pages: totalPages };
+  }
+
+  /** ตัวอย่าง 1 หน้าในแผงรายละเอียด — ไม่บันทึก log */
+  async previewPdf(spo_id: number): Promise<Buffer> {
+    const line = await this.orderRepo.findOne({
+      where: { spo_id, pro_code: In(STICKER_PRO_CODES) },
+      select: { spo_id: true, custom_options: true },
+    });
+    const snapshot = parseStickerJson<StickerOrderSnapshot>(
+      line?.custom_options,
+    );
+    if (!snapshot) throw new NotFoundException('ไม่พบงานสติ๊กเกอร์นี้');
+    return this.pdfRenderer.render(
+      buildStickerSheetHtml([{ snapshot, pages: 1 }]),
+    );
+  }
+
+  private async assertNotPrinted(manager: EntityManager, ids: number[]) {
+    const already = await manager.find(StickerPrintLogEntity, {
+      where: { order_line_id: In(ids), print_type: 'print' },
+      select: { order_line_id: true },
+    });
+    if (already.length > 0) {
+      const dup = [...new Set(already.map((l) => l.order_line_id))];
+      throw new BadRequestException(
+        `งานนี้พิมพ์แล้ว ให้ใช้พิมพ์ซ้ำ (reprint): ${dup.join(', ')}`,
+      );
+    }
+  }
+
+  private async preparePrint(body: PrintRequestBody) {
     const printType = body.print_type as StickerPrintType;
     if (!PRINT_TYPES.includes(printType)) {
       throw new BadRequestException('print_type ต้องเป็น print|reprint|test');
@@ -504,18 +581,17 @@ export class StickerLabelService {
       }
     }
 
+    return { ids, printType, printer, found };
+  }
+
+  private async writeLogs(
+    actor: StickerActor,
+    prep: Awaited<ReturnType<StickerLabelService['preparePrint']>>,
+  ) {
+    const { ids, printType, printer, found } = prep;
     return this.dataSource.transaction(async (manager) => {
       if (printType === 'print') {
-        const already = await manager.find(StickerPrintLogEntity, {
-          where: { order_line_id: In(ids), print_type: 'print' },
-          select: { order_line_id: true },
-        });
-        if (already.length > 0) {
-          const dup = [...new Set(already.map((l) => l.order_line_id))];
-          throw new BadRequestException(
-            `งานนี้พิมพ์แล้ว ให้ใช้พิมพ์ซ้ำ (reprint): ${dup.join(', ')}`,
-          );
-        }
+        await this.assertNotPrinted(manager, ids);
       }
 
       const logs = ids.map((id) => {

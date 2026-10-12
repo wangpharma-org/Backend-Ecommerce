@@ -24,9 +24,12 @@ ARG PORT=3000
 ENV NODE_ENV=${NODE_ENV}
 ENV PORT=${PORT}
 
+# fonts-noto-*: ECWC-704 PDF สติ๊กเกอร์ฉลากยา (อาหรับ/พม่า/รัสเซีย/จีน) เผื่อโหลด Google Fonts ไม่ได้
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
+    fonts-noto-core \
+    fonts-noto-cjk \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \

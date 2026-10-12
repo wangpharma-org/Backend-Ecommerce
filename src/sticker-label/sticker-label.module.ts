@@ -8,6 +8,7 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { StickerPrintLogEntity } from './sticker-print-log.entity';
 import { StickerLabelService } from './sticker-label.service';
 import { StickerLabelController } from './sticker-label.controller';
+import { StickerPdfRendererService } from './sticker-pdf-renderer.service';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { StickerLabelController } from './sticker-label.controller';
     ShoppingCartModule,
     FeatureFlagsModule,
   ],
-  providers: [StickerLabelService],
+  providers: [StickerLabelService, StickerPdfRendererService],
   controllers: [StickerLabelController],
 })
 export class StickerLabelModule {}

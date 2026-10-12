@@ -8,11 +8,18 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../app.controller';
-import { StickerActor, StickerLabelService } from './sticker-label.service';
+import {
+  PrintRequestBody,
+  StickerActor,
+  StickerLabelService,
+} from './sticker-label.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -95,9 +102,45 @@ export class StickerLabelController {
   recordPrint(
     @Req() req: AuthedRequest,
     @Body()
-    body: { order_line_ids: unknown; print_type: unknown; printer: unknown },
+    body: PrintRequestBody,
   ) {
     return this.service.recordPrint(assertAdmin(req), body);
+  }
+
+  /** ECWC-704 PDF พร้อมบันทึก log — id ของ log อยู่ใน header X-Print-Log-Ids */
+  @Post('admin/sticker-label/print/pdf')
+  async printPdf(
+    @Req() req: AuthedRequest,
+    @Body() body: PrintRequestBody,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { pdf, logs, pages } = await this.service.printPdf(
+      assertAdmin(req),
+      body,
+    );
+    res.setHeader('X-Print-Log-Ids', logs.map((l) => l.id).join(','));
+    res.setHeader('X-Print-Pages', String(pages));
+    res.setHeader(
+      'Access-Control-Expose-Headers',
+      'X-Print-Log-Ids, X-Print-Pages',
+    );
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `inline; filename="sticker-${logs[0]?.print_type ?? 'print'}-${Date.now()}.pdf"`,
+    });
+  }
+
+  @Get('admin/sticker-label/lines/:spo_id/preview.pdf')
+  async previewPdf(
+    @Req() req: AuthedRequest,
+    @Param('spo_id', ParseIntPipe) spo_id: number,
+  ) {
+    assertAdmin(req);
+    const pdf = await this.service.previewPdf(spo_id);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `inline; filename="sticker-preview-${spo_id}.pdf"`,
+    });
   }
 
   @Get('admin/sticker-label/lines/:spo_id/logs')

@@ -1,6 +1,6 @@
 /* eslint-disable no-console, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
 /**
- * E2E: สติ๊กเกอร์ฉลากยา แบบพิมพ์หัวร้าน (ECWC-697: 698 + 699 + 702) ยิง API จริง
+ * E2E: สติ๊กเกอร์ฉลากยา แบบพิมพ์หัวร้าน (ECWC-697: 698 + 699 + 702 + 704 PDF) ยิง API จริง
  *
  * ใช้:
  *   BASE_URL=https://<api>/api E2E_ENV=dev|prod ADMIN_TOKEN=<jwt admin> USER_TOKEN=<jwt ลูกค้า> \
@@ -543,6 +543,79 @@ async function main() {
     };
   });
 
+  // ---------------- ECWC-704 PDF ----------------
+
+  const printPdf = (ids: number[], print_type: string, printer: string) =>
+    admin.post(
+      '/ecom/admin/sticker-label/print/pdf',
+      { order_line_ids: ids, print_type, printer },
+      { responseType: 'arraybuffer' },
+    );
+  const pdfInfo = (data: unknown) => {
+    const text = Buffer.from(data as ArrayBuffer).toString('latin1');
+    return {
+      isPdf: text.startsWith('%PDF-'),
+      pages: (text.match(/\/Type\s*\/Page[^s]/g) ?? []).length,
+      a4: text.includes('/MediaBox [0 0 594.95996 841.91998]'),
+    };
+  };
+
+  await step('preview PDF 1 หน้า A4 (ไม่บันทึก log)', async () => {
+    const r = await admin.get(
+      `/ecom/admin/sticker-label/lines/${bwLine?.spo_id}/preview.pdf`,
+      { responseType: 'arraybuffer' },
+    );
+    const info = pdfInfo(r.data);
+    const logs = await admin.get(
+      `/ecom/admin/sticker-label/lines/${bwLine?.spo_id}/logs`,
+    );
+    return {
+      status: r.status,
+      ok:
+        r.status === 200 &&
+        String(r.headers['content-type']).includes('application/pdf') &&
+        info.isPdf &&
+        info.a4 &&
+        info.pages === 1 &&
+        logs.data?.logs?.length === 0,
+      detail: `pages=${info.pages} a4=${info.a4}`,
+    };
+  });
+
+  await step('ลูกค้าเรียก preview PDF → 403', async () => {
+    const r = await user.get(
+      `/ecom/admin/sticker-label/lines/${bwLine?.spo_id}/preview.pdf`,
+    );
+    return { status: r.status, ok: r.status === 403 };
+  });
+
+  await step('PDF งานสีกับเครื่องขาวดำ → 400 ไม่มี log', async () => {
+    const r = await printPdf([colorLine?.spo_id], 'print', 'e2e-bw');
+    const logs = await admin.get(
+      `/ecom/admin/sticker-label/lines/${colorLine?.spo_id}/logs`,
+    );
+    return {
+      status: r.status,
+      ok: r.status === 400 && logs.data?.logs?.length === 0,
+    };
+  });
+
+  await step('PDF พิมพ์ทดสอบ → 1 หน้า + id ของ log ใน header', async () => {
+    const r = await printPdf([bwLine?.spo_id], 'test', 'e2e-bw');
+    const info = pdfInfo(r.data);
+    const logIds = String(r.headers['x-print-log-ids'] ?? '');
+    return {
+      status: r.status,
+      ok:
+        r.status === 201 &&
+        info.isPdf &&
+        info.pages === 1 &&
+        r.headers['x-print-pages'] === '1' &&
+        /^\d+$/.test(logIds),
+      detail: `pages=${info.pages} log=${logIds}`,
+    };
+  });
+
   await step('พิมพ์ทดสอบ (test) → 1 แผ่น สถานะยังรอพิมพ์', async () => {
     const r = await print([bwLine?.spo_id], 'test', 'e2e-bw');
     const q = await admin.get(
@@ -607,9 +680,10 @@ async function main() {
   });
 
   await step(
-    'พิมพ์งานสีด้วยเครื่องสี → สำเร็จ, คิวรอพิมพ์ไม่มีงานของออเดอร์นี้',
+    'PDF งานสี 50 แผ่นด้วยเครื่องสี → 50 หน้า, คิวรอพิมพ์ไม่มีงานของออเดอร์นี้',
     async () => {
-      const r = await print([colorLine?.spo_id], 'print', 'e2e-color');
+      const r = await printPdf([colorLine?.spo_id], 'print', 'e2e-color');
+      const info = pdfInfo(r.data);
       const q = await admin.get(
         '/ecom/admin/sticker-label/queue?status=pending&limit=200',
       );
@@ -621,10 +695,13 @@ async function main() {
         status: r.status,
         ok:
           r.status === 201 &&
+          info.isPdf &&
+          info.pages === 50 &&
+          r.headers['x-print-pages'] === '50' &&
           left.length === 0 &&
           s?.color?.sheets === summaryBefore?.color?.sheets - 50 &&
           s?.bw?.sheets === summaryBefore?.bw?.sheets - 5,
-        detail: `pending left=${left.length} summary bw=${s?.bw?.sheets} color=${s?.color?.sheets}`,
+        detail: `pdf pages=${info.pages} pending left=${left.length} summary bw=${s?.bw?.sheets} color=${s?.color?.sheets}`,
       };
     },
   );
@@ -638,7 +715,7 @@ async function main() {
       status: r.status,
       ok:
         r.status === 200 &&
-        types === 'reprint,print,test' &&
+        types === 'reprint,print,test,test' &&
         r.data?.custom_options?.shopName === `${tag} ร้านยาทดสอบ`,
       detail: types,
     };
@@ -670,7 +747,7 @@ async function main() {
     `- run at: ${new Date().toISOString()}`,
     `- ร้านทดสอบ: ${memCode} · admin: ${adminJwt.mem_code}`,
     `- ออเดอร์ทดสอบที่สร้าง: ${runnings.join(', ') || '-'}`,
-    `- ครอบคลุม: ECWC-698 ตัวเลือก/map รหัส · ECWC-699 custom_options ตะกร้า/snapshot · ECWC-702 คิวพิมพ์ + sticker_print_log`,
+    `- ครอบคลุม: ECWC-698 ตัวเลือก/map รหัส · ECWC-699 custom_options ตะกร้า/snapshot · ECWC-702 คิวพิมพ์ + sticker_print_log · ECWC-704 PDF A4 (ดวง 80×50 มม.)`,
     `- result: **${passed}/${results.length} passed**`,
     ``,
     `| # | step | status | ok | detail |`,

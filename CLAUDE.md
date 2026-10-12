@@ -62,7 +62,7 @@ e2e: `scripts/e2e/preorder.e2e.ts`
 
 ## สติ๊กเกอร์ฉลากยา (สินค้าสั่งทำ)
 
-โมดูล [src/sticker-label/](src/sticker-label/) — print mode → รหัส `95030411-05`/`-07` (backend เลือกเอง), `custom_options` ต่อแถวตะกร้า (แยกแถวด้วย `custom_options_hash`) + snapshot ใน `shopping_order`, คิวพิมพ์นับสถานะจาก `sticker_print_log`
+โมดูล [src/sticker-label/](src/sticker-label/) — print mode → รหัส `95030411-05`/`-07` (backend เลือกเอง), `custom_options` ต่อแถวตะกร้า (แยกแถวด้วย `custom_options_hash`) + snapshot ใน `shopping_order`, คิวพิมพ์นับสถานะจาก `sticker_print_log`, PDF A4 (ดวง 80×50 มม. 2×5) ด้วย puppeteer — Sarabun ฝังใน `src/sticker-label/fonts/` (nest-cli assets)
 เปิดใช้ด้วย feature flag `sticker_label` (migration สร้างไว้เป็นปิด) + env `STICKER_LABEL_ENABLED_LANGS`, `STICKER_PRINTERS` รายละเอียดใน [docs/sticker-label.md](docs/sticker-label.md)
 e2e: `scripts/e2e/sticker-label.e2e.ts`
 

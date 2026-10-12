@@ -43,10 +43,23 @@ Admin (`permission = true`)
 | GET | `/admin/sticker-label/queue?status=pending\|printed\|all&page=&limit=` | รายการงาน + `summary` (รอพิมพ์ แยก bw/color เป็นแผ่น) |
 | POST | `/admin/sticker-label/print` | `{ order_line_ids: number[], print_type: 'print'\|'reprint'\|'test', printer }` — `printed_by`/`printed_at` มาจาก token/เวลา server |
 | GET | `/admin/sticker-label/lines/:spo_id/logs` | snapshot + ประวัติการพิมพ์ (ใหม่สุดก่อน) |
+| POST | `/admin/sticker-label/print/pdf` | body เดียวกับ `/print` → **PDF + บันทึก log ในครั้งเดียว** (สร้าง PDF ไม่สำเร็จ = ไม่มี log) · header `X-Print-Log-Ids`, `X-Print-Pages` · สูงสุด 1000 หน้าต่อครั้ง |
+| GET | `/admin/sticker-label/lines/:spo_id/preview.pdf` | ตัวอย่าง 1 หน้า ไม่บันทึก log |
+
+หน้า admin ควรพิมพ์ผ่าน `/print/pdf` เสมอ (`/print` ใช้กรณีพิมพ์จากระบบอื่นแล้วแค่ลงประวัติ)
+
+## PDF (ECWC-704)
+
+- กระดาษ A4 · 1 หน้า = 1 แผ่น = 10 ดวง (2 คอลัมน์ × 5 แถว) · **ดวง 80 × 50 มม.** ชิดกันและอยู่กลางหน้า (ขอบซ้าย/ขวา 25 มม. บน/ล่าง 23.5 มม.)
+- ปรับเทียบตำแหน่งกับเครื่องพิมพ์ได้ด้วย env `STICKER_PDF_OFFSET_MM="x,y"` (มม., ค่าบวก = ขวา/ลง)
+- จำนวนหน้า: `print`/`reprint` = จำนวนแผ่นใน snapshot · `test` = 1 หน้า
+- ขาวดำบังคับสีดำ · สีใช้ hex ที่ลูกค้าเลือก · อาหรับ `dir="rtl"` · บรรทัดหัวฉลากที่ยาวเกินย่อฟอนต์เฉพาะบรรทัด (ไม่ต่ำกว่า 7px)
+- ฟอนต์: Sarabun ฝังในโค้ด ([src/sticker-label/fonts/](../src/sticker-label/fonts/), OFL) · ภาษาอื่นโหลด Noto จาก Google Fonts เฉพาะภาษาที่ใช้ ถ้าโหลดไม่ได้ใช้ `fonts-noto-core`/`fonts-noto-cjk` ใน Docker image
+- render ด้วย Chrome ผ่าน puppeteer (`PUPPETEER_EXECUTABLE_PATH` ใน Dockerfile, หรือ `CHROME_EXECUTABLE_PATH`) · บล็อก request ภายนอกทั้งหมดยกเว้น Google Fonts · ข้อความลูกค้า escape ก่อนใส่ HTML
+- ฟอร์มและคำแปลตาม design canvas "แก้ไขชื่อฉลากยา" (PrintSheet) — คำแปลต้องผ่าน ECWC-705 ก่อนเปิดภาษานั้น
 
 ## ยังไม่รวมในรอบนี้
 
-- ECWC-704 สร้าง PDF (รอขนาดแผ่น/ดวง/ระยะขอบ/รุ่นเครื่องพิมพ์)
 - ราคาจริงของ -05/-07 (ตั้งใน ERP)
 
 ## E2E
