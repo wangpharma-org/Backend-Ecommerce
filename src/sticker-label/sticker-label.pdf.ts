@@ -7,7 +7,7 @@ import type {
 
 /**
  * ECWC-704 แผ่นพิมพ์สติ๊กเกอร์ — 1 หน้า A4 = 1 แผ่น = 10 ดวง (2 × 5)
- * ดวงละ 80 × 50 มม. ชิดกันและอยู่กลางหน้า (ขอบซ้าย/ขวา 25 มม. บน/ล่าง 23.5 มม.)
+ * ดวงละ 80 × 50 มม. เว้นระยะระหว่างดวง 3 มม. (ปรับได้) และอยู่กลางหน้า
  * ฟอร์มและคำแปลตาม design canvas "แก้ไขชื่อฉลากยา" (PrintSheet)
  * คำแปลทุกภาษาต้องผ่านเภสัชกร/เจ้าของภาษา (ECWC-705) ก่อนเปิดขายภาษานั้น
  */
@@ -21,17 +21,43 @@ export const SHEET = {
   labelH: 50,
 } as const;
 
+const DEFAULT_GAP_MM = 3;
+
+function parsePair(raw: string | undefined): [number | null, number | null] {
+  const [a, b] = (raw ?? '').split(',').map((v) => {
+    const n = Number(v.trim());
+    return v.trim() !== '' && Number.isFinite(n) ? n : null;
+  });
+  return [a ?? null, b ?? null];
+}
+
+/**
+ * ระยะห่างระหว่างดวง (มม.) — STICKER_PDF_GAP_MM="แนวนอน,แนวตั้ง" ค่าเดียว = ใช้ทั้งสองแนว
+ * จำกัดไม่ให้ดวงล้นหน้า A4 (แนวตั้งได้สูงสุด 11.75 มม.)
+ */
+export function sheetGap(
+  rawGap: string | undefined = process.env.STICKER_PDF_GAP_MM,
+): { x: number; y: number } {
+  const [a, b] = parsePair(rawGap);
+  const gx = a ?? DEFAULT_GAP_MM;
+  const gy = b ?? a ?? DEFAULT_GAP_MM;
+  const maxX = (SHEET.pageW - SHEET.cols * SHEET.labelW) / (SHEET.cols - 1);
+  const maxY = (SHEET.pageH - SHEET.rows * SHEET.labelH) / (SHEET.rows - 1);
+  const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max);
+  return { x: clamp(gx, maxX), y: clamp(gy, maxY) };
+}
+
 /** ระยะขอบเมื่อวางกลางหน้า — ปรับเทียบเครื่องพิมพ์ได้ด้วย STICKER_PDF_OFFSET_MM="x,y" */
 export function sheetOrigin(
   rawOffset: string | undefined = process.env.STICKER_PDF_OFFSET_MM,
+  gap: { x: number; y: number } = sheetGap(),
 ): { left: number; top: number } {
-  const [dx, dy] = (rawOffset ?? '')
-    .split(',')
-    .map((v) => Number(v.trim()))
-    .map((v) => (Number.isFinite(v) ? v : 0));
+  const [dx, dy] = parsePair(rawOffset);
+  const gridW = SHEET.cols * SHEET.labelW + (SHEET.cols - 1) * gap.x;
+  const gridH = SHEET.rows * SHEET.labelH + (SHEET.rows - 1) * gap.y;
   return {
-    left: (SHEET.pageW - SHEET.cols * SHEET.labelW) / 2 + (dx ?? 0),
-    top: (SHEET.pageH - SHEET.rows * SHEET.labelH) / 2 + (dy ?? 0),
+    left: (SHEET.pageW - gridW) / 2 + (dx ?? 0),
+    top: (SHEET.pageH - gridH) / 2 + (dy ?? 0),
   };
 }
 
@@ -343,9 +369,10 @@ export interface StickerPdfJob {
 /** HTML ทั้งเอกสาร — ทุกหน้าของงานเดียวกันเหมือนกัน หน้าละ 10 ดวง */
 export function buildStickerSheetHtml(
   jobs: StickerPdfJob[],
-  options: { googleFonts?: boolean; offset?: string } = {},
+  options: { googleFonts?: boolean; offset?: string; gap?: string } = {},
 ): string {
-  const origin = sheetOrigin(options.offset);
+  const gap = sheetGap(options.gap);
+  const origin = sheetOrigin(options.offset, gap);
   const pages: string[] = [];
   for (const job of jobs) {
     const ink = inkOf(job.snapshot);
@@ -369,7 +396,7 @@ ${sarabunFontFace()}
 html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .sheet{position:relative;width:${SHEET.pageW}mm;height:${SHEET.pageH}mm;overflow:hidden;page-break-after:always;break-after:page}
 .sheet:last-child{page-break-after:auto;break-after:auto}
-.grid{position:absolute;left:${origin.left}mm;top:${origin.top}mm;display:grid;grid-template-columns:repeat(${SHEET.cols},${SHEET.labelW}mm);grid-template-rows:repeat(${SHEET.rows},${SHEET.labelH}mm)}
+.grid{position:absolute;left:${origin.left}mm;top:${origin.top}mm;display:grid;grid-template-columns:repeat(${SHEET.cols},${SHEET.labelW}mm);grid-template-rows:repeat(${SHEET.rows},${SHEET.labelH}mm);column-gap:${gap.x}mm;row-gap:${gap.y}mm}
 .label{min-width:0;overflow:hidden;border:1.2px solid currentColor;padding:5px 7px;display:flex;flex-direction:column;justify-content:space-between;color:inherit}
 .head{border:1.2px solid currentColor;border-radius:2px;padding:2px 6px;text-align:center;display:flex;flex-direction:column}
 .hl{font-family:${HEAD_FONT};line-height:1.25;white-space:nowrap;overflow:hidden}

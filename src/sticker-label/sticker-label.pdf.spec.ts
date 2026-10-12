@@ -4,6 +4,7 @@ import {
   fitFontSize,
   googleFontsCss,
   inkOf,
+  sheetGap,
   sheetOrigin,
   STICKER_FORM_TEXT,
 } from './sticker-label.pdf';
@@ -25,10 +26,20 @@ const snapshot = (
 });
 
 describe('sticker-label.pdf', () => {
-  it('A4 วางกลาง: ขอบ 25 × 23.5 มม. และเลื่อนปรับเทียบได้', () => {
-    expect(sheetOrigin('')).toEqual({ left: 25, top: 23.5 });
-    expect(sheetOrigin('1.5,-2')).toEqual({ left: 26.5, top: 21.5 });
-    expect(sheetOrigin('x,y')).toEqual({ left: 25, top: 23.5 });
+  it('ระยะห่างระหว่างดวงตั้งต้น 3 มม. ปรับได้ และไม่ให้ล้นหน้า', () => {
+    expect(sheetGap('')).toEqual({ x: 3, y: 3 });
+    expect(sheetGap('5')).toEqual({ x: 5, y: 5 });
+    expect(sheetGap('4,2')).toEqual({ x: 4, y: 2 });
+    expect(sheetGap('0,30')).toEqual({ x: 0, y: 11.75 });
+    expect(sheetGap('-1,x')).toEqual({ x: 0, y: 0 });
+  });
+
+  it('A4 วางกลางตามระยะห่าง และเลื่อนปรับเทียบได้', () => {
+    const g3 = { x: 3, y: 3 };
+    // 2×80 + 3 = 163 → ขอบซ้าย 23.5 · 5×50 + 4×3 = 262 → ขอบบน 17.5
+    expect(sheetOrigin('', g3)).toEqual({ left: 23.5, top: 17.5 });
+    expect(sheetOrigin('1.5,-2', g3)).toEqual({ left: 25, top: 15.5 });
+    expect(sheetOrigin('x,y', { x: 0, y: 0 })).toEqual({ left: 25, top: 23.5 });
   });
 
   it('ขาวดำบังคับดำ · สีใช้ hex ที่เลือก', () => {
@@ -58,7 +69,9 @@ describe('sticker-label.pdf', () => {
     expect(html.match(/<div class="label"/g)).toHaveLength(30);
     expect(html).toContain('color:#1A2B3C');
     expect(html).toContain('grid-template-columns:repeat(2,80mm)');
-    expect(html).toContain('grid-template-rows:repeat(5,50mm)');
+    expect(html).toContain(
+      'grid-template-rows:repeat(5,50mm);column-gap:3mm;row-gap:3mm',
+    );
     expect(html).toContain("font-family:'Sarabun'");
   });
 
