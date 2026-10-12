@@ -13,6 +13,7 @@ import { RefreshTokenEntity } from './refresh-token.entity';
 import * as bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from '../constants/app.constants';
 import { EmployeesService } from 'src/employees/employees.service';
+import { REVIEW_SCOPE, lineLinkLoginScope } from './token-scope';
 
 export interface SigninResponse {
   token: string;
@@ -339,6 +340,7 @@ export class AuthService {
       throw new UnauthorizedException('ไม่พบข้อมูลสมาชิก');
     }
 
+    const scope = lineLinkLoginScope();
     const payload = {
       username: user.mem_username,
       name: user.mem_nameSite ?? '',
@@ -353,14 +355,18 @@ export class AuthService {
       mem_post: user.mem_post ?? '',
       mem_phone: user.mem_phone ?? '',
       mem_route: user.mem_route ?? '',
-      permission: user.permision_admin,
+      // ลิงก์จาก LINE ไม่ได้ผ่านรหัสผ่าน: ไม่ให้สิทธิ์ผู้ดูแล และจำกัดขอบเขต (ดู token-scope.ts)
+      permission: scope ? false : user.permision_admin,
       role: user.role,
-      admin_features: user.admin_features ?? null,
+      admin_features: scope ? null : (user.admin_features ?? null),
+      ...(scope ? { scope } : {}),
     };
     const payload_reflesh = {
       username: user.mem_username,
       name: user.mem_nameSite ?? '',
       mem_code: user.mem_code ?? '',
+      // ต่ออายุแล้วต้องได้ token ขอบเขตเดิม ไม่ใช่ token เต็ม
+      ...(scope ? { scope } : {}),
     };
 
     const access_token = await this.jwtService.signAsync(payload, {
@@ -454,12 +460,10 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      const payload: { mem_code: string } = await this.jwtService.verifyAsync(
-        refresh_token,
-        {
+      const payload: { mem_code: string; scope?: unknown } =
+        await this.jwtService.verifyAsync(refresh_token, {
           secret: process.env.ACCESS_TOKEN_SECRET,
-        },
-      );
+        });
 
       const [user] = await Promise.all([
         this.userRepo.findOne({
@@ -486,6 +490,8 @@ export class AuthService {
       ]);
 
       if (user) {
+        // token ที่มาจากลิงก์รีวิวต่ออายุได้เป็นขอบเขตเดิมเท่านั้น
+        const scope = payload.scope === REVIEW_SCOPE ? REVIEW_SCOPE : null;
         const tokenPayload = {
           username: user.mem_username,
           name: user.mem_nameSite ?? '',
@@ -500,15 +506,17 @@ export class AuthService {
           mem_post: user.mem_post ?? '',
           mem_phone: user.mem_phone ?? '',
           mem_route: user.mem_route ?? '',
-          permission: user.permision_admin,
+          permission: scope ? false : user.permision_admin,
           role: user.role,
-          admin_features: user.admin_features ?? null,
+          admin_features: scope ? null : (user.admin_features ?? null),
+          ...(scope ? { scope } : {}),
         };
 
         const payload_reflesh = {
           username: user.mem_username,
           name: user.mem_nameSite ?? '',
           mem_code: user.mem_code ?? '',
+          ...(scope ? { scope } : {}),
         };
 
         const refreshTokenExpiresIn = source === 'mobile_app' ? '7d' : '18h';
