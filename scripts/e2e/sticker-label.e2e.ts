@@ -211,11 +211,14 @@ async function main() {
 
   // ---------------- ECWC-699 ตะกร้า ----------------
 
-  await step('last-options ก่อนเคยสั่ง → null', async () => {
+  // ร้านที่ไม่เคยสั่งได้ null · ถ้ารันซ้ำกับร้านเดิมจะได้รูปแบบจากรอบก่อน
+  await step('last-options ก่อนสั่งรอบนี้ → null หรือรูปแบบเดิม', async () => {
     const r = await user.get('/ecom/sticker-label/last-options');
+    const o = r.data?.custom_options;
     return {
       status: r.status,
-      ok: r.status === 200 && r.data?.custom_options === null,
+      ok: r.status === 200 && (o === null || typeof o?.shopName === 'string'),
+      detail: o === null ? 'null (ไม่เคยสั่ง)' : `มีออเดอร์เดิม: ${o?.shopName}`,
     };
   });
 
@@ -426,7 +429,11 @@ async function main() {
         ok:
           r.status === 200 &&
           o?.shopName === `${tag} ร้านยาทดสอบ` &&
-          ['bw', 'color'].includes(o?.printMode) &&
+          // บรรทัดล่าสุดของออเดอร์รอบนี้คืองานสี (-07 เรียงหลัง -05)
+          o?.printMode === 'color' &&
+          o?.lang === 'ar' &&
+          o?.color === '#C0392B' &&
+          o?.packSize === '50' &&
           o?.sheets === undefined,
         detail: `printMode=${o?.printMode} lang=${o?.lang}`,
       };
