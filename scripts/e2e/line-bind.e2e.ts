@@ -1,4 +1,4 @@
-/* eslint-disable no-console, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable no-console, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument */
 /**
  * E2E: POST /ecom/auth/line-bind — ยืนยันตัวตนผ่าน LINE ต้องผูกกับร้านของผู้ที่ login อยู่เท่านั้น
  * ยิง API ที่รันอยู่จริง ซึ่งต่อกับ notification-service ของ environment เดียวกัน
@@ -259,7 +259,7 @@ function writeReport(failure?: string): boolean {
   return ok;
 }
 
-main()
+void main()
   .then(() => undefined)
   .catch((e: unknown) => {
     const failure = e instanceof Error ? e.message : String(e);
