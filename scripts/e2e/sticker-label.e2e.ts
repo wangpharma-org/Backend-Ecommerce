@@ -218,7 +218,8 @@ async function main() {
     return {
       status: r.status,
       ok: r.status === 200 && (o === null || typeof o?.shopName === 'string'),
-      detail: o === null ? 'null (ไม่เคยสั่ง)' : `มีออเดอร์เดิม: ${o?.shopName}`,
+      detail:
+        o === null ? 'null (ไม่เคยสั่ง)' : `มีออเดอร์เดิม: ${o?.shopName}`,
     };
   });
 
