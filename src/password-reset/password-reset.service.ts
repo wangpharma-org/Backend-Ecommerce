@@ -327,6 +327,7 @@ export class PasswordResetService {
         'r.handled_by_name AS handled_by_name',
         'r.handled_at AS handled_at',
         'r.reject_reason AS reject_reason',
+        'r.note AS note',
         'u.mem_nameSite AS shop_name',
         'u.mem_amphur AS amphur',
         'u.mem_province AS province',
@@ -372,6 +373,8 @@ export class PasswordResetService {
         handled_by_name: x.handled_by_name ?? null,
         handled_at: x.handled_at ?? null,
         reject_reason: x.reject_reason ?? null,
+        // หมายเหตุภายใน (พนักงานเห็นเท่านั้น) — เช่น "ปิดอัตโนมัติ: รีเซ็ตแล้วจากคำขอ PR-…"
+        note: x.note ?? null,
       })),
     };
   }

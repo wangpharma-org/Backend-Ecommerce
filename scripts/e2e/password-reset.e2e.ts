@@ -397,6 +397,9 @@ async function main() {
       },
     );
 
+    const sibling = await anon.post('/ecom/password-reset/requests', {
+      account: STORE_USER,
+    });
     const approved = await sale.post(approveUrl, {
       checklist: { called: true, ref_ok: true, info_ok: true },
       mode: 'auto',
@@ -414,6 +417,26 @@ async function main() {
           /E2E706S/.test(approved.data.handled_by_name),
         detail: `handled_by=${approved.data?.handled_by_name}`,
       }),
+    );
+    await step(
+      'คำขออื่นที่ค้างของร้านเดียวกันถูกปิดอัตโนมัติ + พนักงานเห็นเหตุผล',
+      async () => {
+        const st = await anon.get(
+          `/ecom/password-reset/requests/${sibling.data?.ref_code}`,
+        );
+        const l = await sale.get('/ecom/internal/password-reset/requests', {
+          params: { q: sibling.data?.ref_code },
+        });
+        const row = (l.data?.items ?? [])[0];
+        return {
+          status: st.status,
+          ok:
+            st.data?.status === 'expired' &&
+            typeof row?.note === 'string' &&
+            row.note.includes(ref),
+          detail: row?.note,
+        };
+      },
     );
     await step('กดรีเซ็ตซ้ำ → 409', async () => {
       const r = await sale.post(approveUrl, {
@@ -640,7 +663,7 @@ async function main() {
     });
 
     // ---------- จำกัดจำนวนคำขอ ----------
-    // คำขอของ "e2e706_store" ใน 24 ชม. = 1 (ref2) → ส่งได้อีก 2 ครั้ง ครั้งที่ 4 โดนจำกัด
+    // คำขอของ "e2e706_store" ใน 24 ชม. = 2 (ที่ถูกปิดอัตโนมัติ + ref2) → ส่งได้อีก 1 ครั้ง ครั้งที่ 4 โดนจำกัด
     const third = await anon.post('/ecom/password-reset/requests', {
       account: STORE_USER,
     });
@@ -652,24 +675,13 @@ async function main() {
     await sale.post(`/ecom/internal/password-reset/requests/${id3}/reject`, {
       reason: 'unreachable',
     });
-    const fourth = await anon.post('/ecom/password-reset/requests', {
-      account: STORE_USER,
-    });
-    const id4 = (
-      await sale.get('/ecom/internal/password-reset/requests', {
-        params: { q: fourth.data?.ref_code },
-      })
-    ).data?.items?.[0]?.id;
-    await sale.post(`/ecom/internal/password-reset/requests/${id4}/reject`, {
-      reason: 'unreachable',
-    });
     await step('ส่งคำขอเกิน 3 ครั้ง/24 ชม. ต่อบัญชี → 429', async () => {
       const r = await anon.post('/ecom/password-reset/requests', {
         account: STORE_USER,
       });
       return {
         status: r.status,
-        ok: third.status === 200 && fourth.status === 200 && r.status === 429,
+        ok: third.status === 200 && r.status === 429,
       };
     });
 
