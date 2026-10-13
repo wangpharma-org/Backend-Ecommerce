@@ -59,7 +59,7 @@ export class PasswordResetRequestEntity {
   @Column({ type: 'datetime' })
   expires_at: Date;
 
-  /** mem_code ของพนักงานที่ยืนยัน/ปฏิเสธ (มาจาก token) */
+  /** รหัสพนักงาน (employee.emp_code) ที่ยืนยัน/ปฏิเสธ — มาจาก sale service */
   @Column({ type: 'varchar', length: 30, nullable: true, default: null })
   handled_by: string | null;
 

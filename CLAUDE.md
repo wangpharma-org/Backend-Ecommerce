@@ -68,7 +68,7 @@ e2e: `scripts/e2e/sticker-label.e2e.ts`
 
 ## ลืมรหัสผ่าน — พนักงานขายยืนยันตัวตน
 
-โมดูล [src/password-reset/](src/password-reset/) — ร้านส่งคำขอ (กันเดาบัญชี, จำกัดจำนวน) → Sales ที่ดูแลร้าน (`emp_id_ref`) / Admin โทรยืนยัน + checklist → รหัสผ่านชั่วคราว (แสดงครั้งเดียว) → login ได้ token ขอบเขต `password_change` ใช้ได้แค่ตั้งรหัสใหม่ (ตัดสินจาก `temp_password_hash` เทียบ `users.mem_password` ไม่แก้ตาราง users)
+โมดูล [src/password-reset/](src/password-reset/) — ร้านส่งคำขอ (กันเดาบัญชี, จำกัดจำนวน) → พนักงานใน**ระบบ Sale Service** โทรยืนยัน + checklist (เรียก `/ecom/internal/password-reset/*` ด้วย `x-internal-token` + `x-actor-emp-code` — ร้านที่ `emp_id_ref` ตรงกัน) → รหัสผ่านชั่วคราว (แสดงครั้งเดียว) → login ได้ token ขอบเขต `password_change` ใช้ได้แค่ตั้งรหัสใหม่ (ตัดสินจาก `temp_password_hash` เทียบ `users.mem_password` ไม่แก้ตาราง users)
 เปิดใช้ด้วย feature flag `password_reset_request` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/password-reset.md](docs/password-reset.md)
 e2e: `scripts/e2e/password-reset.e2e.ts` (seed `scripts/seed/ecwc706-password-reset.sql` ก่อน)
 

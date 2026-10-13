@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -14,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { InternalTokenGuard } from '../auth/internal-token.guard';
 import { JwtPayload } from '../app.controller';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { PasswordResetService, StaffActor } from './password-reset.service';
@@ -21,17 +23,34 @@ import { PASSWORD_RESET_FEATURE_FLAG } from './password-reset.rules';
 
 type AuthedRequest = Request & { user: JwtPayload & { scope?: string } };
 
-/** admin หรือเซลล์ (role Sales) เท่านั้น — token ขอบเขตพิเศษใช้ไม่ได้ */
-function staffOf(req: AuthedRequest): StaffActor {
-  const u = req.user;
-  if (u?.scope || (u?.permission !== true && u?.role !== 'Sales')) {
-    throw new ForbiddenException('You not have Permission to Access');
+function header(req: Request, name: string): string {
+  const v = req.headers[name];
+  return (Array.isArray(v) ? v[0] : (v ?? '')).trim();
+}
+
+/**
+ * ผู้ทำรายการจาก sale service (ส่งมาพร้อม x-internal-token)
+ * - x-actor-emp-code: รหัสพนักงาน (employee.emp_code) จาก JWT ของ Wang Auth
+ * - x-actor-name: ชื่อพนักงาน (encodeURIComponent เพราะ header เป็น ASCII)
+ * - x-actor-scope: all = เห็นทุกร้าน · อื่นๆ = เฉพาะร้านที่ users.emp_id_ref ตรงกับรหัสพนักงาน
+ * - x-actor-supervisor: 1 = ปิด "บังคับตั้งรหัสใหม่" ได้
+ */
+function actorOf(req: Request): StaffActor {
+  const empCode = header(req, 'x-actor-emp-code');
+  if (!/^[A-Za-z0-9_-]{1,20}$/.test(empCode)) {
+    throw new BadRequestException('x-actor-emp-code ไม่ถูกต้อง');
+  }
+  let name = '';
+  try {
+    name = decodeURIComponent(header(req, 'x-actor-name')).slice(0, 200);
+  } catch {
+    name = '';
   }
   return {
-    mem_code: u.mem_code,
-    name: u.name,
-    permission: u.permission,
-    role: u.role,
+    emp_code: empCode,
+    name,
+    all_stores: header(req, 'x-actor-scope') === 'all',
+    supervisor: header(req, 'x-actor-supervisor') === '1',
   };
 }
 
@@ -105,44 +124,41 @@ export class PasswordResetController {
     return this.service.setNewPassword(req.user.mem_code, body);
   }
 
-  // ==================== STAFF ====================
+  // ======== STAFF — เรียกจาก sale service เท่านั้น (wangpharma-sale-backend) ========
 
-  @UseGuards(JwtAuthGuard)
-  @Get('staff/password-reset/summary')
-  async summary(@Req() req: AuthedRequest) {
-    const actor = staffOf(req);
+  @UseGuards(InternalTokenGuard)
+  @Get('internal/password-reset/summary')
+  async summary(@Req() req: Request) {
+    const actor = actorOf(req);
     await this.assertEnabled();
     return this.service.pendingCount(actor);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('staff/password-reset/requests')
+  @UseGuards(InternalTokenGuard)
+  @Get('internal/password-reset/requests')
   async list(
-    @Req() req: AuthedRequest,
+    @Req() req: Request,
     @Query('tab') tab?: string,
     @Query('q') q?: string,
   ) {
-    const actor = staffOf(req);
+    const actor = actorOf(req);
     await this.assertEnabled();
     return this.service.list(actor, tab, q);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('staff/password-reset/requests/:id')
-  async detail(
-    @Req() req: AuthedRequest,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    const actor = staffOf(req);
+  @UseGuards(InternalTokenGuard)
+  @Get('internal/password-reset/requests/:id')
+  async detail(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+    const actor = actorOf(req);
     await this.assertEnabled();
     return this.service.detail(actor, id);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('staff/password-reset/requests/:id/approve')
+  @UseGuards(InternalTokenGuard)
+  @Post('internal/password-reset/requests/:id/approve')
   @HttpCode(HttpStatus.OK)
   async approve(
-    @Req() req: AuthedRequest,
+    @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body()
     body: {
@@ -153,20 +169,20 @@ export class PasswordResetController {
       note?: unknown;
     },
   ) {
-    const actor = staffOf(req);
+    const actor = actorOf(req);
     await this.assertEnabled();
     return this.service.approve(actor, id, body);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('staff/password-reset/requests/:id/reject')
+  @UseGuards(InternalTokenGuard)
+  @Post('internal/password-reset/requests/:id/reject')
   @HttpCode(HttpStatus.OK)
   async reject(
-    @Req() req: AuthedRequest,
+    @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason?: unknown; note?: unknown },
   ) {
-    const actor = staffOf(req);
+    const actor = actorOf(req);
     await this.assertEnabled();
     return this.service.reject(actor, id, body);
   }

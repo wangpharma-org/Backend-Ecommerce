@@ -35,12 +35,16 @@ import {
   normalizePhone,
 } from './password-reset.rules';
 
-/** ผู้ทำรายการฝั่งพนักงาน — มาจาก JWT เท่านั้น */
+/**
+ * ผู้ทำรายการฝั่งพนักงาน — มาจาก sale service (wangpharma-sale-backend) ผ่าน internal token
+ * sale service ตรวจ JWT ของ Wang Auth + สิทธิ์เองแล้วส่งมา: รหัสพนักงาน (employee.emp_code)
+ * และขอบเขต — all_stores = เห็นทุกร้าน, supervisor = ปิด "บังคับตั้งรหัสใหม่" ได้
+ */
 export interface StaffActor {
-  mem_code: string;
+  emp_code: string;
   name?: string;
-  permission?: boolean;
-  role?: string;
+  all_stores?: boolean;
+  supervisor?: boolean;
 }
 
 export type ListTab = 'all' | 'pending' | 'mine' | 'closed';
@@ -276,23 +280,11 @@ export class PasswordResetService {
     };
   }
 
-  // ==================== STAFF (Sales / Admin) ====================
+  // ==================== STAFF (ผ่าน sale service) ====================
 
-  /** admin → null (ไม่จำกัด) · Sales → emp_id_ref ของบัญชี หรือ mem_code ถ้าไม่ได้ผูก (แบบเดียวกับ pre-order) */
-  private async salesCodeOf(actor: StaffActor): Promise<string | null> {
-    if (actor.permission === true) return null;
-    if (actor.role !== 'Sales') {
-      throw new ForbiddenException('You not have Permission to Access');
-    }
-    return this.ownCode(actor);
-  }
-
-  private async ownCode(actor: StaffActor): Promise<string> {
-    const me = await this.userRepo.findOne({
-      where: { mem_code: actor.mem_code },
-      select: ['mem_code', 'emp_id_ref'],
-    });
-    return (me?.emp_id_ref ?? '').trim() || actor.mem_code;
+  /** เห็นทุกร้าน → null (ไม่จำกัด) · ปกติ → เฉพาะร้านที่ users.emp_id_ref = รหัสพนักงาน */
+  private salesCodeOf(actor: StaffActor): string | null {
+    return actor.all_stores ? null : actor.emp_code;
   }
 
   private baseStaffQuery(salesCode: string | null) {
@@ -306,8 +298,8 @@ export class PasswordResetService {
   }
 
   async list(actor: StaffActor, tab: unknown, q: unknown) {
-    const sc = await this.salesCodeOf(actor);
-    const myCode = await this.ownCode(actor);
+    const sc = this.salesCodeOf(actor);
+    const myCode = actor.emp_code;
     await this.expireStale();
     const t: ListTab =
       tab === 'pending' || tab === 'mine' || tab === 'closed' ? tab : 'all';
@@ -385,7 +377,7 @@ export class PasswordResetService {
   }
 
   async pendingCount(actor: StaffActor) {
-    const sc = await this.salesCodeOf(actor);
+    const sc = this.salesCodeOf(actor);
     await this.expireStale();
     const pending = await this.baseStaffQuery(sc)
       .andWhere("r.status = 'pending'")
@@ -394,7 +386,7 @@ export class PasswordResetService {
   }
 
   private async loadInScope(actor: StaffActor, id: number) {
-    const sc = await this.salesCodeOf(actor);
+    const sc = this.salesCodeOf(actor);
     const r = await this.requestRepo.findOne({ where: { id } });
     if (!r || !r.mem_code) throw new NotFoundException('ไม่พบคำขอ');
     const user = await this.userRepo.findOne({
@@ -470,7 +462,7 @@ export class PasswordResetService {
         device: describeDevice(r.user_agent),
         requests_30d: requests30d,
       },
-      can_disable_force_change: actor.permission === true,
+      can_disable_force_change: actor.supervisor === true,
     };
   }
 
@@ -516,7 +508,7 @@ export class PasswordResetService {
     }
     let forceChange = true;
     if (body?.force_change === false) {
-      if (actor.permission !== true) {
+      if (actor.supervisor !== true) {
         throw new ForbiddenException(
           'ปิด "ให้ลูกค้าตั้งรหัสผ่านใหม่" ได้เฉพาะผู้มีสิทธิ์ระดับหัวหน้า',
         );
@@ -536,7 +528,7 @@ export class PasswordResetService {
         .update(PasswordResetRequestEntity)
         .set({
           status: 'approved',
-          handled_by: actor.mem_code,
+          handled_by: actor.emp_code,
           handled_by_name: handledByName,
           handled_at: now,
           checklist: { called: true, ref_ok: true, info_ok: true },
@@ -572,7 +564,7 @@ export class PasswordResetService {
     });
     await this.sessionsService.logoutAllUserSessions(user.mem_code);
     this.logger.log(
-      `password reset ${r.ref_code} mem=${user.mem_code} by=${actor.mem_code} mode=${mode} force=${forceChange}`,
+      `password reset ${r.ref_code} mem=${user.mem_code} by=${actor.emp_code} mode=${mode} force=${forceChange}`,
     );
     return {
       ref_code: r.ref_code,
@@ -609,7 +601,7 @@ export class PasswordResetService {
         status: 'rejected',
         reject_reason: body.reason,
         note,
-        handled_by: actor.mem_code,
+        handled_by: actor.emp_code,
         handled_by_name: staffName(actor),
         handled_at: now,
       })
@@ -617,7 +609,7 @@ export class PasswordResetService {
       .execute();
     if (!res.affected) throw new ConflictException('คำขอนี้ปิดแล้ว');
     this.logger.log(
-      `password reset rejected ${r.ref_code} by=${actor.mem_code} reason=${body.reason}`,
+      `password reset rejected ${r.ref_code} by=${actor.emp_code} reason=${body.reason}`,
     );
     return {
       ref_code: r.ref_code,
@@ -660,7 +652,7 @@ function repName(nick: unknown, first: unknown): string | null {
 
 function staffName(actor: StaffActor): string {
   const name = (actor.name ?? '').trim();
-  return name ? `${name} (${actor.mem_code})` : actor.mem_code;
+  return name ? `${name} (${actor.emp_code})` : actor.emp_code;
 }
 
 function optionalNote(v: unknown): string | null {

@@ -3,7 +3,7 @@
  * E2E: ลืมรหัสผ่าน → พนักงานขายโทรยืนยันตัวตน → รีเซ็ตด้วยรหัสผ่านชั่วคราว (ECWC-706) ยิง API จริง
  *
  * ใช้:
- *   BASE_URL=https://<api>/api E2E_ENV=dev|prod ADMIN_TOKEN=<jwt admin> \
+ *   BASE_URL=https://<api>/api E2E_ENV=dev|prod ADMIN_TOKEN=<jwt admin> INTERNAL_TOKEN=<INTERNAL_API_TOKEN ของ server> \
  *   npx ts-node scripts/e2e/password-reset.e2e.ts
  *
  * เงื่อนไขก่อนรัน
@@ -12,7 +12,9 @@
  * - feature flag password_reset_request ปิดอยู่ (สคริปต์เปิดเองแล้วปิดคืนเมื่อจบ)
  * - บัญชีทดสอบใช้รหัสผ่าน E2E_PASSWORD (ค่าเริ่มต้น e2e-test-pass-2026) — สคริปต์ login เอง ไม่ต้องส่ง token
  *
- * ข้อมูลทดสอบ: ร้าน E2E706 / เซลล์ E2E706-SALE, E2E706-SALE2 (ชื่อขึ้นต้น "E2E local")
+ * ฝั่งพนักงานเรียกแบบที่ sale service (wangpharma-sale-backend) เรียกจริง: /ecom/internal/password-reset/*
+ * + x-internal-token + x-actor-* (รหัสพนักงาน E2E706S ดูแลร้านทดสอบ, E2E706X ไม่ได้ดูแล, E2E706-SUP หัวหน้าเห็นทุกร้าน)
+ * ข้อมูลทดสอบ: ร้าน E2E706 (ชื่อขึ้นต้น "E2E local")
  * จบแล้วรหัสผ่านร้านทดสอบเป็นค่าที่สคริปต์ตั้ง (รัน seed เพื่อคืนค่า) · คำขอทดสอบยังอยู่ในตาราง
  * ผลลัพธ์เขียนลง docs/e2e/password-reset-<env>-<timestamp>.md
  */
@@ -23,6 +25,7 @@ import { join } from 'path';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000/api';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? '';
 const PASSWORD = process.env.E2E_PASSWORD ?? 'e2e-test-pass-2026';
 const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE_URL);
 const E2E_ENV = process.env.E2E_ENV ?? (IS_LOCAL ? 'local' : '');
@@ -38,8 +41,10 @@ const GIT_SHA = (() => {
   }
 })();
 
-if (!ADMIN_TOKEN) {
-  console.error('ต้องตั้ง ADMIN_TOKEN (ใช้เปิด/ปิด feature flag)');
+if (!ADMIN_TOKEN || !INTERNAL_TOKEN) {
+  console.error(
+    'ต้องตั้ง ADMIN_TOKEN (เปิด/ปิด feature flag) และ INTERNAL_TOKEN (= INTERNAL_API_TOKEN ของ server)',
+  );
   process.exit(2);
 }
 if (!E2E_ENV) {
@@ -55,8 +60,6 @@ if (E2E_ENV === 'local' && !IS_LOCAL) {
 
 const STORE_CODE = 'E2E706';
 const STORE_USER = 'e2e706_store';
-const SALE_USER = 'e2e706_sale';
-const SALE2_USER = 'e2e706_sale2';
 const NEW_PASSWORD = `e2eNew${Date.now() % 100000}x1`;
 const UA_ANDROID =
   'Mozilla/5.0 (Linux; Android 14; E2E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36';
@@ -70,6 +73,31 @@ const client = (token?: string): AxiosInstance =>
   });
 const admin = client(ADMIN_TOKEN);
 const anon = client();
+
+/** พนักงานที่เรียกผ่าน sale service — x-actor-* คือสิ่งที่ sale backend ส่งมาหลังตรวจ JWT ของ Wang Auth */
+const staff = (
+  empCode: string,
+  name: string,
+  opts: { all?: boolean; supervisor?: boolean; token?: string } = {},
+): AxiosInstance =>
+  axios.create({
+    baseURL: BASE_URL,
+    headers: {
+      'x-internal-token': opts.token ?? INTERNAL_TOKEN,
+      'x-actor-emp-code': empCode,
+      'x-actor-name': encodeURIComponent(name),
+      ...(opts.all ? { 'x-actor-scope': 'all' } : {}),
+      ...(opts.supervisor ? { 'x-actor-supervisor': '1' } : {}),
+    },
+    validateStatus: () => true,
+    timeout: 30000,
+  });
+const sale = staff('E2E706S', 'E2E local เซลล์ A');
+const sale2 = staff('E2E706X', 'E2E local เซลล์ B');
+const supervisor = staff('E2E706-SUP', 'E2E local หัวหน้า', {
+  all: true,
+  supervisor: true,
+});
 
 interface StepResult {
   step: string;
@@ -113,16 +141,6 @@ function decodeJwt(token: string): Record<string, any> {
 const login = (username: string, password: string) =>
   anon.post('/ecom/login', { username, password });
 
-async function loginToken(username: string): Promise<string> {
-  const r = await login(username, PASSWORD);
-  if (r.status !== 201 && r.status !== 200) {
-    throw new Error(
-      `login ${username} ไม่ผ่าน [${r.status}] — รัน scripts/seed/ecwc706-password-reset.sql ก่อน`,
-    );
-  }
-  return r.data.token as string;
-}
-
 async function setFlag(status: boolean) {
   return admin.post('/ecom/feature-flag/update-flag', {
     flag: 'password_reset_request',
@@ -139,10 +157,6 @@ async function main() {
   );
   const wasEnabled = flagBefore.data === true;
 
-  const saleToken = await loginToken(SALE_USER);
-  const sale2Token = await loginToken(SALE2_USER);
-  const sale = client(saleToken);
-  const sale2 = client(sale2Token);
   const storeLogin = await login(STORE_USER, PASSWORD);
   const storeToken: string = storeLogin.data?.token;
   const storeRefresh: string = storeLogin.data?.refresh_token;
@@ -158,7 +172,7 @@ async function main() {
       return { status: r.status, ok: r.status === 403 };
     });
     await step('flag ปิด → หน้าพนักงานใช้ไม่ได้ (403)', async () => {
-      const r = await sale.get('/ecom/staff/password-reset/requests');
+      const r = await sale.get('/ecom/internal/password-reset/requests');
       return { status: r.status, ok: r.status === 403 };
     });
     const on = await setFlag(true);
@@ -259,16 +273,28 @@ async function main() {
     });
 
     // ---------- สิทธิ์ฝั่งพนักงาน ----------
-    await step('ไม่มี token → หน้าพนักงาน 401/403', async () => {
-      const r = await anon.get('/ecom/staff/password-reset/requests');
-      return { status: r.status, ok: r.status === 403 || r.status === 401 };
-    });
-    await step('token ร้านค้า → หน้าพนักงาน 403', async () => {
-      const r = await store.get('/ecom/staff/password-reset/requests');
+    await step('ไม่มี internal token → หน้าพนักงาน 403', async () => {
+      const r = await anon.get('/ecom/internal/password-reset/requests');
       return { status: r.status, ok: r.status === 403 };
     });
+    await step('token ร้านค้า (JWT) เรียก internal ไม่ได้ → 403', async () => {
+      const r = await store.get('/ecom/internal/password-reset/requests');
+      return { status: r.status, ok: r.status === 403 };
+    });
+    await step('internal token ผิด → 403', async () => {
+      const r = await staff('E2E706S', 'x', { token: 'wrong-token' }).get(
+        '/ecom/internal/password-reset/requests',
+      );
+      return { status: r.status, ok: r.status === 403 };
+    });
+    await step('ไม่ส่ง / ส่งรหัสพนักงานผิดรูปแบบ → 400', async () => {
+      const r = await staff('E2E 706;', 'x').get(
+        '/ecom/internal/password-reset/requests',
+      );
+      return { status: r.status, ok: r.status === 400 };
+    });
 
-    const list = await sale.get('/ecom/staff/password-reset/requests', {
+    const list = await sale.get('/ecom/internal/password-reset/requests', {
       params: { tab: 'pending' },
     });
     const item = (list.data?.items ?? []).find((x: any) => x.ref_code === ref);
@@ -290,12 +316,12 @@ async function main() {
       }),
     );
     await step('summary (badge เมนู) ของเซลล์', async () => {
-      const r = await sale.get('/ecom/staff/password-reset/summary');
+      const r = await sale.get('/ecom/internal/password-reset/summary');
       return { status: r.status, ok: r.status === 200 && r.data.pending >= 1 };
     });
     await step('เซลล์อีกคน: ไม่เห็นในรายการ + ดูรายละเอียด 403', async () => {
-      const l = await sale2.get('/ecom/staff/password-reset/requests');
-      const d = await sale2.get(`/ecom/staff/password-reset/requests/${id}`);
+      const l = await sale2.get('/ecom/internal/password-reset/requests');
+      const d = await sale2.get(`/ecom/internal/password-reset/requests/${id}`);
       return {
         status: d.status,
         ok:
@@ -306,7 +332,7 @@ async function main() {
     });
     await step('เซลล์อีกคน: กดรีเซ็ตแทนไม่ได้ (403)', async () => {
       const r = await sale2.post(
-        `/ecom/staff/password-reset/requests/${id}/approve`,
+        `/ecom/internal/password-reset/requests/${id}/approve`,
         {
           checklist: { called: true, ref_ok: true, info_ok: true },
           mode: 'auto',
@@ -315,11 +341,13 @@ async function main() {
       return { status: r.status, ok: r.status === 403 };
     });
     await step('id ไม่ใช่ตัวเลข → 400', async () => {
-      const r = await sale.get('/ecom/staff/password-reset/requests/2a');
+      const r = await sale.get('/ecom/internal/password-reset/requests/2a');
       return { status: r.status, ok: r.status === 400 };
     });
 
-    const detail = await sale.get(`/ecom/staff/password-reset/requests/${id}`);
+    const detail = await sale.get(
+      `/ecom/internal/password-reset/requests/${id}`,
+    );
     await step('รายละเอียด: ข้อมูลในระบบเทียบกับข้อมูลจากคำขอ', async () => ({
       status: detail.status,
       ok:
@@ -334,7 +362,7 @@ async function main() {
     }));
 
     // ---------- ยืนยันและรีเซ็ต ----------
-    const approveUrl = `/ecom/staff/password-reset/requests/${id}/approve`;
+    const approveUrl = `/ecom/internal/password-reset/requests/${id}/approve`;
     await step('รีเซ็ตโดย checklist ไม่ครบ → 400', async () => {
       const r = await sale.post(approveUrl, {
         checklist: { called: true, ref_ok: true, info_ok: false },
@@ -383,7 +411,7 @@ async function main() {
           approved.status === 200 &&
           /^[A-Za-z0-9]{3}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(temp) &&
           approved.data.force_change === true &&
-          /E2E706-SALE/.test(approved.data.handled_by_name),
+          /E2E706S/.test(approved.data.handled_by_name),
         detail: `handled_by=${approved.data?.handled_by_name}`,
       }),
     );
@@ -395,7 +423,7 @@ async function main() {
       return { status: r.status, ok: r.status === 409 };
     });
     await step('รายละเอียดหลังรีเซ็ตไม่คืนรหัสชั่วคราวอีก', async () => {
-      const r = await sale.get(`/ecom/staff/password-reset/requests/${id}`);
+      const r = await sale.get(`/ecom/internal/password-reset/requests/${id}`);
       return {
         status: r.status,
         ok:
@@ -548,7 +576,7 @@ async function main() {
       account: STORE_USER,
     });
     const ref2: string = second.data?.ref_code;
-    const list2 = await sale.get('/ecom/staff/password-reset/requests', {
+    const list2 = await sale.get('/ecom/internal/password-reset/requests', {
       params: { q: ref2 },
     });
     const id2: number = (list2.data?.items ?? [])[0]?.id;
@@ -560,7 +588,7 @@ async function main() {
         detail: ref2,
       }),
     );
-    const rejectUrl = `/ecom/staff/password-reset/requests/${id2}/reject`;
+    const rejectUrl = `/ecom/internal/password-reset/requests/${id2}/reject`;
     await step('ปฏิเสธ: สาเหตุผิด / "อื่น ๆ" ไม่มีเหตุผล → 400', async () => {
       const a = await sale.post(rejectUrl, { reason: 'toString' });
       const b = await sale.post(rejectUrl, { reason: 'other' });
@@ -579,7 +607,7 @@ async function main() {
     await step('ปฏิเสธซ้ำ / รีเซ็ตหลังปฏิเสธ → 409', async () => {
       const a = await sale.post(rejectUrl, { reason: 'wrong_info' });
       const b = await sale.post(
-        `/ecom/staff/password-reset/requests/${id2}/approve`,
+        `/ecom/internal/password-reset/requests/${id2}/approve`,
         {
           checklist: { called: true, ref_ok: true, info_ok: true },
           mode: 'auto',
@@ -601,7 +629,7 @@ async function main() {
       },
     );
     await step('แท็บปิดแล้วเห็นทั้ง 2 คำขอ', async () => {
-      const r = await sale.get('/ecom/staff/password-reset/requests', {
+      const r = await sale.get('/ecom/internal/password-reset/requests', {
         params: { tab: 'closed', q: STORE_CODE },
       });
       const refs = (r.data.items ?? []).map((x: any) => x.ref_code);
@@ -617,22 +645,22 @@ async function main() {
       account: STORE_USER,
     });
     const id3 = (
-      await sale.get('/ecom/staff/password-reset/requests', {
+      await sale.get('/ecom/internal/password-reset/requests', {
         params: { q: third.data?.ref_code },
       })
     ).data?.items?.[0]?.id;
-    await sale.post(`/ecom/staff/password-reset/requests/${id3}/reject`, {
+    await sale.post(`/ecom/internal/password-reset/requests/${id3}/reject`, {
       reason: 'unreachable',
     });
     const fourth = await anon.post('/ecom/password-reset/requests', {
       account: STORE_USER,
     });
     const id4 = (
-      await sale.get('/ecom/staff/password-reset/requests', {
+      await sale.get('/ecom/internal/password-reset/requests', {
         params: { q: fourth.data?.ref_code },
       })
     ).data?.items?.[0]?.id;
-    await sale.post(`/ecom/staff/password-reset/requests/${id4}/reject`, {
+    await sale.post(`/ecom/internal/password-reset/requests/${id4}/reject`, {
       reason: 'unreachable',
     });
     await step('ส่งคำขอเกิน 3 ครั้ง/24 ชม. ต่อบัญชี → 429', async () => {
@@ -647,9 +675,11 @@ async function main() {
 
     // ---------- admin ----------
     await step(
-      'admin เห็นคำขอของทุกเซลล์ + ปิด "บังคับตั้งรหัสใหม่" ได้',
+      'หัวหน้า (scope all) เห็นคำขอของทุกเซลล์ + ปิด "บังคับตั้งรหัสใหม่" ได้',
       async () => {
-        const r = await admin.get(`/ecom/staff/password-reset/requests/${id}`);
+        const r = await supervisor.get(
+          `/ecom/internal/password-reset/requests/${id}`,
+        );
         return {
           status: r.status,
           ok: r.status === 200 && r.data.can_disable_force_change === true,
@@ -680,7 +710,7 @@ async function main() {
     `- commit: \`${GIT_SHA}\``,
     `- เวลา: ${new Date().toISOString()}`,
     `- ผล: **${passed}/${results.length} ผ่าน**${failed ? ` · ไม่ผ่าน ${failed}` : ''}`,
-    `- ข้อมูลทดสอบ: ร้าน ${STORE_CODE}, เซลล์ E2E706-SALE / E2E706-SALE2 (seed: scripts/seed/ecwc706-password-reset.sql)`,
+    `- ข้อมูลทดสอบ: ร้าน ${STORE_CODE} ดูแลโดยพนักงาน E2E706S · ฝั่งพนักงานเรียกผ่าน /ecom/internal (seed: scripts/seed/ecwc706-password-reset.sql)`,
     '',
     '| # | ขั้นตอน | ผล | HTTP | หมายเหตุ |',
     '|---|---|---|---|---|',
