@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -20,6 +21,7 @@ import {
   StickerActor,
   StickerLabelService,
 } from './sticker-label.service';
+import { isStickerProCode } from './sticker-label.options';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -54,11 +56,21 @@ export class StickerLabelController {
     return this.service.getConfig(actorOf(req));
   }
 
+  /** ?pro_code= ระบุรหัส (ขาวดำ/สี) = รูปแบบล่าสุดของรหัสนั้น — ใช้กับปุ่ม "สั่งซ้ำแบบเดิม" */
   @Get('sticker-label/last-options')
-  async getLastOptions(@Req() req: AuthedRequest) {
+  async getLastOptions(
+    @Req() req: AuthedRequest,
+    @Query('pro_code') proCode?: string,
+  ) {
     await this.service.assertEnabled();
+    if (proCode != null && !isStickerProCode(proCode)) {
+      throw new BadRequestException('pro_code ไม่ใช่สินค้าสติ๊กเกอร์');
+    }
     return {
-      custom_options: await this.service.getLastOptions(req.user.mem_code),
+      custom_options: await this.service.getLastOptions(
+        req.user.mem_code,
+        proCode,
+      ),
     };
   }
 

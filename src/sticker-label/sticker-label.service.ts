@@ -291,12 +291,17 @@ export class StickerLabelService {
   }
 
   /** "ใช้ข้อมูลจากคำสั่งซื้อครั้งก่อน" — รูปแบบล่าสุดที่ร้านนี้เคยสั่ง */
-  async getLastOptions(mem_code: string): Promise<StickerCustomOptions | null> {
+  async getLastOptions(
+    mem_code: string,
+    pro_code?: string,
+  ): Promise<StickerCustomOptions | null> {
     const line = await this.orderRepo
       .createQueryBuilder('spo')
       .innerJoin('spo.orderHeader', 'soh')
       .where('soh.mem_code = :mem_code', { mem_code })
-      .andWhere('spo.pro_code IN (:...codes)', { codes: STICKER_PRO_CODES })
+      .andWhere('spo.pro_code IN (:...codes)', {
+        codes: pro_code ? [pro_code] : STICKER_PRO_CODES,
+      })
       .andWhere('spo.custom_options IS NOT NULL')
       .orderBy('spo.spo_id', 'DESC')
       .select(['spo.spo_id', 'spo.custom_options'])

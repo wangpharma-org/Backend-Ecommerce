@@ -28,7 +28,7 @@
 | Method | Path | Body / หมายเหตุ |
 |--------|------|-----------------|
 | GET | `/sticker-label/config` | ตัวเลือกทั้งหมด + ราคาต่อแพ็คตาม price option ของร้าน |
-| GET | `/sticker-label/last-options` | `{ custom_options }` รูปแบบล่าสุดที่ร้านเคยสั่ง หรือ `null` |
+| GET | `/sticker-label/last-options?pro_code=` | `{ custom_options }` รูปแบบล่าสุดที่ร้านเคยสั่ง หรือ `null` · ระบุ `pro_code` (-05/-07) = ล่าสุดของรหัสนั้น (ปุ่ม "สั่งซ้ำแบบเดิม") · pro_code อื่น → 400 |
 | POST | `/sticker-label/cart` | `{ custom_options, packs, clientVersion? }` หยิบใส่ตะกร้า |
 | POST | `/sticker-label/cart/update` | `{ spc_id, packs, clientVersion? }` ตั้งจำนวนแพ็คของแถวเดียว (`packs: 0` = ลบแถว) |
 
