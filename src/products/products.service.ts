@@ -1335,6 +1335,12 @@ export class ProductsService {
                 .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
                 .andWhere('product.pro_name NOT LIKE :prefix7', {
                   prefix7: 'ค่า%',
+                })
+                .andWhere('product.pro_name NOT LIKE :freePrefix', {
+                  freePrefix: 'FREE/%',
+                })
+                .andWhere('product.pro_name NOT LIKE :slashFree', {
+                  slashFree: '%/ฟรี%',
                 });
 
               if (data.category === 7) {
@@ -1703,6 +1709,14 @@ export class ProductsService {
                   { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
                   { prefix: { 'pro_code.keyword': '@M' } },
                   { prefix: { 'pro_name.keyword': 'ฟรี' } },
+                  {
+                    prefix: {
+                      'pro_name.keyword': {
+                        value: 'FREE/',
+                        case_insensitive: true,
+                      },
+                    },
+                  },
                   { prefix: { 'pro_name.keyword': '@' } },
                   { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
                   { prefix: { 'pro_name.keyword': 'รีเบท' } },
@@ -1711,6 +1725,7 @@ export class ProductsService {
                   { prefix: { 'pro_name.keyword': 'ค่า' } },
                   { prefix: { 'pro_name.keyword': '.' } },
                   { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+                  { wildcard: { 'pro_name.keyword': { value: '*/ฟรี*' } } },
                   {
                     wildcard: {
                       'pro_name.keyword': { value: '*บัตรโลตัส*' },
@@ -1952,6 +1967,11 @@ export class ProductsService {
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .innerJoinAndSelect('product.units', 'units')
         .where('product.pro_code IN (:...proCodes)', { proCodes })
+        // ของแถม FREE/* อาจหลุดมาจาก external/enter search ที่ไม่ผ่าน ES filter
+        .andWhere(
+          '(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND product.pro_name NOT LIKE :slashFree))',
+          { freePrefix: 'FREE/%', slashFree: '%/ฟรี%' },
+        )
         .select([
           'product.pro_code',
           'product.pro_name',
