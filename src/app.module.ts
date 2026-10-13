@@ -58,6 +58,7 @@ import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { PreorderModule } from './preorder/preorder.module';
 import { StickerLabelModule } from './sticker-label/sticker-label.module';
+import { PasswordResetModule } from './password-reset/password-reset.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
@@ -169,6 +170,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     WatermarkAuditModule,
     PreorderModule,
     StickerLabelModule,
+    PasswordResetModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -7,7 +7,12 @@ import { AuthGuard } from '@nestjs/passport';
 import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
 import { jwtConstants } from './constants';
 import { JwtService } from '@nestjs/jwt';
-import { REVIEW_SCOPE, isAllowedForReviewScope } from './token-scope';
+import {
+  PASSWORD_CHANGE_SCOPE,
+  REVIEW_SCOPE,
+  isAllowedForPasswordChangeScope,
+  isAllowedForReviewScope,
+} from './token-scope';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -59,8 +64,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       originalUrl?: string;
       url?: string;
     }>();
+    const url = request.originalUrl ?? request.url;
+    if (request.user?.scope === PASSWORD_CHANGE_SCOPE) {
+      if (!isAllowedForPasswordChangeScope(url)) {
+        throw new ForbiddenException(
+          'กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน (เข้าสู่ระบบด้วยรหัสผ่านชั่วคราว)',
+        );
+      }
+      return;
+    }
     if (request.user?.scope !== REVIEW_SCOPE) return;
-    if (!isAllowedForReviewScope(request.originalUrl ?? request.url)) {
+    if (!isAllowedForReviewScope(url)) {
       throw new ForbiddenException(
         'ลิงก์นี้ใช้ได้เฉพาะการรีวิว กรุณาเข้าสู่ระบบด้วยรหัสผ่าน',
       );
