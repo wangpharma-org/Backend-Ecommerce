@@ -1,4 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserEntity } from 'src/users/users.entity';
@@ -14,6 +20,7 @@ import * as bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from '../constants/app.constants';
 import { EmployeesService } from 'src/employees/employees.service';
 import { REVIEW_SCOPE, lineLinkLoginScope } from './token-scope';
+import { jwtConstants } from './constants';
 
 export interface SigninResponse {
   token: string;
@@ -318,6 +325,81 @@ export class AuthService {
     return { token: access_token, refresh_token: refresh_token };
   }
 
+  /// ผูกบัญชี LINE เข้ากับร้านของผู้ที่ login อยู่ ผ่าน notification-service
+  /// - รหัสร้านมาจาก token ที่ตรวจลายเซ็นแล้วเท่านั้น
+  /// - `lineToken` คือค่า `token` จากลิงก์ยืนยันตัวตน (ตั๋วที่ notification-service ตรวจเอง)
+  /// - แนบ `x-internal-token` ให้ notification-service รู้ว่ารหัสร้านนี้ผ่านการ login มาแล้ว
+  async bindLineAccount(
+    authorization: string | undefined,
+    lineToken: unknown,
+  ): Promise<{ linked: true }> {
+    const [scheme, bearer] = (authorization ?? '').split(' ');
+    if (scheme !== 'Bearer' || !bearer) {
+      throw new UnauthorizedException('กรุณาเข้าสู่ระบบก่อน');
+    }
+    let memCode = '';
+    try {
+      const payload = await this.jwtService.verifyAsync<{ mem_code?: unknown }>(
+        bearer,
+        { secret: jwtConstants.secret },
+      );
+      memCode =
+        typeof payload.mem_code === 'string' ? payload.mem_code.trim() : '';
+    } catch {
+      throw new UnauthorizedException('กรุณาเข้าสู่ระบบใหม่');
+    }
+    if (!memCode) {
+      throw new UnauthorizedException('บัญชีนี้ไม่มีรหัสร้าน');
+    }
+    const target = typeof lineToken === 'string' ? lineToken.trim() : '';
+    if (!target || target.length > 600) {
+      throw new BadRequestException(
+        'ลิงก์ยืนยันตัวตนไม่ถูกต้อง กรุณาขอลิงก์ใหม่ในแชต',
+      );
+    }
+
+    const notificationUrl =
+      process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
+    const internalToken = process.env.NOTIFICATION_INTERNAL_TOKEN?.trim();
+    try {
+      await lastValueFrom(
+        this.httpService.post(
+          `${notificationUrl}/api/notifications/line/bind`,
+          { memCode, lineUserId: target },
+          {
+            headers: internalToken ? { 'x-internal-token': internalToken } : {},
+            timeout: 10000,
+          },
+        ),
+      );
+    } catch (error) {
+      const response = (
+        error as {
+          response?: { status?: number; data?: { message?: unknown } };
+        }
+      ).response;
+      if (response?.status === 400 || response?.status === 401) {
+        // notification-service ปฏิเสธตั๋ว (หมดอายุ / ไม่ถูกต้อง) หรือยังไม่ได้ตั้ง internal token ฝั่งนี้
+        const message =
+          typeof response.data?.message === 'string'
+            ? response.data.message
+            : 'ลิงก์ยืนยันตัวตนไม่ถูกต้อง กรุณาขอลิงก์ใหม่ในแชต';
+        this.logger.warn(
+          `LINE bind rejected for ${memCode}: HTTP ${response.status}`,
+        );
+        throw new BadRequestException(message);
+      }
+      this.logger.error(
+        `LINE bind failed for ${memCode}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw new ServiceUnavailableException(
+        'ยืนยันตัวตนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+      );
+    }
+    return { linked: true };
+  }
+
   async signinWithLineUserId(lineUserId: string): Promise<SigninResponse> {
     const notificationUrl =
       process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3005';
@@ -547,9 +629,7 @@ export class AuthService {
   // record ที่ created_at เป็น null คือของเก่าก่อน ECWC-631 — ไม่แตะ ให้ทีมเคลียร์เองภายหลัง
   @Cron('0 1 * * *')
   async cleanupExpiredRefreshTokens(): Promise<void> {
-    const cutoff = dayjs()
-      .subtract(REFRESH_TOKEN_CLEANUP_DAYS, 'day')
-      .toDate();
+    const cutoff = dayjs().subtract(REFRESH_TOKEN_CLEANUP_DAYS, 'day').toDate();
 
     await this.refreshTokenRepo
       .createQueryBuilder()
