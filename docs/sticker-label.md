@@ -40,7 +40,7 @@ Admin (`permission = true`)
 | Method | Path | Body / หมายเหตุ |
 |--------|------|-----------------|
 | GET | `/admin/sticker-label/printers` | รายการเครื่องพิมพ์จาก env |
-| GET | `/admin/sticker-label/queue?status=pending\|printed\|all&page=&limit=` | รายการงาน + `summary` (รอพิมพ์ แยก bw/color เป็นแผ่น) |
+| GET | `/admin/sticker-label/queue?status=pending\|printed\|all&page=&limit=` | รายการงาน + `summary` (รอพิมพ์ แยก bw/color เป็นแผ่น) · `pending` เรียงเก่าก่อน, `printed`/`all` เรียงล่าสุดก่อน |
 | POST | `/admin/sticker-label/print` | `{ order_line_ids: number[], print_type: 'print'\|'reprint'\|'test', printer }` — `printed_by`/`printed_at` มาจาก token/เวลา server |
 | GET | `/admin/sticker-label/lines/:spo_id/logs` | snapshot + ประวัติการพิมพ์ (ใหม่สุดก่อน) |
 | POST | `/admin/sticker-label/print/pdf` | body เดียวกับ `/print` → **PDF + บันทึก log ในครั้งเดียว** (สร้าง PDF ไม่สำเร็จ = ไม่มี log) · header `X-Print-Log-Ids`, `X-Print-Pages` · สูงสุด 1000 หน้าต่อครั้ง |

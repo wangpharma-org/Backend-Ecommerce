@@ -348,6 +348,7 @@ export class StickerLabelService {
     const page = query.page == null ? 1 : positiveInt(query.page, 'page');
     const limit = query.limit == null ? 50 : positiveInt(query.limit, 'limit');
     if (limit > 200) throw new BadRequestException('limit สูงสุด 200');
+    const order = status === 'pending' ? 'ASC' : 'DESC';
 
     const printedExists = `EXISTS (SELECT 1 FROM sticker_print_log l WHERE l.order_line_id = spo.spo_id AND l.print_type = 'print')`;
 
@@ -376,8 +377,9 @@ export class StickerLabelService {
         'soh.mem_code AS mem_code',
         'mem.mem_nameSite AS mem_name',
       ])
-      .orderBy('soh.soh_datetime', 'ASC')
-      .addOrderBy('spo.spo_id', 'ASC')
+      // รอพิมพ์: มาก่อนพิมพ์ก่อน · พิมพ์แล้ว/ทั้งหมด: ล่าสุดก่อน ไม่ให้งานใหม่ตกไปหน้าหลัง
+      .orderBy('soh.soh_datetime', order)
+      .addOrderBy('spo.spo_id', order)
       .offset((page - 1) * limit)
       .limit(limit)
       .getRawMany<{
