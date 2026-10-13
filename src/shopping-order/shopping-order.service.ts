@@ -27,6 +27,12 @@ import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { ClientKafka } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import { lineDiscountPercent } from 'src/promotion/promo-line-value';
+import {
+  parseStickerJson,
+  stickerQuantity,
+  type StickerCustomOptions,
+  type StickerOrderSnapshot,
+} from 'src/sticker-label/sticker-label.options';
 
 interface CountSale {
   pro_code: string;
@@ -191,6 +197,21 @@ export class ShoppingOrderService {
     } catch {
       throw new BadRequestException('Something Error Please try again');
     }
+  }
+
+  /** ECWC-699 คัดลอกรูปแบบสติ๊กเกอร์จากตะกร้าเป็น snapshot ของ order line พร้อมจำนวนแผ่น/ดวง */
+  private stickerSnapshot(
+    item: ShoppingCartEntity,
+    ratio: number,
+  ): StickerOrderSnapshot | null {
+    const options = parseStickerJson<StickerCustomOptions>(item.custom_options);
+    if (!options) return null;
+    const { sheets, dots } = stickerQuantity(
+      Number(item.spc_amount),
+      ratio,
+      options.packSize,
+    );
+    return { ...options, sheets, dots };
   }
 
   async submitOrder(
@@ -493,6 +514,7 @@ export class ShoppingOrderService {
               tier_id: item.tier_id,
               is_reward: item.is_reward,
               spo_unit_enum: item.spc_unit_enum,
+              custom_options: this.stickerSnapshot(item, ratio),
             });
           });
 
