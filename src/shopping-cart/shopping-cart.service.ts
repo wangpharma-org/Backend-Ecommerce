@@ -43,6 +43,13 @@ import { PreorderCampaignStatus } from 'src/preorder/preorder-campaign.entity';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import { selectCurrentLots } from 'src/lot/lot-display.util';
 import { CartBasketEntity } from 'src/special-collection/cart-basket.entity';
+import {
+  hashStickerOptions,
+  isStickerProCode,
+  parseStickerJson,
+  stickerQuantity,
+  type StickerCustomOptions,
+} from 'src/sticker-label/sticker-label.options';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -112,6 +119,10 @@ export interface ShoppingCart {
   hotdeal_free: boolean;
   pro_code: string;
   hotdeal_promain?: string;
+  /** ECWC-699 รูปแบบสินค้าสั่งทำ — null = สินค้าปกติ */
+  custom_options?: StickerCustomOptions | null;
+  /** จำนวนแพ็ค/แผ่น/ดวงของแถวสติ๊กเกอร์ คำนวณจาก amount × ratio */
+  sticker_quantity?: { packs: number; sheets: number; dots: number } | null;
 }
 
 export interface FlashSale {
@@ -155,6 +166,7 @@ interface RawProductCart {
   flashsale_date?: string;
   hotdeal_free: boolean;
   hotdeal_promain?: string;
+  custom_options?: StickerCustomOptions | string | null;
   recommended_id: number;
   recommended_pro_imgmain?: string;
   recommended_pro_name?: string;
@@ -1219,8 +1231,20 @@ export class ShoppingCartService {
     company_day_source?: string;
     /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
     isPreorderFulfillment?: boolean;
+    /** ECWC-699 สินค้าสั่งทำ — ต้องผ่าน normalizeStickerOptions มาแล้ว (ส่งมาจาก StickerLabelService เท่านั้น) */
+    customOptions?: StickerCustomOptions;
   }): Promise<CartMutationResult> {
     try {
+      // สติ๊กเกอร์ต้องมีรูปแบบเสมอ — เพิ่ม/ลดผ่าน /ecom/sticker-label/* เท่านั้น
+      if (isStickerProCode(data.pro_code) && !data.customOptions) {
+        throw new BadRequestException(
+          'สินค้าสั่งทำต้องเพิ่มผ่านหน้าสติ๊กเกอร์ฉลากยา',
+        );
+      }
+      const customHash = data.customOptions
+        ? hashStickerOptions(data.customOptions)
+        : null;
+
       if (data.flashsale_end) {
         await this.handleCheckFlashsale(data.pro_code);
       }
@@ -1246,6 +1270,7 @@ export class ShoppingCartService {
       // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
 
       // แถวของกระเช้าโปร (basket_id) แยกจากสินค้าเดี่ยวเสมอ ห้ามรวมจำนวนเข้าไป
+      // สินค้าสั่งทำ: รูปแบบเดียวกันรวมจำนวน รูปแบบต่างกันเป็นคนละแถว
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -1254,6 +1279,7 @@ export class ShoppingCartService {
           hotdeal_free: false,
           is_reward: false,
           basket_id: IsNull(),
+          custom_options_hash: customHash ?? IsNull(),
         },
       });
 
@@ -1292,6 +1318,8 @@ export class ShoppingCartService {
           flashsale_end: data.flashsale_end ?? undefined,
           spc_comments: '',
           hotdeal_free: false,
+          custom_options: data.customOptions ?? null,
+          custom_options_hash: customHash,
         });
       }
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
@@ -2147,6 +2175,7 @@ export class ShoppingCartService {
           'cart.is_reward AS is_reward',
           'cart.flashsale_end AS flashsale_end',
           'cart.hotdeal_promain AS hotdeal_promain',
+          'cart.custom_options AS custom_options',
           'fs.promotion_id AS promotion_id',
           'fs.limit AS flashsale_limit',
           'flashsale.date AS flashsale_date',
@@ -2421,7 +2450,24 @@ export class ShoppingCartService {
               `[getProductCart] spc_unit_enum is null/empty for spc_id=${row.spc_id} pro_code=${row.pro_code}, skipping row`,
             );
           } else {
+            const customOptions = parseStickerJson<StickerCustomOptions>(
+              row.custom_options,
+            );
+            const unitRatio =
+              row.spc_unit_enum === '3'
+                ? transformedProduct?.pro_ratio3
+                : row.spc_unit_enum === '2'
+                  ? transformedProduct?.pro_ratio2
+                  : transformedProduct?.pro_ratio1;
             grouped[key].shopping_cart.push({
+              custom_options: customOptions,
+              sticker_quantity: customOptions
+                ? stickerQuantity(
+                    Number(row.spc_amount),
+                    unitRatio || 1,
+                    customOptions.packSize,
+                  )
+                : null,
               spc_id: row.spc_id,
               spc_amount: row.spc_amount,
               spc_checked: row.spc_checked,

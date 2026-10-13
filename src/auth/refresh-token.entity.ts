@@ -19,6 +19,11 @@ export class RefreshTokenEntity {
   mem_code: string;
 
   // nullable เพราะข้อมูลเดิมก่อน ECWC-631 ไม่มีค่านี้ — cron cleanup จะข้าม record ที่เป็น null
-  @CreateDateColumn({ type: 'timestamp', nullable: true })
+  // default ต้องมีใน DB ด้วย เพราะ TypeORM INSERT ค่านี้เป็น `DEFAULT` ไม่ได้ส่งเวลาไปเอง
+  @CreateDateColumn({
+    type: 'timestamp',
+    nullable: true,
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   created_at: Date | null;
 }

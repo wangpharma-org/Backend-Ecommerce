@@ -12,6 +12,7 @@ import { BackendService } from 'src/backend/backend.service';
 import { ElasticsearchService } from 'src/elasticsearch/elasticsearch.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
+import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
 
 const mockRepo = () => ({
@@ -84,6 +85,10 @@ describe('ProductsService — unit helpers', () => {
         {
           provide: RedeemProductSetService,
           useValue: { getCustomerSet: jest.fn() },
+        },
+        {
+          provide: MonthlyDealPublisherService,
+          useValue: { publishSnapshot: jest.fn() },
         },
       ],
     }).compile();

@@ -40,6 +40,7 @@ import {
   sortRedeemProductsByRank,
 } from './redeem-product.criteria';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
+import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 
 interface OrderItem {
   pro_code: string;
@@ -142,6 +143,7 @@ export class ProductsService {
     private readonly productUnitRepo: Repository<ProductUnitEntity>,
     private readonly productLabelRulesService: ProductLabelRulesService,
     private readonly redeemProductSetService: RedeemProductSetService,
+    private readonly monthlyDealPublisher: MonthlyDealPublisherService,
   ) {}
 
   private convertEnumToUnitName(
@@ -307,7 +309,7 @@ export class ProductsService {
     }
   }
 
-  async getProductByCreditor(creditor_code: string) {
+  async getProductByCreditor(creditor_codes: string[]) {
     try {
       const qb = this.productRepo.createQueryBuilder('product');
 
@@ -317,7 +319,9 @@ export class ProductsService {
           'product.pro_name',
           'product.pro_genericname',
         ])
-        .where('product.creditor_code = :creditor_code', { creditor_code })
+        .where('product.creditor_code IN (:...creditor_codes)', {
+          creditor_codes,
+        })
         .andWhere('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
         .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
         .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
@@ -572,6 +576,7 @@ export class ProductsService {
           is_detect_amount: false,
         },
       );
+      await this.monthlyDealPublisher.publishSnapshot();
     } catch (error) {
       this.logger.error('Error Reset FlashSale', error);
       throw new Error('Error Reset FlashSale');
@@ -730,6 +735,7 @@ export class ProductsService {
           );
         }),
       );
+      await this.monthlyDealPublisher.publishSnapshot();
       const responseData = this.productRepo.find({
         where: {
           pro_promotion_month: numberOfMonth,
@@ -772,6 +778,7 @@ export class ProductsService {
           );
         }),
       );
+      await this.monthlyDealPublisher.publishSnapshot();
       return 'Product Promotion Month Update Success (PO File)';
     } catch (error) {
       this.logger.error('Error updating product promotion month', error);
@@ -1328,6 +1335,12 @@ export class ProductsService {
                 .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
                 .andWhere('product.pro_name NOT LIKE :prefix7', {
                   prefix7: 'ค่า%',
+                })
+                .andWhere('product.pro_name NOT LIKE :freePrefix', {
+                  freePrefix: 'FREE/%',
+                })
+                .andWhere('product.pro_name NOT LIKE :slashFree', {
+                  slashFree: '%/ฟรี%',
                 });
 
               if (data.category === 7) {
@@ -1696,6 +1709,14 @@ export class ProductsService {
                   { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
                   { prefix: { 'pro_code.keyword': '@M' } },
                   { prefix: { 'pro_name.keyword': 'ฟรี' } },
+                  {
+                    prefix: {
+                      'pro_name.keyword': {
+                        value: 'FREE/',
+                        case_insensitive: true,
+                      },
+                    },
+                  },
                   { prefix: { 'pro_name.keyword': '@' } },
                   { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
                   { prefix: { 'pro_name.keyword': 'รีเบท' } },
@@ -1704,6 +1725,7 @@ export class ProductsService {
                   { prefix: { 'pro_name.keyword': 'ค่า' } },
                   { prefix: { 'pro_name.keyword': '.' } },
                   { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+                  { wildcard: { 'pro_name.keyword': { value: '*/ฟรี*' } } },
                   {
                     wildcard: {
                       'pro_name.keyword': { value: '*บัตรโลตัส*' },
@@ -1945,6 +1967,11 @@ export class ProductsService {
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .innerJoinAndSelect('product.units', 'units')
         .where('product.pro_code IN (:...proCodes)', { proCodes })
+        // ของแถม FREE/* อาจหลุดมาจาก external/enter search ที่ไม่ผ่าน ES filter
+        .andWhere(
+          '(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND product.pro_name NOT LIKE :slashFree))',
+          { freePrefix: 'FREE/%', slashFree: '%/ฟรี%' },
+        )
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -1957,6 +1984,7 @@ export class ProductsService {
           'product.pro_sale_amount',
           'product.pro_stock',
           'product.pro_lowest_stock',
+          'product.eng_chiew',
           'product.order_quantity',
           'product.viwers',
           'cart.spc_id',
@@ -3205,6 +3233,9 @@ export class ProductsService {
         productData.pro_stock = data.product_stock as number;
       if (data.product_lowest_stock !== undefined)
         productData.pro_lowest_stock = data.product_lowest_stock as number;
+      // eng_chiew เป็น NOT NULL จึงข้ามเมื่อส่ง null มา ไม่ให้ทั้ง UPDATE ล้ม
+      if (data.eng_chiew !== undefined && data.eng_chiew !== null)
+        productData.eng_chiew = data.eng_chiew;
       if (data.creditor_code !== undefined)
         productData.creditor = toCreditorReference(data.creditor_code);
       if (data.product_price_a !== undefined)

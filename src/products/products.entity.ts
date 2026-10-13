@@ -158,6 +158,9 @@ export class ProductEntity {
   @Column({ type: 'bigint', default: 0 })
   pro_lowest_stock!: number;
 
+  @Column({ default: false })
+  eng_chiew!: boolean;
+
   @Column({ default: 0 })
   pro_sale_amount!: number;
 
