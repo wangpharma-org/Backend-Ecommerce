@@ -11,7 +11,14 @@ import { ProductEntity } from '../products/products.entity';
 
 // สินค้าที่ไม่เข้าร่วม เฉพาะ tier ที่เป็น all_products
 @Entity({ name: 'promotion_tier_exclusion' })
-@Index(['tier_id', 'product_code'], { unique: true })
+// ชื่อ index/FK ตรงกับ migration 20260921000100 — ไม่งั้น migration:generate จะ DROP/สร้างใหม่
+@Index(
+  'IDX_promotion_tier_exclusion_tier_product',
+  ['tier_id', 'product_code'],
+  {
+    unique: true,
+  },
+)
 export class PromotionTierExclusionEntity {
   @PrimaryGeneratedColumn()
   exclusion_id!: number;
@@ -25,12 +32,24 @@ export class PromotionTierExclusionEntity {
   @ManyToOne(() => PromotionTierEntity, (tier) => tier.exclusions, {
     nullable: false,
     onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
   })
-  @JoinColumn({ name: 'tier_id' })
+  @JoinColumn({
+    name: 'tier_id',
+    foreignKeyConstraintName: 'FK_promotion_tier_exclusion_tier',
+  })
   tier!: PromotionTierEntity;
 
-  @Index()
-  @ManyToOne(() => ProductEntity, { nullable: false, onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'product_code', referencedColumnName: 'pro_code' })
+  @Index('IDX_promotion_tier_exclusion_product')
+  @ManyToOne(() => ProductEntity, {
+    nullable: false,
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({
+    name: 'product_code',
+    referencedColumnName: 'pro_code',
+    foreignKeyConstraintName: 'FK_promotion_tier_exclusion_product',
+  })
   product!: ProductEntity;
 }

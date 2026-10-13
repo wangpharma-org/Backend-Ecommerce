@@ -64,6 +64,7 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { assertOwnShop, sessionOwnerFilter } from './sessions/session-owner';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
@@ -573,6 +574,7 @@ export class AppController {
     @Body()
     data: {
       emp_code?: string;
+      basket_id?: number;
       mem_code: string;
       total_price: number;
       listFree:
@@ -593,8 +595,16 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
+    if (data.basket_id !== undefined && typeof data.basket_id !== 'number') {
+      throw new BadRequestException('basket_id must be a positive integer');
+    }
+    const basketId = this.shoppingCartService.parseBasketCheckoutId(
+      data.basket_id,
+    );
     try {
-      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      if (basketId === undefined) {
+        await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -603,7 +613,7 @@ export class AppController {
     }
 
     const result = await this.shoppingOrderService.submitOrder(
-      { ...data, mem_code, mem_route: req.user.mem_route },
+      { ...data, basket_id: basketId, mem_code, mem_route: req.user.mem_route },
       ip,
     );
     return result;
@@ -862,16 +872,26 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
+  async getProductCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
+  ) {
     const memberCode = req.user.mem_code;
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
         memberCode,
         req.user.mem_route,
+        basketId,
       );
-    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
-    const dataDeleteCart =
-      await this.shoppingCartService.getDeleteCartItem(memberCode);
+    const summaryCart = await this.shoppingCartService.summaryCartDetailed(
+      memberCode,
+      basketId,
+    );
+    const dataDeleteCart = basketId === undefined
+      ? await this.shoppingCartService.getDeleteCartItem(memberCode)
+      : [];
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -966,9 +986,8 @@ export class AppController {
     @Query('pageSize') pageSize?: string,
     @Query('sort_order') sort_order?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getOrderListFromPhp(
         memCode,
@@ -1047,9 +1066,8 @@ export class AppController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
     }
@@ -2250,40 +2268,74 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/active/:session_token')
-  async getActiveSession(@Param('session_token') session_token: string) {
-    return await this.sessionsService.findActiveSession(session_token);
+  async getActiveSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    const session = await this.sessionsService.findActiveSession(session_token);
+    if (!session) return session;
+    assertOwnShop(req.user, session.mem_code);
+    // แถวผู้ใช้ที่ join มามีรหัสผ่าน (hash) — ไม่ส่งออก
+    if (session.user) {
+      return { ...session, user: { ...session.user, mem_password: undefined } };
+    }
+    return session;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/user-sessions/:mem_code')
-  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+  async getUserActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     return await this.sessionsService.findUserActiveSessions(mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/session/update-activity/:session_token')
-  async updateSessionActivity(@Param('session_token') session_token: string) {
-    await this.sessionsService.updateLastActivity(session_token);
+  async updateSessionActivity(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    await this.sessionsService.updateLastActivity(
+      session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Session activity updated successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout')
-  async logoutSession(@Body() data: { session_token: string }) {
-    await this.sessionsService.logoutSession(data.session_token);
+  async logoutSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { session_token: string },
+  ) {
+    await this.sessionsService.logoutSession(
+      data.session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Logout successful' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-all')
-  async logoutAllSessions(@Body() data: { mem_code: string }) {
+  async logoutAllSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutAllUserSessions(data.mem_code);
     return { message: 'All sessions logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-recent')
-  async logoutRecentSessions(@Body() data: { mem_code: string }) {
+  async logoutRecentSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutRecentUserSessions(data.mem_code);
     return { message: 'Recently active sessions logged out successfully' };
   }
@@ -2297,7 +2349,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/count/:mem_code')
-  async countActiveSessions(@Param('mem_code') mem_code: string) {
+  async countActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     const count = await this.sessionsService.countUserActiveSessions(mem_code);
     return { active_sessions_count: count };
   }
@@ -2692,9 +2748,15 @@ export class AppController {
   @Get('/ecom/cart/summary')
   async summaryCart(
     @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
   ): Promise<number> {
     const mem_code = req.user.mem_code;
-    const data = await this.shoppingCartService.summaryCart(mem_code);
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
+    const data = await this.shoppingCartService.summaryCartDetailed(
+      mem_code,
+      basketId,
+    );
     return data.total;
   }
 

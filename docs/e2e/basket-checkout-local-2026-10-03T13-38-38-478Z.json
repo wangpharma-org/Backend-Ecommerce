@@ -1,0 +1,74 @@
+{
+  "issue": "ECWC-655",
+  "environment": "local",
+  "executedAtUTC": "2026-10-03T13:38:38.478Z",
+  "endpoint": "http://localhost:3021",
+  "database": {
+    "host": "localhost",
+    "port": 3311,
+    "name": "ecommerce-db"
+  },
+  "git": {
+    "commit": "5f339399f4713e7ed7564db8fa00a85eef6391cc",
+    "branch": "feature/ECWC-655",
+    "dirtyWorktree": false,
+    "dirtyFiles": []
+  },
+  "fixtureMembers": [
+    "E2E-ECWC655",
+    "E2E-ECWC655-B"
+  ],
+  "fixtureProducts": [
+    "E2E655-PAID",
+    "E2E655-OTHER",
+    "E2E655-GIFT"
+  ],
+  "results": [
+    {
+      "name": "scoped product-cart includes only target paid rows and scoped gifts",
+      "status": "passed"
+    },
+    {
+      "name": "scoped summary uses target120 rather than combined300",
+      "status": "passed"
+    },
+    {
+      "name": "Happy Hour preview carries scope and preserves persisted rows",
+      "status": "passed"
+    },
+    {
+      "name": "abandoning checkout retains basket and unrelated selection",
+      "status": "passed"
+    },
+    {
+      "name": "invalid/missing/foreign scope never falls back to full cart",
+      "status": "passed"
+    },
+    {
+      "name": "transaction failure rolls back order writes and basket cleanup",
+      "status": "passed"
+    },
+    {
+      "name": "successful retry orders target and scoped gift, preserving other rows/checks",
+      "status": "passed"
+    },
+    {
+      "name": "consumed basket retry cannot create another order",
+      "status": "passed"
+    },
+    {
+      "name": "concurrent duplicate submit commits exactly once",
+      "status": "passed"
+    },
+    {
+      "name": "ineligible applied code gift is removed by existing rule after basket purchase",
+      "status": "passed"
+    },
+    {
+      "name": "dedicated fixtures fully removed",
+      "status": "passed"
+    }
+  ],
+  "failure": null,
+  "limitation": "local HTTP/MySQL integration only; Kafka delivery, deployed code, mobile device and downstream picking are unverified"
+}

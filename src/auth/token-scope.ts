@@ -1,0 +1,32 @@
+/// ขอบเขตของ token ที่ออกจากลิงก์ที่ส่งทาง LINE (ไม่ได้ผ่านรหัสผ่าน)
+///
+/// ลิงก์รีวิวพาลูกค้าเข้าหน้ารีวิวโดยไม่ต้อง login — ผู้ถือลิงก์จึงได้ token ของร้าน
+/// ถ้า token นั้นใช้ได้ทั้งระบบ ใครได้ลิงก์ไปก็สั่งซื้อและดูข้อมูลของร้านได้ (และถ้าร้านนั้นเป็น
+/// บัญชีผู้ดูแล ก็ได้สิทธิ์ผู้ดูแลไปด้วย) token ชนิดนี้จึงใช้ได้เฉพาะเส้นทางที่หน้ารีวิวเรียก
+export const REVIEW_SCOPE = 'review';
+
+/// เส้นทางที่ token ขอบเขต review ใช้ได้ (หลัง global prefix `/api`) — หน้ารีวิว (BatchReview) เรียกเท่านี้
+const REVIEW_SCOPE_ROUTES: RegExp[] = [
+  // ให้คะแนนและแบบสอบถาม (ไม่รวม /ecom/admin/rating)
+  /^\/api\/ecom\/rating(\/|$)/,
+  /^\/api\/ecom\/review-request\//,
+  // session ของหน้ารีวิวเอง — ไม่รวมดู/ปิด session อื่นของร้าน
+  /^\/api\/ecom\/session\/(create|logout)$/,
+  /^\/api\/ecom\/session\/(validate|active|update-activity)\/[^/]+$/,
+];
+
+/// ลิงก์จาก LINE ออก token ขอบเขตไหน — `full` คืนพฤติกรรมเดิม (token เต็มของร้าน)
+export function lineLinkLoginScope(): typeof REVIEW_SCOPE | null {
+  return (process.env.LINE_LINK_LOGIN_SCOPE ?? REVIEW_SCOPE)
+    .trim()
+    .toLowerCase() === 'full'
+    ? null
+    : REVIEW_SCOPE;
+}
+
+export function isAllowedForReviewScope(url: string | undefined): boolean {
+  const path = (url ?? '').split('?')[0].replace(/\/+$/, '');
+  // เส้นทางที่ต้องแปลความก่อน (.., // หรือตัวอักษรที่เข้ารหัสมา) ไม่รับ — ไม่เดาว่า router จะตีความอย่างไร
+  if (/\.\.|\/\/|\\|%2e|%2f|%5c/i.test(path)) return false;
+  return REVIEW_SCOPE_ROUTES.some((route) => route.test(path));
+}

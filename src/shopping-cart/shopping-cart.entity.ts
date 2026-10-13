@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { UserEntity } from '../users/users.entity';
 import { ProductEntity } from '../products/products.entity';
+import type { StickerCustomOptions } from '../sticker-label/sticker-label.options';
 
 @Entity({ name: 'shopping_cart' })
 export class ShoppingCartEntity {
@@ -78,6 +79,17 @@ export class ShoppingCartEntity {
     default: null,
   })
   spc_fixed_total!: string | number | null;
+
+  /**
+   * ECWC-699 รูปแบบสินค้าสั่งทำ (สติ๊กเกอร์ฉลากยา) — null = สินค้าปกติ
+   * รูปแบบต่างกันเป็นคนละแถว แยกด้วย custom_options_hash
+   */
+  @Column({ type: 'json', nullable: true, default: null })
+  custom_options!: StickerCustomOptions | null;
+
+  @Index('IDX_shopping_cart_custom_hash')
+  @Column({ type: 'varchar', length: 40, nullable: true, default: null })
+  custom_options_hash!: string | null;
 
   @ManyToOne(() => UserEntity, (member) => member.shoppingCartItems)
   @JoinColumn({ name: 'mem_code' }) // Using ID for relation
