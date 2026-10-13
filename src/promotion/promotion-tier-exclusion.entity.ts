@@ -12,9 +12,13 @@ import { ProductEntity } from '../products/products.entity';
 // สินค้าที่ไม่เข้าร่วม เฉพาะ tier ที่เป็น all_products
 @Entity({ name: 'promotion_tier_exclusion' })
 // ชื่อ index/FK ตรงกับ migration 20260921000100 — ไม่งั้น migration:generate จะ DROP/สร้างใหม่
-@Index('IDX_promotion_tier_exclusion_tier_product', ['tier_id', 'product_code'], {
-  unique: true,
-})
+@Index(
+  'IDX_promotion_tier_exclusion_tier_product',
+  ['tier_id', 'product_code'],
+  {
+    unique: true,
+  },
+)
 export class PromotionTierExclusionEntity {
   @PrimaryGeneratedColumn()
   exclusion_id!: number;
