@@ -9,6 +9,34 @@ import { PreorderService } from 'src/preorder/preorder.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import { LotArrivalInput, LotService } from 'src/lot/lot.service';
 
+export const INTERNAL_ARRIVALS_DEFAULT_LIMIT = 6;
+export const INTERNAL_ARRIVALS_MAX_LIMIT = 50;
+
+export interface InternalArrivalRow {
+  id: number;
+  pro_code: string;
+  received_at: string;
+  lot: string;
+  mfg: string;
+  exp: string;
+  amount: number | null;
+  unit: string | null;
+}
+
+// จำนวนที่ไม่ใช่จำนวนเต็มบวกเก็บเป็น NULL ไม่ให้การรับของล้มเพราะคอลัมน์ที่เพิ่มมาเพื่อการแสดงผล
+function toArrivalAmount(value: unknown): number | null {
+  const amount = Number(value);
+  return Number.isInteger(amount) && amount > 0 && amount <= 2147483647
+    ? amount
+    : null;
+}
+
+function toArrivalUnit(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const unit = value.trim();
+  return unit ? unit.slice(0, 50) : null;
+}
+
 @Injectable()
 export class NewArrivalsService {
   private readonly logger = new Logger(NewArrivalsService.name);
@@ -104,6 +132,8 @@ export class NewArrivalsService {
           MFG,
           EXP,
           createdAt: normalizedDate,
+          amount: toArrivalAmount(amount),
+          unit: toArrivalUnit(unit),
         });
 
         arrData.push(newArrivalEntity);
@@ -142,6 +172,35 @@ export class NewArrivalsService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // การรับเข้าล่าสุดของสินค้าหนึ่งรหัส ใหม่สุดก่อน ให้ระบบภายใน (sale) ใช้แสดงประวัติรับเข้า
+  async getLatestByProduct(
+    proCode: string,
+    limit?: number,
+  ): Promise<InternalArrivalRow[]> {
+    const code = (proCode ?? '').trim();
+    if (!code) return [];
+    const requested = Math.trunc(Number(limit));
+    const take =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(requested, INTERNAL_ARRIVALS_MAX_LIMIT)
+        : INTERNAL_ARRIVALS_DEFAULT_LIMIT;
+    const rows = await this.newArrivalsRepository.find({
+      where: { pro_code: code },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      pro_code: row.pro_code,
+      received_at: dayjs(row.createdAt).format('YYYY-MM-DD'),
+      lot: row.LOT,
+      mfg: row.MFG,
+      exp: row.EXP,
+      amount: row.amount ?? null,
+      unit: row.unit ?? null,
+    }));
   }
 
   async getNewArrivalsLimit30(

@@ -30,4 +30,11 @@ export class NewArrival {
 
   @Column({ type: 'varchar', length: 20 })
   pro_code!: string;
+
+  // จำนวนและหน่วยของการรับเข้าครั้งนี้ตามที่ระบบรับของส่งมา — NULL สำหรับแถวก่อน migration 20261013000100
+  @Column({ type: 'int', nullable: true })
+  amount!: number | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  unit!: string | null;
 }
