@@ -25,8 +25,10 @@ ENV NODE_ENV=${NODE_ENV}
 ENV PORT=${PORT}
 
 # fonts-noto-*: ECWC-704 PDF สติ๊กเกอร์ฉลากยา (อาหรับ/พม่า/รัสเซีย/จีน) เผื่อโหลด Google Fonts ไม่ได้
+# ghostscript: ECWC-697 ส่งออกไฟล์ CMYK (.ai/.eps/.jpg/.psd) ให้ทีมกราฟิก
 RUN apt-get update && apt-get install -y \
     chromium \
+    ghostscript \
     fonts-liberation \
     fonts-noto-core \
     fonts-noto-cjk \

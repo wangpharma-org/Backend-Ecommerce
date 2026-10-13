@@ -20,6 +20,7 @@
 | flag `sticker_label` | ปิด (migration) | ปิดอยู่ = API ฝั่งลูกค้าตอบ 403 · admin queue ใช้ได้เสมอ |
 | `STICKER_LABEL_ENABLED_LANGS` | `th` (ค่าเริ่มต้น) | ภาษาที่เปิดขาย คั่นด้วย `,` — เปิดภาษาอื่นหลังคำแปลผ่าน ECWC-705 |
 | `STICKER_PRINTERS` | `[]` | JSON `[{"id":"bw-1","name":"เครื่องขาวดำ 1","color":false}]` — `color:false` พิมพ์งานสีไม่ได้ |
+| `GHOSTSCRIPT_BIN` | `gs` (Windows `gswin64c`) | ใช้ส่งออก CMYK — Docker image ติดตั้ง `ghostscript` ให้แล้ว ไม่มี = endpoint export ตอบ 503 |
 
 ## Endpoints (prefix `/api/ecom`, ต้องมี JWT)
 
@@ -45,6 +46,7 @@ Admin (`permission = true`)
 | GET | `/admin/sticker-label/lines/:spo_id/logs` | snapshot + ประวัติการพิมพ์ (ใหม่สุดก่อน) |
 | POST | `/admin/sticker-label/print/pdf` | body เดียวกับ `/print` → **PDF + บันทึก log ในครั้งเดียว** (สร้าง PDF ไม่สำเร็จ = ไม่มี log) · header `X-Print-Log-Ids`, `X-Print-Pages` · สูงสุด 1000 หน้าต่อครั้ง |
 | GET | `/admin/sticker-label/lines/:spo_id/preview.pdf` | ตัวอย่าง 1 หน้า ไม่บันทึก log |
+| POST | `/admin/sticker-label/export` | `{ order_line_ids, format: ai\|eps\|jpg\|psd, outline_text? }` ไฟล์ CMYK ให้ทีมกราฟิก 1 งาน = 1 หน้า A4 · ไม่ลง log · ทีละประเภท (ผสม bw/color → 400) · หลายไฟล์ = zip · สูงสุด ai 200 / eps,jpg 50 / psd 10 งาน |
 
 หน้า admin ควรพิมพ์ผ่าน `/print/pdf` เสมอ (`/print` ใช้กรณีพิมพ์จากระบบอื่นแล้วแค่ลงประวัติ)
 
@@ -58,6 +60,13 @@ Admin (`permission = true`)
 - ฟอนต์: Sarabun ฝังในโค้ด ([src/sticker-label/fonts/](../src/sticker-label/fonts/), OFL) · ภาษาอื่นโหลด Noto จาก Google Fonts เฉพาะภาษาที่ใช้ ถ้าโหลดไม่ได้ใช้ `fonts-noto-core`/`fonts-noto-cjk` ใน Docker image
 - render ด้วย Chrome ผ่าน puppeteer (`PUPPETEER_EXECUTABLE_PATH` ใน Dockerfile, หรือ `CHROME_EXECUTABLE_PATH`) · บล็อก request ภายนอกทั้งหมดยกเว้น Google Fonts · ข้อความลูกค้า escape ก่อนใส่ HTML
 - ฟอร์มและคำแปลตาม design canvas "แก้ไขชื่อฉลากยา" (PrintSheet) — คำแปลต้องผ่าน ECWC-705 ก่อนเปิดภาษานั้น
+
+## ส่งออก CMYK ให้ทีมกราฟิก
+
+- แปลง PDF ของระบบ (RGB จาก Chrome) ด้วย Ghostscript: `.ai` = PDF CMYK (Illustrator เปิดแก้ได้) ไฟล์เดียว · `.eps` เวกเตอร์ · `.jpg` / `.psd` ภาพ 300dpi (psd เลเยอร์เดียว ~35MB/หน้า)
+- งานขาวดำใช้ `-dBlackText -dBlackVector` → ดำล้วน K100 (ตรวจด้วย `gs -sDEVICE=inkcov`: C/M/Y = 0)
+- `outline_text` (ค่าเริ่มต้น true) แปลงตัวอักษรเป็นเส้นใน ai/eps — false = เก็บฟอนต์ไว้แก้ข้อความ (เครื่องต้องมี Sarabun/Noto)
+- Ghostscript เป็น AGPL — เรียกเป็นโปรแกรมแยก (ไม่ได้ลิงก์/แก้ซอร์ส) แจ้งทีมให้ทราบ
 
 ## ยังไม่รวมในรอบนี้
 

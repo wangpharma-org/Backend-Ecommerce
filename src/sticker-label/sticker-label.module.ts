@@ -9,6 +9,7 @@ import { StickerPrintLogEntity } from './sticker-print-log.entity';
 import { StickerLabelService } from './sticker-label.service';
 import { StickerLabelController } from './sticker-label.controller';
 import { StickerPdfRendererService } from './sticker-pdf-renderer.service';
+import { StickerExportService } from './sticker-export.service';
 
 @Module({
   imports: [
@@ -21,7 +22,11 @@ import { StickerPdfRendererService } from './sticker-pdf-renderer.service';
     ShoppingCartModule,
     FeatureFlagsModule,
   ],
-  providers: [StickerLabelService, StickerPdfRendererService],
+  providers: [
+    StickerLabelService,
+    StickerPdfRendererService,
+    StickerExportService,
+  ],
   controllers: [StickerLabelController],
 })
 export class StickerLabelModule {}

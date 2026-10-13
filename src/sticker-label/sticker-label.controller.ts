@@ -17,6 +17,7 @@ import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../app.controller';
 import {
+  ExportRequestBody,
   PrintRequestBody,
   StickerActor,
   StickerLabelService,
@@ -148,6 +149,26 @@ export class StickerLabelController {
     return new StreamableFile(pdf, {
       type: 'application/pdf',
       disposition: `inline; filename="sticker-${logs[0]?.print_type ?? 'print'}-${Date.now()}.pdf"`,
+    });
+  }
+
+  /** ส่งออก CMYK (.ai/.eps/.jpg/.psd) ให้ทีมกราฟิก — ไม่ลงประวัติการพิมพ์ · หลายไฟล์ได้เป็น zip */
+  @Post('admin/sticker-label/export')
+  async exportFiles(
+    @Req() req: AuthedRequest,
+    @Body() body: ExportRequestBody,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    assertAdmin(req);
+    const out = await this.service.exportFiles(body);
+    res.setHeader('X-Export-Files', String(out.files));
+    res.setHeader(
+      'Access-Control-Expose-Headers',
+      'X-Export-Files, Content-Disposition',
+    );
+    return new StreamableFile(out.data, {
+      type: out.type,
+      disposition: `attachment; filename="${out.filename}"`,
     });
   }
 

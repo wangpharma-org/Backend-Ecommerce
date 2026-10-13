@@ -680,6 +680,108 @@ async function main() {
     return { status: r.status, ok: r.status === 403 };
   });
 
+  // ---------------- ส่งออก CMYK ให้ทีมกราฟิก (ต้องมี Ghostscript — รันกับ Docker image) ----------------
+
+  const exportFiles = (ids: unknown[], format: string, extra = {}) =>
+    admin.post(
+      '/ecom/admin/sticker-label/export',
+      { order_line_ids: ids, format, ...extra },
+      { responseType: 'arraybuffer' },
+    );
+  const noGs = (status: number) =>
+    status === 503
+      ? 'ไม่มี Ghostscript บนเซิร์ฟเวอร์ — รันกับ Docker image'
+      : '';
+  /** จำนวน component ของ JPEG (4 = CMYK) */
+  const jpegComponents = (b: Buffer) => {
+    let i = 2;
+    while (i < b.length - 9) {
+      if (b[i] !== 0xff) {
+        i++;
+        continue;
+      }
+      const m = b[i + 1];
+      if (m >= 0xc0 && m <= 0xc2) return b[i + 9];
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+    return 0;
+  };
+
+  await step(
+    'ส่งออก .ai งานขาวดำ → PDF CMYK ไฟล์เดียว ไม่ลงประวัติ',
+    async () => {
+      const r = await exportFiles([bwLine?.spo_id], 'ai');
+      const head = Buffer.from(r.data as ArrayBuffer)
+        .subarray(0, 5)
+        .toString('latin1');
+      const logs = await admin.get(
+        `/ecom/admin/sticker-label/lines/${bwLine?.spo_id}/logs`,
+      );
+      return {
+        status: r.status,
+        ok:
+          r.status === 201 &&
+          head === '%PDF-' &&
+          /filename="sticker-bw-\d+\.ai"/.test(
+            String(r.headers['content-disposition']),
+          ) &&
+          logs.data?.logs?.length === 0,
+        detail: noGs(r.status) || `${String(r.headers['content-disposition'])}`,
+      };
+    },
+  );
+
+  await step('ส่งออก .jpg งานสี 1 งาน → JPEG CMYK (4 component)', async () => {
+    const r = await exportFiles([colorLine?.spo_id], 'jpg');
+    const comps =
+      r.status === 201 ? jpegComponents(Buffer.from(r.data as ArrayBuffer)) : 0;
+    return {
+      status: r.status,
+      ok:
+        r.status === 201 &&
+        String(r.headers['content-type']).includes('image/jpeg') &&
+        comps === 4,
+      detail: noGs(r.status) || `components=${comps}`,
+    };
+  });
+
+  await step('ส่งออก .psd → ไฟล์ Photoshop CMYK', async () => {
+    const r = await exportFiles([bwLine?.spo_id], 'psd');
+    const b = Buffer.from(r.data as ArrayBuffer);
+    const ok =
+      r.status === 201 &&
+      b.subarray(0, 4).toString('latin1') === '8BPS' &&
+      b.readUInt16BE(24) === 4;
+    return {
+      status: r.status,
+      ok,
+      detail: noGs(r.status) || `bytes=${b.length}`,
+    };
+  });
+
+  await step('ส่งออกขาวดำ + สีปนกัน → 400', async () => {
+    const r = await exportFiles([bwLine?.spo_id, colorLine?.spo_id], 'ai');
+    return { status: r.status, ok: r.status === 400 };
+  });
+
+  await step('ส่งออก format ไม่รองรับ / psd เกิน 10 งาน → 400', async () => {
+    const a = await exportFiles([bwLine?.spo_id], 'pdf');
+    const b = await exportFiles([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'psd');
+    return {
+      status: a.status,
+      ok: a.status === 400 && b.status === 400,
+      detail: `pdf=${a.status} psd11=${b.status}`,
+    };
+  });
+
+  await step('ลูกค้าเรียกส่งออก → 403', async () => {
+    const r = await user.post('/ecom/admin/sticker-label/export', {
+      order_line_ids: [bwLine?.spo_id],
+      format: 'ai',
+    });
+    return { status: r.status, ok: r.status === 403 };
+  });
+
   await step('PDF งานสีกับเครื่องขาวดำ → 400 ไม่มี log', async () => {
     const r = await printPdf([colorLine?.spo_id], 'print', 'e2e-bw');
     const logs = await admin.get(

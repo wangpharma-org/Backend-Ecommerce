@@ -41,6 +41,15 @@ import {
 } from './sticker-label.options';
 import { buildStickerSheetHtml } from './sticker-label.pdf';
 import { StickerPdfRendererService } from './sticker-pdf-renderer.service';
+import { StickerExportService } from './sticker-export.service';
+import {
+  EXPORT_CONTENT_TYPE,
+  STICKER_EXPORT_FORMATS,
+  STICKER_EXPORT_MAX_JOBS,
+  buildZip,
+  exportIsMultiPage,
+  isStickerExportFormat,
+} from './sticker-export';
 
 export interface StickerActor {
   mem_code: string;
@@ -62,6 +71,12 @@ const PRINT_TYPES: StickerPrintType[] = ['print', 'reprint', 'test'];
 
 /** กัน PDF ใหญ่จน server ค้าง — 50 แผ่น × 20 งาน */
 const MAX_PDF_PAGES = 1000;
+
+export interface ExportRequestBody {
+  order_line_ids: unknown;
+  format: unknown;
+  outline_text?: unknown;
+}
 
 export interface PrintRequestBody {
   order_line_ids: unknown;
@@ -97,6 +112,7 @@ export class StickerLabelService {
     private readonly featureFlags: FeatureFlagsService,
     private readonly dataSource: DataSource,
     private readonly pdfRenderer: StickerPdfRendererService,
+    private readonly exporter: StickerExportService,
   ) {}
 
   async assertEnabled() {
@@ -541,6 +557,92 @@ export class StickerLabelService {
     const pdf = await this.pdfRenderer.render(buildStickerSheetHtml(jobs));
     const { logs } = await this.writeLogs(actor, prep);
     return { pdf, logs, pages: totalPages };
+  }
+
+  /**
+   * ส่งออกไฟล์ CMYK ให้ทีมกราฟิกแก้ต่อ — 1 แบบ = 1 หน้า A4 (10 ดวง) ไม่ซ้ำตามจำนวนแผ่น
+   * ไม่ใช่การพิมพ์: ไม่ลง log ไม่เปลี่ยนสถานะ
+   * ส่งออกได้ทีละประเภท (ขาวดำ/สี) — ขาวดำบังคับดำล้วน K100 ซึ่งจะทำให้หมึกสีกลายเป็นดำ
+   */
+  async exportFiles(body: ExportRequestBody) {
+    if (!isStickerExportFormat(body.format)) {
+      throw new BadRequestException(
+        `format ต้องเป็น ${STICKER_EXPORT_FORMATS.join('|')}`,
+      );
+    }
+    const format = body.format;
+    if (
+      !Array.isArray(body.order_line_ids) ||
+      body.order_line_ids.length === 0
+    ) {
+      throw new BadRequestException('ต้องเลือกอย่างน้อย 1 งาน');
+    }
+    const ids = [
+      ...new Set(
+        body.order_line_ids.map((id) => positiveInt(id, 'order_line_ids')),
+      ),
+    ];
+    const max = STICKER_EXPORT_MAX_JOBS[format];
+    if (ids.length > max) {
+      throw new BadRequestException(
+        `ไฟล์ .${format} ส่งออกได้สูงสุด ${max} งานต่อครั้ง (เลือกไว้ ${ids.length})`,
+      );
+    }
+    const lines = await this.orderRepo.find({
+      where: { spo_id: In(ids), pro_code: In(STICKER_PRO_CODES) },
+      select: { spo_id: true, pro_code: true, custom_options: true },
+    });
+    const found = new Map(lines.map((l) => [l.spo_id, l]));
+    const missing = ids.filter((id) => !found.get(id)?.custom_options);
+    if (missing.length > 0) {
+      throw new NotFoundException(
+        `ไม่พบงานสติ๊กเกอร์ order line: ${missing.join(', ')}`,
+      );
+    }
+    const codes = new Set(lines.map((l) => l.pro_code));
+    if (codes.size > 1) {
+      throw new BadRequestException(
+        'ส่งออกได้ทีละประเภท — เลือกเฉพาะงานขาวดำ หรือเฉพาะงานสี',
+      );
+    }
+    const blackOnly = codes.has(STICKER_PRO_CODE.bw);
+    const jobs = ids.map((id) => ({
+      snapshot: parseStickerJson<StickerOrderSnapshot>(
+        found.get(id)?.custom_options,
+      ) as StickerOrderSnapshot,
+      pages: 1,
+    }));
+    const pdf = await this.pdfRenderer.render(buildStickerSheetHtml(jobs));
+    const files = await this.exporter.convert(pdf, {
+      format,
+      blackOnly,
+      outlineText: body.outline_text !== false,
+    });
+    const mode = blackOnly ? 'bw' : 'color';
+    const stamp = Date.now();
+    if (exportIsMultiPage(format) || files.length === 1) {
+      const name = exportIsMultiPage(format)
+        ? `sticker-${mode}-${stamp}.${format}`
+        : `sticker-${ids[0]}-${mode}.${format}`;
+      return {
+        data: files[0],
+        filename: name,
+        type: EXPORT_CONTENT_TYPE[format],
+        files: files.length,
+      };
+    }
+    const zip = buildZip(
+      files.map((data, i) => ({
+        name: `sticker-${ids[i]}-${mode}.${format}`,
+        data,
+      })),
+    );
+    return {
+      data: zip,
+      filename: `sticker-${mode}-${format}-${stamp}.zip`,
+      type: 'application/zip',
+      files: files.length,
+    };
   }
 
   /** ตัวอย่าง 1 หน้าในแผงรายละเอียด — ไม่บันทึก log */
