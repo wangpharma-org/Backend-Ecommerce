@@ -8,7 +8,7 @@
 - **print mode เลือกรหัสสินค้า** (backend เลือกเอง ไม่เชื่อ client): `bw` → `95030411-05`, `color` → `95030411-07`
 - สินค้า 2 รหัสนี้ต้องสร้างใน **ERP** แล้ว sync เข้ามา (ระบบนี้ไม่ seed สินค้าเอง) หน่วยแนะนำ `ดวง` (ratio 1) / `ม500ดวง` (ratio 500) ราคา `pro_price*` เป็นราคาต่อดวง
 - ขนาดบรรจุ `packSize`: `1` = 1 แผ่น = 10 ดวง · `50` = 50 แผ่น = 500 ดวง → backend แปลงเป็นหน่วยที่ใหญ่สุดที่หารลงตัว
-- รูปแบบ `custom_options`: `shopName` (บังคับ, ≤ 40), `address` (≤ 55), `line3` (≤ 40), `lang` (`th|en|zh|ru|ar|my`), `printMode`, `color` (hex `#RRGGBB` เฉพาะ `color`; `bw` เก็บ `null`), `packSize`
+- รูปแบบ `custom_options`: `shopName` (บังคับ, ≤ 40), `address` (≤ 55), `line3` (≤ 40), `lang` (`th|en|zh|ru|ar|my`), `lang2` (ไม่บังคับ — ฉลาก 2 ภาษา: `lang` ต้องเป็น `th` และ `lang2` ต้องไม่ใช่ `th`, ภาษาที่ 2 ตัวเล็กกว่าต่อท้ายในบรรทัดเดียวกัน), `printMode`, `color` (hex `#RRGGBB` เฉพาะ `color`; `bw` เก็บ `null`), `packSize`
 - key ของแถวในตะกร้า = `pro_code + unit + sha1(custom_options)` → รูปแบบเดียวกันรวมจำนวน รูปแบบต่างกันแยกแถว
 - ตอนสั่งซื้อ `shopping_order.custom_options` = snapshot + `sheets` / `dots`
 - สถานะพิมพ์และจำนวนครั้งพิมพ์นับจาก `sticker_print_log` (`print` ครั้งแรก = พิมพ์แล้ว, `reprint`/`test` ไม่เปลี่ยนสถานะ, จำนวนครั้งไม่นับ `test`)

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { BadRequestException } from '@nestjs/common';
 import {
   enabledStickerLangs,
@@ -167,5 +168,54 @@ describe('isStickerProCode / enabledStickerLangs', () => {
   it('ไม่ตั้ง env = เปิดเฉพาะไทย', () => {
     expect(enabledStickerLangs('')).toEqual(['th']);
     expect(enabledStickerLangs(' en , ar,xx')).toEqual(['en', 'ar']);
+  });
+});
+
+describe('ฉลาก 2 ภาษา (lang2)', () => {
+  it('ไทย + อีก 1 ภาษาได้ · ไม่ส่ง lang2 = ภาษาเดียว (ไม่มีฟิลด์)', () => {
+    expect(
+      normalizeStickerOptions({ ...base, lang2: 'zh' }, ALL_LANGS).lang2,
+    ).toBe('zh');
+    expect('lang2' in normalizeStickerOptions(base, ALL_LANGS)).toBe(false);
+    expect(
+      'lang2' in normalizeStickerOptions({ ...base, lang2: '' }, ALL_LANGS),
+    ).toBe(false);
+  });
+
+  it('ภาษาหลักต้องเป็นไทย และภาษาที่ 2 ต้องไม่ใช่ไทย/ต้องเปิดขาย', () => {
+    expect(() =>
+      normalizeStickerOptions({ ...base, lang: 'en', lang2: 'zh' }, ALL_LANGS),
+    ).toThrow(/ไทย \+ อีก 1 ภาษา/);
+    expect(() =>
+      normalizeStickerOptions({ ...base, lang2: 'th' }, ALL_LANGS),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      normalizeStickerOptions({ ...base, lang2: 'jp' }, ALL_LANGS),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      normalizeStickerOptions({ ...base, lang2: 'ar' }, ['th']),
+    ).toThrow(/ยังไม่เปิดขาย/);
+  });
+
+  it('hash: ภาษาเดียวเท่าเดิม · ใส่ lang2 แล้วเป็นคนละรูปแบบ', () => {
+    const single = normalizeStickerOptions(base, ALL_LANGS);
+    const bi = normalizeStickerOptions({ ...base, lang2: 'en' }, ALL_LANGS);
+    expect(hashStickerOptions(single)).not.toBe(hashStickerOptions(bi));
+    // canonical ของภาษาเดียวต้องเหมือนก่อนมี lang2 (แถวตะกร้าเดิมยังรวมจำนวนได้)
+    expect(hashStickerOptions(single)).toBe(
+      createHash('sha1')
+        .update(
+          JSON.stringify([
+            single.shopName,
+            single.address,
+            single.line3,
+            single.lang,
+            single.printMode,
+            single.color,
+            single.packSize,
+          ]),
+        )
+        .digest('hex'),
+    );
   });
 });

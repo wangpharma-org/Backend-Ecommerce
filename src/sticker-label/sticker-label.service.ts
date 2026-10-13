@@ -310,6 +310,7 @@ export class StickerLabelService {
       address: snapshot.address,
       line3: snapshot.line3,
       lang: snapshot.lang,
+      ...(snapshot.lang2 ? { lang2: snapshot.lang2 } : {}),
       printMode: snapshot.printMode,
       color: snapshot.color,
       packSize: snapshot.packSize,

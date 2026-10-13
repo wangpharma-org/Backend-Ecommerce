@@ -68,6 +68,9 @@ interface LangStyle {
   lh: number;
 }
 
+/** ฉลาก 2 ภาษา: ข้อความยาวขึ้นเกือบเท่าตัว จึงย่อฟอนต์ทั้งดวง */
+const BILINGUAL = { size: 7.6, lh: 1.3 } as const;
+
 const LANG_STYLE: Record<StickerLang, LangStyle> = {
   th: { dir: 'ltr', font: "'Sarabun'", size: 10.5, lh: 1.32 },
   en: { dir: 'ltr', font: "'Sarabun'", size: 10.5, lh: 1.32 },
@@ -328,7 +331,20 @@ function labelHtml(snapshot: StickerOrderSnapshot): string {
     : 'th';
   const style = LANG_STYLE[lang];
   const t = STICKER_FORM_TEXT[lang];
-  const e = (key: keyof FormText) => escapeHtml(t[key]);
+  // ฉลาก 2 ภาษา: ภาษาที่ 2 ตัวเล็กกว่าต่อท้ายในบรรทัดเดียวกัน (bdi กันอาหรับสลับลำดับคำไทย)
+  const lang2 =
+    lang === 'th' && snapshot.lang2 && STICKER_FORM_TEXT[snapshot.lang2]
+      ? snapshot.lang2
+      : null;
+  const t2 = lang2 ? STICKER_FORM_TEXT[lang2] : null;
+  const e = (key: keyof FormText) => {
+    const main = escapeHtml(t[key]);
+    if (!t2 || !t2[key]) return main;
+    return `${main} <bdi class="l2" lang="${lang2}" dir="auto">${escapeHtml(t2[key])}</bdi>`;
+  };
+  const size = lang2 ? BILINGUAL.size : style.size;
+  const lh = lang2 ? BILINGUAL.lh : style.lh;
+  const l2Font = lang2 ? LANG_STYLE[lang2].font : '';
   const bx = (key: keyof FormText) =>
     `<span><span class="bx"></span>${e(key)}</span>`;
   const line = (text: string, size: number, bold = false) =>
@@ -348,7 +364,7 @@ function labelHtml(snapshot: StickerOrderSnapshot): string {
       : '',
   ].join('');
 
-  return `<div class="label" lang="${lang}" dir="${style.dir}" style="font-family:${style.font},${HEAD_FONT};font-size:${style.size}px;line-height:${style.lh}">
+  return `<div class="label${lang2 ? ' bi' : ''}" lang="${lang}" dir="${style.dir}" style="font-family:${style.font},${HEAD_FONT};font-size:${size}px;line-height:${lh}${lang2 ? `;--l2-font:${l2Font}` : ''}">
 <div class="head">${header}</div>
 <div class="row"><span>${e('patient')}</span><span class="dot" style="flex-grow:3"></span><span>${e('date')}</span><span class="dot" style="flex-grow:2"></span></div>
 <div class="row"><span>${e('drug')}</span><span class="dot" style="flex-grow:3"></span><span>${e('indication')}</span><span class="dot" style="flex-grow:2"></span></div>
@@ -384,7 +400,12 @@ export function buildStickerSheetHtml(
   const fontsHref =
     options.googleFonts === false
       ? null
-      : googleFontsCss(jobs.map((j) => j.snapshot.lang));
+      : googleFontsCss(
+          jobs.flatMap((j) => [
+            j.snapshot.lang,
+            ...(j.snapshot.lang2 ? [j.snapshot.lang2] : []),
+          ]),
+        );
 
   return `<!doctype html>
 <html><head><meta charset="utf-8">
@@ -406,6 +427,9 @@ html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;pr
 .il{display:inline-flex;align-items:baseline;gap:4px}
 .dot{flex:1 1 auto;border-bottom:1px dotted currentColor;height:1px;margin-bottom:2px;min-width:16px}
 .bx{display:inline-block;width:7px;height:7px;border:1px solid currentColor;margin-inline-end:3px;vertical-align:0}
+.l2{font-family:var(--l2-font),sans-serif;font-size:0.88em;opacity:.9}
+.bi .row{column-gap:4px;row-gap:0;flex-wrap:wrap}
+.bi .dot{min-width:10px}
 </style></head>
 <body>${pages.join('')}</body></html>`;
 }

@@ -115,3 +115,32 @@ describe('googleFontsCss', () => {
     expect(href).not.toContain('Noto+Sans+SC');
   });
 });
+
+describe('PDF ฉลาก 2 ภาษา', () => {
+  it('ภาษาที่ 2 ต่อท้ายในบรรทัดเดียวกัน + โหลดฟอนต์ของภาษาที่ 2', () => {
+    const html = buildStickerSheetHtml(
+      [{ snapshot: snapshot({ lang2: 'zh' }), pages: 1 }],
+      {},
+    );
+    expect(html).toContain('class="label bi"');
+    expect(html).toContain(
+      `ชื่อคนไข้ <bdi class="l2" lang="zh" dir="auto">${STICKER_FORM_TEXT.zh.patient}</bdi>`,
+    );
+    expect(html).toContain('family=Noto+Sans+SC');
+  });
+
+  it('lang2 ใช้ได้เฉพาะภาษาหลักไทย และข้ามคำที่ภาษาที่ 2 ไม่มี', () => {
+    expect(
+      buildStickerSheetHtml(
+        [{ snapshot: snapshot({ lang: 'en', lang2: 'zh' }), pages: 1 }],
+        { googleFonts: false },
+      ),
+    ).not.toContain('class="l2"');
+    // อังกฤษไม่มีคำ "วันละ" (perDay = '') → ไม่มี bdi ว่าง
+    const html = buildStickerSheetHtml(
+      [{ snapshot: snapshot({ lang2: 'en' }), pages: 1 }],
+      { googleFonts: false },
+    );
+    expect(html).not.toContain('<bdi class="l2" lang="en" dir="auto"></bdi>');
+  });
+});

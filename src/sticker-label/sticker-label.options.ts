@@ -51,6 +51,11 @@ export interface StickerCustomOptions {
   address: string;
   line3: string;
   lang: StickerLang;
+  /**
+   * ภาษาที่ 2 วางคู่ในบรรทัดเดียวกัน (ฉลาก 2 ภาษา) — มีได้เฉพาะเมื่อ lang = th และต้องไม่ใช่ th
+   * ไม่มี = ฉลากภาษาเดียว (ข้อมูลเดิมก่อนมีฟิลด์นี้ก็เป็นแบบนี้)
+   */
+  lang2?: StickerLang;
   printMode: StickerPrintMode;
   /** hex #RRGGBB เฉพาะ mode color · bw เป็น null เสมอ */
   color: string | null;
@@ -119,6 +124,23 @@ export function normalizeStickerOptions(
     throw new BadRequestException(`ภาษา ${lang} ยังไม่เปิดขาย`);
   }
 
+  // ฉลาก 2 ภาษา: ไทย + อีก 1 ภาษา
+  let lang2: StickerLang | undefined;
+  if (raw.lang2 != null && raw.lang2 !== '') {
+    lang2 = raw.lang2 as StickerLang;
+    if (!STICKER_LANGS.includes(lang2)) {
+      throw new BadRequestException(
+        `lang2 ต้องเป็น ${STICKER_LANGS.join('|')}`,
+      );
+    }
+    if (lang !== 'th' || lang2 === 'th') {
+      throw new BadRequestException('ฉลาก 2 ภาษาต้องเป็นภาษาไทย + อีก 1 ภาษา');
+    }
+    if (!enabledLangs.includes(lang2)) {
+      throw new BadRequestException(`ภาษา ${lang2} ยังไม่เปิดขาย`);
+    }
+  }
+
   let color: string | null = null;
   if (printMode === 'color') {
     if (typeof raw.color !== 'string' || !HEX_COLOR.test(raw.color)) {
@@ -141,6 +163,7 @@ export function normalizeStickerOptions(
     address: text(raw.address, 'address'),
     line3: text(raw.line3, 'line3'),
     lang,
+    ...(lang2 ? { lang2 } : {}),
     printMode,
     color,
     packSize,
@@ -157,6 +180,8 @@ export function hashStickerOptions(options: StickerCustomOptions): string {
     options.printMode,
     options.color,
     options.packSize,
+    // ต่อท้ายเฉพาะฉลาก 2 ภาษา — hash ของฉลากภาษาเดียวเท่าเดิม
+    ...(options.lang2 ? [options.lang2] : []),
   ]);
   return createHash('sha1').update(canonical).digest('hex');
 }

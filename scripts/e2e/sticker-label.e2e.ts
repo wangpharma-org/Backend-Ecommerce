@@ -234,6 +234,8 @@ async function main() {
     ['packSize ไม่รองรับ', design({ packSize: '10' }), 1],
     ['packs = 0', design(), 0],
     ['packs = "2a"', design(), '2a'],
+    ['2 ภาษาแต่ภาษาหลักไม่ใช่ไทย', design({ lang: 'en', lang2: 'zh' }), 1],
+    ['2 ภาษาแต่ภาษาที่ 2 เป็นไทย', design({ lang2: 'th' }), 1],
   ];
   for (const [name, options, packs] of validations) {
     await step(`validate: ${name} → 400`, async () => {
@@ -467,6 +469,33 @@ async function main() {
       };
     },
   );
+
+  await step('ฉลาก 2 ภาษา ไทย+จีน → แยกแถวจากไทยล้วน เก็บ lang2 แล้วลบออก', async () => {
+    // หลังสั่งซื้อ ตะกร้าเปลี่ยนเวอร์ชันแล้ว — ใช้เวอร์ชันล่าสุด
+    const before = await user.get(`/ecom/product-cart/${memCode}`);
+    if (before.data?.cartVersion != null) cartVersion = before.data.cartVersion;
+    const single = await addSticker(design(), 1);
+    const r = await addSticker(design({ lang2: 'zh' }), 1);
+    const rows = stickerRows(r.data?.cart);
+    const bi = rows.find((x) => x.custom_options.lang2 === 'zh');
+    const th = rows.find((x) => x.custom_options.lang === 'th' && !x.custom_options.lang2);
+    const ok =
+      single.status === 201 &&
+      r.status === 201 &&
+      !!bi &&
+      !!th &&
+      bi.spc_id !== th.spc_id;
+    for (const row of rows) {
+      await user.post('/ecom/sticker-label/cart/update', { spc_id: row.spc_id, packs: 0 });
+    }
+    const after = await user.get(`/ecom/product-cart/${memCode}`);
+    if (after.data?.cartVersion != null) cartVersion = after.data.cartVersion;
+    return {
+      status: r.status,
+      ok: ok && stickerRows(after.data?.cart).length === 0,
+      detail: `rows=${rows.length} lang2=${bi?.custom_options?.lang2}`,
+    };
+  });
 
   // ---------------- ECWC-702 คิวพิมพ์ ----------------
 
