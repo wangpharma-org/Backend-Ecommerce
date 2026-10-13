@@ -1,4 +1,4 @@
-/* eslint-disable no-console, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any, @typescript-eslint/require-await */
 /**
  * E2E: ลืมรหัสผ่าน → พนักงานขายโทรยืนยันตัวตน → รีเซ็ตด้วยรหัสผ่านชั่วคราว (ECWC-706) ยิง API จริง
  *
@@ -259,7 +259,7 @@ async function main() {
     });
 
     // ---------- สิทธิ์ฝั่งพนักงาน ----------
-    await step('ไม่มี token → หน้าพนักงาน 403', async () => {
+    await step('ไม่มี token → หน้าพนักงาน 401/403', async () => {
       const r = await anon.get('/ecom/staff/password-reset/requests');
       return { status: r.status, ok: r.status === 403 || r.status === 401 };
     });
