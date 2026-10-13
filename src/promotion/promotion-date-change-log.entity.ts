@@ -33,6 +33,12 @@ export class PromotionDateChangeLogEntity {
   @Column({ type: 'datetime' })
   new_end_date!: Date;
 
-  @CreateDateColumn({ type: 'datetime' })
+  // precision: null + default — ให้ตรงกับ migration (datetime DEFAULT CURRENT_TIMESTAMP)
+  // ไม่งั้น @CreateDateColumn เติม (6) เองทั้ง type และ default
+  @CreateDateColumn({
+    type: 'datetime',
+    precision: null,
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   created_at!: Date;
 }
