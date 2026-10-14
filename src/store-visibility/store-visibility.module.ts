@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { CustomerStoreVisibilityEntity } from './customer-store-visibility.entity';
+import { CustomerStoreVisibilityLogEntity } from './customer-store-visibility-log.entity';
 import { StoreVisibilityService } from './store-visibility.service';
 import { StoreVisibilityController } from './store-visibility.controller';
 
@@ -9,7 +10,10 @@ import { StoreVisibilityController } from './store-visibility.controller';
   // JwtAuthGuard ใน controller inject FeatureFlagsService — ต้อง import ไม่งั้น getFlag เป็น undefined
   imports: [
     FeatureFlagsModule,
-    TypeOrmModule.forFeature([CustomerStoreVisibilityEntity]),
+    TypeOrmModule.forFeature([
+      CustomerStoreVisibilityEntity,
+      CustomerStoreVisibilityLogEntity,
+    ]),
   ],
   providers: [StoreVisibilityService],
   controllers: [StoreVisibilityController],

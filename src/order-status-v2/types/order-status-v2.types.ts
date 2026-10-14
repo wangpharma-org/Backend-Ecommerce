@@ -87,6 +87,9 @@ export interface EcomOrderStatusV2Checkpoint {
   latitude: string;
   longitude: string;
   time: string | null;
+  // ECWC-600 (PDPA): พิกัดถูกปัดให้หยาบลงเพราะร้านล่าสุดไม่ยอมให้คนอื่นเห็นตำแหน่งตัวเอง
+  // frontend ต้องบอกผู้ใช้ว่าเป็นตำแหน่ง "โดยประมาณ" และไม่ปักหมุดลงอาคาร
+  approximate?: boolean;
 }
 
 // ECWC-600/601: ร้านล่าสุดที่ขนส่งรอบนี้ส่งสำเร็จ — logistics ส่งมาแค่ mem_code แล้วมาหาชื่อ/ที่อยู่
@@ -94,6 +97,8 @@ export interface EcomOrderStatusV2Checkpoint {
 // ที่อยู่ส่งแค่ตำบล/อำเภอ/จังหวัด, store_name = null เมื่อร้านนั้นไม่ยอมให้คนอื่นเห็นชื่อ (customer_store_visibility)
 export interface EcomLastDeliveredStore {
   store_name: string | null;
+  // ECWC-600: ระดับถนน (ผู้บริหารเห็นว่าตำบลกว้างเกินไป) — ตัดคำนำหน้า "ถนน/ถ." ออกแล้ว
+  road: string | null;
   tumbon: string | null;
   amphur: string | null;
   province: string | null;

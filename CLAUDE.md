@@ -60,6 +60,12 @@ DB_NAME=ecommerce-db
 เปิดใช้ด้วย feature flag `preorder` (migration สร้างไว้เป็นปิด) รายละเอียดและ endpoint ทั้งหมดใน [docs/preorder.md](docs/preorder.md)
 e2e: `scripts/e2e/preorder.e2e.ts`
 
+## ร้านล่าสุดที่รถส่งถึง + ความยินยอมแสดงชื่อร้าน (PDPA)
+
+โมดูล [src/store-visibility/](src/store-visibility/) + `order-status-v2` — ที่อยู่ ต./อ./จ. แสดงเสมอ (ม.24(5)), ชื่อร้าน/พิกัดเป๊ะเฉพาะร้านที่ยินยอม (ม.19) สถานะ 3 แบบ + log เพิ่มอย่างเดียว, ข้อความ consent อยู่ฝั่ง backend (`store-visibility.consent.ts`) — แยกจาก popup ToS ของ `policy-doc` โดยตั้งใจ
+เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
+e2e: `scripts/e2e/store-visibility.e2e.ts`
+
 Team knowledge below is distilled from PR review feedback by the
 `learn-from-reviews` skill and ratified through normal PR review. It primes both
 human contributors and AI sessions so review feedback isn't re-learned every time.

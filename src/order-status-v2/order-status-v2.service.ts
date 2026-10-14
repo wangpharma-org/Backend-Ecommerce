@@ -24,6 +24,7 @@ import {
   EcomOrderListV2Order,
   EcomOrderListV2Res,
   EcomOrderStatusV2Evidence,
+  EcomOrderStatusV2Checkpoint,
   EcomOrderStatusV2Item,
   EcomOrderStatusV2Res,
   EcomOrderTimelineStatus,
@@ -37,6 +38,10 @@ import {
 } from './types/legacy-order-api.types';
 
 const PICKING_ORDERS_MONTHS_BACK = 3;
+// ECWC-600 (PDPA): ร้านที่ไม่ยินยอมให้คนอื่นเห็นชื่อ ก็ไม่ควรถูกซูมหาจากหมุด checkpoint ได้
+// ปัดพิกัดเหลือ 3 ตำแหน่ง ≈ 110 เมตร — ต้องปัดฝั่ง server เพราะถ้าปัดที่ frontend
+// พิกัดเต็มยังติดไปใน response อยู่ดี
+const CHECKPOINT_COARSE_DECIMALS = 3;
 // ECWC-601: บิลที่ยังอยู่ระหว่างจัดส่งควรเปิดไม่เกินกี่วัน — กันยิง batch ไป logistics ทั้งประวัติ
 const DELIVERING_ORDERS_DAYS_BACK = 7;
 
@@ -138,7 +143,11 @@ interface LogisticTrackingV2Res {
   evidence: EcomOrderStatusV2Evidence | null;
 }
 
-type LastDeliveredStoreRow = Omit<EcomLastDeliveredStore, 'delivered_at'>;
+// name_granted แยกจาก store_name เพราะร้านที่ยินยอมแล้วแต่ไม่มี mem_nameSite ใน users ก็ได้
+// store_name = null — การปัดพิกัด (ECWC-600 ข้อ 2) ต้องดูความยินยอมจริง ไม่ใช่ดูว่ามีชื่อหรือไม่
+type LastDeliveredStoreRow = Omit<EcomLastDeliveredStore, 'delivered_at'> & {
+  name_granted: boolean;
+};
 
 type PickingBatchStatus = 'picking' | 'checking' | 'ready' | 'blocked';
 type DeliveryBatchStatus = 'DELIVERING' | 'DONE' | 'BACK' | 'CANCELLED';
@@ -768,7 +777,9 @@ export class OrderStatusV2Service {
       : pickingRaw;
 
     const status = this.resolveTimelineStatus(picking, delivery);
-    const lastDeliveredStore = await this.resolveLastDeliveredStore(delivery);
+    // ECWC-600: ต้องรู้ด้วยว่าร้านล่าสุดยินยอมให้คนอื่นเห็นตัวเองไหม เพราะพิกัด checkpoint
+    // ต้องถูกปัดตามความยินยอมเดียวกันกับชื่อร้าน ไม่งั้นซ่อนชื่อแต่หมุดยังปักตรงอาคาร
+    const lastDelivered = await this.resolveLastDeliveredStore(delivery);
 
     return {
       soh_running,
@@ -792,21 +803,16 @@ export class OrderStatusV2Service {
             driver_name: delivery.driver_name || null,
             driver_emp_code: delivery.driver_emp_code,
             driver_tel: delivery.driver_tel,
-            // map ทีละ field — checkpoint จาก logistics มี mem_code ของร้านอื่นติดมา ห้ามส่งต่อ
-            checkpoint: delivery.checkpoint
-              ? {
-                  type: delivery.checkpoint.type,
-                  latitude: delivery.checkpoint.latitude,
-                  longitude: delivery.checkpoint.longitude,
-                  time: delivery.checkpoint.time,
-                }
-              : null,
+            checkpoint: this.toPublicCheckpoint(
+              delivery.checkpoint,
+              lastDelivered.name_granted,
+            ),
             departure_time: delivery.departure_time,
             store_latitude: delivery.store_latitude,
             store_longitude: delivery.store_longitude,
             finished_at: delivery.finished_at,
             evidence: delivery.evidence,
-            last_delivered_store: lastDeliveredStore,
+            last_delivered_store: lastDelivered.store,
           }
         : null,
     };
@@ -868,13 +874,46 @@ export class OrderStatusV2Service {
   }
 
   // ECWC-600: ร้านล่าสุดมีเฉพาะตอนกำลังส่ง และขนส่งส่งสำเร็จไปแล้วอย่างน้อย 1 ร้านในรอบนี้
+  // คืน name_granted มาด้วยเพื่อให้ผู้เรียกปัดพิกัด checkpoint ให้ตรงกับความยินยอมของร้านนั้น
   private async resolveLastDeliveredStore(
     delivery: LogisticTrackingV2Res | null,
-  ): Promise<EcomLastDeliveredStore | null> {
+  ): Promise<{ store: EcomLastDeliveredStore | null; name_granted: boolean }> {
     const memCode = this.lastDeliveredMemCode(delivery);
-    if (!memCode) return null;
+    if (!memCode) return { store: null, name_granted: false };
     const stores = await this.findStoresByMemCode([memCode]);
-    return this.toLastDeliveredStore(delivery, stores);
+    return {
+      store: this.toLastDeliveredStore(delivery, stores),
+      name_granted: stores.get(memCode)?.name_granted ?? false,
+    };
+  }
+
+  // ECWC-600: checkpoint ที่ส่งให้ลูกค้าได้ — map ทีละ field เพราะ checkpoint จาก logistics
+  // มี mem_code ของร้านอื่นติดมา ห้ามส่งต่อ และปัดพิกัดจุดส่งของร้านที่ไม่ยินยอม
+  // จุดออกรถ (DEPARTURE) เป็นคลังของวังเภสัชเอง ไม่ต้องปัด
+  private toPublicCheckpoint(
+    checkpoint: LogisticTrackingV2Res['checkpoint'],
+    nameGranted: boolean,
+  ): EcomOrderStatusV2Checkpoint | null {
+    if (!checkpoint) return null;
+    const coarse = checkpoint.type === 'STORE_DELIVERED' && !nameGranted;
+    return {
+      type: checkpoint.type,
+      latitude: coarse
+        ? this.coarseCoordinate(checkpoint.latitude)
+        : checkpoint.latitude,
+      longitude: coarse
+        ? this.coarseCoordinate(checkpoint.longitude)
+        : checkpoint.longitude,
+      time: checkpoint.time,
+      ...(coarse ? { approximate: true } : {}),
+    };
+  }
+
+  private coarseCoordinate(value: string): string {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+      ? parsed.toFixed(CHECKPOINT_COARSE_DECIMALS)
+      : value;
   }
 
   private lastDeliveredMemCode(
@@ -898,6 +937,7 @@ export class OrderStatusV2Service {
         select: {
           mem_code: true,
           mem_nameSite: true,
+          mem_road: true,
           mem_tumbon: true,
           mem_amphur: true,
           mem_province: true,
@@ -914,9 +954,11 @@ export class OrderStatusV2Service {
       users.map((u) => [
         u.mem_code,
         {
+          name_granted: visible.has(u.mem_code),
           store_name: visible.has(u.mem_code)
             ? this.cleanText(u.mem_nameSite)
             : null,
+          road: this.cleanRoad(u.mem_road),
           tumbon: this.cleanText(u.mem_tumbon),
           amphur: this.cleanText(u.mem_amphur),
           province: this.cleanText(u.mem_province),
@@ -931,6 +973,22 @@ export class OrderStatusV2Service {
     return trimmed ? trimmed : null;
   }
 
+  // ECWC-600: mem_road ที่ลูกค้ากรอกเองมีทั้ง 'ถนนกาญจนวนิช', 'ถ.กาญจนวนิช', 'กาญจนวนิช' และ '-'
+  // ตัดคำนำหน้าออกให้เหลือชื่อถนนเปล่า (frontend เติม 'ถ.' เอง) และ '-' คือไม่ได้กรอก = null
+  // เคสที่ต้องได้ null: null | '' | '   ' | '-' | '--' | 'ถนน' | 'ถ.' | 'ถ. -'
+  // เคสที่ต้องได้ 'กาญจนวนิช': 'กาญจนวนิช' | 'ถนนกาญจนวนิช' | 'ถ.กาญจนวนิช' | 'ถ กาญจนวนิช'
+  //   | 'ถนน กาญจนวนิช' | '  ถ.กาญจนวนิช  '
+  // ห้ามตัด 'ถ' เปล่า ๆ ที่ไม่มีตัวคั่น ไม่งั้นถนนที่ขึ้นต้นด้วย ถ เช่น 'ถวายพระ' จะเหลือ 'วายพระ'
+  private cleanRoad(value: string | null | undefined): string | null {
+    const text = this.cleanText(value);
+    if (!text) return null;
+    const withoutPrefix = text
+      .replace(/^(?:ถนน\s*|ถ\s*\.\s*|ถ\s+)/u, '')
+      .trim();
+    // ตัดขีดที่ลูกค้ากรอกแทนการเว้นว่าง ('-', '--', 'ถ. -')
+    return /^-*$/u.test(withoutPrefix) ? null : withoutPrefix;
+  }
+
   private toLastDeliveredStore(
     delivery: LogisticTrackingV2Res | null,
     stores: Map<string, LastDeliveredStoreRow>,
@@ -940,6 +998,7 @@ export class OrderStatusV2Service {
     const store = stores.get(memCode);
     return {
       store_name: store?.store_name ?? null,
+      road: store?.road ?? null,
       tumbon: store?.tumbon ?? null,
       amphur: store?.amphur ?? null,
       province: store?.province ?? null,
