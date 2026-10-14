@@ -1,8 +1,11 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import type {
-  StickerLang,
-  StickerOrderSnapshot,
+import {
+  DEFAULT_STICKER_FONT,
+  STICKER_FONTS,
+  type StickerFont,
+  type StickerLang,
+  type StickerOrderSnapshot,
 } from './sticker-label.options';
 
 /**
@@ -282,18 +285,44 @@ export function googleFontsCss(langs: StickerLang[]): string | null {
   return `https://fonts.googleapis.com/css2?${families.join('&')}&display=block`;
 }
 
-let sarabunCss: string | null = null;
-/** ฝัง Sarabun เป็น base64 — ภาษาไทยไม่ต้องพึ่งเน็ต */
-function sarabunFontFace(): string {
-  if (sarabunCss) return sarabunCss;
+/**
+ * ฟอนต์ที่ลูกค้าเลือก — family = ชื่อไฟล์ใน fonts/ · scale ชดเชยขนาดตัวอักษรให้ใกล้ Sarabun
+ * (วัดความกว้างข้อความฟอร์มจริงแล้ว: Prompt/Mitr กว้างกว่า ~5%, Charm ตัวเล็กกว่า ~15%)
+ * ต้องตรงกับ FE stickerLabel.i18n.ts (STICKER_FONT_META)
+ */
+export const STICKER_FONT_META: Record<
+  StickerFont,
+  { family: string; scale: number }
+> = {
+  sarabun: { family: 'Sarabun', scale: 1 },
+  prompt: { family: 'Prompt', scale: 0.95 },
+  kanit: { family: 'Kanit', scale: 1 },
+  mitr: { family: 'Mitr', scale: 0.96 },
+  trirong: { family: 'Trirong', scale: 0.97 },
+  charm: { family: 'Charm', scale: 1.1 },
+};
+
+export const stickerFontOf = (font?: string | null): StickerFont =>
+  font && (STICKER_FONTS as readonly string[]).includes(font)
+    ? (font as StickerFont)
+    : DEFAULT_STICKER_FONT;
+
+const fontCss = new Map<StickerFont, string>();
+/** ฝังฟอนต์เป็น base64 — พิมพ์ได้โดยไม่ต้องพึ่งเน็ต (โหลดเฉพาะฟอนต์ที่ใช้ในเอกสาร) */
+function fontFace(font: StickerFont): string {
+  const cached = fontCss.get(font);
+  if (cached) return cached;
+  const { family } = STICKER_FONT_META[font];
   const face = (file: string, weight: number) => {
     const data = readFileSync(join(__dirname, 'fonts', file)).toString(
       'base64',
     );
-    return `@font-face{font-family:'Sarabun';font-weight:${weight};font-style:normal;src:url(data:font/ttf;base64,${data}) format('truetype');}`;
+    return `@font-face{font-family:'${family}';font-weight:${weight};font-style:normal;src:url(data:font/ttf;base64,${data}) format('truetype');}`;
   };
-  sarabunCss = face('Sarabun-Regular.ttf', 400) + face('Sarabun-Bold.ttf', 700);
-  return sarabunCss;
+  const css =
+    face(`${family}-Regular.ttf`, 400) + face(`${family}-Bold.ttf`, 700);
+  fontCss.set(font, css);
+  return css;
 }
 
 export function escapeHtml(value: string): string {
@@ -308,7 +337,7 @@ export function escapeHtml(value: string): string {
 /** ข้อความยาวเกินกำหนดย่อฟอนต์เฉพาะบรรทัดนั้น (ไม่ต่ำกว่า 7px) */
 export function fitFontSize(len: number, base: number, max: number): number {
   return len <= max
-    ? base
+    ? Math.round(base * 100) / 100
     : Math.max(7, Math.round(((base * max) / len) * 10) / 10);
 }
 
@@ -342,9 +371,13 @@ function labelHtml(snapshot: StickerOrderSnapshot): string {
     if (!t2 || !t2[key]) return main;
     return `${main} <bdi class="l2" lang="${lang2}" dir="auto">${escapeHtml(t2[key])}</bdi>`;
   };
-  const size = lang2 ? BILINGUAL.size : style.size;
+  const font = STICKER_FONT_META[stickerFontOf(snapshot.font)];
+  const fontStack = `'${font.family}',${style.font},${HEAD_FONT}`;
+  const size =
+    Math.round((lang2 ? BILINGUAL.size : style.size) * font.scale * 100) / 100;
   const lh = lang2 ? BILINGUAL.lh : style.lh;
-  const l2Font = lang2 ? LANG_STYLE[lang2].font : '';
+  // ภาษาที่ 2 ใช้ฟอนต์ที่เลือกก่อน (ละติน) แล้ว fallback ไปฟอนต์ของภาษานั้น
+  const l2Font = lang2 ? `'${font.family}',${LANG_STYLE[lang2].font}` : '';
   const bx = (key: keyof FormText) =>
     `<span><span class="bx"></span>${e(key)}</span>`;
   const line = (text: string, size: number, bold = false) =>
@@ -353,18 +386,24 @@ function labelHtml(snapshot: StickerOrderSnapshot): string {
   const header = [
     line(
       snapshot.shopName,
-      fitFontSize(snapshot.shopName.length, 11, 40),
+      fitFontSize(snapshot.shopName.length, 11 * font.scale, 40),
       true,
     ),
     snapshot.address
-      ? line(snapshot.address, fitFontSize(snapshot.address.length, 10.5, 55))
+      ? line(
+          snapshot.address,
+          fitFontSize(snapshot.address.length, 10.5 * font.scale, 55),
+        )
       : '',
     snapshot.line3
-      ? line(snapshot.line3, fitFontSize(snapshot.line3.length, 10.5, 40))
+      ? line(
+          snapshot.line3,
+          fitFontSize(snapshot.line3.length, 10.5 * font.scale, 40),
+        )
       : '',
   ].join('');
 
-  return `<div class="label${lang2 ? ' bi' : ''}" lang="${lang}" dir="${style.dir}" style="font-family:${style.font},${HEAD_FONT};font-size:${size}px;line-height:${lh}${lang2 ? `;--l2-font:${l2Font}` : ''}">
+  return `<div class="label${lang2 ? ' bi' : ''}" lang="${lang}" dir="${style.dir}" style="font-family:${fontStack};--head-font:'${font.family}',${HEAD_FONT};font-size:${size}px;line-height:${lh}${lang2 ? `;--l2-font:${l2Font}` : ''}">
 <div class="head">${header}</div>
 <div class="row"><span>${e('patient')}</span><span class="dot" style="flex-grow:3"></span><span>${e('date')}</span><span class="dot" style="flex-grow:2"></span></div>
 <div class="row"><span>${e('drug')}</span><span class="dot" style="flex-grow:3"></span><span>${e('indication')}</span><span class="dot" style="flex-grow:2"></span></div>
@@ -411,7 +450,7 @@ export function buildStickerSheetHtml(
 <html><head><meta charset="utf-8">
 ${fontsHref ? `<link rel="stylesheet" href="${fontsHref}">` : ''}
 <style>
-${sarabunFontFace()}
+${[...new Set([DEFAULT_STICKER_FONT, ...jobs.map((j) => stickerFontOf(j.snapshot.font))])].map(fontFace).join('')}
 @page{size:A4;margin:0}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -420,7 +459,7 @@ html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;pr
 .grid{position:absolute;left:${origin.left}mm;top:${origin.top}mm;display:grid;grid-template-columns:repeat(${SHEET.cols},${SHEET.labelW}mm);grid-template-rows:repeat(${SHEET.rows},${SHEET.labelH}mm);column-gap:${gap.x}mm;row-gap:${gap.y}mm}
 .label{min-width:0;overflow:hidden;border:1.2px solid currentColor;padding:5px 7px;display:flex;flex-direction:column;justify-content:space-between;color:inherit}
 .head{border:1.2px solid currentColor;border-radius:2px;padding:2px 6px;text-align:center;display:flex;flex-direction:column}
-.hl{font-family:${HEAD_FONT};line-height:1.25;white-space:nowrap;overflow:hidden}
+.hl{font-family:var(--head-font,${HEAD_FONT});line-height:1.25;white-space:nowrap;overflow:hidden}
 .row{display:flex;flex-wrap:nowrap;align-items:baseline;column-gap:6px;white-space:nowrap}
 .row>span{white-space:nowrap}
 .sb{justify-content:space-between}
