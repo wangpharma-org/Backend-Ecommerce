@@ -9,6 +9,9 @@ export class AddPreorderOpenNotifiedAt20261003000100 implements MigrationInterfa
   name = 'AddPreorderOpenNotifiedAt20261003000100';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // DB ใหม่: TypeORM เรียงตามเลข 13 หลักท้ายของชื่อ class → ไฟล์นี้ (261003000100) รันก่อน
+    // CreatePreorderTables1788998400000 จึงยังไม่มีตาราง — ข้ามไป ให้ EnsurePreorderOpenNotifiedAt1791936000000 เพิ่มให้
+    if (!(await queryRunner.hasTable('preorder_campaigns'))) return;
     if (
       !(await queryRunner.hasColumn('preorder_campaigns', 'open_notified_at'))
     ) {

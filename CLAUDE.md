@@ -60,6 +60,12 @@ DB_NAME=ecommerce-db
 เปิดใช้ด้วย feature flag `preorder` (migration สร้างไว้เป็นปิด) รายละเอียดและ endpoint ทั้งหมดใน [docs/preorder.md](docs/preorder.md)
 e2e: `scripts/e2e/preorder.e2e.ts`
 
+## สติ๊กเกอร์ฉลากยา (สินค้าสั่งทำ)
+
+โมดูล [src/sticker-label/](src/sticker-label/) — print mode → รหัส `95030411-05`/`-07` (backend เลือกเอง), `custom_options` ต่อแถวตะกร้า (แยกแถวด้วย `custom_options_hash`) + snapshot ใน `shopping_order`, คิวพิมพ์นับสถานะจาก `sticker_print_log`, PDF A4 (ดวง 80×50 มม. 2×5) ด้วย puppeteer — Sarabun ฝังใน `src/sticker-label/fonts/` (nest-cli assets)
+เปิดใช้ด้วย feature flag `sticker_label` (migration สร้างไว้เป็นปิด) + env `STICKER_LABEL_ENABLED_LANGS`, `STICKER_PRINTERS` รายละเอียดใน [docs/sticker-label.md](docs/sticker-label.md)
+e2e: `scripts/e2e/sticker-label.e2e.ts`
+
 ## ร้านล่าสุดที่รถส่งถึง + ความยินยอมแสดงชื่อร้าน (PDPA)
 
 โมดูล [src/store-visibility/](src/store-visibility/) + `order-status-v2` — ที่อยู่ ต./อ./จ. แสดงเสมอ (ม.24(5)), ชื่อร้าน/พิกัดเป๊ะเฉพาะร้านที่ยินยอม (ม.19) สถานะ 3 แบบ + log เพิ่มอย่างเดียว, ข้อความ consent อยู่ฝั่ง backend (`store-visibility.consent.ts`) — แยกจาก popup ToS ของ `policy-doc` โดยตั้งใจ
