@@ -50,6 +50,10 @@ BASE_URL=https://<api>/api E2E_ENV=dev ADMIN_TOKEN=... USER_TOKEN=... USER2_TOKE
 
 ไม่ครอบคลุมชื่อร้านใน order-status / latest-store (ต้องมี logistics-backend จริง) — ดู unit test `order-status-v2.service.spec.ts`
 
+## คู่มือการใช้งาน
+
+อยู่ในเว็บ (Ecommerce-Frontend `src/pages/StoreVisibilityGuide.tsx`): ร้านค้า `/store-visibility/guide` (ลิงก์จากการ์ดถาม + หน้าโปรไฟล์) · เจ้าหน้าที่ `/admin/store-visibility/guide`
+
 ## ยังไม่ทำ (ECWC-617)
 
 - หลังบ้าน: นับ GRANTED / DECLINED / NOT_ASKED ตาม `consent_version` + export log เป็น CSV
