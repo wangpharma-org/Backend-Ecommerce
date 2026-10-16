@@ -45,9 +45,10 @@ SELECT 'E2E706-SALE2', 'e2e706_sale2',
        'E2E local เซลล์ B', 'C', 0, 'Sales', 'E2E706X'
 WHERE NOT EXISTS (SELECT 1 FROM `users` WHERE `mem_code` = 'E2E706-SALE2');
 
--- เริ่มใหม่ทุกครั้ง: รหัสผ่านร้านทดสอบกลับเป็นค่าเริ่มต้น + ล้างคำขอ/token ทดสอบเก่า
+-- เริ่มใหม่ทุกครั้ง: รหัสผ่าน + เซลล์ผู้ดูแลของร้านทดสอบกลับเป็นค่าเริ่มต้น + ล้างคำขอ/token ทดสอบเก่า
 UPDATE `users`
-SET `mem_password` = '$2b$10$8.S3oNaGAd63UOnXsJW7k.9qFV56kXVxxtFyhYmEnD2mLczgPhPcS'
+SET `mem_password` = '$2b$10$8.S3oNaGAd63UOnXsJW7k.9qFV56kXVxxtFyhYmEnD2mLczgPhPcS',
+    `emp_id_ref` = 'E2E706S'
 WHERE `mem_code` = 'E2E706';
 
 DELETE FROM `password_reset_request`
