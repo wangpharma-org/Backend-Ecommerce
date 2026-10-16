@@ -187,7 +187,9 @@ async function main() {
         (r.data?.langs ?? []).join() === 'th,en,zh,ru,ar,my' &&
         r.data?.maxLength?.shopName === 40 &&
         r.data?.maxLength?.address === 55 &&
-        r.data?.maxLength?.line3 === 40;
+        r.data?.maxLength?.line3 === 40 &&
+        (r.data?.fonts ?? []).join() ===
+          'sarabun,prompt,kanit,mitr,trirong,charm';
       return {
         status: r.status,
         ok,
@@ -236,6 +238,7 @@ async function main() {
     ['packs = "2a"', design(), '2a'],
     ['2 ภาษาแต่ภาษาหลักไม่ใช่ไทย', design({ lang: 'en', lang2: 'zh' }), 1],
     ['2 ภาษาแต่ภาษาที่ 2 เป็นไทย', design({ lang2: 'th' }), 1],
+    ['ฟอนต์ที่ไม่รองรับ', design({ font: 'Comic Sans' }), 1],
   ];
   for (const [name, options, packs] of validations) {
     await step(`validate: ${name} → 400`, async () => {
@@ -370,6 +373,49 @@ async function main() {
       detail: `rows=${rows.length}`,
     };
   });
+
+  await step(
+    'รูปแบบเดิมแต่ฟอนต์ Kanit → แยกแถวใหม่ เก็บ font · sarabun = แถวเดิม',
+    async () => {
+      const r = await addSticker(design({ font: 'kanit' }), 1);
+      if (r.data?.cartVersion != null) cartVersion = r.data.cartVersion;
+      const rows = stickerRows(r.data?.cart);
+      const kanit = rows.find((x) => x.custom_options.font === 'kanit');
+      // sarabun = ค่าเริ่มต้น → ไม่เก็บ font และรวมกับแถวไทยเดิม
+      const s = await addSticker(design({ font: 'sarabun' }), 1);
+      if (s.data?.cartVersion != null) cartVersion = s.data.cartVersion;
+      const after = stickerRows(s.data?.cart);
+      const th = after.find((x) => x.spc_id === thRow?.spc_id);
+      // คืนสภาพตะกร้าให้ขั้นต่อไป
+      const del = await user.post('/ecom/sticker-label/cart/update', {
+        spc_id: kanit?.spc_id,
+        packs: 0,
+        clientVersion: cartVersion,
+      });
+      if (del.data?.cartVersion != null) cartVersion = del.data.cartVersion;
+      const back = await user.post('/ecom/sticker-label/cart/update', {
+        spc_id: thRow?.spc_id,
+        packs: 5,
+        clientVersion: cartVersion,
+      });
+      if (back.data?.cartVersion != null) cartVersion = back.data.cartVersion;
+      return {
+        status: r.status,
+        ok:
+          r.status === 201 &&
+          rows.length === 3 &&
+          !!kanit &&
+          kanit.spc_id !== thRow?.spc_id &&
+          s.status === 201 &&
+          after.length === 3 &&
+          th?.sticker_quantity?.sheets === 6 &&
+          th?.custom_options?.font === undefined &&
+          del.status === 201 &&
+          stickerRows(back.data?.cart).length === 2,
+        detail: `kanit spc=${kanit?.spc_id} th sheets=${th?.sticker_quantity?.sheets}`,
+      };
+    },
+  );
 
   await step('แก้แถวที่ไม่มี/ไม่ใช่ของร้าน → 404', async () => {
     const r = await user.post('/ecom/sticker-label/cart/update', {
