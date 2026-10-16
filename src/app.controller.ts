@@ -2468,6 +2468,22 @@ export class AppController {
     }
   }
 
+  // ให้ sale service ดึงประวัติรับเข้าของสินค้า (ปุ่ม F3 หน้า Key ขาย) โดยไม่ต้องมี token ลูกค้า
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/new-arrivals')
+  async internalNewArrivals(
+    @Query('pro_code') pro_code?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!pro_code?.trim()) {
+      throw new BadRequestException('pro_code is required');
+    }
+    return this.newArrivalsService.getLatestByProduct(
+      pro_code,
+      limit === undefined ? undefined : Number(limit),
+    );
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/new-arrivals/list/:mem_code')
   async getNewArrivalsLimit30(@Req() req: Request & { user: JwtPayload }) {
