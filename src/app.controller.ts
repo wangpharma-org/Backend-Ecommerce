@@ -2,6 +2,7 @@ import { WangdayService } from './wangday/wangday.service';
 import {
   BadGatewayException,
   BadRequestException,
+  HttpCode,
   Body,
   Controller,
   DefaultValuePipe,
@@ -39,6 +40,7 @@ import { FlashsaleService } from './flashsale/flashsale.service';
 import { UseGuards, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { InternalTokenGuard } from './auth/internal-token.guard';
+import { parseHotdealGiftLines } from './hotdeal/hotdeal-gifts';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -1750,6 +1752,20 @@ export class AppController {
       throw new Error('You not have Permission to Accesss');
     }
     return this.promotionService.generateCodePromotion(data.mem_code);
+  }
+
+  // ให้ sale service ถามของแถม Hot Deal ของรายการสินค้าที่กำลังคีย์ โดยไม่ต้องมี token ลูกค้าและไม่แตะตะกร้า
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/hotdeal-gifts')
+  @HttpCode(200)
+  async internalHotdealGifts(@Body() body: unknown) {
+    const lines = parseHotdealGiftLines(body);
+    if (!lines) {
+      throw new BadRequestException(
+        'items must be an array of { pro_code, unit, amount > 0 }',
+      );
+    }
+    return this.hotdealService.giftsForOrderLines(lines);
   }
 
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
