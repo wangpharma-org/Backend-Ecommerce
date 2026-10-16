@@ -38,6 +38,7 @@ function build(refreshPayload: Record<string, unknown> = {}) {
       delete: jest.fn().mockResolvedValue(undefined),
     } as never,
     {} as never,
+    {} as never,
   );
   return { service, signed };
 }

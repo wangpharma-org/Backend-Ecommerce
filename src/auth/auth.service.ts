@@ -19,12 +19,19 @@ import { RefreshTokenEntity } from './refresh-token.entity';
 import * as bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from '../constants/app.constants';
 import { EmployeesService } from 'src/employees/employees.service';
-import { REVIEW_SCOPE, lineLinkLoginScope } from './token-scope';
+import {
+  PASSWORD_CHANGE_SCOPE,
+  carriedScope,
+  lineLinkLoginScope,
+} from './token-scope';
+import { PasswordResetService } from 'src/password-reset/password-reset.service';
 import { jwtConstants } from './constants';
 
 export interface SigninResponse {
   token: string;
   refresh_token: string;
+  /** ECWC-706: เข้าด้วยรหัสผ่านชั่วคราว — token ใช้ได้แค่ตั้งรหัสผ่านใหม่ */
+  must_change_password?: boolean;
 }
 
 export const ExpireSessionResponse = 15;
@@ -45,6 +52,7 @@ export class AuthService {
     @InjectRepository(RefreshTokenEntity)
     private readonly refreshTokenRepo: Repository<RefreshTokenEntity>,
     private readonly employeeService: EmployeesService,
+    private readonly passwordResetService: PasswordResetService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -285,6 +293,14 @@ export class AuthService {
     if (user && passwordMatch === false) {
       throw new UnauthorizedException('Invalid password');
     }
+    // ECWC-706: ยังใช้รหัสผ่านชั่วคราวจากการรีเซ็ตโดยพนักงาน → token ใช้ได้แค่ตั้งรหัสใหม่
+    const tempState = await this.passwordResetService.tempLoginState(user);
+    if (tempState === 'expired') {
+      throw new UnauthorizedException(
+        'รหัสผ่านชั่วคราวหมดอายุ กรุณาส่งคำขอรีเซ็ตรหัสผ่านใหม่',
+      );
+    }
+    const scope = tempState === 'active' ? PASSWORD_CHANGE_SCOPE : null;
     const payload = {
       username: user.mem_username,
       name: user.mem_nameSite ?? '',
@@ -299,15 +315,17 @@ export class AuthService {
       mem_post: user.mem_post ?? '',
       mem_phone: user.mem_phone ?? '',
       mem_route: user.mem_route ?? '',
-      permission: user.permision_admin,
+      permission: scope ? false : user.permision_admin,
       role: user.role,
-      admin_features: user.admin_features ?? null,
+      admin_features: scope ? null : (user.admin_features ?? null),
+      ...(scope ? { scope } : {}),
     };
 
     const payload_reflesh = {
       username: user.mem_username,
       name: user.mem_nameSite ?? '',
       mem_code: user.mem_code ?? '',
+      ...(scope ? { scope } : {}),
     };
     const access_token = await this.jwtService.signAsync(payload, {
       expiresIn: `${ExpireSessionResponse}m`,
@@ -322,7 +340,11 @@ export class AuthService {
       mem_code: user.mem_code,
       refresh_token: refresh_token,
     });
-    return { token: access_token, refresh_token: refresh_token };
+    return {
+      token: access_token,
+      refresh_token: refresh_token,
+      ...(scope ? { must_change_password: true } : {}),
+    };
   }
 
   /// ผูกบัญชี LINE เข้ากับร้านของผู้ที่ login อยู่ ผ่าน notification-service
@@ -572,8 +594,8 @@ export class AuthService {
       ]);
 
       if (user) {
-        // token ที่มาจากลิงก์รีวิวต่ออายุได้เป็นขอบเขตเดิมเท่านั้น
-        const scope = payload.scope === REVIEW_SCOPE ? REVIEW_SCOPE : null;
+        // token ที่มาจากลิงก์รีวิว / รหัสผ่านชั่วคราว ต่ออายุได้เป็นขอบเขตเดิมเท่านั้น
+        const scope = carriedScope(payload.scope);
         const tokenPayload = {
           username: user.mem_username,
           name: user.mem_nameSite ?? '',

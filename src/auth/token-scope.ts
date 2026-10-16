@@ -25,8 +25,37 @@ export function lineLinkLoginScope(): typeof REVIEW_SCOPE | null {
 }
 
 export function isAllowedForReviewScope(url: string | undefined): boolean {
+  return isAllowedFor(REVIEW_SCOPE_ROUTES, url);
+}
+
+/// ECWC-706: token ที่ได้จากการเข้าสู่ระบบด้วยรหัสผ่านชั่วคราว — ใช้ได้แค่ตั้งรหัสผ่านใหม่
+/// (ไม่ให้สั่งซื้อหรือดูข้อมูลร้านจนกว่าจะตั้งรหัสของตัวเอง)
+export const PASSWORD_CHANGE_SCOPE = 'password_change';
+
+const PASSWORD_CHANGE_SCOPE_ROUTES: RegExp[] = [
+  /^\/api\/ecom\/password-reset\/set-password$/,
+  /^\/api\/ecom\/session\/(create|logout)$/,
+  /^\/api\/ecom\/session\/(validate|active|update-activity)\/[^/]+$/,
+];
+
+export function isAllowedForPasswordChangeScope(
+  url: string | undefined,
+): boolean {
+  return isAllowedFor(PASSWORD_CHANGE_SCOPE_ROUTES, url);
+}
+
+/// ขอบเขตที่ต่ออายุผ่าน refresh token แล้วต้องคงขอบเขตเดิม
+export function carriedScope(
+  scope: unknown,
+): typeof REVIEW_SCOPE | typeof PASSWORD_CHANGE_SCOPE | null {
+  return scope === REVIEW_SCOPE || scope === PASSWORD_CHANGE_SCOPE
+    ? scope
+    : null;
+}
+
+function isAllowedFor(routes: RegExp[], url: string | undefined): boolean {
   const path = (url ?? '').split('?')[0].replace(/\/+$/, '');
   // เส้นทางที่ต้องแปลความก่อน (.., // หรือตัวอักษรที่เข้ารหัสมา) ไม่รับ — ไม่เดาว่า router จะตีความอย่างไร
   if (/\.\.|\/\/|\\|%2e|%2f|%5c/i.test(path)) return false;
-  return REVIEW_SCOPE_ROUTES.some((route) => route.test(path));
+  return routes.some((route) => route.test(path));
 }
