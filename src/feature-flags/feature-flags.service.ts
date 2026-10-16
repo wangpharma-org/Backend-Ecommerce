@@ -13,6 +13,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'lot_display_product_detail',
   // ECWC-697: สติ๊กเกอร์ฉลากยา — เปิดเมื่อ ERP สร้างสินค้า -05/-07 และราคาพร้อม
   'sticker_label',
+  // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
+  'store_name_consent',
   // ECWC-706: ลืมรหัสผ่าน → พนักงานขายยืนยันตัวตน — เปิดเมื่อทีมขายพร้อมรับคำขอ
   'password_reset_request',
 ]);

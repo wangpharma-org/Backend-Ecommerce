@@ -66,6 +66,12 @@ e2e: `scripts/e2e/preorder.e2e.ts`
 เปิดใช้ด้วย feature flag `sticker_label` (migration สร้างไว้เป็นปิด) + env `STICKER_LABEL_ENABLED_LANGS`, `STICKER_PRINTERS` รายละเอียดใน [docs/sticker-label.md](docs/sticker-label.md)
 e2e: `scripts/e2e/sticker-label.e2e.ts`
 
+## ร้านล่าสุดที่รถส่งถึง + ความยินยอมแสดงชื่อร้าน (PDPA)
+
+โมดูล [src/store-visibility/](src/store-visibility/) + `order-status-v2` — ที่อยู่ ต./อ./จ. แสดงเสมอ (ม.24(5)), ชื่อร้าน/พิกัดเป๊ะเฉพาะร้านที่ยินยอม (ม.19) สถานะ 3 แบบ + log เพิ่มอย่างเดียว, ข้อความ consent อยู่ฝั่ง backend (`store-visibility.consent.ts`) — แยกจาก popup ToS ของ `policy-doc` โดยตั้งใจ
+เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
+e2e: `scripts/e2e/store-visibility.e2e.ts`
+
 ## ลืมรหัสผ่าน — พนักงานขายยืนยันตัวตน
 
 โมดูล [src/password-reset/](src/password-reset/) — ร้านส่งคำขอ (กันเดาบัญชี, จำกัดจำนวน) → พนักงานใน**ระบบ Sale Service** โทรยืนยัน + checklist (เรียก `/ecom/internal/password-reset/*` ด้วย `x-internal-token` + `x-actor-emp-code` — ร้านที่ `emp_id_ref` ตรงกัน) → รหัสผ่านชั่วคราว (แสดงครั้งเดียว) → login ได้ token ขอบเขต `password_change` ใช้ได้แค่ตั้งรหัสใหม่ (ตัดสินจาก `temp_password_hash` เทียบ `users.mem_password` ไม่แก้ตาราง users)
