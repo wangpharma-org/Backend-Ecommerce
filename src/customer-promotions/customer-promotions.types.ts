@@ -12,7 +12,16 @@ export interface PromotionTierView {
   conditionCount: number | null;
   /** pro_codes ที่ส่งมาซึ่งนับยอดขั้นนี้ */
   matchedProCodes: string[];
-  rewards: { proCode: string; name: string; qty: number; unit: string }[];
+  /** รูปของขั้น (tier_postter) */
+  poster: string | null;
+  rewards: {
+    proCode: string;
+    name: string;
+    qty: number;
+    unit: string;
+    /** รูปของแถม (pro_imgmain ตามกติกาหน้าร้าน) */
+    image: string | null;
+  }[];
 }
 
 export interface PromotionView {
@@ -41,6 +50,8 @@ export interface CustomerPromotionsResponse {
     giftUnit: string;
     title: string | null;
     kind: 'product-pro' | 'buy-more-get-1';
+    image: string | null;
+    giftImage: string | null;
   }[];
   flashSales: {
     id: number;
@@ -49,7 +60,12 @@ export interface CustomerPromotionsResponse {
     timeStart: string;
     timeEnd: string;
     live: boolean;
-    products: { proCode: string; limit: number | null }[];
+    products: {
+      proCode: string;
+      limit: number | null;
+      name: string;
+      image: string | null;
+    }[];
   }[];
   happyHour: null | {
     startDate: string | null;
@@ -78,11 +94,14 @@ export interface CustomerPromotionsResponse {
     price: number;
     startDate: string | null;
     endDate: string | null;
+    image: string | null;
     items: {
       proCode: string;
       qty: number;
       unitLevel: number;
       isGift: boolean;
+      name: string;
+      image: string | null;
     }[];
   }[];
   wangRebate: null | {

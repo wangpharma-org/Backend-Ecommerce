@@ -20,6 +20,7 @@ import {
   isFlashsaleLive,
 } from 'src/flashsale/flashsale.service';
 import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
+import { ProductEntity } from 'src/products/products.entity';
 import { SpecialCollectionService } from 'src/special-collection/special-collection.service';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { WangdayService } from 'src/wangday/wangday.service';
@@ -34,6 +35,7 @@ import {
   parseProCodes,
   rebateSeason,
   unitNameOf,
+  imageUrl,
 } from './customer-promotions.util';
 import type {
   CustomerPromotionsResponse,
@@ -69,6 +71,8 @@ export class CustomerPromotionsService {
     private readonly flashSaleRepo: Repository<FlashSaleEntity>,
     @InjectRepository(BundleSetEntity)
     private readonly bundleSetRepo: Repository<BundleSetEntity>,
+    @InjectRepository(ProductEntity)
+    private readonly productRepo: Repository<ProductEntity>,
     private readonly specialCollectionService: SpecialCollectionService,
     private readonly happyHourService: HappyHourService,
     private readonly wangdayService: WangdayService,
@@ -203,6 +207,7 @@ export class CustomerPromotionsService {
         name: r.giftProduct.pro_nameTH || r.giftProduct.pro_name || code,
         qty: num(r.qty),
         unit: unitNameOf(r.unit, unitsByCode.get(code)),
+        image: imageUrl(r.giftProduct.pro_imgmain),
       });
       rewardsByTier.set(tierId, list);
     }
@@ -231,6 +236,7 @@ export class CustomerPromotionsService {
               condByTier.get(t.tier_id) ?? new Set(),
               exclByTier.get(t.tier_id) ?? new Set(),
             ),
+            poster: imageUrl(t.tier_postter),
             rewards: rewardsByTier.get(t.tier_id) ?? [],
           })),
       ),
@@ -254,7 +260,7 @@ export class CustomerPromotionsService {
       creditors: [...creditors].map(([code, name]) => ({ code, name })),
       startDate: new Date(p.start_date).toISOString(),
       endDate: new Date(p.end_date).toISOString(),
-      poster: p.promo_poster ?? null,
+      poster: imageUrl(p.promo_poster),
       tiers,
     };
   }
@@ -273,6 +279,7 @@ export class CustomerPromotionsService {
         'giftProduct.pro_code',
         'giftProduct.pro_name',
         'giftProduct.pro_nameTH',
+        'giftProduct.pro_imgmain',
       ])
       .where('tier.tier_id IN (:...tierIds)', { tierIds })
       .orderBy('reward.reward_id', 'ASC');
@@ -320,6 +327,8 @@ export class CustomerPromotionsService {
         giftUnit: unitNameOf(d.pro2_unit, d.product2.units),
         title: d.promo_title ?? null,
         kind: d.special_deal ? 'product-pro' : 'buy-more-get-1',
+        image: imageUrl(d.product.pro_imgmain),
+        giftImage: imageUrl(d.product2.pro_imgmain),
       }));
   }
 
@@ -357,6 +366,9 @@ export class CustomerPromotionsService {
           .map((p) => ({
             proCode: p.product.pro_code,
             limit: p.limit ?? null,
+            name:
+              p.product.pro_nameTH || p.product.pro_name || p.product.pro_code,
+            image: imageUrl(p.product.pro_imgmain),
           })),
       }))
       .filter((f) => !wanted.size || f.products.length > 0);
@@ -439,7 +451,26 @@ export class CustomerPromotionsService {
       .addOrderBy('item.sort_order', 'ASC')
       .getMany();
     const wanted = new Set(proCodes);
-    return sets
+    const picked = sets.filter(
+      (s) =>
+        !wanted.size || (s.items ?? []).some((i) => wanted.has(i.pro_code)),
+    );
+    const itemCodes = [
+      ...new Set(picked.flatMap((s) => (s.items ?? []).map((i) => i.pro_code))),
+    ];
+    const products = itemCodes.length
+      ? await this.productRepo.find({
+          where: { pro_code: In(itemCodes) },
+          select: {
+            pro_code: true,
+            pro_name: true,
+            pro_nameTH: true,
+            pro_imgmain: true,
+          },
+        })
+      : [];
+    const productBy = new Map(products.map((p) => [p.pro_code, p]));
+    return picked
       .filter(
         (s) =>
           !wanted.size || (s.items ?? []).some((i) => wanted.has(i.pro_code)),
@@ -450,12 +481,18 @@ export class CustomerPromotionsService {
         price: num(s.price),
         startDate: s.start_date ? new Date(s.start_date).toISOString() : null,
         endDate: s.end_date ? new Date(s.end_date).toISOString() : null,
-        items: (s.items ?? []).map((i) => ({
-          proCode: i.pro_code,
-          qty: num(i.qty),
-          unitLevel: num(i.unit_level),
-          isGift: Boolean(i.is_gift),
-        })),
+        image: imageUrl(s.image),
+        items: (s.items ?? []).map((i) => {
+          const p = productBy.get(i.pro_code);
+          return {
+            proCode: i.pro_code,
+            qty: num(i.qty),
+            unitLevel: num(i.unit_level),
+            isGift: Boolean(i.is_gift),
+            name: p?.pro_nameTH || p?.pro_name || i.pro_code,
+            image: imageUrl(p?.pro_imgmain),
+          };
+        }),
       }));
   }
 

@@ -126,3 +126,16 @@ export function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
+
+/** โดเมนรูปสินค้าแบบเดียวกับหน้าร้าน (Ecommerce-Frontend src/utils/imageUrl.ts) */
+export const IMAGE_CDN_BASE = 'https://www.wangpharma.com';
+
+/**
+ * URL รูปตามกติกาหน้าร้าน: ค่าว่าง = null · "../images/…" (pro_imgmain) = ต่อโดเมน CDN · อย่างอื่น (URL เต็มของ S3) = ใช้ตามเดิม
+ */
+export function imageUrl(path: string | null | undefined): string | null {
+  const v = (path ?? '').trim();
+  if (!v) return null;
+  if (v.startsWith('..')) return `${IMAGE_CDN_BASE}${v.slice(2)}`;
+  return v;
+}

@@ -285,6 +285,24 @@ async function seed() {
     [`04/15/${year}`, `${P}SH1`, C.m1, `10/02/${year}`, `${P}SH2`, C.m1],
   );
   ids.seasonYear = year;
+  // รูป: โปส์เตอร์/รูปขั้นเป็น URL เต็ม (S3) · รูปสินค้าเป็น "../images/…" ที่หน้าร้านต่อโดเมน CDN
+  await q('UPDATE promotion SET promo_poster = ? WHERE promo_id = ?', [
+    'https://e2e.local/poster-company.png',
+    ids.company,
+  ]);
+  await q('UPDATE promotion_tier SET tier_postter = ? WHERE tier_id = ?', [
+    'https://e2e.local/tier-1.png',
+    ids.tCompany,
+  ]);
+  await q('UPDATE product SET pro_imgmain = ? WHERE pro_code IN (?, ?)', [
+    '../images/e2e-local.png',
+    C.g1,
+    C.p3,
+  ]);
+  await q('UPDATE bundle_set SET image = ? WHERE set_code = ?', [
+    'https://e2e.local/bundle.png',
+    C.set1,
+  ]);
 }
 
 async function cleanup(log = true) {
@@ -475,6 +493,28 @@ async function seededChecks() {
       s1?.items?.some((i: any) => i.isGift && i.proCode === C.g1) &&
       !s2,
     `S1 ${s1 ? s1.price : '-'} · S2 ${s2 ? 'หลุด' : 'ไม่มี'}`,
+  );
+
+  const cImg = d.promotions?.find((p: any) => p.promoId === ids.company);
+  const cTier = cImg?.tiers?.[0];
+  const gift = cTier?.rewards?.find((x: any) => x.proCode === C.g1);
+  const fsImg = d.flashSales
+    ?.find((f: any) => f.id === ids.flashOn)
+    ?.products?.find((x: any) => x.proCode === C.p3);
+  const bImg = d.bundleSets?.find((x: any) => x.setCode === C.set1);
+  const cdn = 'https://www.wangpharma.com/images/e2e-local.png';
+  check(
+    'รูป: โปส์เตอร์โปร/ขั้น/ชุด = URL เต็มตามเดิม · รูปของแถม/สินค้า Flash Sale/ในชุด = "../images" ต่อโดเมน CDN (กติกาหน้าร้าน) · มีชื่อสินค้า',
+    cImg?.poster === 'https://e2e.local/poster-company.png' &&
+      cTier?.poster === 'https://e2e.local/tier-1.png' &&
+      gift?.image === cdn &&
+      fsImg?.image === cdn &&
+      !!fsImg?.name &&
+      bImg?.image === 'https://e2e.local/bundle.png' &&
+      bImg?.items?.some(
+        (i: any) => i.proCode === C.p3 && i.image === cdn && !!i.name,
+      ),
+    `poster ${cImg?.poster} · tier ${cTier?.poster} · gift ${gift?.image} · flash ${fsImg?.image} · bundle ${bImg?.image}`,
   );
 
   const w = d.wangRebate;

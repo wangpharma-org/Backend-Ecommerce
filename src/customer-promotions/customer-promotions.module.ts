@@ -9,6 +9,7 @@ import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
 import { FlashSaleEntity } from 'src/flashsale/flashsale.entity';
 import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
+import { ProductEntity } from 'src/products/products.entity';
 import { SpecialCollectionModule } from 'src/special-collection/special-collection.module';
 import { HappyHourModule } from 'src/happy-hour/happy-hour.module';
 import { WangdayModule } from 'src/wangday/wangday.module';
@@ -27,6 +28,7 @@ import { CustomerPromotionsService } from './customer-promotions.service';
       HotdealEntity,
       FlashSaleEntity,
       BundleSetEntity,
+      ProductEntity,
     ]),
     SpecialCollectionModule,
     HappyHourModule,

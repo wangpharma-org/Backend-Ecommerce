@@ -8,6 +8,7 @@ import {
   parseProCodes,
   rebateSeason,
   unitNameOf,
+  imageUrl,
 } from './customer-promotions.util';
 
 describe('customer-promotions util', () => {
@@ -144,5 +145,19 @@ describe('customer-promotions util', () => {
     expect(num('1234.50')).toBe(1234.5);
     expect(num('abc')).toBe(0);
     expect(num(null)).toBe(0);
+  });
+});
+
+describe('imageUrl — กติกาเดียวกับหน้าร้าน (resolveProductImage)', () => {
+  it('"../images/…" ต่อโดเมน CDN · URL เต็มใช้ตามเดิม · ว่าง = null', () => {
+    expect(imageUrl('../images/products/a.jpg')).toBe(
+      'https://www.wangpharma.com/images/products/a.jpg',
+    );
+    expect(imageUrl('https://s3.example.com/p.png')).toBe(
+      'https://s3.example.com/p.png',
+    );
+    expect(imageUrl('')).toBeNull();
+    expect(imageUrl(null)).toBeNull();
+    expect(imageUrl('  ')).toBeNull();
   });
 });
