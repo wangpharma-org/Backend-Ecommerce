@@ -64,6 +64,7 @@ import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
+import { CustomerPromotionsModule } from './customer-promotions/customer-promotions.module';
 
 @Module({
   imports: [
@@ -139,6 +140,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ProductLabelRulesModule,
     SpecialCollectionModule,
     BundleSetModule,
+    CustomerPromotionsModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
