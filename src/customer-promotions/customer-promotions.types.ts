@@ -42,6 +42,8 @@ export interface CustomerPromotionsResponse {
   promotions: PromotionView[];
   hotDeals: {
     proCode: string;
+    /** ชื่อสินค้าที่ซื้อ */
+    name: string;
     buyQty: number;
     buyUnit: string;
     giftProCode: string;

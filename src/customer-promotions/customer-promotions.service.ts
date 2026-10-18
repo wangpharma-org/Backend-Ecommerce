@@ -423,6 +423,7 @@ export class CustomerPromotionsService {
       .filter((d) => d.product && d.product2)
       .map((d) => ({
         proCode: d.product.pro_code,
+        name: d.product.pro_nameTH || d.product.pro_name || d.product.pro_code,
         buyQty: num(d.pro1_amount),
         buyUnit: unitNameOf(d.pro1_unit, d.product.units),
         giftProCode: d.product2.pro_code,

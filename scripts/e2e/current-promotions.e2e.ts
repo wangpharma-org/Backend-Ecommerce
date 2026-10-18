@@ -327,14 +327,15 @@ async function main() {
         String(h.proCode).startsWith(P),
       );
       check(
-        'Hot Deal ทั้งหมดของร้านทั่วไป: มีดีล H1 (ซื้อ 10 แถม H2 1) · ไม่มีดีลสินค้าเฉพาะ L16 · hotDealTotal ≥ จำนวนที่ส่ง ≤ 60',
+        'Hot Deal ทั้งหมดของร้านทั่วไป: มีดีล H1 (ชื่อสินค้า · ซื้อ 10 แถม H2 1) · ไม่มีดีลสินค้าเฉพาะ L16 · hotDealTotal ≥ จำนวนที่ส่ง ≤ 60',
         hot.length === 1 &&
           hot[0].proCode === `${P}H1` &&
+          hot[0].name === `${NAME} สินค้า Hot Deal` &&
           hot[0].buyQty === 10 &&
           hot[0].giftProCode === `${P}H2` &&
           d.hotDealTotal >= d.hotDeals.length &&
           d.hotDeals.length <= 60,
-        `ของทดสอบ ${hot.map((h: any) => h.proCode).join(',') || '-'} · ส่ง ${d.hotDeals?.length} / ทั้งหมด ${d.hotDealTotal}`,
+        `ของทดสอบ ${hot.map((h: any) => `${h.proCode} ${h.name}`).join(',') || '-'} · ส่ง ${d.hotDeals?.length} / ทั้งหมด ${d.hotDealTotal}`,
       );
 
       const flash = (d.flashSales ?? []).find(
