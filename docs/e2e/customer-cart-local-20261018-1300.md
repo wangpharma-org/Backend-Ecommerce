@@ -1,7 +1,7 @@
 # E2E — ตะกร้าลูกค้าให้ระบบขาย (internal customer-cart)
 
 - **environment:** `local` (ผ่านก่อน merge เท่านั้น — ต้องรันซ้ำกับ deployed code)
-- **commit:** `01eb9cb` · **base:** http://127.0.0.1:3033
+- **commit:** `dbabb41` · **base:** http://127.0.0.1:3033
 - ข้อมูลทดสอบ: สร้าง "E2E local" เองแล้วลบตอนจบ
 
 ## ผล 8/8
