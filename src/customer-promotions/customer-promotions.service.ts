@@ -38,11 +38,18 @@ import {
   imageUrl,
 } from './customer-promotions.util';
 import type {
+  CurrentPromotionsResponse,
   CustomerPromotionsResponse,
+  PromotionSampleProduct,
   PromotionView,
 } from './customer-promotions.types';
 
 type UnitDef = { level: number; unit_name: string };
+
+/** Hot Deal ในแถบโปรของทุกคน — ส่งไม่เกินเท่านี้ (หน้ารายละเอียดบอกจำนวนทั้งหมด) */
+export const CURRENT_HOTDEAL_LIMIT = 60;
+/** สินค้าตัวอย่างต่อขั้น */
+export const SAMPLE_PRODUCTS_PER_TIER = 12;
 
 /**
  * โปรทั้งหมดที่ร้านหนึ่งร่วมได้ตอนนี้ — ให้ระบบขาย (หน้า Key ขาย) อ่านสดผ่าน /ecom/internal/customer-promotions
@@ -126,6 +133,92 @@ export class CustomerPromotionsService {
       bundleSets,
       wangRebate,
     };
+  }
+
+  /**
+   * โปรที่เปิดอยู่วันนี้สำหรับทุกคน — แถบโปรบนหัวทุกหน้าของระบบขาย (Tim 18 ต.ค. 2569)
+   * ไม่ผูกร้าน: มุมมองร้านทั่วไป (ไม่ใช่ L16) · ไม่มี Special Collection / Wang Rebate (เป็นของรายร้าน)
+   */
+  async current(): Promise<CurrentPromotionsResponse> {
+    const [promotions, hot, flashSales, happyHour, bundleSets] =
+      await Promise.all([
+        this.promotions([], false),
+        this.allHotDeals(),
+        this.flashSales([], false),
+        this.happyHour(),
+        this.bundleSets([]),
+      ]);
+    const samples = await this.sampleProducts(
+      promotions.flatMap((p) =>
+        p.tiers.filter((t) => !t.allProducts).map((t) => t.tierId),
+      ),
+    );
+    return {
+      generatedAt: new Date().toISOString(),
+      promotions: promotions.map((p) => ({
+        ...p,
+        tiers: p.tiers.map((t) => ({
+          ...t,
+          sampleProducts: samples.get(t.tierId) ?? [],
+        })),
+      })),
+      hotDeals: hot.items,
+      hotDealTotal: hot.total,
+      flashSales,
+      happyHour,
+      bundleSets,
+    };
+  }
+
+  /** สินค้าตัวอย่างของแต่ละขั้น (ไม่เกิน SAMPLE_PRODUCTS_PER_TIER ตัว เรียงตามรหัส) */
+  private async sampleProducts(
+    tierIds: number[],
+  ): Promise<Map<number, PromotionSampleProduct[]>> {
+    const map = new Map<number, PromotionSampleProduct[]>();
+    if (!tierIds.length) return map;
+    const rows = await this.conditionRepo
+      .createQueryBuilder('c')
+      .innerJoin('c.product', 'product')
+      .select('c.tier_id', 'tierId')
+      .addSelect('product.pro_code', 'proCode')
+      .addSelect('product.pro_name', 'proName')
+      .addSelect('product.pro_nameTH', 'proNameTH')
+      .addSelect('product.pro_imgmain', 'img')
+      .where('c.tier_id IN (:...tierIds)', { tierIds })
+      .orderBy('c.tier_id', 'ASC')
+      .addOrderBy('product.pro_code', 'ASC')
+      .getRawMany<{
+        tierId: number;
+        proCode: string;
+        proName: string | null;
+        proNameTH: string | null;
+        img: string | null;
+      }>();
+    for (const r of rows) {
+      const tierId = Number(r.tierId);
+      const list = map.get(tierId) ?? [];
+      if (list.length >= SAMPLE_PRODUCTS_PER_TIER) continue;
+      list.push({
+        proCode: r.proCode,
+        name: r.proNameTH || r.proName || r.proCode,
+        image: imageUrl(r.img),
+      });
+      map.set(tierId, list);
+    }
+    return map;
+  }
+
+  /** Hot Deal ทั้งหมด (ร้านทั่วไป ไม่ใช่ L16) ตามลำดับหน้าร้าน — ส่งไม่เกิน CURRENT_HOTDEAL_LIMIT พร้อมจำนวนทั้งหมด */
+  private async allHotDeals(): Promise<{
+    items: CustomerPromotionsResponse['hotDeals'];
+    total: number;
+  }> {
+    const q = this.hotDealQuery(false);
+    const [deals, total] = await Promise.all([
+      q.clone().take(CURRENT_HOTDEAL_LIMIT).getMany(),
+      q.clone().getCount(),
+    ]);
+    return { items: this.hotDealViews(deals), total };
   }
 
   /** Company Day / Wang Day ที่จัดวันนี้ — ช่วงวันเดียวกับ getAllTiers ของหน้าร้าน (เทียบทั้งวันเวลาไทย) */
@@ -297,13 +390,21 @@ export class CustomerPromotionsService {
     isL16: boolean,
   ): Promise<CustomerPromotionsResponse['hotDeals']> {
     if (!proCodes.length) return [];
+    const deals = await this.hotDealQuery(isL16)
+      .andWhere('product.pro_code IN (:...proCodes)', { proCodes })
+      .getMany();
+    return this.hotDealViews(deals);
+  }
+
+  private hotDealQuery(isL16: boolean) {
     const q = this.hotdealRepo
       .createQueryBuilder('hotdeal')
       .leftJoinAndSelect('hotdeal.product', 'product')
       .leftJoinAndSelect('product.units', 'units1')
       .leftJoinAndSelect('hotdeal.product2', 'product2')
       .leftJoinAndSelect('product2.units', 'units2')
-      .where('product.pro_code IN (:...proCodes)', { proCodes })
+      .where('product.pro_code IS NOT NULL')
+      .andWhere('product2.pro_code IS NOT NULL')
       .orderBy('hotdeal.order', 'ASC');
     if (!isL16) {
       q.andWhere(
@@ -312,7 +413,12 @@ export class CustomerPromotionsService {
         '(product2.pro_l16_only = 0 OR product2.pro_l16_only IS NULL)',
       );
     }
-    const deals = await q.getMany();
+    return q;
+  }
+
+  private hotDealViews(
+    deals: HotdealEntity[],
+  ): CustomerPromotionsResponse['hotDeals'] {
     return deals
       .filter((d) => d.product && d.product2)
       .map((d) => ({

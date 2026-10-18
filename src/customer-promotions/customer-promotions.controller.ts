@@ -1,7 +1,10 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { InternalTokenGuard } from 'src/auth/internal-token.guard';
 import { CustomerPromotionsService } from './customer-promotions.service';
-import type { CustomerPromotionsResponse } from './customer-promotions.types';
+import type {
+  CurrentPromotionsResponse,
+  CustomerPromotionsResponse,
+} from './customer-promotions.types';
 
 /**
  * ให้ระบบขาย (หน้า Key ขาย) เห็นโปรทั้งหมดที่ร้านร่วมได้ — Company Day, Wang Day, Hot Deal, Flash Sale,
@@ -19,5 +22,12 @@ export class CustomerPromotionsController {
     @Query('pro_codes') proCodes?: string,
   ): Promise<CustomerPromotionsResponse> {
     return this.service.forCustomer(memCode, proCodes);
+  }
+
+  /** โปรที่เปิดอยู่วันนี้สำหรับทุกคน — แถบโปรบนหัวทุกหน้าของระบบขาย (ไม่ผูกร้าน) */
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/current-promotions')
+  current(): Promise<CurrentPromotionsResponse> {
+    return this.service.current();
   }
 }

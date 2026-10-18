@@ -115,3 +115,26 @@ export interface CustomerPromotionsResponse {
     total: number;
   };
 }
+
+/** สินค้าตัวอย่างของขั้น (ไม่ครบทุกตัว — ดูจำนวนเต็มที่ conditionCount) */
+export interface PromotionSampleProduct {
+  proCode: string;
+  name: string;
+  image: string | null;
+}
+
+/**
+ * โปรที่เปิดอยู่วันนี้สำหรับทุกคน (แถบโปรบนหัวหน้าระบบขาย) — ไม่ผูกร้าน จึงไม่มี Special Collection และ Wang Rebate
+ * มุมมองเดียวกับร้านทั่วไป (ไม่ใช่ L16) · Hot Deal ส่งไม่เกิน CURRENT_HOTDEAL_LIMIT รายการ พร้อมจำนวนทั้งหมด
+ */
+export interface CurrentPromotionsResponse {
+  generatedAt: string;
+  promotions: (PromotionView & {
+    tiers: (PromotionTierView & { sampleProducts: PromotionSampleProduct[] })[];
+  })[];
+  hotDeals: CustomerPromotionsResponse['hotDeals'];
+  hotDealTotal: number;
+  flashSales: CustomerPromotionsResponse['flashSales'];
+  happyHour: CustomerPromotionsResponse['happyHour'];
+  bundleSets: CustomerPromotionsResponse['bundleSets'];
+}
