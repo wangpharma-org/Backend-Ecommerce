@@ -66,6 +66,7 @@ import { SpecialCollectionModule } from './special-collection/special-collection
 import { BundleSetModule } from './bundle-set/bundle-set.module';
 
 import { InternalCustomerCartModule } from './internal-customer-cart/internal-customer-cart.module';
+import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.module';
 @Module({
   imports: [
     AuthModule,
@@ -173,6 +174,7 @@ import { InternalCustomerCartModule } from './internal-customer-cart/internal-cu
     PreorderModule,
     StickerLabelModule,
     InternalCustomerCartModule,
+    SalesCartSessionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
