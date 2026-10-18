@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
+import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 
 /// บรรทัดในตะกร้าตอนนี้ (ไม่รวมของแถมอัตโนมัติ) — ให้ระบบขายดู "ของที่ลูกค้าค้างไว้ในตะกร้า" ใน Key ขาย
 export interface InternalCartLine {
@@ -42,12 +43,201 @@ interface CartRow {
   hotdeal: string | number | null;
 }
 
+/// บรรทัดที่ระบบขายสั่งไปแล้ว (หน่วยตามใบสั่งจอง) — ลดออกจากตะกร้าลูกค้า
+export interface CartConsumeLine {
+  pro_code: string;
+  /// ชื่อหน่วยในใบสั่งจอง — ไม่รู้จัก = หน่วยเล็กสุด
+  unit?: string | null;
+  qty: number;
+}
+
+/// แถวตะกร้าที่ถูกลด/คืนจริง (หน่วยของแถวนั้น) — เก็บไว้คืนให้ตรงตอนยกเลิกใบ
+export interface CartAdjustedRow {
+  pro_code: string;
+  unit_level: number;
+  qty: number;
+}
+
+export interface CartAdjustmentResult {
+  order_ref: string;
+  kind: 'consume' | 'restore';
+  mem_code: string;
+  /// true = ทำไปแล้วก่อนหน้า (ส่งซ้ำ) — ไม่ได้แก้ตะกร้ารอบนี้
+  replay: boolean;
+  rows: CartAdjustedRow[];
+  /// ส่วนที่สั่งเกินของในตะกร้า (หน่วยเล็กสุด) — ไม่ได้ลดอะไร
+  not_in_cart: { pro_code: string; base_qty: number }[];
+}
+
 const bangkokToday = () =>
   new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 
 @Injectable()
 export class InternalCustomerCartService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cartService: ShoppingCartService,
+  ) {}
+
+  private async existing(
+    m: EntityManager,
+    orderRef: string,
+    kind: 'consume' | 'restore',
+  ): Promise<CartAdjustmentResult | null> {
+    const [row] = await m.query<{ result: string | CartAdjustmentResult }[]>(
+      'SELECT result FROM internal_cart_adjustment WHERE order_ref = ? AND kind = ? LIMIT 1',
+      [orderRef, kind],
+    );
+    if (!row) return null;
+    const r = (
+      typeof row.result === 'string' ? JSON.parse(row.result) : row.result
+    ) as CartAdjustmentResult;
+    return { ...r, replay: true };
+  }
+
+  private async record(m: EntityManager, r: CartAdjustmentResult) {
+    await m.query(
+      'INSERT INTO internal_cart_adjustment (order_ref, kind, mem_code, result) VALUES (?, ?, ?, ?)',
+      [
+        r.order_ref,
+        r.kind,
+        r.mem_code,
+        JSON.stringify({ ...r, replay: false }),
+      ],
+    );
+  }
+
+  /// ลดของในตะกร้าตามบรรทัดที่ระบบขายสั่งให้แล้ว — ครั้งเดียวต่อ order_ref (ส่งซ้ำ = คืนผลเดิม)
+  /// ลดจากแถวที่ใส่ก่อนก่อน · ไม่ลดเกินที่สั่ง (เหลือเศษหน่วยใหญ่ = ปัดขึ้น คงไว้ในตะกร้า) · ไม่แตะของแถม
+  /// แถวเหลือ 0 = ลบ · จบแล้วคิดของแถมโปร/ฮอตดีลใหม่แบบเดียวกับตะกร้า
+  async consume(
+    memCode: string,
+    orderRef: string,
+    lines: CartConsumeLine[],
+  ): Promise<CartAdjustmentResult> {
+    return this.dataSource.transaction(async (m) => {
+      const done = await this.existing(m, orderRef, 'consume');
+      if (done) return done;
+      const rows: CartAdjustedRow[] = [];
+      const notInCart: CartAdjustmentResult['not_in_cart'] = [];
+      const wanted = new Map<string, number>();
+      for (const l of lines) {
+        const [u] = l.unit
+          ? await m.query<{ ratio: string | number }[]>(
+              'SELECT ratio FROM product_unit WHERE pro_code = ? AND unit_name = ? ORDER BY level LIMIT 1',
+              [l.pro_code, l.unit],
+            )
+          : [];
+        const ratio = Number(u?.ratio) || 1;
+        wanted.set(
+          l.pro_code,
+          (wanted.get(l.pro_code) ?? 0) + Number(l.qty) * ratio,
+        );
+      }
+      for (const [proCode, base] of wanted) {
+        let remaining = base;
+        const cart = await m.query<
+          {
+            spc_id: number;
+            spc_amount: string | number;
+            unit_level: string | number;
+            ratio: string | number | null;
+          }[]
+        >(
+          `SELECT c.spc_id, c.spc_amount, COALESCE(c.spc_unit_enum, '1') AS unit_level, u.ratio
+             FROM shopping_cart c
+             LEFT JOIN product_unit u ON u.pro_code = c.pro_code AND u.level = COALESCE(c.spc_unit_enum, 1)
+            WHERE c.mem_code = ? AND c.pro_code = ? AND c.is_reward = 0 AND c.hotdeal_free = 0 AND c.spc_amount > 0
+            ORDER BY c.spc_datetime ASC, c.spc_id ASC
+            FOR UPDATE`,
+          [memCode, proCode],
+        );
+        for (const c of cart) {
+          if (remaining <= 0) break;
+          const ratio = Number(c.ratio) || 1;
+          const amount = Number(c.spc_amount);
+          const take = Math.min(amount * ratio, remaining);
+          const left = Math.ceil((amount * ratio - take) / ratio - 1e-9);
+          remaining -= take;
+          const removed = amount - left;
+          if (removed <= 0) continue;
+          if (left <= 0)
+            await m.query('DELETE FROM shopping_cart WHERE spc_id = ?', [
+              c.spc_id,
+            ]);
+          else
+            await m.query(
+              'UPDATE shopping_cart SET spc_amount = ? WHERE spc_id = ?',
+              [left, c.spc_id],
+            );
+          rows.push({
+            pro_code: proCode,
+            unit_level: Number(c.unit_level),
+            qty: removed,
+          });
+        }
+        if (remaining > 1e-9)
+          notInCart.push({ pro_code: proCode, base_qty: remaining });
+      }
+      const result: CartAdjustmentResult = {
+        order_ref: orderRef,
+        kind: 'consume',
+        mem_code: memCode,
+        replay: false,
+        rows,
+        not_in_cart: notInCart,
+      };
+      if (rows.length) await this.cartService.resyncDerivedRows(memCode, m);
+      await this.record(m, result);
+      return result;
+    });
+  }
+
+  /// คืนของที่ order_ref นี้เคยลดไป (ยกเลิกใบสั่งจอง) — ครั้งเดียวต่อ order_ref · ไม่เคยลด = ไม่คืนอะไร
+  /// มีแถวสินค้า/หน่วยเดิมอยู่แล้ว (ลูกค้าใส่เพิ่มระหว่างนั้น) = บวกเพิ่ม · ไม่มี = ใส่แถวใหม่
+  async restore(
+    memCode: string,
+    orderRef: string,
+  ): Promise<CartAdjustmentResult> {
+    return this.dataSource.transaction(async (m) => {
+      const done = await this.existing(m, orderRef, 'restore');
+      if (done) return done;
+      const consumed = await this.existing(m, orderRef, 'consume');
+      if (consumed && consumed.mem_code !== memCode)
+        throw new BadRequestException('order_ref นี้เป็นของร้านอื่น');
+      const rows = consumed?.rows ?? [];
+      for (const r of rows) {
+        const [row] = await m.query<{ spc_id: number }[]>(
+          `SELECT spc_id FROM shopping_cart
+            WHERE mem_code = ? AND pro_code = ? AND COALESCE(spc_unit_enum, '1') = ? AND is_reward = 0 AND hotdeal_free = 0
+            ORDER BY spc_id ASC LIMIT 1 FOR UPDATE`,
+          [memCode, r.pro_code, String(r.unit_level)],
+        );
+        if (row)
+          await m.query(
+            'UPDATE shopping_cart SET spc_amount = spc_amount + ? WHERE spc_id = ?',
+            [r.qty, row.spc_id],
+          );
+        else
+          await m.query(
+            `INSERT INTO shopping_cart (spc_amount, pro_code, mem_code, spc_checked, is_reward, use_code, hotdeal_free, spc_unit_enum, spc_datetime)
+             VALUES (?, ?, ?, 1, 0, 0, 0, ?, CURRENT_TIMESTAMP)`,
+            [r.qty, r.pro_code, memCode, String(r.unit_level)],
+          );
+      }
+      const result: CartAdjustmentResult = {
+        order_ref: orderRef,
+        kind: 'restore',
+        mem_code: memCode,
+        replay: false,
+        rows,
+        not_in_cart: [],
+      };
+      if (rows.length) await this.cartService.resyncDerivedRows(memCode, m);
+      await this.record(m, result);
+      return result;
+    });
+  }
 
   /// อ่านอย่างเดียว — ไม่ใช้ getProductCart เพราะตัวนั้นลบ/ซิงก์ตะกร้าก่อนอ่าน
   async getCart(memCode: string): Promise<InternalCustomerCart> {

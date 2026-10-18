@@ -6,6 +6,12 @@
  *   2. ร้านทดสอบ: ได้บรรทัดสินค้าในตะกร้า ไม่รวมของแถม (is_reward / hotdeal_free) · หน่วย/จำนวน/เวลาใส่
  *   3. ราคา: ระดับราคาร้าน × ratio หน่วย · ถึงขั้นโปรเดือน → ราคา A · ธง monthly / flash_sale
  *   4. ร้านที่ตะกร้าว่าง → lines = []
+ *   (E2E_SEED_DB=1 เท่านั้น — แก้ตะกร้า) POST .../consume และ .../restore (ระบบขายลด/คืนของในตะกร้า):
+ *   5. ไม่มี token 403 · ไม่มี order_ref / qty ≤ 0 → 400
+ *   6. ลดพอดี (P1 1 กล่อง จาก 2) · ส่งซ้ำ order_ref เดิม = replay ไม่ลดซ้ำ · ไม่แตะของแถม
+ *   7. ลดบางส่วนเป็นหน่วยเล็ก (P2 15 ชิ้น จาก 3 กล่อง=30) → เหลือ 2 กล่อง (เศษปัดขึ้น ไม่ลดเกินที่สั่ง)
+ *   8. สั่งเกินของในตะกร้า → ลบแถว + not_in_cart บอกส่วนเกิน
+ *   9. คืน (ยกเลิกใบ) → คืนเฉพาะที่ order_ref นั้นลด · ส่งซ้ำไม่คืนซ้ำ · ลูกค้าใส่เพิ่มระหว่างนั้น = บวกเพิ่ม · ref ที่ไม่เคยลด = ไม่คืนอะไร
  *
  *   E2E_ENV=local|dev|staging|prod E2E_BASE_URL=http://127.0.0.1:3033 E2E_INTERNAL_TOKEN=<INTERNAL_API_TOKEN>
  *   [E2E_SEED_DB=1 + DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/DB_NAME — localhost เท่านั้น: สร้าง/ลบข้อมูล "E2E local" เอง]
@@ -39,6 +45,7 @@ async function clean() {
   const fs = (await q("SELECT promotion_id FROM flashsale WHERE promotion_name = 'E2E local Flash ตะกร้า'")).map((r) => r.promotion_id);
   if (fs.length) { await q('DELETE FROM flashsale_products WHERE promotion_id IN (?)', [fs]); await q('DELETE FROM flashsale WHERE promotion_id IN (?)', [fs]); }
   await q('DELETE FROM shopping_cart WHERE mem_code IN (?, ?)', [MEM, EMPTY]);
+  await q("DELETE FROM internal_cart_adjustment WHERE order_ref LIKE 'E2E-CART-%'").catch(() => {});
   await q('DELETE FROM product_unit WHERE pro_code IN (?, ?, ?)', [P1, P2, G1]);
   await q('DELETE FROM product WHERE pro_code IN (?, ?, ?)', [P1, P2, G1]);
   await q('DELETE FROM users WHERE mem_code IN (?, ?)', [MEM, EMPTY]);
@@ -65,6 +72,12 @@ async function doSeed() {
 
 const steps = [];
 const check = (name, pass, observed) => { steps.push({ name, pass: !!pass, observed }); console.error(`${pass ? 'PASS' : 'FAIL'}  ${name} — ${observed}`); };
+const post = async (path, body, tok = token) => {
+  const res = await fetch(`${base}/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(tok ? { 'x-internal-token': tok } : {}) }, body: JSON.stringify(body) });
+  let data = null; try { data = await res.json(); } catch {}
+  return { status: res.status, data };
+};
+const cartNow = async () => Object.fromEntries((await q('SELECT pro_code, spc_unit_enum, SUM(spc_amount) AS qty FROM shopping_cart WHERE mem_code = ? AND is_reward = 0 AND hotdeal_free = 0 GROUP BY pro_code, spc_unit_enum', [MEM])).map((r) => [`${r.pro_code}@${r.spc_unit_enum}`, Number(r.qty)]));
 const get = async (path, tok = token) => {
   const res = await fetch(`${base}/api${path}`, { headers: tok ? { 'x-internal-token': tok } : {} });
   let data = null; try { data = await res.json(); } catch {}
@@ -93,6 +106,31 @@ try {
   check('price_option ของร้าน = B', r.data?.price_option === 'B', `${r.data?.price_option}`);
   const empty = await get(`/ecom/internal/customer-cart/${EMPTY}`);
   check('ร้านตะกร้าว่าง → lines = []', empty.status === 200 && Array.isArray(empty.data?.lines) && empty.data.lines.length === 0, `HTTP ${empty.status} · ${empty.data?.lines?.length}`);
+  if (seed) {
+    const C = `/ecom/internal/customer-cart/${MEM}`;
+    const [nt, noRef, zero] = await Promise.all([post(`${C}/consume`, { order_ref: 'E2E-CART-X', lines: [] }, ''), post(`${C}/consume`, { lines: [{ pro_code: P1, qty: 1 }] }), post(`${C}/consume`, { order_ref: 'E2E-CART-X', lines: [{ pro_code: P1, qty: 0 }] })]);
+    check('consume: ไม่มี token 403 · ไม่มี order_ref 400 · qty ≤ 0 → 400', nt.status === 403 && noRef.status === 400 && zero.status === 400, `${nt.status} / ${noRef.status} / ${zero.status}`);
+    const a = await post(`${C}/consume`, { order_ref: 'E2E-CART-A', lines: [{ pro_code: P1, unit: 'กล่อง', qty: 1 }] });
+    const afterA = await cartNow();
+    const a2 = await post(`${C}/consume`, { order_ref: 'E2E-CART-A', lines: [{ pro_code: P1, unit: 'กล่อง', qty: 1 }] });
+    const afterA2 = await cartNow();
+    check('ลดพอดี P1 1 กล่อง (2→1) · ส่งซ้ำ ref เดิม = replay ไม่ลดซ้ำ · ไม่แตะของแถม', a.status === 200 && afterA[`${P1}@2`] === 1 && a.data?.rows?.length === 1 && a.data.rows[0].qty === 1 && !a.data.rows.some((r) => r.pro_code === G1) && a2.data?.replay === true && afterA2[`${P1}@2`] === 1, `HTTP ${a.status} · ${JSON.stringify(a.data?.rows)} · หลังส่งซ้ำ replay=${a2.data?.replay} P1=${afterA2[`${P1}@2`]}`);
+    const b = await post(`${C}/consume`, { order_ref: 'E2E-CART-B', lines: [{ pro_code: P2, unit: 'ชิ้น', qty: 15 }] });
+    const afterB = await cartNow();
+    check('ลดบางส่วนเป็นหน่วยเล็ก: P2 15 ชิ้น จาก 3 กล่อง (30) → เหลือ 2 กล่อง (เศษปัดขึ้น)', b.status === 200 && afterB[`${P2}@2`] === 2 && b.data?.rows?.[0]?.qty === 1, `HTTP ${b.status} · P2=${afterB[`${P2}@2`]} · ${JSON.stringify(b.data?.rows)}`);
+    const c = await post(`${C}/consume`, { order_ref: 'E2E-CART-C', lines: [{ pro_code: P1, unit: 'กล่อง', qty: 5 }] });
+    const afterC = await cartNow();
+    check('สั่งเกินของในตะกร้า: P1 5 กล่อง (มี 1) → ลบแถว · not_in_cart 40 ชิ้น', c.status === 200 && afterC[`${P1}@2`] === undefined && c.data?.not_in_cart?.[0]?.base_qty === 40, `HTTP ${c.status} · P1=${afterC[`${P1}@2`]} · ${JSON.stringify(c.data?.not_in_cart)}`);
+    const rc = await post(`${C}/restore`, { order_ref: 'E2E-CART-C' });
+    const afterRc = await cartNow();
+    const rc2 = await post(`${C}/restore`, { order_ref: 'E2E-CART-C' });
+    const afterRc2 = await cartNow();
+    check('คืน ref C → P1 กลับ 1 กล่อง (ใส่แถวใหม่) · ส่งซ้ำไม่คืนซ้ำ', rc.status === 200 && afterRc[`${P1}@2`] === 1 && rc2.data?.replay === true && afterRc2[`${P1}@2`] === 1, `HTTP ${rc.status} · P1=${afterRc[`${P1}@2`]} · replay=${rc2.data?.replay} → ${afterRc2[`${P1}@2`]}`);
+    const ra = await post(`${C}/restore`, { order_ref: 'E2E-CART-A' });
+    const afterRa = await cartNow();
+    const rn = await post(`${C}/restore`, { order_ref: 'E2E-CART-NEVER' });
+    check('คืน ref A ขณะตะกร้ามีของอยู่แล้ว → บวกเพิ่ม (1→2) · ref ที่ไม่เคยลด = ไม่คืนอะไร', ra.status === 200 && afterRa[`${P1}@2`] === 2 && rn.status === 200 && rn.data?.rows?.length === 0, `P1=${afterRa[`${P1}@2`]} · never=${rn.status} rows ${rn.data?.rows?.length}`);
+  }
 } catch (e) {
   failure = e; check('สคริปต์ทำงานจนจบ', false, e instanceof Error ? e.message : String(e));
 } finally {

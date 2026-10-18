@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { ShoppingCartService } from '../shopping-cart/shopping-cart.service';
 import { InternalCustomerCartService } from './internal-customer-cart.service';
 
 const month = new Date(Date.now() + 7 * 3600e3).getUTCMonth() + 1;
@@ -29,9 +30,10 @@ const make = (priceOption: string | null, rows: unknown[]) => {
     )
     .mockResolvedValueOnce(rows);
   return {
-    service: new InternalCustomerCartService({
-      query,
-    } as unknown as DataSource),
+    service: new InternalCustomerCartService(
+      { query } as unknown as DataSource,
+      {} as ShoppingCartService,
+    ),
     query,
   };
 };
