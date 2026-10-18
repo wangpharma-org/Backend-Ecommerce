@@ -65,6 +65,7 @@ import { ProductLabelRulesModule } from './product-label-rules/product-label-rul
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
 
+import { InternalCustomerCartModule } from './internal-customer-cart/internal-customer-cart.module';
 @Module({
   imports: [
     AuthModule,
@@ -171,6 +172,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     WatermarkAuditModule,
     PreorderModule,
     StickerLabelModule,
+    InternalCustomerCartModule,
   ],
   controllers: [AppController],
   providers: [AppService],
