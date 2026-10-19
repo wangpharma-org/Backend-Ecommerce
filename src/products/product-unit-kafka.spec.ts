@@ -48,7 +48,12 @@ function setup(seedUnits: Omit<Unit, 'id'>[] = []) {
 
   const productRepo = {
     create: (x: Record<string, unknown>) => ({ ...x }),
-    update: jest.fn().mockResolvedValue(undefined),
+    // เหมือน TypeORM จริง: update ด้วย object ว่าง → UpdateValuesMissingError
+    update: jest.fn((_where: unknown, patch: Record<string, unknown>) =>
+      Object.values(patch).some((v) => v !== undefined)
+        ? Promise.resolve()
+        : Promise.reject(new Error('UpdateValuesMissingError')),
+    ),
     manager: {
       // ทำงานบนสำเนา ถ้า callback throw ไม่ commit (เหมือน rollback)
       transaction: async (

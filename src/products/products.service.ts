@@ -925,7 +925,11 @@ export class ProductsService {
         updateData.creditor = toCreditorReference(creditor_code);
       }
 
-      await this.productRepo.update({ pro_code }, updateData);
+      // ECWC-743: ข้อความที่มีแค่หน่วย → updateData ว่าง → TypeORM throw UpdateValuesMissingError
+      // แล้ว catch กลืนไป หน่วยไม่ถูกบันทึก จึงข้าม update ตาราง product เมื่อไม่มีฟิลด์
+      if (Object.values(updateData).some((v) => v !== undefined)) {
+        await this.productRepo.update({ pro_code }, updateData);
+      }
 
       if (creditor_code !== undefined) {
         const normalizedCreditorCode =
