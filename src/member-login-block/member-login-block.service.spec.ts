@@ -130,6 +130,17 @@ describe('MemberLoginBlockService', () => {
       expect(blockRepo.find).not.toHaveBeenCalled();
     });
 
+    it('snapshot ที่โหลดตอน flag ปิด ไม่ค้างหลัง block (โหลดใหม่ทันที)', async () => {
+      featureFlags.getFlag.mockResolvedValue(false);
+      await service.assertNotBlocked(MEM_CODE);
+      featureFlags.getFlag.mockResolvedValue(true);
+      blockRepo.find.mockResolvedValue([{ mem_code: MEM_CODE, reason: null }]);
+      await service.block(MEM_CODE, 'r', ACTOR);
+      await expect(service.assertNotBlocked(MEM_CODE)).rejects.toBeInstanceOf(
+        LoginBlockedException,
+      );
+    });
+
     it('โหลด snapshot ครั้งเดียวภายใน TTL (ไม่ query ทุก request)', async () => {
       await service.assertNotBlocked(MEM_CODE);
       await service.assertNotBlocked(MEM_CODE);
@@ -176,6 +187,9 @@ describe('MemberLoginBlockService', () => {
 
     it('มีผลกับ instance นี้ทันที (ไม่ต้องรอ TTL)', async () => {
       await service.assertNotBlocked(MEM_CODE); // โหลด snapshot ว่าง
+      blockRepo.find.mockResolvedValue([
+        { mem_code: MEM_CODE, reason: 'ค้างชำระ' },
+      ]);
       await service.block(MEM_CODE, 'ค้างชำระ', ACTOR);
       await expect(service.assertNotBlocked(MEM_CODE)).rejects.toBeInstanceOf(
         LoginBlockedException,
@@ -184,6 +198,7 @@ describe('MemberLoginBlockService', () => {
         mem_code: MEM_CODE,
         is_blocked: true,
       });
+      blockRepo.find.mockResolvedValue([]);
       await service.unblock(MEM_CODE, undefined, ACTOR);
       await expect(service.assertNotBlocked(MEM_CODE)).resolves.toBeUndefined();
     });

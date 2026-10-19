@@ -172,7 +172,8 @@ export class MemberLoginBlockService {
       },
     );
 
-    this.applyToSnapshot(mem_code, blocked, reason);
+    // โหลดใหม่ทั้งก้อน (ไม่ใช่แก้รายการเดียว) — snapshot เดิมอาจถูกโหลดตอน flag ยังปิด
+    this.invalidateSnapshot();
     if (blocked) {
       // กดซ้ำก็เตะซ้ำ — เผื่อมี session ที่เกิดระหว่างที่ instance อื่นยังไม่เห็นสถานะ
       await this.revokeSessions(mem_code);
@@ -259,14 +260,8 @@ export class MemberLoginBlockService {
     }
   }
 
-  private applyToSnapshot(
-    mem_code: string,
-    blocked: boolean,
-    reason: string | null,
-  ): void {
-    if (!this.snapshot) return;
-    if (blocked) this.snapshot.blocked.set(mem_code, reason);
-    else this.snapshot.blocked.delete(mem_code);
+  private invalidateSnapshot(): void {
+    this.snapshot = null;
   }
 
   private async isEnabled(): Promise<boolean> {
