@@ -18,6 +18,11 @@ import { BannerHotdealEntity } from './hotdeal-banner.entity';
 import { ProductEntity } from 'src/products/products.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
+import {
+  computeHotdealGifts,
+  HotdealGiftLine,
+  InternalHotdealGiftResult,
+} from './hotdeal-gifts';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -774,6 +779,35 @@ export class HotdealService {
     else ratio = 1;
 
     return Number(spc_amount) * Number(ratio);
+  }
+
+  // ของแถม Hot Deal ของรายการสินค้าชุดหนึ่ง สำหรับระบบภายใน (หน้า Key ขายของ sale) — ไม่แตะตะกร้าของใคร
+  async giftsForOrderLines(
+    lines: HotdealGiftLine[],
+  ): Promise<InternalHotdealGiftResult> {
+    const codes = [...new Set(lines.map((line) => line.pro_code))];
+    if (codes.length === 0) return { gifts: [], skipped: [] };
+    const hotdeals = await this.hotdealRepo.find({
+      where: { product: { pro_code: In(codes) } },
+      relations: ['product', 'product.units', 'product2', 'product2.units'],
+      order: { order: 'ASC', id: 'ASC' },
+    });
+    return computeHotdealGifts(
+      lines,
+      hotdeals
+        .filter((hotdeal) => hotdeal.product?.pro_code)
+        .map((hotdeal) => ({
+          pro_code: hotdeal.product.pro_code,
+          units: hotdeal.product.units ?? [],
+          pro1_amount: hotdeal.pro1_amount,
+          pro1_unit: hotdeal.pro1_unit,
+          gift_pro_code: hotdeal.product2?.pro_code ?? '',
+          gift_pro_name: hotdeal.product2?.pro_name ?? '',
+          gift_units: hotdeal.product2?.units ?? [],
+          pro2_amount: hotdeal.pro2_amount,
+          pro2_unit: hotdeal.pro2_unit,
+        })),
+    );
   }
 
   async getHotdealFromCode(pro_code: string) {
