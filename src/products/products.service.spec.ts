@@ -107,7 +107,7 @@ describe('ProductsService — unit helpers', () => {
       pro_nameEN: 'English product name',
     };
     const queryBuilder: Record<string, jest.Mock> = {};
-    for (const method of ['leftJoinAndSelect', 'select', 'where']) {
+    for (const method of ['leftJoinAndSelect', 'select', 'where', 'andWhere']) {
       queryBuilder[method] = jest.fn(() => queryBuilder);
     }
     queryBuilder.getOne = jest.fn().mockResolvedValue(product);

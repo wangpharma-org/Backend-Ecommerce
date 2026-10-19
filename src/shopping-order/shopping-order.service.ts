@@ -29,6 +29,10 @@ import { ClientKafka } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import { lineDiscountPercent } from 'src/promotion/promo-line-value';
 import {
+  HIDDEN_PRODUCT_MESSAGE,
+  isHiddenProduct,
+} from 'src/products/product-visibility.util';
+import {
   parseStickerJson,
   stickerQuantity,
   type StickerCustomOptions,
@@ -378,6 +382,20 @@ export class ShoppingOrderService {
               `สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้: ${codes}`,
             );
           }
+        }
+
+        // WGDD-428: สินค้าที่งดแสดงบนหน้าร้านห้ามสั่งซื้อ (ไม่นับของแถม/รางวัล)
+        const hiddenItems = cart.filter(
+          (item) =>
+            !item.hotdeal_free &&
+            !item.is_reward &&
+            isHiddenProduct(item.product),
+        );
+        if (hiddenItems.length > 0) {
+          const codes = [
+            ...new Set(hiddenItems.map((item) => item.pro_code)),
+          ].join(', ');
+          throw new BadRequestException(`${HIDDEN_PRODUCT_MESSAGE}: ${codes}`);
         }
 
         const checkFreebies = scopedBasket

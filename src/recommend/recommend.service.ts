@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { visibleProductSql } from 'src/products/product-visibility.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecommendEntity } from './recommend.entity';
 import { Repository, Not, IsNull } from 'typeorm';
@@ -194,6 +195,8 @@ export class RecommendService {
             ? '(mainProduct.pro_l16_only = 0 OR mainProduct.pro_l16_only IS NULL)'
             : '1=1',
         )
+        // WGDD-428: งดแสดงบนหน้าร้าน
+        .andWhere(visibleProductSql('mainProduct'))
         .setParameter('memCode', mem_code)
         .select([
           'mainProduct.pro_code AS pro_code',
@@ -275,6 +278,8 @@ export class RecommendService {
             ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
             : '1=1',
         )
+        // WGDD-428: งดแสดงบนหน้าร้าน
+        .andWhere(visibleProductSql('product'))
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',

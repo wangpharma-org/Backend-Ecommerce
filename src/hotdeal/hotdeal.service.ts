@@ -7,6 +7,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { visibleProductSql } from 'src/products/product-visibility.util';
 import { ProductsService } from '../products/products.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HotdealEntity } from './hotdeal.entity';
@@ -540,6 +541,10 @@ export class HotdealService {
           '(product2.pro_l16_only = 0 OR product2.pro_l16_only IS NULL)',
         );
     }
+    // WGDD-428: งดแสดงบนหน้าร้าน (ทั้งสินค้าหลักและของแถม)
+    query
+      .andWhere(visibleProductSql('product'))
+      .andWhere(visibleProductSql('product2'));
 
     const hotdeals = await query.getMany();
 
