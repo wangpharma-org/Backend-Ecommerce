@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
 import { PromotionTierEntity } from './promotion-tier.entity';
@@ -16,8 +16,10 @@ import { UserEntity } from 'src/users/users.entity';
 import { PromotionTypePolicyEntity } from './promotion-type-policy.entity';
 import { PromoOverlapModule } from 'src/promo-overlap/promo-overlap.module';
 import { PromotionController } from './promotion.controller';
+import { PromotionConditionController } from './promotion-condition.controller';
 import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 import { PromotionDateChangeLogEntity } from './promotion-date-change-log.entity';
+import { ProductsModule } from 'src/products/products.module';
 
 @Module({
   imports: [
@@ -39,8 +41,9 @@ import { PromotionDateChangeLogEntity } from './promotion-date-change-log.entity
     AuthModule,
     FeatureFlagsModule,
     PromoOverlapModule,
+    forwardRef(() => ProductsModule),
   ],
-  controllers: [PromotionController],
+  controllers: [PromotionController, PromotionConditionController],
   providers: [PromotionService],
   exports: [PromotionService],
 })
