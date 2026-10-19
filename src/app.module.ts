@@ -60,6 +60,7 @@ import { PreorderModule } from './preorder/preorder.module';
 import { StickerLabelModule } from './sticker-label/sticker-label.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 import { StoreVisibilityModule } from './store-visibility/store-visibility.module';
+import { MemberLoginBlockModule } from './member-login-block/member-login-block.module';
 import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
@@ -135,6 +136,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     HappyHourModule,
     DeliveryPreferenceModule,
     StoreVisibilityModule,
+    MemberLoginBlockModule,
     DhlTrackingModule,
     ProductLabelRulesModule,
     SpecialCollectionModule,

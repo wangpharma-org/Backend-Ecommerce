@@ -21,6 +21,8 @@ import { SALT_ROUNDS } from '../constants/app.constants';
 import { EmployeesService } from 'src/employees/employees.service';
 import { REVIEW_SCOPE, lineLinkLoginScope } from './token-scope';
 import { jwtConstants } from './constants';
+import { MemberLoginBlockService } from 'src/member-login-block/member-login-block.service';
+import { LoginBlockedException } from 'src/member-login-block/member-login-block.policy';
 
 export interface SigninResponse {
   token: string;
@@ -45,6 +47,7 @@ export class AuthService {
     @InjectRepository(RefreshTokenEntity)
     private readonly refreshTokenRepo: Repository<RefreshTokenEntity>,
     private readonly employeeService: EmployeesService,
+    private readonly loginBlockService: MemberLoginBlockService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -285,6 +288,8 @@ export class AuthService {
     if (user && passwordMatch === false) {
       throw new UnauthorizedException('Invalid password');
     }
+    // SSN0-273: เช็คหลังรหัสผ่านถูก — ไม่บอกสถานะระงับกับคนที่ไม่รู้รหัส
+    await this.loginBlockService.assertNotBlocked(user.mem_code);
     const payload = {
       username: user.mem_username,
       name: user.mem_nameSite ?? '',
@@ -421,6 +426,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('ไม่พบข้อมูลสมาชิก');
     }
+    await this.loginBlockService.assertNotBlocked(user.mem_code);
 
     const scope = lineLinkLoginScope();
     const payload = {
@@ -489,6 +495,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('ไม่พบข้อมูลสมาชิก');
     }
+    await this.loginBlockService.assertNotBlocked(user.mem_code);
 
     const payload = {
       username: user.mem_username,
@@ -534,6 +541,14 @@ export class AuthService {
     source: string,
   ): Promise<SigninResponse> {
     try {
+      const payload: { mem_code: string; scope?: unknown } =
+        await this.jwtService.verifyAsync(refresh_token, {
+          secret: process.env.ACCESS_TOKEN_SECRET,
+        });
+      // SSN0-273: เช็คก่อนหา token ใน DB — ตอนระงับ refresh token ของร้านถูกลบไปแล้ว
+      // ถ้าหาใน DB ก่อนจะได้ error ทั่วไปแทน LOGIN_BLOCKED แล้วหน้าเว็บไม่รู้ว่าต้องแจ้งอะไร
+      await this.loginBlockService.assertNotBlocked(payload.mem_code);
+
       const existingToken = await this.refreshTokenRepo.findOne({
         where: { refresh_token: refresh_token },
       });
@@ -541,11 +556,6 @@ export class AuthService {
         this.logger.warn('No existing token found');
         throw new UnauthorizedException('Invalid refresh token');
       }
-
-      const payload: { mem_code: string; scope?: unknown } =
-        await this.jwtService.verifyAsync(refresh_token, {
-          secret: process.env.ACCESS_TOKEN_SECRET,
-        });
 
       const [user] = await Promise.all([
         this.userRepo.findOne({
@@ -621,6 +631,7 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
     } catch (error: unknown) {
+      if (error instanceof LoginBlockedException) throw error;
       this.logger.error('refreshToken failed', error);
       throw new Error('Refresh token expired');
     }

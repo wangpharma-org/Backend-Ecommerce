@@ -72,6 +72,12 @@ e2e: `scripts/e2e/sticker-label.e2e.ts`
 เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
 e2e: `scripts/e2e/store-visibility.e2e.ts`
 
+## ระงับการเข้าใช้งานรายร้าน (sale สั่ง)
+
+โมดูล [src/member-login-block/](src/member-login-block/) — sale-backend เรียก `/ecom/internal/members/:mem_code/login-block` (x-internal-token) · บล็อคแล้ว login ทุกทาง + refresh ตอบ `403 LOGIN_BLOCKED` และ `JwtStrategy` กัน token เดิมทุก request (snapshot ในหน่วยความจำ 30 วิ) · ตอนบล็อคลบ refresh token + ปิด session ทั้งหมด · สถานะ + log อยู่ตารางแยก (`users` ถูก upsert จาก ERP)
+เปิดใช้ด้วย feature flag `member_login_block` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/member-login-block.md](docs/member-login-block.md)
+e2e: `scripts/e2e/member-login-block.e2e.ts`
+
 Team knowledge below is distilled from PR review feedback by the
 `learn-from-reviews` skill and ratified through normal PR review. It primes both
 human contributors and AI sessions so review feedback isn't re-learned every time.
