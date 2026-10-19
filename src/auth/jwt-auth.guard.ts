@@ -8,6 +8,7 @@ import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
 import { jwtConstants } from './constants';
 import { JwtService } from '@nestjs/jwt';
 import { REVIEW_SCOPE, isAllowedForReviewScope } from './token-scope';
+import { LoginBlockedException } from 'src/member-login-block/member-login-block.policy';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -46,7 +47,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         } else {
           throw new ForbiddenException('Insufficient permissions');
         }
-      } catch {
+      } catch (error) {
+        // SSN0-273: ส่ง code LOGIN_BLOCKED ต่อให้ frontend แยกออกจาก token เสีย
+        if (error instanceof LoginBlockedException) throw error;
         throw new ForbiddenException('Invalid or expired token');
       }
     }
