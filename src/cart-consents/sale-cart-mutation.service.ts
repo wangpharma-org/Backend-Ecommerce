@@ -165,13 +165,33 @@ export class SaleCartMutationService {
           });
         }
         const updated = await this.cart.getSaleCartSnapshot(customerCode);
+        const change = describeSaleCartChange(mutation, current, updated);
         return {
           ...updated,
-          change: describeSaleCartChange(mutation, current, updated),
+          change: {
+            ...change,
+            proName:
+              (await this.customerProductName(mutation.proCode)) ??
+              change.proName,
+          },
         };
       },
       1,
     );
+  }
+
+  /** The name the customer sees in their cart (same order as the web's getProductDisplayName). */
+  private async customerProductName(proCode: string): Promise<string | null> {
+    const rows: unknown = await this.dataSource.query(
+      'SELECT pro_nameTH, pro_nameSale, pro_name FROM product WHERE pro_code = ? LIMIT 1',
+      [proCode],
+    );
+    const row = Array.isArray(rows) && isRecord(rows[0]) ? rows[0] : null;
+    for (const key of ['pro_nameTH', 'pro_nameSale', 'pro_name']) {
+      const value = row?.[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return null;
   }
 
   async withCartMutationLock<T>(
