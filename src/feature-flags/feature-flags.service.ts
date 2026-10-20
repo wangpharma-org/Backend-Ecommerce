@@ -11,6 +11,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   // ECWC-643: lot ในหน้ารายละเอียดสินค้าเป็นของใหม่ — ปิดไว้จนกว่าแอดมินจะเปิดเอง
   // (lot_display_cart ไม่อยู่ในนี้ เพราะตะกร้าแสดง lot อยู่แล้ว default เปิดเหมือนเดิม)
   'lot_display_product_detail',
+  // SSN0-176: เว็บแจ้งลูกค้าแบบ realtime ขณะฝ่ายขายแก้ตะกร้า — ปิดไว้จนกว่าจะเปิดใช้ร่วมกับฝั่ง Sale
+  'sale_cart_live_activity',
 ]);
 
 @Injectable()
