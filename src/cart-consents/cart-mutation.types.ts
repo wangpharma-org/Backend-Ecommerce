@@ -112,3 +112,71 @@ export function parseCartMutation(value: unknown): CartMutation {
   }
   throw new BadRequestException('Invalid cart mutation');
 }
+
+/** Before/after of one Sale cart mutation, read under the cart lock (SSN0-177 audit, SSN0-176 notice). */
+export interface SaleCartChange {
+  proCode: string;
+  proName: string | null;
+  unit: string | null;
+  fromQuantity: number | null;
+  toQuantity: number | null;
+}
+
+interface ChangeSnapshot {
+  cart: {
+    pro_code: string;
+    pro_name: string | null;
+    shopping_cart: {
+      spc_amount: string;
+      spc_unit: string;
+      editable: boolean;
+    }[];
+  }[];
+}
+
+function editableQuantity(
+  snapshot: ChangeSnapshot,
+  proCode: string,
+  unit: string,
+): number {
+  const product = snapshot.cart.find((item) => item.pro_code === proCode);
+  return (product?.shopping_cart ?? [])
+    .filter((line) => line.editable && line.spc_unit === unit)
+    .reduce((sum, line) => sum + (Number(line.spc_amount) || 0), 0);
+}
+
+export function describeSaleCartChange(
+  mutation: CartMutation,
+  before: ChangeSnapshot,
+  after: ChangeSnapshot,
+): SaleCartChange {
+  const proName =
+    before.cart.find((item) => item.pro_code === mutation.proCode)?.pro_name ??
+    after.cart.find((item) => item.pro_code === mutation.proCode)?.pro_name ??
+    null;
+  if (mutation.kind === 'REMOVE_PRODUCT') {
+    const lines =
+      before.cart
+        .find((item) => item.pro_code === mutation.proCode)
+        ?.shopping_cart.filter((line) => line.editable) ?? [];
+    const units = [...new Set(lines.map((line) => line.spc_unit))];
+    // Several units of one product cannot be expressed as a single from-quantity.
+    return {
+      proCode: mutation.proCode,
+      proName,
+      unit: units.length === 1 ? units[0] : null,
+      fromQuantity:
+        units.length === 1
+          ? editableQuantity(before, mutation.proCode, units[0])
+          : null,
+      toQuantity: 0,
+    };
+  }
+  return {
+    proCode: mutation.proCode,
+    proName,
+    unit: mutation.unit,
+    fromQuantity: editableQuantity(before, mutation.proCode, mutation.unit),
+    toQuantity: editableQuantity(after, mutation.proCode, mutation.unit),
+  };
+}

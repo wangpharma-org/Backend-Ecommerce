@@ -17,10 +17,16 @@ import {
 import { UserEntity } from '../users/users.entity';
 import type { AuthenticatedSaleUser } from '../auth/sale-jwt-auth.guard';
 import {
+  describeSaleCartChange,
   isRecord,
   parseCartMutation,
   type CartMutation,
+  type SaleCartChange,
 } from './cart-mutation.types';
+
+export type SaleCartMutationResult = SaleCartSnapshot & {
+  change: SaleCartChange;
+};
 import { CartConsentGatewayService } from './cart-consent-gateway.service';
 
 @Injectable()
@@ -44,7 +50,7 @@ export class SaleCartMutationService {
     permit: string | undefined,
     authorization: string | undefined,
     raw: unknown,
-  ): Promise<SaleCartSnapshot> {
+  ): Promise<SaleCartMutationResult> {
     const mutation = parseCartMutation(raw);
     await this.assertPermit(
       customerCode,
@@ -158,7 +164,11 @@ export class SaleCartMutationService {
             ordinaryOnly: true,
           });
         }
-        return this.cart.getSaleCartSnapshot(customerCode);
+        const updated = await this.cart.getSaleCartSnapshot(customerCode);
+        return {
+          ...updated,
+          change: describeSaleCartChange(mutation, current, updated),
+        };
       },
       1,
     );
