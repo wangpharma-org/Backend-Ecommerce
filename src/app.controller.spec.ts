@@ -4,14 +4,17 @@ import { AppController } from './app.controller';
 describe('AppController — Sale cart access', () => {
   const getSaleCartSnapshot = jest.fn();
   const assertSalespersonCartRead = jest.fn();
+  const withCartMutationLock = jest.fn((_code: string, operation: () => Promise<unknown>) => operation());
   const controller = Object.assign(Object.create(AppController.prototype), {
     shoppingCartService: { getSaleCartSnapshot },
     cartConsentGatewayService: { assertSalespersonCartRead },
+    saleCartMutationService: { withCartMutationLock },
   }) as AppController;
 
   beforeEach(() => {
     getSaleCartSnapshot.mockReset();
     assertSalespersonCartRead.mockReset();
+    withCartMutationLock.mockClear();
   });
 
   it('rejects missing Sale bearer credentials before reading a cart', async () => {
@@ -32,6 +35,7 @@ describe('AppController — Sale cart access', () => {
     ).resolves.toBe(snapshot);
     expect(assertSalespersonCartRead).toHaveBeenCalledWith('sale-jwt', 'M001');
     expect(getSaleCartSnapshot).toHaveBeenCalledWith('M001');
+    expect(withCartMutationLock).toHaveBeenCalledWith('M001', expect.any(Function));
   });
 
   it('does not read the cart when Sale denies assignment', async () => {

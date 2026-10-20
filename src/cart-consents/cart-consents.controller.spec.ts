@@ -7,6 +7,7 @@ import {
 } from './cart-consents.controller';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { Request } from 'express';
+import { SaleCartMutationService } from './sale-cart-mutation.service';
 
 describe('CartConsentsController', () => {
   const gateway = { list: jest.fn(), action: jest.fn() };
@@ -41,7 +42,16 @@ describe('CartConsentsController', () => {
 });
 
 describe('CartSessionsController', () => {
-  const gateway = { listSessions: jest.fn(), sessionAction: jest.fn() };
+  const gateway = {
+    listSessions: jest.fn(),
+    sessionAction: jest.fn(),
+    getCartContact: jest.fn(),
+  };
+  const cartMutations = {
+    withCartMutationLock: jest.fn(
+      (_code: string, work: () => Promise<unknown>) => work(),
+    ),
+  };
   const requestFor = (user: unknown): Request & { user?: unknown } =>
     ({ user }) as Request & { user?: unknown };
   let controller: CartSessionsController;
@@ -50,6 +60,7 @@ describe('CartSessionsController', () => {
     jest.clearAllMocks();
     controller = new CartSessionsController(
       gateway as unknown as CartConsentGatewayService,
+      cartMutations as unknown as SaleCartMutationService,
     );
   });
 
@@ -115,5 +126,25 @@ describe('CartSessionsController', () => {
     ).toThrow(UnauthorizedException);
     expect(gateway.listSessions).not.toHaveBeenCalled();
     expect(gateway.sessionAction).not.toHaveBeenCalled();
+  });
+
+  it('waits for cart writes using only the authenticated customer code', async () => {
+    await expect(
+      controller.writeBarrier(
+        requestFor({ mem_code: 'M001' }),
+        'Bearer customer-jwt',
+      ),
+    ).resolves.toEqual({ settled: true });
+    expect(cartMutations.withCartMutationLock).toHaveBeenCalledWith(
+      'M001',
+      expect.any(Function),
+      30,
+    );
+    await expect(
+      controller.writeBarrier(
+        requestFor({ emp_code: 'E001' }),
+        'Bearer sale-jwt',
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

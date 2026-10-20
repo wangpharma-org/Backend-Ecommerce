@@ -7,6 +7,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
+export interface AuthenticatedSaleUser {
+  empCode: string;
+  platformId: string;
+}
+
 @Injectable()
 export class SaleJwtAuthGuard implements CanActivate {
   constructor(
@@ -17,6 +22,7 @@ export class SaleJwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<{
       headers: { authorization?: string };
+      saleUser?: AuthenticatedSaleUser;
     }>();
     const match = /^Bearer (\S+)$/.exec(request.headers.authorization ?? '');
     const secret = this.config.get<string>('ACCESS_TOKEN_SECRET');
@@ -40,6 +46,10 @@ export class SaleJwtAuthGuard implements CanActivate {
       ) {
         throw new UnauthorizedException('Sale token required');
       }
+      request.saleUser = {
+        empCode: payload.emp_code.trim(),
+        platformId: payload.platform_id.trim(),
+      };
       return true;
     } catch {
       throw new UnauthorizedException('Sale token required');

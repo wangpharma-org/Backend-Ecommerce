@@ -97,6 +97,36 @@ describe('CartConsentGatewayService', () => {
     );
   });
 
+  it('rechecks active mutation authority at Sale and validates contact data', async () => {
+    requestSpy.mockResolvedValueOnce({ data: { active: true } });
+    await service.assertSalespersonCartMutation('sale-jwt', 'M001', session.id);
+    expect(requestSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: `https://sale.example/api/sale/customers/M001/cart-sessions/${session.id}/mutation-authority`,
+        headers: { Authorization: 'Bearer sale-jwt' },
+      }),
+    );
+    requestSpy.mockResolvedValueOnce({
+      data: {
+        salespersonCode: 'E001',
+        displayName: 'Sale',
+        email: 'sale@example.com',
+        private: 'hidden',
+      },
+    });
+    await expect(service.getCartContact('customer-jwt')).resolves.toEqual({
+      salespersonCode: 'E001',
+      displayName: 'Sale',
+      email: 'sale@example.com',
+    });
+    requestSpy.mockResolvedValueOnce({
+      data: { salespersonCode: 'E001', displayName: 42, email: null },
+    });
+    await expect(service.getCartContact('customer-jwt')).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
+  });
+
   it('denies invalid responses and missing configuration', async () => {
     requestSpy.mockResolvedValue({ data: [{ status: 'ACTIVE' }] });
     await expect(service.list('customer-jwt')).rejects.toBeInstanceOf(

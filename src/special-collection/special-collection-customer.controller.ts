@@ -21,6 +21,7 @@ import { CreateSetBasketDto } from './dto/create-set-basket.dto';
 import { PreviewBasketDto } from './dto/preview-basket.dto';
 import { FlashsaleService } from '../flashsale/flashsale.service';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
+import { SaleCartMutationService } from '../cart-consents/sale-cart-mutation.service';
 
 interface JwtUser {
   username: string;
@@ -47,6 +48,7 @@ export class SpecialCollectionCustomerController {
     private readonly promoBoardService: PromoBoardService,
     private readonly cartBasketService: CartBasketService,
     private readonly flashsaleService: FlashsaleService,
+    private readonly cartMutations: SaleCartMutationService,
   ) {}
 
   /** กระเช้าที่อยู่ในตะกร้าแล้ว — ส่ง promo_id มาเพื่อกรองเฉพาะโปรนั้น */
@@ -73,11 +75,13 @@ export class SpecialCollectionCustomerController {
     }),
   )
   createBasket(@Body() dto: CreateBasketDto, @Req() req: { user: JwtUser }) {
-    return this.cartBasketService.createBasket(
-      req.user.mem_code,
-      dto.promo_id,
-      dto.lines,
-      toPriceOption(req.user.price_option),
+    return this.cartMutations.withCartMutationLock(req.user.mem_code, () =>
+      this.cartBasketService.createBasket(
+        req.user.mem_code,
+        dto.promo_id,
+        dto.lines,
+        toPriceOption(req.user.price_option),
+      ),
     );
   }
 
@@ -94,11 +98,13 @@ export class SpecialCollectionCustomerController {
     @Body() dto: CreateSetBasketDto,
     @Req() req: { user: JwtUser },
   ) {
-    return this.cartBasketService.createSetBasket(
-      req.user.mem_code,
-      dto.set_code,
-      dto.qty,
-      toPriceOption(req.user.price_option),
+    return this.cartMutations.withCartMutationLock(req.user.mem_code, () =>
+      this.cartBasketService.createSetBasket(
+        req.user.mem_code,
+        dto.set_code,
+        dto.qty,
+        toPriceOption(req.user.price_option),
+      ),
     );
   }
 
@@ -114,12 +120,14 @@ export class SpecialCollectionCustomerController {
     @Req() req: { user: JwtUser },
     @Query('confirm') confirm?: string,
   ) {
-    return this.cartBasketService.removeLine(
-      req.user.mem_code,
-      basketId,
-      spcId,
-      confirm === 'true',
-      toPriceOption(req.user.price_option),
+    return this.cartMutations.withCartMutationLock(req.user.mem_code, () =>
+      this.cartBasketService.removeLine(
+        req.user.mem_code,
+        basketId,
+        spcId,
+        confirm === 'true',
+        toPriceOption(req.user.price_option),
+      ),
     );
   }
 
@@ -128,10 +136,12 @@ export class SpecialCollectionCustomerController {
     @Param('basketId', ParseIntPipe) basketId: number,
     @Req() req: { user: JwtUser },
   ) {
-    return this.cartBasketService.deleteBasket(
-      req.user.mem_code,
-      basketId,
-      toPriceOption(req.user.price_option),
+    return this.cartMutations.withCartMutationLock(req.user.mem_code, () =>
+      this.cartBasketService.deleteBasket(
+        req.user.mem_code,
+        basketId,
+        toPriceOption(req.user.price_option),
+      ),
     );
   }
 
