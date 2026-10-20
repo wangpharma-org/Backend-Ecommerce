@@ -87,6 +87,28 @@ export interface EcomOrderStatusV2Checkpoint {
   latitude: string;
   longitude: string;
   time: string | null;
+  // ECWC-600 (PDPA): พิกัดถูกปัดให้หยาบลงเพราะร้านล่าสุดไม่ยอมให้คนอื่นเห็นตำแหน่งตัวเอง
+  // frontend ต้องบอกผู้ใช้ว่าเป็นตำแหน่ง "โดยประมาณ" และไม่ปักหมุดลงอาคาร
+  approximate?: boolean;
+}
+
+// ECWC-600/601: ร้านล่าสุดที่ขนส่งรอบนี้ส่งสำเร็จ — logistics ส่งมาแค่ mem_code แล้วมาหาชื่อ/ที่อยู่
+// จากตาราง users ของ ecommerce เอง ไม่คืน mem_code ของร้านอื่นให้ลูกค้า
+// ที่อยู่ส่งแค่ตำบล/อำเภอ/จังหวัด, store_name = null เมื่อร้านนั้นไม่ยอมให้คนอื่นเห็นชื่อ (customer_store_visibility)
+export interface EcomLastDeliveredStore {
+  store_name: string | null;
+  // ECWC-600: ระดับถนน (ผู้บริหารเห็นว่าตำบลกว้างเกินไป) — ตัดคำนำหน้า "ถนน/ถ." ออกแล้ว
+  road: string | null;
+  tumbon: string | null;
+  amphur: string | null;
+  province: string | null;
+  delivered_at: string | null;
+}
+
+export interface EcomLatestDeliveringStoreItem {
+  soh_running: string;
+  // null = รถออกจากคลังแล้วแต่ยังไม่ได้ส่งสักร้าน
+  last_delivered_store: EcomLastDeliveredStore | null;
 }
 
 export interface EcomOrderStatusV2Evidence {
@@ -152,5 +174,6 @@ export interface EcomOrderStatusV2Res {
     store_longitude: string | null;
     finished_at: string | null;
     evidence: EcomOrderStatusV2Evidence | null;
+    last_delivered_store: EcomLastDeliveredStore | null;
   } | null;
 }

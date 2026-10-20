@@ -37,6 +37,7 @@ describe('HappyHourController', () => {
       updateSlot: jest.fn(),
       deleteSlot: jest.fn(),
       simulate: jest.fn(),
+      getCartPreview: jest.fn(),
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -72,6 +73,45 @@ describe('HappyHourController', () => {
 
   afterEach(async () => {
     await app.close();
+  });
+
+  describe('POST /admin/happy-hour/cart-preview', () => {
+    it('forwards scope with the authenticated member', async () => {
+      service.getCartPreview.mockResolvedValue({ is_happy_hour: false });
+      await request(app.getHttpServer())
+        .post('/admin/happy-hour/cart-preview')
+        .send({ basket_id: 81 })
+        .expect(201);
+      expect(service.getCartPreview).toHaveBeenCalledWith({ basket_id: 81 }, 'M01');
+    });
+
+    it('preserves requests that omit basket scope', async () => {
+      service.getCartPreview.mockResolvedValue({ is_happy_hour: false });
+      await request(app.getHttpServer())
+        .post('/admin/happy-hour/cart-preview')
+        .send({})
+        .expect(201);
+      expect(service.getCartPreview).toHaveBeenCalledWith({}, 'M01');
+    });
+
+    it.each([null, 0, -1, 1.5, '81', '', true, [], {}, Number.MAX_SAFE_INTEGER + 1])(
+      'rejects malformed scope instead of calling the full-cart service: %j',
+      async (basket_id) => {
+        await request(app.getHttpServer())
+          .post('/admin/happy-hour/cart-preview')
+          .send({ basket_id })
+          .expect(400);
+        expect(service.getCartPreview).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a client-supplied member override', async () => {
+      await request(app.getHttpServer())
+        .post('/admin/happy-hour/cart-preview')
+        .send({ basket_id: 81, mem_code: 'OTHER' })
+        .expect(400);
+      expect(service.getCartPreview).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /admin/happy-hour/config', () => {

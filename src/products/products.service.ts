@@ -1335,6 +1335,12 @@ export class ProductsService {
                 .andWhere('product.pro_priceC > :zero3', { zero3: 0 })
                 .andWhere('product.pro_name NOT LIKE :prefix7', {
                   prefix7: 'ค่า%',
+                })
+                .andWhere('product.pro_name NOT LIKE :freePrefix', {
+                  freePrefix: 'FREE/%',
+                })
+                .andWhere('product.pro_name NOT LIKE :slashFree', {
+                  slashFree: '%/ฟรี%',
                 });
 
               if (data.category === 7) {
@@ -1644,6 +1650,89 @@ export class ProductsService {
     );
   }
 
+  // fallback สุดท้ายเมื่อ ES และเว็บเก่า (search_auto/search_enter) ไม่เจออะไรเลย
+  // ค้น LIKE ตรงใน DB แบบเดิม — คืนแค่ pro_code ให้ไป fetch/paginate ร่วมกับ flow ปกติ
+  // เงื่อนไขกรองต้องตรงกับ must_not ของ ES (isSearchExcludedProduct กรองซ้ำอีกชั้นหลัง fetch)
+  private async searchProductCodesFromDb(data: {
+    keyword: string;
+    isL16: boolean;
+    creditor_codes?: string[];
+  }): Promise<string[]> {
+    const escaped = data.keyword.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const like = `%${escaped}%`;
+    const searchColumns = [
+      'pro_code',
+      'pro_name',
+      'pro_nameSale',
+      'pro_nameEN',
+      'pro_nameTH',
+      'pro_nameMain',
+      'pro_keysearch',
+      'pro_genericname',
+      'pro_barcode1',
+      'pro_barcode2',
+      'pro_barcode3',
+      'pro_drugmain',
+      'pro_drugmain2',
+      'pro_drugmain3',
+      'pro_drugmain4',
+    ];
+
+    const qb = this.productRepo
+      .createQueryBuilder('product')
+      .select('product.pro_code', 'pro_code')
+      .where(
+        new Brackets((sub) => {
+          for (const column of searchColumns) {
+            sub.orWhere(`product.${column} LIKE :like`, { like });
+          }
+        }),
+      )
+      .andWhere('product.pro_priceA > 0')
+      .andWhere('product.pro_priceB > 0')
+      .andWhere('product.pro_priceC > 0')
+      .andWhere('product.pro_priceA NOT IN (1, 10000000)')
+      .andWhere('product.pro_priceB NOT IN (1, 10000000)')
+      .andWhere('product.pro_priceC NOT IN (1, 10000000)')
+      .andWhere('product.invisible_id IS NULL')
+      .andWhere('product.pro_code NOT LIKE :mPrefix', { mPrefix: '@M%' })
+      .andWhere(
+        new Brackets((sub) => {
+          sub
+            .where('product.pro_name NOT LIKE :p1', { p1: 'ฟรี%' })
+            .andWhere('product.pro_name NOT LIKE :p2', { p2: '@%' })
+            .andWhere('product.pro_name NOT LIKE :p3', { p3: 'ส่งเสริม%' })
+            .andWhere('product.pro_name NOT LIKE :p4', { p4: 'รีเบท%' })
+            .andWhere('product.pro_name NOT LIKE :p5', { p5: '-%' })
+            .andWhere('product.pro_name NOT LIKE :p6', { p6: '/%' })
+            .andWhere('product.pro_name NOT LIKE :p7', { p7: 'ค่า%' })
+            .andWhere('product.pro_name NOT LIKE :p8', { p8: '.%' })
+            .andWhere('product.pro_name NOT LIKE :p9', { p9: 'FREE/%' })
+            .andWhere('product.pro_name NOT LIKE :c1', { c1: '%ฟรี' })
+            .andWhere('product.pro_name NOT LIKE :c2', { c2: '%/ฟรี%' })
+            .andWhere('product.pro_name NOT LIKE :c3', { c3: '%บัตรโลตัส%' })
+            .andWhere('product.pro_name NOT LIKE :c4', { c4: '%สนับสนุน%' })
+            .andWhere('product.pro_name NOT LIKE :c5', { c5: '%ชดเชย%' });
+        }),
+      )
+      .orderBy('product.pro_name', 'ASC')
+      .limit(200);
+
+    // ES กรอง pro_l16_only = 1 ออกเมื่อไม่ใช่ร้าน L16 — ทำแบบเดียวกัน
+    if (!data.isL16) {
+      this.applyL16Filter(qb, 'product');
+    }
+    if (data.creditor_codes?.length) {
+      qb.innerJoin('product.creditor', 'creditor').andWhere(
+        'creditor.creditor_code IN (:...creditorCodes)',
+        { creditorCodes: data.creditor_codes },
+      );
+    }
+
+    const rows = await qb.getRawMany<{ pro_code: string }>();
+    return rows.map((row) => row.pro_code).filter(Boolean);
+  }
+
   async searchProductsElastic(data: {
     keyword: string;
     offset: number;
@@ -1703,6 +1792,14 @@ export class ProductsService {
                   { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
                   { prefix: { 'pro_code.keyword': '@M' } },
                   { prefix: { 'pro_name.keyword': 'ฟรี' } },
+                  {
+                    prefix: {
+                      'pro_name.keyword': {
+                        value: 'FREE/',
+                        case_insensitive: true,
+                      },
+                    },
+                  },
                   { prefix: { 'pro_name.keyword': '@' } },
                   { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
                   { prefix: { 'pro_name.keyword': 'รีเบท' } },
@@ -1711,6 +1808,7 @@ export class ProductsService {
                   { prefix: { 'pro_name.keyword': 'ค่า' } },
                   { prefix: { 'pro_name.keyword': '.' } },
                   { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+                  { wildcard: { 'pro_name.keyword': { value: '*/ฟรี*' } } },
                   {
                     wildcard: {
                       'pro_name.keyword': { value: '*บัตรโลตัส*' },
@@ -1910,6 +2008,18 @@ export class ProductsService {
         } catch {
           this.logger.warn('Search external/enter products failed');
         }
+
+        if (additionalProCodes.length === 0 && keyword) {
+          try {
+            additionalProCodes = await this.searchProductCodesFromDb({
+              keyword,
+              isL16,
+              creditor_codes: data.creditor_codes,
+            });
+          } catch (error) {
+            this.logger.warn('DB fallback search failed', error);
+          }
+        }
       }
 
       if (additionalProCodes.length > 0) {
@@ -1952,6 +2062,11 @@ export class ProductsService {
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .innerJoinAndSelect('product.units', 'units')
         .where('product.pro_code IN (:...proCodes)', { proCodes })
+        // ของแถม FREE/* อาจหลุดมาจาก external/enter search ที่ไม่ผ่าน ES filter
+        .andWhere(
+          '(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND product.pro_name NOT LIKE :slashFree))',
+          { freePrefix: 'FREE/%', slashFree: '%/ฟรี%' },
+        )
         .select([
           'product.pro_code',
           'product.pro_name',

@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ProductEntity } from '../products/products.entity';
+import type { StickerOrderSnapshot } from '../sticker-label/sticker-label.options';
 
 @Entity({ name: 'shopping_order' })
 export class ShoppingOrderEntity {
@@ -82,4 +83,11 @@ export class ShoppingOrderEntity {
 
   @Column({ type: 'boolean', default: false })
   is_happy_hour?: boolean;
+
+  /**
+   * ECWC-699 snapshot รูปแบบสินค้าสั่งทำ ณ ตอนสั่ง — ร้านแก้ข้อมูลทีหลังไม่กระทบออเดอร์นี้
+   * null = สินค้าปกติ
+   */
+  @Column({ type: 'json', nullable: true, default: null })
+  custom_options?: StickerOrderSnapshot | null;
 }
