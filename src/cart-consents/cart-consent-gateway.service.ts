@@ -7,6 +7,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import {
+  parseCartActivityPage,
+  toActivityQueryString,
+  type CartActivityPage,
+  type CartActivityQuery,
+} from './cart-activity.types';
 
 export type CartConsentScope =
   | 'ADD_PRODUCT'
@@ -126,6 +132,18 @@ export class CartConsentGatewayService {
       displayName: payload.displayName,
       email: payload.email,
     };
+  }
+
+  async listActivity(
+    token: string,
+    query: CartActivityQuery,
+  ): Promise<CartActivityPage> {
+    const payload = await this.forward(
+      'GET',
+      `/customer/cart-audit-logs${toActivityQueryString(query)}`,
+      token,
+    );
+    return parseCartActivityPage(payload);
   }
 
   async sessionAction(

@@ -158,7 +158,16 @@ describe('SaleCartMutationService', () => {
         'Bearer sale-jwt',
         mutation,
       ),
-    ).resolves.toEqual(updated);
+    ).resolves.toEqual({
+      ...updated,
+      change: {
+        proCode: 'P001',
+        proName: null,
+        unit: 'BOX',
+        fromQuantity: 0,
+        toQuantity: 0,
+      },
+    });
     expect(consent.assertSalespersonCartMutation).toHaveBeenCalledWith(
       'sale-jwt',
       'M001',
@@ -258,7 +267,16 @@ describe('SaleCartMutationService', () => {
         'Bearer sale-jwt',
         change,
       ),
-    ).resolves.toEqual(updated);
+    ).resolves.toEqual({
+      ...updated,
+      change: {
+        proCode: 'P001',
+        proName: 'Product',
+        unit: 'BOX',
+        fromQuantity: 1,
+        toQuantity: 0,
+      },
+    });
     expect(cart.addProductCart).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 2,
