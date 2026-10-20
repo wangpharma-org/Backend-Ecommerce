@@ -40,6 +40,8 @@ export interface SessionView {
   end_reason: EndReason | null;
   sales_name: string | null;
   sales_nick: string | null;
+  /// เซลส์เจ้าของรอบ — ระบบขายใช้ตรวจว่าเป็นรอบของคนที่เรียก (เส้นทาง internal เท่านั้น ลูกค้าไม่เห็น)
+  emp_code: string | null;
   lines: SessionLine[];
   idle_seconds: number;
   consent: {
@@ -188,6 +190,7 @@ export class SalesCartSessionService {
       end_reason: row.end_reason,
       sales_name: row.sales_name,
       sales_nick: row.sales_nick,
+      emp_code: row.emp_code ?? null,
       lines: this.parseLines(row.lines),
       idle_seconds: Number(row.idle_seconds) || 0,
       consent,

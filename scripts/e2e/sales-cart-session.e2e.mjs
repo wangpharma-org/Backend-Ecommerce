@@ -71,6 +71,11 @@ try {
     s1.status === 200 && s1.data.status === 'awaiting_consent' && cur1.data?.request?.sales_name === 'E2E นุช' && cur1.data.request.sales_nick === 'นุช' && !cur1.data.session,
     `${s1.data?.status} · request ${JSON.stringify(cur1.data?.request)}`);
 
+  // ระบบขายใช้ emp_code ตรวจว่าเป็นรอบของเซลส์คนที่เรียก (รีวิวปอ #119) — ส่งทาง internal เท่านั้น ลูกค้าไม่เห็นรหัสพนักงาน
+  check('internal บอกเจ้าของรอบ (emp_code) · ฝั่งลูกค้าไม่มีรหัสพนักงาน',
+    s1.data.emp_code === 'E2E-0743' && !JSON.stringify(cur1.data ?? {}).includes('E2E-0743'),
+    `internal ${s1.data?.emp_code} · ลูกค้า ${JSON.stringify(cur1.data ?? {}).includes('E2E-0743') ? 'เห็น' : 'ไม่เห็น'}`);
+
   const allow = await call('POST', `/ecom/sales-cart-session/consent/${cur1.data.request.id}`, { internal: false, as: cust(M1), body: { decision: 'allow', channel: 'web' } });
   const g1 = await call('GET', `/ecom/internal/sales-cart-session/${s1.data.id}`);
   const again = await call('POST', `/ecom/sales-cart-session/consent/${cur1.data.request.id}`, { internal: false, as: cust(M1), body: { decision: 'deny' } });
