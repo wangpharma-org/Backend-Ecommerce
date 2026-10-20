@@ -32,6 +32,7 @@ describe('SaleCartMutationService', () => {
     release: jest.fn().mockResolvedValue(undefined),
   };
   const jwt = { verifyAsync: jest.fn() };
+  const productQuery = jest.fn().mockResolvedValue([]);
   const cart = {
     getSaleCartSnapshot: jest.fn(),
     addProductCart: jest.fn().mockResolvedValue(updated),
@@ -71,7 +72,10 @@ describe('SaleCartMutationService', () => {
           },
         },
         { provide: JwtService, useValue: jwt },
-        { provide: DataSource, useValue: { createQueryRunner: () => runner } },
+        {
+          provide: DataSource,
+          useValue: { createQueryRunner: () => runner, query: productQuery },
+        },
         { provide: ShoppingCartService, useValue: cart },
         { provide: CartConsentGatewayService, useValue: consent },
         { provide: getRepositoryToken(UserEntity), useValue: users },
@@ -185,6 +189,29 @@ describe('SaleCartMutationService', () => {
       }),
     );
     expect(runner.release).toHaveBeenCalled();
+  });
+
+  it('reports the product under the name the customer sees', async () => {
+    productQuery.mockResolvedValueOnce([
+      {
+        pro_nameTH: ' ',
+        pro_nameSale: 'ออฟซ่าร์ น้ำยาล้างตา 100มล.',
+        pro_name: 'ERP',
+      },
+    ]);
+    const result = await service.mutate(
+      'M001',
+      'session-1',
+      saleUser,
+      'permit',
+      'Bearer sale-jwt',
+      mutation,
+    );
+    expect(result.change.proName).toBe('ออฟซ่าร์ น้ำยาล้างตา 100มล.');
+    expect(productQuery).toHaveBeenCalledWith(
+      expect.stringContaining('FROM product'),
+      ['P001'],
+    );
   });
 
   it('does not let ADD_PRODUCT act as CHANGE_QUANTITY', async () => {
