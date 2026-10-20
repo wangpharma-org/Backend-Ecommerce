@@ -66,6 +66,7 @@ import { SpecialCollectionModule } from './special-collection/special-collection
 import { BundleSetModule } from './bundle-set/bundle-set.module';
 import { CustomerPromotionsModule } from './customer-promotions/customer-promotions.module';
 
+import { CheckoutPreviewModule } from './checkout-preview/checkout-preview.module';
 @Module({
   imports: [
     AuthModule,
@@ -173,6 +174,7 @@ import { CustomerPromotionsModule } from './customer-promotions/customer-promoti
     WatermarkAuditModule,
     PreorderModule,
     StickerLabelModule,
+    CheckoutPreviewModule,
   ],
   controllers: [AppController],
   providers: [AppService],
