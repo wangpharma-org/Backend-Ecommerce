@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
@@ -13,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CartConsentGatewayService } from './cart-consent-gateway.service';
+import type { CartActivityQuery } from './cart-activity.types';
 import { SaleCartMutationService } from './sale-cart-mutation.service';
 
 function customerToken(user: unknown, authorization?: string): string {
@@ -134,6 +136,20 @@ export class CartSessionsController {
     @Headers('authorization') authorization?: string,
   ) {
     return this.gateway.listSessions(customerToken(req.user, authorization));
+  }
+
+  // Salesperson edits and the customer's own decisions; poll with afterId=<latestId>.
+  @Get('activity')
+  @Header('Cache-Control', 'no-store')
+  activity(
+    @Req() req: Request & { user?: unknown },
+    @Query() query: CartActivityQuery,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.gateway.listActivity(
+      customerToken(req.user, authorization),
+      query,
+    );
   }
 
   @Post(':id/accept')
