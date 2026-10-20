@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CartConsentsModule } from '../cart-consents/cart-consents.module';
 import { EditAddress } from '../edit-address/edit-address.entity';
+// JwtAuthGuard injects FeatureFlagsService — without this module the guard is undefined (500).
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ShoppingCartModule } from '../shopping-cart/shopping-cart.module';
 import { ShoppingOrderModule } from '../shopping-order/shopping-order.module';
 import { UserEntity } from '../users/users.entity';
@@ -16,6 +18,7 @@ import { SaleOrderRequestService } from './sale-order-request.service';
   imports: [
     TypeOrmModule.forFeature([SaleOrderRequestEntity, UserEntity, EditAddress]),
     CartConsentsModule,
+    FeatureFlagsModule,
     ShoppingCartModule,
     ShoppingOrderModule,
   ],
