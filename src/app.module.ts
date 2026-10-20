@@ -63,6 +63,7 @@ import { ProductLabelRulesModule } from './product-label-rules/product-label-rul
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
 import { CartConsentsModule } from './cart-consents/cart-consents.module';
+import { SaleOrderRequestModule } from './sale-order-request/sale-order-request.module';
 import { SaleJwtAuthGuard } from './auth/sale-jwt-auth.guard';
 
 @Module({
@@ -170,6 +171,7 @@ import { SaleJwtAuthGuard } from './auth/sale-jwt-auth.guard';
     WatermarkAuditModule,
     PreorderModule,
     CartConsentsModule,
+    SaleOrderRequestModule,
   ],
   controllers: [AppController],
   providers: [AppService, SaleJwtAuthGuard],

@@ -175,6 +175,21 @@ export class CartConsentGatewayService {
     }
   }
 
+  async assertSalespersonOrderRequest(
+    token: string,
+    customerCode: string,
+    sessionId: string,
+  ): Promise<void> {
+    const payload = await this.forward(
+      'GET',
+      `/customers/${encodeURIComponent(customerCode)}/cart-sessions/${encodeURIComponent(sessionId)}/order-authority`,
+      token,
+    );
+    if (!this.isRecord(payload) || payload.active !== true) {
+      throw new BadGatewayException('Invalid order authority response');
+    }
+  }
+
   private async forward(
     method: 'GET' | 'POST',
     path: string,
