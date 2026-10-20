@@ -82,7 +82,9 @@ describe('SaleOrderRequestService', () => {
   };
   const orders = { submitOrder: jest.fn().mockResolvedValue(['005-000001']) };
   let savedRequest: SaleOrderRequestEntity | null = null;
+  const productQuery = jest.fn().mockResolvedValue([]);
   const requests = {
+    manager: { query: productQuery },
     find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn(),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -181,6 +183,41 @@ describe('SaleOrderRequestService', () => {
     expect(
       getSavedRequest().cartSnapshot.cart.map((product) => product.pro_code),
     ).toEqual(['P001']);
+  });
+
+  it('names products in the customer review as the cart does, keeping the stored snapshot', async () => {
+    await service.create(
+      'M001',
+      'session-id',
+      actor,
+      'sale-jwt',
+      'permit',
+      input,
+    );
+    const saved = getSavedRequest();
+    const stored = JSON.stringify(saved.cartSnapshot);
+    requests.findOne.mockResolvedValueOnce(saved);
+    productQuery.mockResolvedValueOnce([
+      {
+        pro_code: 'P001',
+        pro_nameTH: 'ออฟซ่าร์ น้ำยาล้างตา 100มล.',
+        pro_nameSale: null,
+        pro_name: 'ERP',
+      },
+    ]);
+    const review = await service.getForCustomer(
+      saved.id,
+      'M001',
+      (
+        service as unknown as {
+          reviewToken: (r: SaleOrderRequestEntity) => string;
+        }
+      ).reviewToken(saved),
+    );
+    expect(review.cartSnapshot.cart.map((p) => p.display_name)).toEqual([
+      'ออฟซ่าร์ น้ำยาล้างตา 100มล.',
+    ]);
+    expect(JSON.stringify(saved.cartSnapshot)).toBe(stored);
   });
 
   it('rejects a forged permit before reading the cart', async () => {

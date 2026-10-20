@@ -28,6 +28,7 @@ import {
   type SaleOrderAddressSnapshot,
 } from './sale-order-request.entity';
 import {
+  customerProductName,
   parseSaleOrderRequestInput,
   SALE_ORDER_PAYMENT_OPTIONS,
   SALE_ORDER_SHIPPING_OPTIONS,
@@ -360,12 +361,35 @@ export class SaleOrderRequestService {
     };
   }
 
-  private review(request: SaleOrderRequestEntity) {
+  // The stored snapshot stays untouched (it is the checkout fingerprint); only the
+  // response gains display_name, the name the customer knows from their cart.
+  private async review(request: SaleOrderRequestEntity) {
+    const codes = [
+      ...new Set(request.cartSnapshot.cart.map((product) => product.pro_code)),
+    ];
+    const rows: unknown = codes.length
+      ? await this.requests.manager.query(
+          'SELECT pro_code, pro_nameTH, pro_nameSale, pro_name FROM product WHERE pro_code IN (?)',
+          [codes],
+        )
+      : [];
+    const names = new Map<string, string>();
+    for (const row of Array.isArray(rows) ? (rows as unknown[]) : []) {
+      const name = customerProductName(row);
+      const code = (row as { pro_code?: unknown }).pro_code;
+      if (name && typeof code === 'string') names.set(code, name);
+    }
     return {
       id: request.id,
       status: request.status,
       expiresAt: request.expiresAt.toISOString(),
-      cartSnapshot: request.cartSnapshot,
+      cartSnapshot: {
+        ...request.cartSnapshot,
+        cart: request.cartSnapshot.cart.map((product) => ({
+          ...product,
+          display_name: names.get(product.pro_code) ?? product.pro_name,
+        })),
+      },
       addressSnapshot: request.addressSnapshot,
       shippingOption: request.shippingOption,
       paymentOption: request.paymentOption,
