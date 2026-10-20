@@ -11,6 +11,10 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   // ECWC-643: lot ในหน้ารายละเอียดสินค้าเป็นของใหม่ — ปิดไว้จนกว่าแอดมินจะเปิดเอง
   // (lot_display_cart ไม่อยู่ในนี้ เพราะตะกร้าแสดง lot อยู่แล้ว default เปิดเหมือนเดิม)
   'lot_display_product_detail',
+  // ECWC-697: สติ๊กเกอร์ฉลากยา — เปิดเมื่อ ERP สร้างสินค้า -05/-07 และราคาพร้อม
+  'sticker_label',
+  // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
+  'store_name_consent',
   // ECWC-691: ระบบขอคืนสินค้า — ปิดไว้จนกว่า logistic app / ERP พร้อมรับงาน
   'customer_return',
 ]);

@@ -102,6 +102,10 @@ export class PreorderCampaignEntity {
   @Column({ type: 'datetime', nullable: true })
   closing_reminded_at!: Date | null;
 
+  /** แจ้งลูกค้าว่ารอบเปิดรับจองแล้วเมื่อ (ครั้งเดียวต่อรอบ เปิดใหม่จาก closed ไม่แจ้งซ้ำ) */
+  @Column({ type: 'datetime', nullable: true })
+  open_notified_at!: Date | null;
+
   @Column({ type: 'varchar', length: 50, nullable: true })
   created_by!: string | null;
 

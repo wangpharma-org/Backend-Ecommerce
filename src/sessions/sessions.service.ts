@@ -69,7 +69,11 @@ export class SessionsService {
     });
   }
 
-  async updateLastActivity(sessionToken: string): Promise<void> {
+  /// memCode ที่ส่งมา = จำกัดให้แตะได้เฉพาะ session ของร้านนั้น (ผู้เรียกที่ไม่ใช่ผู้ดูแล)
+  async updateLastActivity(
+    sessionToken: string,
+    memCode?: string,
+  ): Promise<void> {
     const isEnabled = await this.featureFlagsService.getFlag(
       UPDATE_LAST_ACTIVITY_FLAG,
     );
@@ -78,14 +82,21 @@ export class SessionsService {
     }
 
     await this.sessionsRepository.update(
-      { token_hash: this.hashToken(sessionToken), is_active: true },
+      {
+        token_hash: this.hashToken(sessionToken),
+        is_active: true,
+        ...(memCode ? { mem_code: memCode } : {}),
+      },
       { last_activity: new Date() },
     );
   }
 
-  async logoutSession(sessionToken: string): Promise<void> {
+  async logoutSession(sessionToken: string, memCode?: string): Promise<void> {
     await this.sessionsRepository.update(
-      { token_hash: this.hashToken(sessionToken) },
+      {
+        token_hash: this.hashToken(sessionToken),
+        ...(memCode ? { mem_code: memCode } : {}),
+      },
       {
         is_active: false,
         logout_at: new Date(),

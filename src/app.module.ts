@@ -58,7 +58,9 @@ import { ProductRequestModule } from './product-request/product-request.module';
 import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { PreorderModule } from './preorder/preorder.module';
+import { StickerLabelModule } from './sticker-label/sticker-label.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
+import { StoreVisibilityModule } from './store-visibility/store-visibility.module';
 import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
@@ -134,6 +136,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ElasticsearchModule,
     HappyHourModule,
     DeliveryPreferenceModule,
+    StoreVisibilityModule,
     DhlTrackingModule,
     ProductLabelRulesModule,
     SpecialCollectionModule,
@@ -169,6 +172,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ProductRequestModule,
     WatermarkAuditModule,
     PreorderModule,
+    StickerLabelModule,
   ],
   controllers: [AppController],
   providers: [AppService],

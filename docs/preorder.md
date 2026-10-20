@@ -111,6 +111,17 @@ admin (`req.user.permission === true`)
 
 แจ้งเตือนอื่น: ผลจัดสรร (หลัง allocate apply), ยกเลิกรอบ, ETA เลื่อน (เมื่อ admin แก้ `eta_date` ของสินค้าที่มีคนจอง), เตือนก่อนปิดรอบ (cron 09:00), เจ้าหน้าที่จองแทนให้
 
+## เปิดรับจอง → แจ้งลูกค้า (ECWC-653 / ECWC-673)
+
+`PreorderService.notifyCampaignOpened(campaignId)` แจ้งครั้งเดียวต่อรอบ (เก็บเวลาใน `preorder_campaigns.open_notified_at`) เมื่อรอบ **รับจองได้จริง** คือ `status = open` และอยู่ในช่วง `starts_at`–`ends_at`
+
+- เรียกจาก 2 ทาง: ตอน admin กด "เปิดรับจอง" (ทำเบื้องหลัง ไม่ block response) และ cron ทุกนาที `notifyStartedCampaigns` สำหรับรอบที่ `starts_at` เพิ่งถึง หรือที่แจ้งรอบแรกไม่สำเร็จ
+- ผู้รับ = ร้านที่ผูก LINE OA (`GET /api/notifications/admin/users/line-registered` ของ notification-service) รวมกับร้านที่มี FCM token active ใน `notification_tokens`
+- ข้ามโดยไม่ตั้ง `open_notified_at` (cron จะลองใหม่) เมื่อรอบยังไม่มีสินค้า active หรือเรียก notification-service ไม่ได้
+- เปิดรอบใหม่จาก `closed` ไม่แจ้งซ้ำ
+- payload `data`: `{ type: 'preorder', event: 'campaign_opened', campaign_id, pro_code? (เฉพาะรอบที่มีสินค้าเดียว), url, line_text }` โดย `url = ${ECOMMERCE_WEB_URL}/preorder?campaign=<id>` (รอบสินค้าเดียวต่อ `&pro_code=<code>`; default `https://store.wangpharma.com`) — แอปใช้ `campaign_id`/`pro_code` เพื่อ scroll ไปที่รอบนั้น
+- `line_text` คือข้อความ LINE ทั้งก้อนตามรูปแบบประกาศ "🔥 แจ้งสินค้าขาดตลาด กำลังเข้า!!" (ชื่อสินค้า, รหัสสินค้า, ลิ้งค์สั่งจอง = `url`, ลิงก์ `${ECOMMERCE_WEB_URL}/login`) รอบหลายสินค้าไล่รายการได้สูงสุด 10 ตัว ที่เหลือสรุปเป็น "และอีก N รายการ" notification-service ส่งเป็น text ตามนี้และไม่ส่ง `line_text` ไป FCM
+
 ## ทดสอบ
 
 - unit: `npx jest src/preorder`

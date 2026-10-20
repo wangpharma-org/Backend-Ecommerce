@@ -2,6 +2,7 @@ import { WangdayService } from './wangday/wangday.service';
 import {
   BadGatewayException,
   BadRequestException,
+  HttpCode,
   Body,
   Controller,
   DefaultValuePipe,
@@ -10,6 +11,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  NotFoundException,
   Ip,
   Param,
   ParseIntPipe,
@@ -37,6 +39,8 @@ import { FavoriteService } from './favorite/favorite.service';
 import { FlashsaleService } from './flashsale/flashsale.service';
 import { UseGuards, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { InternalTokenGuard } from './auth/internal-token.guard';
+import { parseHotdealGiftLines } from './hotdeal/hotdeal-gifts';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -62,6 +66,7 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { assertOwnShop, sessionOwnerFilter } from './sessions/session-owner';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
@@ -74,6 +79,7 @@ import { ContractLogService } from './contract-log/contract-log.service';
 import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
 import { ContractLogPerson } from './contract-log/contract-log-person.entity';
 import { CreditorEntity } from './products/creditor.entity';
+import { parseCreditorCodes } from './promotion/creditor-codes.util';
 import { ContractLogCompanyDay } from './contract-log/contract-log-company-day.entity';
 import { ImagedebugService } from './imagedebug/imagedebug.service';
 import { CampaignsService } from './campaigns/campaigns.service';
@@ -94,6 +100,7 @@ import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service'
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
+import { toThaiDate } from './utils/date.util';
 
 export interface JwtPayload {
   username: string;
@@ -569,6 +576,7 @@ export class AppController {
     @Body()
     data: {
       emp_code?: string;
+      basket_id?: number;
       mem_code: string;
       total_price: number;
       listFree:
@@ -589,8 +597,16 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
+    if (data.basket_id !== undefined && typeof data.basket_id !== 'number') {
+      throw new BadRequestException('basket_id must be a positive integer');
+    }
+    const basketId = this.shoppingCartService.parseBasketCheckoutId(
+      data.basket_id,
+    );
     try {
-      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      if (basketId === undefined) {
+        await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -599,7 +615,7 @@ export class AppController {
     }
 
     const result = await this.shoppingOrderService.submitOrder(
-      { ...data, mem_code, mem_route: req.user.mem_route },
+      { ...data, basket_id: basketId, mem_code, mem_route: req.user.mem_route },
       ip,
     );
     return result;
@@ -650,6 +666,16 @@ export class AppController {
       });
     }
     return result;
+  }
+
+  // ให้ sale service ดึงชุดสินค้าแลกแต้มชุดเดียวกับที่ลูกค้าเห็น โดยไม่ต้องมี token ลูกค้า
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/product-coin')
+  async internalProductCoin(
+    @Query('mem_route') mem_route?: string,
+    @Query('sort_by') sort_by?: string,
+  ) {
+    return this.productsService.listFree(sort_by, undefined, mem_route ?? '');
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -848,16 +874,26 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
+  async getProductCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
+  ) {
     const memberCode = req.user.mem_code;
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
         memberCode,
         req.user.mem_route,
+        basketId,
       );
-    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
-    const dataDeleteCart =
-      await this.shoppingCartService.getDeleteCartItem(memberCode);
+    const summaryCart = await this.shoppingCartService.summaryCartDetailed(
+      memberCode,
+      basketId,
+    );
+    const dataDeleteCart = basketId === undefined
+      ? await this.shoppingCartService.getDeleteCartItem(memberCode)
+      : [];
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -952,9 +988,8 @@ export class AppController {
     @Query('pageSize') pageSize?: string,
     @Query('sort_order') sort_order?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getOrderListFromPhp(
         memCode,
@@ -1033,9 +1068,8 @@ export class AppController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
     }
@@ -1074,6 +1108,17 @@ export class AppController {
     );
   }
 
+  // ECWC-601: แถบใต้ navbar หน้าหลัก — ขนส่งที่กำลังส่งของให้ลูกค้าส่งถึงร้านไหนแล้ว
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/delivery/latest-store')
+  async getLatestDeliveringStores(
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.orderStatusV2Service.getLatestDeliveringStores(
+      req.user.mem_code,
+    );
+  }
+
   // ECWC-399/401/402/403: รวมสถานะจาก order-picking-service + logistics-backend เป็น timeline เดียว
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/order-status/delivering-count')
@@ -1106,16 +1151,17 @@ export class AppController {
     @Body()
     data: {
       promo_name: string;
-      creditor_code: string;
+      creditor_code?: string | string[];
       start_date: Date;
       end_date: Date;
       status: string;
     },
   ) {
+    const { creditor_code, ...rest } = data;
     return this.promotionService.addPromotion({
-      ...data,
+      ...rest,
       status: data.status === 'true',
-      creditor_code: data.creditor_code || null,
+      creditor_codes: parseCreditorCodes(creditor_code),
       file,
     });
   }
@@ -1288,8 +1334,10 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/condition/list/:tier_id')
-  async listPromotionConditions(@Param('tier_id') tier_id: string) {
-    return this.promotionService.getConditionsByTier(Number(tier_id));
+  async listPromotionConditions(
+    @Param('tier_id', ParseIntPipe) tier_id: number,
+  ) {
+    return this.promotionService.getConditionsByTier(tier_id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1309,11 +1357,11 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/reward/list/:tier_id')
   async listPromotionRewards(
-    @Param('tier_id') tier_id: string,
+    @Param('tier_id', ParseIntPipe) tier_id: number,
     @Req() req: Request & { user: JwtPayload },
   ) {
     return this.promotionService.getRewardsByTier(
-      Number(tier_id),
+      tier_id,
       req.user.mem_code,
       req.user.mem_route,
     );
@@ -1321,8 +1369,14 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/product/creditor')
-  async getProductByCreditor(@Body() data: { creditor_code: string }) {
-    return this.productsService.getProductByCreditor(data.creditor_code);
+  async getProductByCreditor(
+    @Body() data: { creditor_code?: string | string[] },
+  ) {
+    const creditorCodes = parseCreditorCodes(data.creditor_code);
+    if (creditorCodes.length === 0) {
+      throw new BadRequestException('creditor_code is required');
+    }
+    return this.productsService.getProductByCreditor(creditorCodes);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1351,7 +1405,7 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/promotion/tiers/:tier_id')
-  async getTierByID(@Param('tier_id') tier_id: number) {
+  async getTierByID(@Param('tier_id', ParseIntPipe) tier_id: number) {
     return this.promotionService.getTierOneById(tier_id);
   }
 
@@ -1364,16 +1418,64 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/promotion/update/promotion')
   async updatePromotion(
+    @Req() req: Request & { user: JwtPayload },
     @Body()
     data: {
       promo_id: number;
       promo_name?: string;
-      start_date?: Date;
-      end_date?: Date;
+      start_date?: string;
+      end_date?: string;
       status?: boolean;
     },
   ) {
-    return this.promotionService.updatePromotion(data);
+    if (req.user.permission !== true) {
+      throw new ForbiddenException('Admin permission is required');
+    }
+
+    if (data.start_date !== undefined || data.end_date !== undefined) {
+      const currentPromotion = await this.promotionService.getPromotionById(
+        data.promo_id,
+      );
+      if (!currentPromotion) {
+        throw new NotFoundException(
+          `Promotion with id ${data.promo_id} not found`,
+        );
+      }
+
+      const toDateOnly = (value: string | undefined, fallback: string) => {
+        if (value === undefined) return fallback;
+        const parsedDate = new Date(value);
+        if (Number.isNaN(parsedDate.getTime())) {
+          throw new BadRequestException('วันที่โปรโมชั่นไม่ถูกต้อง');
+        }
+        return toThaiDate(parsedDate);
+      };
+
+      const updatedDates = await this.promotionService.updatePromotionDates(
+        {
+          promo_id: data.promo_id,
+          start_date: toDateOnly(data.start_date, currentPromotion.start_date),
+          end_date: toDateOnly(data.end_date, currentPromotion.end_date),
+        },
+        { mem_code: req.user.mem_code, username: req.user.username },
+      );
+
+      if (data.promo_name !== undefined || data.status !== undefined) {
+        await this.promotionService.updatePromotion({
+          promo_id: data.promo_id,
+          promo_name: data.promo_name,
+          status: data.status,
+        });
+      }
+
+      return updatedDates;
+    }
+
+    return this.promotionService.updatePromotion({
+      promo_id: data.promo_id,
+      promo_name: data.promo_name,
+      status: data.status,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -1652,6 +1754,20 @@ export class AppController {
     return this.promotionService.generateCodePromotion(data.mem_code);
   }
 
+  // ให้ sale service ถามของแถม Hot Deal ของรายการสินค้าที่กำลังคีย์ โดยไม่ต้องมี token ลูกค้าและไม่แตะตะกร้า
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/hotdeal-gifts')
+  @HttpCode(200)
+  async internalHotdealGifts(@Body() body: unknown) {
+    const lines = parseHotdealGiftLines(body);
+    if (!lines) {
+      throw new BadRequestException(
+        'items must be an array of { pro_code, unit, amount > 0 }',
+      );
+    }
+    return this.hotdealService.giftsForOrderLines(lines);
+  }
+
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
     return await this.hotdealService.getHotdealFromCode(pro_code);
@@ -1925,7 +2041,7 @@ export class AppController {
   async getInvisibleProductByCreditor(
     @Param('creditor_code') creditor_code: string,
   ) {
-    return this.productsService.getProductByCreditor(creditor_code);
+    return this.productsService.getProductByCreditor([creditor_code]);
   }
 
   @Get('/ecom/invisible/product/creditor/list/:invisible_id')
@@ -1975,6 +2091,9 @@ export class AppController {
       name?: string;
       fullName: string;
       mem_address?: string;
+      mem_moo?: string;
+      mem_building?: string;
+      mem_room?: string;
       mem_village?: string;
       mem_alley?: string;
       mem_road?: string;
@@ -2176,40 +2295,74 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/active/:session_token')
-  async getActiveSession(@Param('session_token') session_token: string) {
-    return await this.sessionsService.findActiveSession(session_token);
+  async getActiveSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    const session = await this.sessionsService.findActiveSession(session_token);
+    if (!session) return session;
+    assertOwnShop(req.user, session.mem_code);
+    // แถวผู้ใช้ที่ join มามีรหัสผ่าน (hash) — ไม่ส่งออก
+    if (session.user) {
+      return { ...session, user: { ...session.user, mem_password: undefined } };
+    }
+    return session;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/user-sessions/:mem_code')
-  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+  async getUserActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     return await this.sessionsService.findUserActiveSessions(mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/session/update-activity/:session_token')
-  async updateSessionActivity(@Param('session_token') session_token: string) {
-    await this.sessionsService.updateLastActivity(session_token);
+  async updateSessionActivity(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    await this.sessionsService.updateLastActivity(
+      session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Session activity updated successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout')
-  async logoutSession(@Body() data: { session_token: string }) {
-    await this.sessionsService.logoutSession(data.session_token);
+  async logoutSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { session_token: string },
+  ) {
+    await this.sessionsService.logoutSession(
+      data.session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Logout successful' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-all')
-  async logoutAllSessions(@Body() data: { mem_code: string }) {
+  async logoutAllSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutAllUserSessions(data.mem_code);
     return { message: 'All sessions logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-recent')
-  async logoutRecentSessions(@Body() data: { mem_code: string }) {
+  async logoutRecentSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutRecentUserSessions(data.mem_code);
     return { message: 'Recently active sessions logged out successfully' };
   }
@@ -2223,7 +2376,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/count/:mem_code')
-  async countActiveSessions(@Param('mem_code') mem_code: string) {
+  async countActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     const count = await this.sessionsService.countUserActiveSessions(mem_code);
     return { active_sessions_count: count };
   }
@@ -2618,9 +2775,15 @@ export class AppController {
   @Get('/ecom/cart/summary')
   async summaryCart(
     @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
   ): Promise<number> {
     const mem_code = req.user.mem_code;
-    const data = await this.shoppingCartService.summaryCart(mem_code);
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
+    const data = await this.shoppingCartService.summaryCartDetailed(
+      mem_code,
+      basketId,
+    );
     return data.total;
   }
 
@@ -4844,5 +5007,10 @@ export class AppController {
     } else {
       throw new ForbiddenException('You not have Permission to Accesss');
     }
+  }
+
+  @Get('/health')
+  health() {
+    return { status: 'ok' };
   }
 }
