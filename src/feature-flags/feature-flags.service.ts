@@ -15,6 +15,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'sticker_label',
   // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
   'store_name_consent',
+  // ECWC-691: ระบบขอคืนสินค้า — ปิดไว้จนกว่า logistic app / ERP พร้อมรับงาน
+  'customer_return',
 ]);
 
 @Injectable()

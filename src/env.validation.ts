@@ -19,4 +19,6 @@ export const envValidationSchema = Joi.object({
   PRODUCT_SERVICE_URL: Joi.string().optional(),
   WEBHOOK_SECRET: Joi.string().optional(),
   KAFKA_GROUP_ID: Joi.string().default('consumer-ecommerce'),
+  // ECWC-691: key ร่วมกับ Order Picking สำหรับระบบขอคืนสินค้า (ไม่ตั้ง = ฟีเจอร์ตอบ 503)
+  RETURN_INTERNAL_API_KEY: Joi.string().min(32).optional(),
 });
