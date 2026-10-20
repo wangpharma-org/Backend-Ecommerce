@@ -67,6 +67,8 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
 import { CustomerPromotionsModule } from './customer-promotions/customer-promotions.module';
 
 import { CheckoutPreviewModule } from './checkout-preview/checkout-preview.module';
+import { InternalCustomerCartModule } from './internal-customer-cart/internal-customer-cart.module';
+import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.module';
 @Module({
   imports: [
     AuthModule,
@@ -175,6 +177,8 @@ import { CheckoutPreviewModule } from './checkout-preview/checkout-preview.modul
     PreorderModule,
     StickerLabelModule,
     CheckoutPreviewModule,
+    InternalCustomerCartModule,
+    SalesCartSessionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

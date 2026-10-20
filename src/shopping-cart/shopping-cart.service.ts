@@ -1238,6 +1238,30 @@ export class ShoppingCartService {
       .execute();
   }
 
+  /// หลังระบบอื่นแก้ตะกร้าตรง ๆ (เช่น ระบบขายลด/คืนของในตะกร้า) — คิดของแถมโปร/ฮอตดีลใหม่ + ขยับ cart_version
+  /// แบบเดียวกับท้าย clearBasketCheckout
+  async resyncDerivedRows(
+    mem_code: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const [member] = await manager.query<{ mem_price: string | null }[]>(
+      'SELECT mem_price FROM users WHERE mem_code = ? LIMIT 1',
+      [mem_code],
+    );
+    const priceOption = member?.mem_price?.trim() || 'C';
+    await this.checkPromotionReward(mem_code, priceOption, manager);
+    await this.syncHotdealFreebiesForCart(mem_code, manager);
+    await manager
+      .createQueryBuilder()
+      .update('users')
+      .set({
+        cart_version: () => 'cart_version + 1',
+        cart_synced_at: () => 'CURRENT_TIMESTAMP',
+      })
+      .where('mem_code = :mem_code', { mem_code })
+      .execute();
+  }
+
   private async handleCheckFlashsale(pro_code: string) {
     const data = await this.productRepo.findOne({
       where: { pro_code },
