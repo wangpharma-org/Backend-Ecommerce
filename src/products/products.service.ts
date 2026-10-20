@@ -29,6 +29,11 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ProductUnitEntity } from './product-unit.entity';
+import {
+  buildUnitRows,
+  normalizeUnitName,
+  parseUnitRatio,
+} from './product-unit.normalize';
 import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
 import {
   applyRedeemProductFilter,
@@ -808,7 +813,34 @@ export class ProductsService {
           ? (productData.pro_keysearch as string[]).join(',')
           : productData.pro_keysearch,
       });
-      await this.productRepo.save(newProduct);
+
+      // ECWC-743: trim ชื่อหน่วย, ข้ามค่าว่าง, ratio ผิด → 1
+      const { rows: unitRows, warnings } = buildUnitRows([
+        { level: 1, unit_name: pro_unit1, ratio: pro_ratio1 },
+        { level: 2, unit_name: pro_unit2, ratio: pro_ratio2 },
+        { level: 3, unit_name: pro_unit3, ratio: pro_ratio3 },
+      ]);
+      for (const warning of warnings) {
+        this.logger.warn(`createProduct ${product.pro_code} ${warning}`);
+      }
+      if (unitRows.length === 0) {
+        this.logger.warn(
+          `createProduct ${product.pro_code} ไม่มีหน่วยสินค้า (pro_unit1..3 ว่าง) — ค้นไม่เจอและใส่ตะกร้าไม่ได้จนกว่าจะเพิ่มหน่วย`,
+        );
+      }
+
+      // สินค้า + หน่วยต้องเข้าพร้อมกัน ไม่งั้นหน่วยพังแล้วเหลือสินค้าที่ไม่มีหน่วย
+      // หน่วย upsert ตาม (pro_code, level) ให้ข้อความ Kafka ที่ส่งซ้ำไม่ชน uk_product_unit
+      await this.productRepo.manager.transaction(async (manager) => {
+        await manager.save(ProductEntity, newProduct);
+        if (unitRows.length > 0) {
+          await manager.upsert(
+            ProductUnitEntity,
+            unitRows.map((u) => ({ ...u, pro_code: product.pro_code })),
+            ['pro_code', 'level'],
+          );
+        }
+      });
 
       const esDoc: EsProductDoc = {
         pro_code: newProduct.pro_code,
@@ -840,27 +872,8 @@ export class ProductsService {
             err,
           ),
         );
-
-      const unitsToSave = [
-        { level: 1, unit_name: pro_unit1, ratio: pro_ratio1 ?? 1 },
-        { level: 2, unit_name: pro_unit2, ratio: pro_ratio2 ?? 1 },
-        { level: 3, unit_name: pro_unit3, ratio: pro_ratio3 ?? 1 },
-      ].filter((u) => u.unit_name);
-
-      if (unitsToSave.length > 0) {
-        await this.productUnitRepo.save(
-          unitsToSave.map((u) =>
-            this.productUnitRepo.create({
-              pro_code: product.pro_code,
-              unit_name: u.unit_name,
-              ratio: u.ratio,
-              level: u.level,
-            }),
-          ),
-        );
-      }
     } catch (error) {
-      this.logger.error('Error creating product:', error);
+      this.logger.error(`Error creating product ${product.pro_code}:`, error);
       throw new Error('Error creating product');
     }
   }
@@ -912,7 +925,11 @@ export class ProductsService {
         updateData.creditor = toCreditorReference(creditor_code);
       }
 
-      await this.productRepo.update({ pro_code }, updateData);
+      // ECWC-743: ข้อความที่มีแค่หน่วย → updateData ว่าง → TypeORM throw UpdateValuesMissingError
+      // แล้ว catch กลืนไป หน่วยไม่ถูกบันทึก จึงข้าม update ตาราง product เมื่อไม่มีฟิลด์
+      if (Object.values(updateData).some((v) => v !== undefined)) {
+        await this.productRepo.update({ pro_code }, updateData);
+      }
 
       if (creditor_code !== undefined) {
         const normalizedCreditorCode =
@@ -944,9 +961,28 @@ export class ProductsService {
 
         const processUnit = async (
           level: number,
-          unitName?: string,
-          ratio?: number,
+          rawUnitName?: string,
+          rawRatio?: number,
         ) => {
+          // ECWC-743: ชื่อหน่วยว่างไม่เขียนทับของเดิม (เดิมกลายเป็นหน่วยชื่อ ""), ratio ผิดไม่บันทึก
+          const trimmedName = normalizeUnitName(rawUnitName);
+          const unitName = trimmedName || undefined;
+          if (rawUnitName !== undefined && !trimmedName) {
+            this.logger.warn(
+              `updateProduct ${pro_code} level ${level}: ชื่อหน่วยว่าง ไม่แก้ชื่อหน่วยเดิม`,
+            );
+          }
+          const parsedRatio = parseUnitRatio(rawRatio);
+          const ratio = parsedRatio ?? undefined;
+          if (
+            rawRatio !== undefined &&
+            rawRatio !== null &&
+            parsedRatio === null
+          ) {
+            this.logger.warn(
+              `updateProduct ${pro_code} level ${level}: ratio ${JSON.stringify(rawRatio)} ไม่ใช่จำนวนเต็มบวก ไม่บันทึก`,
+            );
+          }
           if (unitName === undefined && ratio === undefined) return;
           const existing = existingUnits.find((u) => u.level === level);
           if (existing) {
