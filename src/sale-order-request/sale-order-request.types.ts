@@ -65,3 +65,13 @@ export function parseSaleOrderRequestInput(
     paymentOption: value.paymentOption,
   };
 }
+
+/** The name a customer sees for a product (same order as the web's getProductDisplayName). */
+export function customerProductName(row: unknown): string | null {
+  if (!isRecord(row)) return null;
+  for (const key of ['pro_nameTH', 'pro_nameSale', 'pro_name']) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
