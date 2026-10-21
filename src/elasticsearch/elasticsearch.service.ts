@@ -106,16 +106,22 @@ export class ElasticsearchService {
     return response.data;
   }
 
+  // pro_code มี '/' ได้ (เช่น 006/TBX-5001) ต้อง encode ไม่งั้น ES ตอบ 400
+  private docPath(action: '_doc' | '_update', proCode: string): string {
+    return `/${this.index}/${action}/${encodeURIComponent(proCode)}`;
+  }
+
   async indexProduct(doc: EsProductDoc): Promise<void> {
-    await this.client.put(`/${this.index}/_doc/${doc.pro_code}`, doc);
+    await this.client.put(this.docPath('_doc', doc.pro_code), doc);
   }
 
   async updateProductDoc(
     proCode: string,
     fields: Partial<Omit<EsProductDoc, 'pro_code'>>,
   ): Promise<void> {
-    await this.client.post(`/${this.index}/_update/${proCode}`, {
-      doc: fields,
+    await this.client.post(this.docPath('_update', proCode), {
+      // ใส่ pro_code ไว้ด้วย เผื่อ upsert สร้าง doc ใหม่ — search อ่าน pro_code จาก _source
+      doc: { ...fields, pro_code: proCode },
       doc_as_upsert: true,
     });
   }
