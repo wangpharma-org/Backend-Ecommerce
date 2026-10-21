@@ -113,6 +113,7 @@ describe('PromotionService promotion type policy', () => {
       } as unknown as Repository<PromotionTypePolicyEntity>,
       dataSource,
       promoOverlapService as never,
+      {} as never,
     );
   });
 

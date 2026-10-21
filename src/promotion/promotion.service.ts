@@ -45,6 +45,7 @@ import { ProductEntity } from 'src/products/products.entity';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { PromoOverlapService } from 'src/promo-overlap/promo-overlap.service';
+import { ProductsService } from 'src/products/products.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import {
   PromotionType,
@@ -142,6 +143,7 @@ export class PromotionService {
     private readonly promotionTypePolicyRepo: Repository<PromotionTypePolicyEntity>,
     private readonly dataSource: DataSource,
     private readonly promoOverlapService: PromoOverlapService,
+    private readonly productsService: ProductsService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -1233,6 +1235,132 @@ export class PromotionService {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException(
         error instanceof Error ? error.message : `Failed to create condition`,
+      );
+    }
+  }
+
+  /**
+   * เพิ่ม/นำออก สินค้าทุกตัวของเจ้าหนี้ในโปรนี้ (ตัวหลัก + creditors) เป็นสินค้าเข้าร่วมรายการของ tier
+   * ใช้รายการเดียวกับ product/creditor ไม่ใช่สินค้าทั้งร้านแบบ all_products — สินค้าใหม่ของเจ้าหนี้ไม่เข้าเอง
+   * กฎเดียวกับ createCondition แต่ข้ามสินค้าที่ไม่ผ่านแทนการ throw ทั้งก้อน
+   */
+  async setCreditorProductsCondition(tier_id: number, status: boolean) {
+    try {
+      const tier = await this.promotionTierRepo.findOne({
+        where: { tier_id },
+        relations: { promotion: { creditor: true, creditors: true } },
+      });
+      if (!tier) throw new NotFoundException(`Tier not found: ${tier_id}`);
+      const promotion = tier.promotion;
+
+      const creditorCodes = [
+        ...new Set(
+          [
+            promotion.creditor?.creditor_code,
+            ...(promotion.creditors ?? []).map((c) => c.creditor_code),
+          ].filter((code): code is string => !!code),
+        ),
+      ];
+      if (creditorCodes.length === 0)
+        throw new BadRequestException('โปรนี้ไม่มีเจ้าหนี้');
+
+      const creditorProducts =
+        await this.productsService.getProductByCreditor(creditorCodes);
+      const creditorProductCodes = new Set(
+        creditorProducts.map((p) => p.pro_code),
+      );
+      const existing = await this.promotionConditionRepo.find({
+        where: { tier: { tier_id } },
+        relations: { product: true },
+        select: { cond_id: true, product: { pro_code: true } },
+      });
+
+      if (!status) {
+        const condIds = existing
+          .filter((c) => creditorProductCodes.has(c.product.pro_code))
+          .map((c) => c.cond_id);
+        if (condIds.length)
+          await this.promotionConditionRepo.delete({ cond_id: In(condIds) });
+        return { added: 0, removed: condIds.length, skipped: [] };
+      }
+
+      if (tier.is_unit)
+        throw new BadRequestException(
+          'Some promotion tire is unit based, cannot add product condition to this tire',
+        );
+      const allProductTiers = await this.promotionTierRepo.count({
+        where: {
+          all_products: true,
+          promotion: { promo_id: promotion.promo_id },
+        },
+      });
+      if (allProductTiers > 0)
+        throw new BadRequestException(
+          'Cannot set all products for this tier because there are other tiers with the same minimum amount that are not active',
+        );
+
+      const skipped: { pro_code: string; reason: string }[] = [];
+      const existingCodes = new Set(existing.map((c) => c.product.pro_code));
+      const usage = await this.getPromotionProductUsage(promotion.promo_id);
+      const rewardTierByCode = new Map(
+        usage.rewards.map((r) => [r.pro_code, r.tier_name]),
+      );
+      let candidates = creditorProducts
+        .map((p) => p.pro_code)
+        .filter((code) => {
+          if (existingCodes.has(code)) return false;
+          const rewardTier = rewardTierByCode.get(code);
+          if (rewardTier) {
+            skipped.push({
+              pro_code: code,
+              reason: `เป็นของแถมใน ${rewardTier}`,
+            });
+            return false;
+          }
+          return true;
+        });
+
+      const rewards = await this.promotionRewardRepo.find({
+        where: { tier: { tier_id } },
+        relations: { giftProduct: true },
+        select: { reward_id: true, giftProduct: { pro_code: true } },
+      });
+      const conflicts =
+        await this.promoOverlapService.findPromotionPairConflicts({
+          promo_id: promotion.promo_id,
+          start_date: promotion.start_date,
+          end_date: promotion.end_date,
+          buyCodes: candidates,
+          giftCodes: rewards.map((r) => r.giftProduct.pro_code),
+        });
+      const conflictByCode = new Map(conflicts.map((c) => [c.buyCode, c]));
+      candidates = candidates.filter((code) => {
+        const conflict = conflictByCode.get(code);
+        if (conflict) {
+          skipped.push({
+            pro_code: code,
+            reason: `ซื้อ ${code} แถม ${conflict.giftCode} ซ้ำกับ ${conflict.source}`,
+          });
+          return false;
+        }
+        return true;
+      });
+
+      await this.promotionConditionRepo.save(
+        candidates.map((code) =>
+          this.promotionConditionRepo.create({
+            tier: { tier_id },
+            product: { pro_code: code },
+          } as DeepPartial<PromotionConditionEntity>),
+        ),
+        { chunk: 200 },
+      );
+      return { added: candidates.length, removed: 0, skipped };
+    } catch (error) {
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Failed to set creditor products condition',
       );
     }
   }
