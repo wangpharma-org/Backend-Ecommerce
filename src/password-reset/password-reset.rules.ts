@@ -106,8 +106,13 @@ export interface PasswordRuleResult {
   ok: boolean;
   min_length: boolean;
   letter_and_digit: boolean;
+  /** ตัวอักษรอังกฤษ ตัวเลข สัญลักษณ์ ASCII เท่านั้น — กันพิมพ์ด้วยแป้นภาษาไทยโดยไม่รู้ตัว */
+  ascii_only: boolean;
   not_temp: boolean;
 }
+
+export const PASSWORD_RULE_MESSAGE =
+  'รหัสผ่านต้องยาว 8–64 ตัวอักษร มีทั้งตัวอักษรภาษาอังกฤษและตัวเลข และใช้ได้เฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และสัญลักษณ์ (ห้ามภาษาไทยหรือช่องว่าง)';
 
 /** เงื่อนไขรหัสผ่านใหม่ตาม mockup หน้า 3 (`notTemp` เช็คแยกด้วย bcrypt แล้วส่งผลมา) */
 export function checkNewPassword(
@@ -117,10 +122,12 @@ export function checkNewPassword(
   const p = typeof password === 'string' ? password : '';
   const min_length = p.length >= 8 && p.length <= 64;
   const letter_and_digit = /[A-Za-z]/.test(p) && /\d/.test(p);
+  const ascii_only = /^[\x21-\x7E]*$/.test(p);
   return {
-    ok: min_length && letter_and_digit && notTemp,
+    ok: min_length && letter_and_digit && ascii_only && notTemp,
     min_length,
     letter_and_digit,
+    ascii_only,
     not_temp: notTemp,
   };
 }

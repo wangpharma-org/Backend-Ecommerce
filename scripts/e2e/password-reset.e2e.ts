@@ -540,6 +540,16 @@ async function main() {
       });
       return { status: r.status, ok: r.status === 400 };
     });
+    await step('ตั้งรหัสใหม่: มีภาษาไทย (ลืมสลับแป้น) → 400', async () => {
+      const r = await tempClient.post(setUrl, {
+        new_password: 'ๅ/-ภถุะะ3a',
+        confirm_password: 'ๅ/-ภถุะะ3a',
+      });
+      return {
+        status: r.status,
+        ok: r.status === 400 && r.data?.rules?.ascii_only === false,
+      };
+    });
     await step('ตั้งรหัสใหม่: ซ้ำกับรหัสชั่วคราว → 400', async () => {
       const r = await tempClient.post(setUrl, {
         new_password: temp,
@@ -585,6 +595,16 @@ async function main() {
         const r = await client(newLogin.data?.token).post(setUrl, {
           new_password: `${NEW_PASSWORD}2`,
           confirm_password: `${NEW_PASSWORD}2`,
+        });
+        return { status: r.status, ok: r.status === 400 };
+      },
+    );
+    await step(
+      'token password_change เดิม (ยังไม่หมด 15 นาที) ใช้ซ้ำหลังตั้งสำเร็จไม่ได้ → 400',
+      async () => {
+        const r = await tempClient.post(setUrl, {
+          new_password: `${NEW_PASSWORD}3`,
+          confirm_password: `${NEW_PASSWORD}3`,
         });
         return { status: r.status, ok: r.status === 400 };
       },

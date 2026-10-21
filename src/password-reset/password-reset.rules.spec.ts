@@ -73,6 +73,11 @@ describe('password-reset rules', () => {
     expect(checkNewPassword('12345678').letter_and_digit).toBe(false);
     expect(checkNewPassword('abc12345', false).ok).toBe(false);
     expect(checkNewPassword(undefined).ok).toBe(false);
+    // แป้นภาษาไทย / ช่องว่าง ใช้ไม่ได้ (ตัวอักษรอังกฤษ ตัวเลข สัญลักษณ์เท่านั้น)
+    expect(checkNewPassword('ๅ/-ภถุะะ3a').ascii_only).toBe(false);
+    expect(checkNewPassword('ๅ/-ภถุะะ3a').ok).toBe(false);
+    expect(checkNewPassword('abc 12345').ascii_only).toBe(false);
+    expect(checkNewPassword('Abc!@#12345$%').ok).toBe(true);
     expect(checkNewPassword('a1'.repeat(33)).min_length).toBe(false);
   });
 

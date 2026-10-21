@@ -9,7 +9,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, LessThan, MoreThan, Repository } from 'typeorm';
+import {
+  Between,
+  Brackets,
+  DataSource,
+  LessThan,
+  MoreThan,
+  Repository,
+} from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from '../constants/app.constants';
 import { UserEntity } from '../users/users.entity';
@@ -24,6 +31,7 @@ import {
   TEMP_PASSWORD_TTL_HOURS,
   addHours,
   checkNewPassword,
+  PASSWORD_RULE_MESSAGE,
   describeDevice,
   generateRefCode,
   generateTempPassword,
@@ -251,7 +259,7 @@ export class PasswordResetService {
       throw new BadRequestException({
         message: !rules.not_temp
           ? 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านชั่วคราว'
-          : 'รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร และมีทั้งตัวอักษรภาษาอังกฤษและตัวเลข',
+          : PASSWORD_RULE_MESSAGE,
         rules,
       });
     }
@@ -423,10 +431,12 @@ export class PasswordResetService {
           where: { emp_code: user.emp_id_ref },
         })
       : null;
+    // จำนวนคำขอใน 30 วัน "ณ ตอนที่ส่งคำขอนี้" (นับถึงคำขอนี้ ไม่รวมคำขอที่มาทีหลัง)
+    // — เปิดดูคำขอเก่าย้อนหลังแล้วตัวเลขต้องไม่เปลี่ยน
     const requests30d = await this.requestRepo.count({
       where: {
         mem_code: r.mem_code!,
-        created_at: MoreThan(addHours(new Date(), -24 * 30)),
+        created_at: Between(addHours(r.created_at, -24 * 30), r.created_at),
       },
     });
     return {
@@ -501,9 +511,7 @@ export class PasswordResetService {
         typeof body.password !== 'string' ||
         !checkNewPassword(body.password).ok
       ) {
-        throw new BadRequestException(
-          'รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร และมีทั้งตัวอักษรภาษาอังกฤษและตัวเลข',
-        );
+        throw new BadRequestException(PASSWORD_RULE_MESSAGE);
       }
       temp = body.password;
     } else {
