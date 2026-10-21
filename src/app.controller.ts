@@ -683,6 +683,46 @@ export class AppController {
     return this.productsService.listFree(sort_by, undefined, mem_route ?? '');
   }
 
+  // หน้า "สถานะออเดอร์" แบบเว็บร้านค้าเดิม (ดูทั้งบิล / ดูรายสินค้า) — ร้านของผู้ที่ login เท่านั้น
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-status-table')
+  async shopStatusTable(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+  ) {
+    return this.orderStatusV2Service.getShopStatusTable(
+      req.user.mem_code,
+      date_from,
+      date_to,
+    );
+  }
+
+  // ให้ระบบขายเห็นสถานะออเดอร์ของร้านชุดเดียวกับที่ลูกค้าเห็น (แหล่งเดียว)
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/order-status-table/:memCode')
+  async internalShopStatusTable(
+    @Param('memCode') memCode: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+  ) {
+    return this.orderStatusV2Service.getShopStatusTable(
+      memCode,
+      date_from,
+      date_to,
+    );
+  }
+
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/order-status/batch')
+  async internalShopStatusBatch(
+    @Body() body: { items?: { sh_running: string; mem_code: string }[] },
+  ) {
+    return this.orderStatusV2Service.getShopStatusBatch(
+      Array.isArray(body?.items) ? body.items : [],
+    );
+  }
+
   // @UseGuards(JwtAuthGuard)
   // @Post('/ecom/products/upload-product-flashsale')
   // async uploadProductFlashSale(
