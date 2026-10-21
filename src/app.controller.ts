@@ -100,6 +100,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service';
+import { OrderAccessService } from './order-status-v2/order-access.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
@@ -173,6 +174,7 @@ export class AppController {
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
     private readonly orderStatusV2Service: OrderStatusV2Service,
+    private readonly orderAccess: OrderAccessService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
@@ -894,9 +896,10 @@ export class AppController {
       memberCode,
       basketId,
     );
-    const dataDeleteCart = basketId === undefined
-      ? await this.shoppingCartService.getDeleteCartItem(memberCode)
-      : [];
+    const dataDeleteCart =
+      basketId === undefined
+        ? await this.shoppingCartService.getDeleteCartItem(memberCode)
+        : [];
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -950,7 +953,10 @@ export class AppController {
   @Get('/ecom/all-order-member/:memCode')
   async AllOrderByMember(
     @Param('memCode') memCode: string,
+    @Req() req: Request & { user: JwtPayload },
   ): Promise<AllOrderByMemberRes> {
+    // ร้านดูได้เฉพาะของตัวเอง — mem_code ใน URL ต้องตรงกับ token (หรือเป็น admin/เซลล์ที่ดูแลร้าน)
+    await this.orderAccess.assertShop(req.user, memCode);
     const result = await this.shoppingHeadService.AllOrderByMember(memCode);
     for (const order of result) {
       for (const orderItem of order.Newdetails) {
@@ -967,7 +973,9 @@ export class AppController {
   @Get('/ecom/some-order/:soh_runing')
   async SomeOrderByMember(
     @Param('soh_runing') soh_runing: string,
+    @Req() req: Request & { user: JwtPayload },
   ): Promise<ShoppingHeadEntity> {
+    await this.orderAccess.assertOrder(req.user, soh_runing);
     const result = await this.shoppingHeadService.SomeOrderByMember(soh_runing);
     for (const orderItem of result.details) {
       await this.imagedebugService.UpsercetImg({
@@ -985,12 +993,16 @@ export class AppController {
   @Get('/ecom/v2/order-list/:memCode')
   async AllOrderByMemberV2(
     @Param('memCode') memCode: string,
+    @Req() req: Request & { user: JwtPayload },
     @Query('date_from') date_from?: string,
     @Query('date_to') date_to?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('sort_order') sort_order?: string,
   ) {
+    // คง route เดิม (แอป/เว็บส่ง mem_code ของตัวเองอยู่แล้ว) แต่ mem_code ใน URL ต้องเป็นร้านที่
+    // token มีสิทธิ์ — ไม่ใช่ก็ 403 แทนการคืนคำสั่งจองของร้านอื่น
+    await this.orderAccess.assertShop(req.user, memCode);
     const enabled =
       await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
@@ -1038,6 +1050,9 @@ export class AppController {
     @Param('soh_running') soh_running: string,
     @Req() req: Request & { user: JwtPayload },
   ) {
+    // บิลที่อยู่ในฐาน e-commerce เช็คเจ้าของได้ตรง ๆ · ทาง flag เปิด order-picking-service กรองด้วย
+    // mem_code จาก token อยู่แล้ว · ทาง flag ปิด (PHP) บิลที่ไม่อยู่ในฐาน e-commerce ยังเช็คเจ้าของไม่ได้
+    await this.orderAccess.assertOrder(req.user, soh_running);
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_detail_api',
     );
@@ -1063,14 +1078,19 @@ export class AppController {
   // ECWC-545: clone ของ Akitokung/api/order/order_list.php (PHP เก่า) ให้ mobile app สลับมาเรียก
   // ที่นี่แทนได้ — คุมด้วย feature flag 'new_order_list_api' flag ปิด = proxy ไปขอข้อมูลจาก PHP
   // เก่าตรงๆ แทน (ไม่ยิงไป order-picking-service/warehouse เอง) จน QA เทียบแอปจริงผ่านค่อยเปิด
-  // ไม่บังคับ JwtAuthGuard เพราะ endpoint เดิมก็รับแค่ mem_code จาก query ไม่มี auth header เหมือนกัน
+  // เดิมไม่บังคับ JwtAuthGuard (เลียน PHP ที่รับแค่ mem_code จาก query) — ใครรู้รหัสร้านก็ดูคำสั่งจองได้
+  // ตอนนี้ต้องมี token และ mem_code ต้องเป็นร้านที่ token มีสิทธิ์ (ยังไม่มีแอป/เว็บเรียก endpoint นี้
+  // — แอปยังเรียก PHP ตรง ตอนสลับมาต้องส่ง Bearer ด้วย)
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/legacy/order-list')
   async getLegacyOrderListV2(
+    @Req() req: Request & { user: JwtPayload },
     @Query('mem_code') mem_code: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
+    await this.orderAccess.assertShop(req.user, mem_code);
     const enabled =
       await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
@@ -1094,11 +1114,16 @@ export class AppController {
   // soh_runing เหมือนที่ระบบเดิมรับอยู่ ไม่เช็ค mem_code เพราะ PHP เดิมก็ไม่เช็คเจ้าของบิลเหมือนกัน)
   // — flag เปิดค่อยต้องการ mem_code เพิ่มเพื่อยืนยันตัวตนกับ order-picking-service ฝั่งแอปต้องแก้
   // เพิ่ม param นี้ตอนสลับมาใช้ระบบใหม่
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/legacy/order-detail')
   async getLegacyOrderDetailV2(
+    @Req() req: Request & { user: JwtPayload },
     @Query('soh_runing') soh_running: string,
     @Query('mem_code') mem_code: string,
   ) {
+    // ต้องมี token: mem_code (ถ้าส่งมา) ต้องเป็นร้านที่มีสิทธิ์ และบิลต้องไม่ใช่ของร้านอื่น
+    if (mem_code) await this.orderAccess.assertShop(req.user, mem_code);
+    await this.orderAccess.assertOrder(req.user, soh_running);
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_detail_api',
     );
@@ -1107,16 +1132,14 @@ export class AppController {
     }
     return this.orderStatusV2Service.getLegacyOrderDetail(
       soh_running,
-      mem_code,
+      mem_code || req.user.mem_code,
     );
   }
 
   // ECWC-601: แถบใต้ navbar หน้าหลัก — ขนส่งที่กำลังส่งของให้ลูกค้าส่งถึงร้านไหนแล้ว
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/delivery/latest-store')
-  async getLatestDeliveringStores(
-    @Req() req: Request & { user: JwtPayload },
-  ) {
+  async getLatestDeliveringStores(@Req() req: Request & { user: JwtPayload }) {
     return this.orderStatusV2Service.getLatestDeliveringStores(
       req.user.mem_code,
     );
