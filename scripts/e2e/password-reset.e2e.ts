@@ -396,6 +396,17 @@ async function main() {
         return { status: r.status, ok: r.status === 403 };
       },
     );
+    await step(
+      'เซลล์เลือก "ไม่ออกจากระบบทุกเครื่อง" ไม่ได้ (เฉพาะหัวหน้า) → 403',
+      async () => {
+        const r = await sale.post(approveUrl, {
+          checklist: { called: true, ref_ok: true, info_ok: true },
+          mode: 'auto',
+          logout_all_devices: false,
+        });
+        return { status: r.status, ok: r.status === 403 };
+      },
+    );
 
     const sibling = await anon.post('/ecom/password-reset/requests', {
       account: STORE_USER,
@@ -414,6 +425,7 @@ async function main() {
           approved.status === 200 &&
           /^[A-Za-z0-9]{3}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(temp) &&
           approved.data.force_change === true &&
+          approved.data.sessions_revoked === true &&
           /E2E706S/.test(approved.data.handled_by_name),
         detail: `handled_by=${approved.data?.handled_by_name}`,
       }),

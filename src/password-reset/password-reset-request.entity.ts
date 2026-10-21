@@ -90,6 +90,10 @@ export class PasswordResetRequestEntity {
   @Column({ type: 'boolean', default: true })
   force_change: boolean;
 
+  /** ตอนรีเซ็ต ออกจากระบบทุกเครื่องของร้านหรือไม่ — ไม่ออกได้เฉพาะหัวหน้าเลือก */
+  @Column({ type: 'boolean', default: true })
+  sessions_revoked: boolean;
+
   @Column({ type: 'varchar', length: 255, nullable: true, default: null })
   temp_password_hash: string | null;
 

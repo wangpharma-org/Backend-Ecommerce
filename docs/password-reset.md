@@ -59,11 +59,11 @@ header ผู้ทำรายการ (sale backend เป็นคนใส�
 | GET | `/ecom/internal/password-reset/summary` | `{ pending }` สำหรับ badge เมนู |
 | GET | `/ecom/internal/password-reset/requests?tab=all\|pending\|mine\|closed&q=` | `{ counts, items }` ค้นด้วยรหัสอ้างอิง/รหัสร้าน/ชื่อร้าน |
 | GET | `/ecom/internal/password-reset/requests/:id` | ข้อมูลในระบบเทียบกับข้อมูลจากคำขอ |
-| POST | `/ecom/internal/password-reset/requests/:id/approve` | `{ checklist: { called, ref_ok, info_ok }, mode: 'auto'\|'manual', password?, force_change?, note? }` → คืน `temp_password` **ครั้งเดียว** |
+| POST | `/ecom/internal/password-reset/requests/:id/approve` | `{ checklist: { called, ref_ok, info_ok }, mode: 'auto'\|'manual', password?, force_change?, logout_all_devices?, note? }` → คืน `temp_password` **ครั้งเดียว** |
 | POST | `/ecom/internal/password-reset/requests/:id/reject` | `{ reason: 'unreachable'\|'not_requester'\|'wrong_info'\|'other', note? }` (`other` ต้องมี note) |
 
 - ไม่ตั้ง `INTERNAL_API_TOKEN` = endpoint ฝั่งพนักงานปิดทั้งหมด (403)
-- checklist ต้องเป็น `true` ครบทั้ง 3 ข้อ · `force_change: false` ทำได้เฉพาะ `x-actor-supervisor: 1`
+- checklist ต้องเป็น `true` ครบทั้ง 3 ข้อ · `force_change: false` และ `logout_all_devices: false` (ไม่ออกจากระบบทุกเครื่อง · บันทึกใน `sessions_revoked`) ทำได้เฉพาะ `x-actor-supervisor: 1`
 - รีเซ็ต: ตั้งรหัสชั่วคราว (hash) ให้บัญชี + ลบ refresh token + ปิด session ทุกเครื่อง + ปิดคำขออื่นที่รออยู่ของร้านเดียวกัน
 - บันทึก audit ในแถวคำขอ: ผู้ยืนยัน (`handled_by` = รหัสพนักงาน), เวลา, checklist, วิธีตั้งรหัส, หมายเหตุ, สาเหตุปฏิเสธ
 - บัญชี role อื่นที่ไม่ใช่ `User` หรือ `permision_admin = 1` รีเซ็ตผ่านช่องทางนี้ไม่ได้

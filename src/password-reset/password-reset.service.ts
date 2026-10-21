@@ -454,6 +454,7 @@ export class PasswordResetService {
       note: r.note,
       checklist: r.checklist,
       force_change: r.force_change,
+      sessions_revoked: r.sessions_revoked,
       temp_expires_at: r.temp_expires_at,
       password_changed_at: r.password_changed_at,
       store: {
@@ -490,6 +491,7 @@ export class PasswordResetService {
       mode?: unknown;
       password?: unknown;
       force_change?: unknown;
+      logout_all_devices?: unknown;
       note?: unknown;
     },
   ) {
@@ -529,6 +531,16 @@ export class PasswordResetService {
       }
       forceChange = false;
     }
+    // ค่าเริ่มต้น = ออกจากระบบทุกเครื่อง · ไม่ออกได้เฉพาะหัวหน้า (เช่น ร้านใช้หลายเครื่องอยู่และยืนยันแล้วว่าเป็นเครื่องของร้านเอง)
+    let revokeSessions = true;
+    if (body?.logout_all_devices === false) {
+      if (actor.supervisor !== true) {
+        throw new ForbiddenException(
+          'เลือกไม่ออกจากระบบทุกเครื่องได้เฉพาะผู้มีสิทธิ์ระดับหัวหน้า',
+        );
+      }
+      revokeSessions = false;
+    }
     const note = optionalNote(body?.note);
 
     const hash = await bcrypt.hash(temp, SALT_ROUNDS);
@@ -549,6 +561,7 @@ export class PasswordResetService {
           note,
           password_mode: mode,
           force_change: forceChange,
+          sessions_revoked: revokeSessions,
           temp_password_hash: hash,
           temp_expires_at: tempExpiresAt,
         })
@@ -574,11 +587,15 @@ export class PasswordResetService {
           id: r.id,
         })
         .execute();
-      await m.delete(RefreshTokenEntity, { mem_code: user.mem_code });
+      if (revokeSessions) {
+        await m.delete(RefreshTokenEntity, { mem_code: user.mem_code });
+      }
     });
-    await this.sessionsService.logoutAllUserSessions(user.mem_code);
+    if (revokeSessions) {
+      await this.sessionsService.logoutAllUserSessions(user.mem_code);
+    }
     this.logger.log(
-      `password reset ${r.ref_code} mem=${user.mem_code} by=${actor.emp_code} mode=${mode} force=${forceChange}`,
+      `password reset ${r.ref_code} mem=${user.mem_code} by=${actor.emp_code} mode=${mode} force=${forceChange} logout_all=${revokeSessions}`,
     );
     return {
       ref_code: r.ref_code,
@@ -588,7 +605,7 @@ export class PasswordResetService {
       temp_expires_at: tempExpiresAt,
       force_change: forceChange,
       handled_by_name: handledByName,
-      sessions_revoked: true,
+      sessions_revoked: revokeSessions,
     };
   }
 

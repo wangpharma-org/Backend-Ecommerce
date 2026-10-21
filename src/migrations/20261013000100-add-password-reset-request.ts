@@ -31,6 +31,7 @@ export class AddPasswordResetRequest20261013000100 implements MigrationInterface
           \`note\` text NULL DEFAULT NULL,
           \`password_mode\` enum('auto','manual') NULL DEFAULT NULL,
           \`force_change\` tinyint NOT NULL DEFAULT 1,
+          \`sessions_revoked\` tinyint NOT NULL DEFAULT 1,
           \`temp_password_hash\` varchar(255) NULL DEFAULT NULL,
           \`temp_expires_at\` datetime NULL DEFAULT NULL,
           \`password_changed_at\` datetime NULL DEFAULT NULL,
@@ -41,6 +42,18 @@ export class AddPasswordResetRequest20261013000100 implements MigrationInterface
           INDEX \`IDX_password_reset_ip_created\` (\`ip_address\`, \`created_at\`),
           PRIMARY KEY (\`id\`)
         ) ENGINE=InnoDB`,
+      );
+    }
+
+    // ตารางที่สร้างจากรุ่นก่อน (ยังไม่ขึ้น production) — เพิ่มคอลัมน์ที่มาทีหลัง
+    if (
+      !(await queryRunner.hasColumn(
+        'password_reset_request',
+        'sessions_revoked',
+      ))
+    ) {
+      await queryRunner.query(
+        'ALTER TABLE `password_reset_request` ADD `sessions_revoked` tinyint NOT NULL DEFAULT 1 AFTER `force_change`',
       );
     }
 
