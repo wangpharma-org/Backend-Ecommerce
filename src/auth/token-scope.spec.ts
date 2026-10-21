@@ -1,6 +1,12 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { isAllowedForReviewScope, lineLinkLoginScope } from './token-scope';
+import {
+  PASSWORD_CHANGE_SCOPE,
+  carriedScope,
+  isAllowedForPasswordChangeScope,
+  isAllowedForReviewScope,
+  lineLinkLoginScope,
+} from './token-scope';
 
 describe('token scope — review', () => {
   it('เส้นทางที่หน้ารีวิวเรียกใช้ได้', () => {
@@ -88,11 +94,56 @@ describe('JwtAuthGuard — token ขอบเขต review', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('ECWC-706 token ขอบเขต password_change: ตั้งรหัสใหม่ผ่าน เส้นทางอื่น 403', async () => {
+    const user = { mem_code: '99001', scope: PASSWORD_CHANGE_SCOPE };
+    await expect(
+      guard.canActivate(context(user, '/api/ecom/password-reset/set-password')),
+    ).resolves.toBe(true);
+    await expect(
+      guard.canActivate(context(user, '/api/ecom/search-products')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      guard.canActivate(context(user, '/api/ecom/rating/batch')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('token ปกติ (ไม่มีขอบเขต) ไม่ถูกจำกัด', async () => {
     await expect(
       guard.canActivate(
         context({ mem_code: '99001' }, '/api/ecom/products/flashsale-procode'),
       ),
     ).resolves.toBe(true);
+  });
+});
+
+describe('ECWC-706 ขอบเขต password_change', () => {
+  it('ใช้ได้แค่ตั้งรหัสใหม่และ session', () => {
+    expect(
+      isAllowedForPasswordChangeScope('/api/ecom/password-reset/set-password'),
+    ).toBe(true);
+    expect(isAllowedForPasswordChangeScope('/api/ecom/session/create')).toBe(
+      true,
+    );
+    expect(
+      isAllowedForPasswordChangeScope('/api/ecom/session/validate/abc'),
+    ).toBe(true);
+    expect(isAllowedForPasswordChangeScope('/api/ecom/search-products')).toBe(
+      false,
+    );
+    expect(
+      isAllowedForPasswordChangeScope('/api/ecom/password/change-password'),
+    ).toBe(false);
+    expect(
+      isAllowedForPasswordChangeScope(
+        '/api/ecom/password-reset/set-password/../../shopping-cart',
+      ),
+    ).toBe(false);
+  });
+
+  it('refresh คงขอบเขตเดิม', () => {
+    expect(carriedScope('password_change')).toBe(PASSWORD_CHANGE_SCOPE);
+    expect(carriedScope('review')).toBe('review');
+    expect(carriedScope('admin')).toBeNull();
+    expect(carriedScope(undefined)).toBeNull();
   });
 });

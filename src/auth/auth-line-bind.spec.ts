@@ -26,6 +26,7 @@ function build(payload: Record<string, unknown> | Error) {
     httpService as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   return { service, jwtService, httpService };
 }
