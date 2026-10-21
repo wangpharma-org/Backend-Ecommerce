@@ -10,11 +10,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
-  Between,
   Brackets,
   DataSource,
   LessThan,
+  LessThanOrEqual,
   MoreThan,
+  MoreThanOrEqual,
   Repository,
 } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -433,10 +434,12 @@ export class PasswordResetService {
       : null;
     // จำนวนคำขอใน 30 วัน "ณ ตอนที่ส่งคำขอนี้" (นับถึงคำขอนี้ ไม่รวมคำขอที่มาทีหลัง)
     // — เปิดดูคำขอเก่าย้อนหลังแล้วตัวเลขต้องไม่เปลี่ยน
+    // ขอบบนใช้ id ไม่ใช่เวลา: created_at ใน DB ละเอียดถึงไมโครวินาที แต่ Date ของ JS แค่มิลลิวินาที
     const requests30d = await this.requestRepo.count({
       where: {
         mem_code: r.mem_code!,
-        created_at: Between(addHours(r.created_at, -24 * 30), r.created_at),
+        id: LessThanOrEqual(r.id),
+        created_at: MoreThanOrEqual(addHours(r.created_at, -24 * 30)),
       },
     });
     return {
