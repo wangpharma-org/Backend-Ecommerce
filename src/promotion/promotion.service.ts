@@ -1663,7 +1663,8 @@ export class PromotionService {
 
   /// SSN0-255 — Company Days that overlap [from, to] (yyyy-MM-dd, Bangkok), or
   /// the one `promoId`, including finished and switched-off ones, for the sale
-  /// service's activity report. Soft-deleted promotions / tiers are left out.
+  /// service's activity report. Admins soft-delete finished Company Days, so
+  /// deleted promotions are included (flagged); deleted tiers are dropped.
   async getCompanyDaysForReport(
     filter: { from: string; to: string } | { promoId: number },
   ): Promise<CompanyDayReportPromotion[]> {
@@ -1680,6 +1681,7 @@ export class PromotionService {
                   new Date(`${filter.from}T00:00:00+07:00`),
                 ),
               },
+        withDeleted: true,
         relations: {
           creditor: true,
           creditors: true,
@@ -1695,6 +1697,7 @@ export class PromotionService {
           start_date: true,
           end_date: true,
           status: true,
+          deleted_at: true,
           creditor: { creditor_code: true, creditor_name: true },
           creditors: { creditor_code: true, creditor_name: true },
           tiers: {
@@ -1703,6 +1706,7 @@ export class PromotionService {
             min_amount: true,
             is_unit: true,
             all_products: true,
+            deleted_at: true,
             conditions: { cond_id: true, product: { pro_code: true } },
             exclusions: { exclusion_id: true, product_code: true },
             rewards: {

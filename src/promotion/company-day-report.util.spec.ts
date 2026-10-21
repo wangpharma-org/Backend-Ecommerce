@@ -5,8 +5,10 @@ describe('toCompanyDayReport (SSN0-255)', () => {
   const promotion = {
     promo_id: 7,
     promo_name: ' Company Day Mega ',
-    start_date: new Date(2026, 6, 1, 0, 0, 0),
-    end_date: new Date(2026, 6, 31, 23, 59, 59),
+    // stored as UTC instants: 30 Jun 17:00Z = 1 Jul 00:00 Bangkok
+    start_date: new Date('2026-06-30T17:00:00Z'),
+    end_date: new Date('2026-07-31T16:59:59Z'),
+    deleted_at: new Date('2026-08-05T03:00:00Z'),
     status: false,
     creditor: { creditor_code: 'C01', creditor_name: 'Mega' },
     creditors: [
@@ -47,6 +49,13 @@ describe('toCompanyDayReport (SSN0-255)', () => {
         exclusions: [{ exclusion_id: 1, product_code: 'X9' }],
         rewards: [],
       },
+      {
+        tier_id: 3,
+        tier_name: 'ลบแล้ว',
+        min_amount: 1,
+        deleted_at: new Date('2026-07-02T00:00:00Z'),
+        conditions: [{ cond_id: 9, product: { pro_code: 'Z9' } }],
+      },
     ],
   } as unknown as PromotionEntity;
 
@@ -58,6 +67,7 @@ describe('toCompanyDayReport (SSN0-255)', () => {
       startDate: '2026-07-01',
       endDate: '2026-07-31',
       status: false,
+      deleted: true,
       creditors: [
         { code: 'C01', name: 'Mega' },
         { code: 'C02', name: 'Vida' },
@@ -81,6 +91,7 @@ describe('toCompanyDayReport (SSN0-255)', () => {
       proCodes: [],
       excludedProCodes: ['X9'],
     });
+    expect(out.tiers.map((t) => t.tierId)).toEqual([1, 2]);
   });
 
   it('handles a promotion without the main creditor or tiers', () => {
@@ -89,7 +100,9 @@ describe('toCompanyDayReport (SSN0-255)', () => {
       creditor: null,
       creditors: undefined,
       tiers: undefined,
+      deleted_at: null,
     } as unknown as PromotionEntity);
+    expect(out.deleted).toBe(false);
     expect(out.creditors).toEqual([]);
     expect(out.tiers).toEqual([]);
   });

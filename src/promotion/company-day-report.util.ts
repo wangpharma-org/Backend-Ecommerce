@@ -9,6 +9,8 @@ export interface CompanyDayReportPromotion {
   startDate: string;
   endDate: string;
   status: boolean;
+  /// Admins soft-delete finished Company Days by hand — the report still needs them.
+  deleted: boolean;
   creditors: { code: string; name: string | null }[];
   tiers: {
     tierId: number;
@@ -28,12 +30,13 @@ export interface CompanyDayReportPromotion {
   }[];
 }
 
-/// `datetime` columns come back as JS Dates in server local time (Asia/Bangkok
-/// in every environment) — keep the wall-clock date, not the UTC one.
-function toLocalDate(value: Date | string): string {
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/// The connection runs with `timezone: 'Z'`, so datetimes are real instants
+/// (start 2026-04-07T17:00Z = 8 Apr in Bangkok). Report the Bangkok date.
+export function toBangkokDate(value: Date | string): string {
   const d = value instanceof Date ? value : new Date(value);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return new Date(d.getTime() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 export function toCompanyDayReport(
@@ -48,34 +51,38 @@ export function toCompanyDayReport(
   return {
     promoId: promotion.promo_id,
     promoName: promotion.promo_name?.trim() ?? '',
-    startDate: toLocalDate(promotion.start_date),
-    endDate: toLocalDate(promotion.end_date),
+    startDate: toBangkokDate(promotion.start_date),
+    endDate: toBangkokDate(promotion.end_date),
     status: Boolean(promotion.status),
+    deleted: Boolean(promotion.deleted_at),
     creditors: [...creditors].map(([code, name]) => ({ code, name })),
-    tiers: (promotion.tiers ?? []).map((tier) => ({
-      tierId: tier.tier_id,
-      tierName: tier.tier_name,
-      minAmount: Number(tier.min_amount ?? 0),
-      isUnit: Boolean(tier.is_unit),
-      allProducts: Boolean(tier.all_products),
-      proCodes: [
-        ...new Set(
-          (tier.conditions ?? [])
-            .map((c) => c.product?.pro_code)
-            .filter((code): code is string => Boolean(code)),
-        ),
-      ],
-      excludedProCodes: [
-        ...new Set((tier.exclusions ?? []).map((e) => e.product_code)),
-      ],
-      rewards: (tier.rewards ?? [])
-        .filter((r) => r.giftProduct?.pro_code)
-        .map((r) => ({
-          proCode: r.giftProduct.pro_code,
-          proName: r.giftProduct.pro_name ?? null,
-          qty: Number(r.qty ?? 0),
-          unit: r.unit,
-        })),
-    })),
+    // Deleting a promotion leaves its tiers alone; a tier deleted on its own is gone.
+    tiers: (promotion.tiers ?? [])
+      .filter((tier) => !tier.deleted_at)
+      .map((tier) => ({
+        tierId: tier.tier_id,
+        tierName: tier.tier_name,
+        minAmount: Number(tier.min_amount ?? 0),
+        isUnit: Boolean(tier.is_unit),
+        allProducts: Boolean(tier.all_products),
+        proCodes: [
+          ...new Set(
+            (tier.conditions ?? [])
+              .map((c) => c.product?.pro_code)
+              .filter((code): code is string => Boolean(code)),
+          ),
+        ],
+        excludedProCodes: [
+          ...new Set((tier.exclusions ?? []).map((e) => e.product_code)),
+        ],
+        rewards: (tier.rewards ?? [])
+          .filter((r) => r.giftProduct?.pro_code)
+          .map((r) => ({
+            proCode: r.giftProduct.pro_code,
+            proName: r.giftProduct.pro_name ?? null,
+            qty: Number(r.qty ?? 0),
+            unit: r.unit,
+          })),
+      })),
   };
 }
