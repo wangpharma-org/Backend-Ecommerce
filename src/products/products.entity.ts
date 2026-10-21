@@ -40,6 +40,8 @@ import { ProductUnitEntity } from './product-unit.entity';
   'pro_stock',
 ])
 @Index('IDX_product_redeem_rank', ['pro_redeem_rank'])
+// WGDD-427: หาสินค้าตามประเภทยา (เปลี่ยนรหัส/ลบประเภท) — สร้างใน migration 20261021000100
+@Index('IDX_product_drug_type_code', ['drug_type_code'])
 export class ProductEntity {
   productLabels?: string[];
 
@@ -182,6 +184,10 @@ export class ProductEntity {
 
   @Column({ nullable: true, type: 'varchar', length: 255 })
   pro_nameTH!: string | null;
+
+  // WGDD-427: รหัสประเภทยาจาก ProductService (drug_type.code) — null = ไม่มีประเภท
+  @Column({ nullable: true, type: 'varchar', length: 50 })
+  drug_type_code!: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
   pro_nameMain!: string;

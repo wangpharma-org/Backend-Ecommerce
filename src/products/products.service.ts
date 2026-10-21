@@ -3346,6 +3346,9 @@ export class ProductsService {
         productData.pro_category = data.pro_category as number;
       if (data.drugregister !== undefined)
         productData.pro_drugregister = data.drugregister as string;
+      // WGDD-427: ผูกสินค้ากับประเภทยา (ไม่เช็คว่าประเภทมีแล้ว — ข้อความประเภทอาจตามมาทีหลัง)
+      if (data.drug_type_code !== undefined)
+        productData.drug_type_code = data.drug_type_code?.trim() || null;
 
       if (Object.keys(productData).length === 0) return;
 

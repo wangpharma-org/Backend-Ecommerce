@@ -15,6 +15,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'sticker_label',
   // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
   'store_name_consent',
+  // WGDD-427: สินค้าแถม/ขายพ่วงตามประเภทยา — เปิดเมื่อ sync ประเภทยาจาก ProductService ครบแล้ว
+  'drug_type_reward',
 ]);
 
 @Injectable()
