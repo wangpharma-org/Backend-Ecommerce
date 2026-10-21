@@ -679,20 +679,31 @@ export class AppController {
   }
 
   // SSN0-255: รายงานกิจกรรม Company Day ฝั่ง sale service — โปรที่ทับช่วงวันที่ (รวมที่จบแล้ว/ปิดแล้ว)
-  // พร้อมบริษัท tier รหัสสินค้าในเงื่อนไข/ที่ยกเว้น และของแถม
+  // พร้อมบริษัท tier รหัสสินค้าในเงื่อนไข/ที่ยกเว้น และของแถม — หรือโปรเดียวด้วย promo_id
   @UseGuards(InternalTokenGuard)
   @Get('/ecom/internal/company-days')
   async internalCompanyDays(
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('promo_id') promoId?: string,
   ) {
+    if (promoId !== undefined) {
+      const id = Number(promoId);
+      if (!Number.isInteger(id) || id <= 0) {
+        throw new BadRequestException('promo_id must be a positive integer');
+      }
+      return this.promotionService.getCompanyDaysForReport({ promoId: id });
+    }
     const isDate = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
     if (!isDate(from) || !isDate(to) || from! > to!) {
       throw new BadRequestException(
         'from/to ต้องเป็น yyyy-MM-dd และ from <= to',
       );
     }
-    return this.promotionService.getCompanyDaysForReport(from!, to!);
+    return this.promotionService.getCompanyDaysForReport({
+      from: from!,
+      to: to!,
+    });
   }
 
   // @UseGuards(JwtAuthGuard)

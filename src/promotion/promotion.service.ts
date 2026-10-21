@@ -1661,19 +1661,25 @@ export class PromotionService {
     }
   }
 
-  /// SSN0-255 — Company Days that overlap [from, to] (yyyy-MM-dd, Bangkok),
-  /// including finished and switched-off ones, for the sale service's activity
-  /// report. Soft-deleted promotions / tiers are left out by TypeORM.
+  /// SSN0-255 — Company Days that overlap [from, to] (yyyy-MM-dd, Bangkok), or
+  /// the one `promoId`, including finished and switched-off ones, for the sale
+  /// service's activity report. Soft-deleted promotions / tiers are left out.
   async getCompanyDaysForReport(
-    from: string,
-    to: string,
+    filter: { from: string; to: string } | { promoId: number },
   ): Promise<CompanyDayReportPromotion[]> {
     try {
       const promotions = await this.promotionRepo.find({
-        where: {
-          start_date: LessThanOrEqual(new Date(`${to}T23:59:59+07:00`)),
-          end_date: MoreThanOrEqual(new Date(`${from}T00:00:00+07:00`)),
-        },
+        where:
+          'promoId' in filter
+            ? { promo_id: filter.promoId }
+            : {
+                start_date: LessThanOrEqual(
+                  new Date(`${filter.to}T23:59:59+07:00`),
+                ),
+                end_date: MoreThanOrEqual(
+                  new Date(`${filter.from}T00:00:00+07:00`),
+                ),
+              },
         relations: {
           creditor: true,
           creditors: true,
