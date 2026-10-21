@@ -678,6 +678,23 @@ export class AppController {
     return this.productsService.listFree(sort_by, undefined, mem_route ?? '');
   }
 
+  // SSN0-255: รายงานกิจกรรม Company Day ฝั่ง sale service — โปรที่ทับช่วงวันที่ (รวมที่จบแล้ว/ปิดแล้ว)
+  // พร้อมบริษัท tier รหัสสินค้าในเงื่อนไข/ที่ยกเว้น และของแถม
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/company-days')
+  async internalCompanyDays(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const isDate = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (!isDate(from) || !isDate(to) || from! > to!) {
+      throw new BadRequestException(
+        'from/to ต้องเป็น yyyy-MM-dd และ from <= to',
+      );
+    }
+    return this.promotionService.getCompanyDaysForReport(from!, to!);
+  }
+
   // @UseGuards(JwtAuthGuard)
   // @Post('/ecom/products/upload-product-flashsale')
   // async uploadProductFlashSale(
@@ -891,9 +908,10 @@ export class AppController {
       memberCode,
       basketId,
     );
-    const dataDeleteCart = basketId === undefined
-      ? await this.shoppingCartService.getDeleteCartItem(memberCode)
-      : [];
+    const dataDeleteCart =
+      basketId === undefined
+        ? await this.shoppingCartService.getDeleteCartItem(memberCode)
+        : [];
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -1111,9 +1129,7 @@ export class AppController {
   // ECWC-601: แถบใต้ navbar หน้าหลัก — ขนส่งที่กำลังส่งของให้ลูกค้าส่งถึงร้านไหนแล้ว
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/v2/delivery/latest-store')
-  async getLatestDeliveringStores(
-    @Req() req: Request & { user: JwtPayload },
-  ) {
+  async getLatestDeliveringStores(@Req() req: Request & { user: JwtPayload }) {
     return this.orderStatusV2Service.getLatestDeliveringStores(
       req.user.mem_code,
     );

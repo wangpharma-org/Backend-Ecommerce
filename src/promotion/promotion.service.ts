@@ -51,6 +51,10 @@ import {
   PromotionTypePolicyEntity,
 } from './promotion-type-policy.entity';
 import { PromotionDateChangeLogEntity } from './promotion-date-change-log.entity';
+import {
+  type CompanyDayReportPromotion,
+  toCompanyDayReport,
+} from './company-day-report.util';
 
 // Extended types for transformed product data
 export type ProductWithUnits = ProductEntity & {
@@ -203,9 +207,7 @@ export class PromotionService {
       (code) => !found.has(code.toLowerCase()),
     );
     if (missing.length > 0) {
-      throw new BadRequestException(
-        `ไม่พบรหัสเจ้าหนี้: ${missing.join(', ')}`,
-      );
+      throw new BadRequestException(`ไม่พบรหัสเจ้าหนี้: ${missing.join(', ')}`);
     }
     return creditors;
   }
@@ -330,7 +332,8 @@ export class PromotionService {
       const lockedType =
         activePromotionCounts.company > 0 && activePromotionCounts.wang === 0
           ? 'company'
-          : activePromotionCounts.wang > 0 && activePromotionCounts.company === 0
+          : activePromotionCounts.wang > 0 &&
+              activePromotionCounts.company === 0
             ? 'wang'
             : null;
 
@@ -357,9 +360,7 @@ export class PromotionService {
     });
   }
 
-  async unlockPromotionTypePolicy(
-    expectedLockedType: PromotionType,
-  ): Promise<{
+  async unlockPromotionTypePolicy(expectedLockedType: PromotionType): Promise<{
     locked_type: null;
     locked_promo_id: null;
   }> {
@@ -1120,7 +1121,9 @@ export class PromotionService {
           .setLock('pessimistic_write')
           .getOne();
         if (!promotion) {
-          throw new NotFoundException(`Promotion with id ${promo_id} not found`);
+          throw new NotFoundException(
+            `Promotion with id ${promo_id} not found`,
+          );
         }
         if (status) {
           await this.assertPromotionTypeAllowed(
@@ -1658,6 +1661,64 @@ export class PromotionService {
     }
   }
 
+  /// SSN0-255 — Company Days that overlap [from, to] (yyyy-MM-dd, Bangkok),
+  /// including finished and switched-off ones, for the sale service's activity
+  /// report. Soft-deleted promotions / tiers are left out by TypeORM.
+  async getCompanyDaysForReport(
+    from: string,
+    to: string,
+  ): Promise<CompanyDayReportPromotion[]> {
+    try {
+      const promotions = await this.promotionRepo.find({
+        where: {
+          start_date: LessThanOrEqual(new Date(`${to}T23:59:59+07:00`)),
+          end_date: MoreThanOrEqual(new Date(`${from}T00:00:00+07:00`)),
+        },
+        relations: {
+          creditor: true,
+          creditors: true,
+          tiers: {
+            conditions: { product: true },
+            exclusions: true,
+            rewards: { giftProduct: true },
+          },
+        },
+        select: {
+          promo_id: true,
+          promo_name: true,
+          start_date: true,
+          end_date: true,
+          status: true,
+          creditor: { creditor_code: true, creditor_name: true },
+          creditors: { creditor_code: true, creditor_name: true },
+          tiers: {
+            tier_id: true,
+            tier_name: true,
+            min_amount: true,
+            is_unit: true,
+            all_products: true,
+            conditions: { cond_id: true, product: { pro_code: true } },
+            exclusions: { exclusion_id: true, product_code: true },
+            rewards: {
+              reward_id: true,
+              qty: true,
+              unit: true,
+              giftProduct: { pro_code: true, pro_name: true },
+            },
+          },
+        },
+        order: { start_date: 'DESC', promo_id: 'DESC' },
+      });
+      return promotions.map(toCompanyDayReport);
+    } catch (error) {
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Failed to get company days for report',
+      );
+    }
+  }
+
   async addExclusion(data: { tier_id: number; product_gcode: string }) {
     try {
       const tier = await this.promotionTierRepo.findOne({
@@ -1752,7 +1813,11 @@ export class PromotionService {
         return 'Tier set to specific products successfully';
       }
     } catch (error) {
-      rethrowAsHttp(error, this.logger, 'Failed to set all products for the tier');
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Failed to set all products for the tier',
+      );
     }
   }
 
@@ -2182,7 +2247,11 @@ export class PromotionService {
         },
       });
     } catch (error) {
-      rethrowAsHttp(error, this.logger, 'Failed to get promotions for duplicate');
+      rethrowAsHttp(
+        error,
+        this.logger,
+        'Failed to get promotions for duplicate',
+      );
     }
   }
 
