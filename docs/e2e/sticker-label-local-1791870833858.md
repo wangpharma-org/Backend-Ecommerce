@@ -1,0 +1,61 @@
+# Sticker label (ECWC-697) E2E report
+
+- environment: **local** (เครื่อง dev + DB ทดสอบ ไม่ใช่ deployed code)
+- BASE_URL: http://localhost:3022/api
+- commit: 8b12f5a
+- run at: 2026-10-13T05:53:53.857Z
+- ร้านทดสอบ: 00004 · admin: 0007
+- ออเดอร์ทดสอบที่สร้าง: 005-101947
+- ครอบคลุม: ECWC-698 ตัวเลือก/map รหัส · ECWC-699 custom_options ตะกร้า/snapshot · ECWC-702 คิวพิมพ์ + sticker_print_log · ECWC-704 PDF A4 (ดวง 80×50 มม.)
+- result: **48/48 passed**
+
+| # | step | status | ok | detail |
+|---|------|--------|----|--------|
+| 1 | flag ปิด → config ต้อง 403 | 403 | PASS |  |
+| 2 | admin เปิด flag sticker_label | 201 | PASS |  |
+| 3 | config คืน 2 mode map รหัส -05/-07 + 2 ขนาดบรรจุ + 6 ภาษา | 200 | PASS | bw/แผ่น=1.9 bw/50แผ่น=95 |
+| 4 | เพิ่มสติ๊กเกอร์ผ่าน add-cart ปกติ (ไม่มีรูปแบบ) → 400 | 400 | PASS |  |
+| 5 | last-options ก่อนสั่งรอบนี้ → null หรือรูปแบบเดิม | 200 | PASS | มีออเดอร์เดิม: E2E สี 692780 |
+| 6 | validate: ไม่มีชื่อร้าน → 400 | 400 | PASS | ต้องระบุชื่อร้าน |
+| 7 | validate: ชื่อร้าน 41 ตัวอักษร → 400 | 400 | PASS | shopName ยาวได้ไม่เกิน 40 ตัวอักษร |
+| 8 | validate: ที่อยู่ 56 ตัวอักษร → 400 | 400 | PASS | address ยาวได้ไม่เกิน 55 ตัวอักษร |
+| 9 | validate: บรรทัด 3 41 ตัวอักษร → 400 | 400 | PASS | line3 ยาวได้ไม่เกิน 40 ตัวอักษร |
+| 10 | validate: mode สีไม่มี hex → 400 | 400 | PASS | mode สี ต้องระบุ color เป็น hex #RRGGBB |
+| 11 | validate: mode สี hex ผิด → 400 | 400 | PASS | mode สี ต้องระบุ color เป็น hex #RRGGBB |
+| 12 | validate: ภาษาไม่รองรับ → 400 | 400 | PASS | lang ต้องเป็น th\|en\|zh\|ru\|ar\|my |
+| 13 | validate: packSize ไม่รองรับ → 400 | 400 | PASS | packSize ต้องเป็น 1\|50 |
+| 14 | validate: packs = 0 → 400 | 400 | PASS | packs ต้องเป็นจำนวนเต็มบวก |
+| 15 | validate: packs = "2a" → 400 | 400 | PASS | packs ต้องเป็นจำนวนเต็มบวก |
+| 16 | validate: 2 ภาษาแต่ภาษาหลักไม่ใช่ไทย → 400 | 400 | PASS | ฉลาก 2 ภาษาต้องเป็นภาษาไทย + อีก 1 ภาษา |
+| 17 | validate: 2 ภาษาแต่ภาษาที่ 2 เป็นไทย → 400 | 400 | PASS | ฉลาก 2 ภาษาต้องเป็นภาษาไทย + อีก 1 ภาษา |
+| 18 | หยิบขาวดำ ไทย 1 แผ่น × 2 (ส่ง color มาด้วยต้องถูกตัดทิ้ง) | 201 | PASS | spc_id=1322333 unit=ดวง amount=20.00 |
+| 19 | หยิบรูปแบบเดิมอีก 1 → รวมเป็นแถวเดียว 3 แผ่น | 201 | PASS | rows=1 sheets=3 |
+| 20 | หยิบรูปแบบต่าง (English) → แยกเป็นอีกแถวในสินค้าเดียวกัน | 201 | PASS | rows=2 |
+| 21 | หยิบสี 50 แผ่น × 1 → รหัส -07 หน่วย ม500ดวง | 201 | PASS | unit=ม500ดวง sheets=50 |
+| 22 | แก้จำนวนแถวไทยเป็น 5 แผ่น (แถวอื่นไม่เปลี่ยน) | 201 | PASS | th=5 en=1 |
+| 23 | ตั้งแถว English = 0 → ลบเฉพาะแถวนั้น | 201 | PASS | rows=2 |
+| 24 | แก้แถวที่ไม่มี/ไม่ใช่ของร้าน → 404 | 404 | PASS |  |
+| 25 | GET ตะกร้าคืน custom_options + จำนวนแผ่น | 200 | PASS | rows=2 |
+| 26 | สั่งซื้อจากตะกร้า | 201 | PASS | soh_running=005-101947 |
+| 27 | ตะกร้าว่างหลังสั่ง | 200 | PASS |  |
+| 28 | last-options คืนรูปแบบจากออเดอร์ล่าสุด (ไม่มี sheets/dots) | 200 | PASS | printMode=color lang=ar |
+| 29 | ประวัติออเดอร์: รูปแบบสติ๊กเกอร์ของออเดอร์นี้ (ECWC-701) | 200 | PASS | rows=2 ร้านอื่นเห็น=0 |
+| 30 | ฉลาก 2 ภาษา ไทย+จีน → แยกแถวจากไทยล้วน เก็บ lang2 แล้วลบออก | 201 | PASS | rows=2 lang2=zh |
+| 31 | ลูกค้าเรียก API admin → 403 | 403 | PASS |  |
+| 32 | validate queue: status ผิด / page ผิด → 400 | 400 | PASS | status=400 page=400 |
+| 33 | คิวรอพิมพ์มีทั้ง 2 งานจาก snapshot + สรุปแยกขาวดำ/สี | 200 | PASS | bw spo=1172082 color spo=1172083 summary bw=8 color=200 |
+| 34 | รายการเครื่องพิมพ์จาก env | 200 | PASS | e2e-bw,e2e-color |
+| 35 | พิมพ์งานสีด้วยเครื่องขาวดำ → 400 (ไม่บันทึก log) | 400 | PASS | เครื่อง E2E local ขาวดำ เป็นเครื่องขาวดำ พิมพ์งานสีไม่ได้: 1172083 |
+| 36 | print_type / เครื่องพิมพ์ ไม่ถูกต้อง → 400 | 400 | PASS | 400/400/400 |
+| 37 | preview PDF 1 หน้า A4 (ไม่บันทึก log) | 200 | PASS | pages=1 a4=true |
+| 38 | ลูกค้าเรียก preview PDF → 403 | 403 | PASS |  |
+| 39 | PDF งานสีกับเครื่องขาวดำ → 400 ไม่มี log | 400 | PASS |  |
+| 40 | PDF พิมพ์ทดสอบ → 1 หน้า + id ของ log ใน header | 201 | PASS | pages=1 log=102 |
+| 41 | พิมพ์ทดสอบ (test) → 1 แผ่น สถานะยังรอพิมพ์ | 201 | PASS | status=pending count=0 |
+| 42 | พิมพ์จริง (print) → พิมพ์แล้ว, printed_by จาก token ไม่ใช่ body | 201 | PASS | printed_by=0007 sheets=5 |
+| 43 | print ซ้ำงานที่พิมพ์แล้ว → 400 ให้ใช้ reprint | 400 | PASS | งานนี้พิมพ์แล้ว ให้ใช้พิมพ์ซ้ำ (reprint): 1172082 |
+| 44 | reprint → จำนวนครั้ง 2 สถานะยังพิมพ์แล้ว | 201 | PASS | count=2 last=0007 |
+| 45 | PDF งานสี 50 แผ่นด้วยเครื่องสี → 50 หน้า, คิวรอพิมพ์ไม่มีงานของออเดอร์นี้ | 201 | PASS | pdf pages=50 pending left=0 summary bw=3 color=150 |
+| 46 | ประวัติการพิมพ์ของงานขาวดำ (ใหม่สุดก่อน) | 200 | PASS | reprint,print,test,test |
+| 47 | ประวัติของ order line ที่ไม่ใช่สติ๊กเกอร์ → 404 | 404 | PASS |  |
+| 48 | admin ปิด flag sticker_label คืน | 201 | PASS |  |

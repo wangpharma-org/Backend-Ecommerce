@@ -4,6 +4,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { ShoppingCartEntity } from './shopping-cart.entity';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +16,7 @@ import {
   Brackets,
   LessThanOrEqual,
   MoreThanOrEqual,
+  EntityManager,
 } from 'typeorm';
 import { ProductsService } from '../products/products.service';
 import { PromotionEntity } from 'src/promotion/promotion.entity';
@@ -40,6 +42,14 @@ import { PreorderProductEntity } from 'src/preorder/preorder-product.entity';
 import { PreorderCampaignStatus } from 'src/preorder/preorder-campaign.entity';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import { selectCurrentLots } from 'src/lot/lot-display.util';
+import { CartBasketEntity } from 'src/special-collection/cart-basket.entity';
+import {
+  hashStickerOptions,
+  isStickerProCode,
+  parseStickerJson,
+  stickerQuantity,
+  type StickerCustomOptions,
+} from 'src/sticker-label/sticker-label.options';
 
 export interface ShoppingProductCart {
   pro_code: string;
@@ -109,6 +119,10 @@ export interface ShoppingCart {
   hotdeal_free: boolean;
   pro_code: string;
   hotdeal_promain?: string;
+  /** ECWC-699 รูปแบบสินค้าสั่งทำ — null = สินค้าปกติ */
+  custom_options?: StickerCustomOptions | null;
+  /** จำนวนแพ็ค/แผ่น/ดวงของแถวสติ๊กเกอร์ คำนวณจาก amount × ratio */
+  sticker_quantity?: { packs: number; sheets: number; dots: number } | null;
 }
 
 export interface FlashSale {
@@ -152,6 +166,7 @@ interface RawProductCart {
   flashsale_date?: string;
   hotdeal_free: boolean;
   hotdeal_promain?: string;
+  custom_options?: StickerCustomOptions | string | null;
   recommended_id: number;
   recommended_pro_imgmain?: string;
   recommended_pro_name?: string;
@@ -248,6 +263,88 @@ interface DesiredHotdealFreebie {
 interface HotdealSyncContext {
   cartRows: ShoppingCartEntity[];
   hotdeals: HotdealEntity[];
+}
+
+interface PromotionRewardPlan {
+  rewards: Map<
+    string,
+    {
+      pro_code: string;
+      unit: string;
+      qty: number;
+      promo_id: number;
+      tier_id: number;
+    }
+  >;
+  tags: Map<number, { promo_id: number; tier_id: number }>;
+  eligibleCart: ShoppingCartEntity[];
+  context: CompanyDayRewardContext | null;
+  hasPromotions: boolean;
+  /** ขั้นที่ถึง (ทุกขั้น ไม่ใช่แค่ขั้นบนสุด) — ใช้แสดงในหน้ากิมมิคของระบบขาย ตะกร้าไม่อ่านค่านี้ */
+  reachedTiers?: ReachedPromotionTier[];
+}
+
+export interface ReachedPromotionTier {
+  promo_id: number;
+  promo_name: string;
+  creditor_code: string | null;
+  tier_id: number;
+  tier_name: string;
+  min_amount: number;
+  is_unit: boolean;
+  all_products: boolean;
+  multiplier: number;
+}
+
+/** บรรทัดสินค้าของใบที่ระบบภายในส่งมาถาม (ไม่ใช่ตะกร้า) — หน่วยเป็นชื่อหน่วยหรือ level */
+export interface PreviewOrderLine {
+  pro_code: string;
+  unit: string;
+  qty: number;
+}
+
+export interface CheckoutLinesPreview {
+  price_option: 'A' | 'B' | 'C';
+  is_l16: boolean;
+  total: number;
+  lines: {
+    pro_code: string;
+    unit_level: string;
+    qty: number;
+    amount: number;
+  }[];
+  skipped: {
+    pro_code: string;
+    unit: string;
+    reason: 'unknown_product' | 'unknown_unit' | 'invalid_qty';
+  }[];
+  reached_tiers: ReachedPromotionTier[];
+  promo_gifts: {
+    pro_code: string;
+    unit: string;
+    qty: number;
+    promo_id: number;
+    tier_id: number;
+  }[];
+  hotdeal_gifts: {
+    pro_code: string;
+    main_pro_code: string;
+    unit_level: string;
+    qty: number;
+  }[];
+  progress: {
+    promo_id: number;
+    promo_name: string;
+    creditor_code: string | null;
+    is_unit: boolean;
+    current: number;
+    next_tier: {
+      tier_id: number;
+      tier_name: string;
+      min_amount: number;
+      need: number;
+    } | null;
+  }[];
 }
 
 // prefetch แบบ batch สำหรับ getProductCart — กัน N+1 ในการคำนวณแต้ม/ของแถม
@@ -534,14 +631,27 @@ export class ShoppingCartService {
     cart: ShoppingCartEntity[],
     mem_code: string,
     priceOption: string,
+    manager?: EntityManager,
   ): Promise<void> {
+    const toRemove = await this.findInvalidUseCodeRewards(cart, priceOption);
+    if (toRemove.length) {
+      await (
+        manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo
+      ).remove(toRemove);
+    }
+  }
+
+  private async findInvalidUseCodeRewards(
+    cart: ShoppingCartEntity[],
+    priceOption: string,
+  ): Promise<ShoppingCartEntity[]> {
     const promoMonth = new Date().getMonth() + 1;
 
     const rewardUseCodeItems = cart.filter(
       (c) => c.is_reward && c.spc_checked && c.use_code === true,
     );
 
-    if (!rewardUseCodeItems.length) return;
+    if (!rewardUseCodeItems.length) return [];
 
     const distinctTierIds = [
       ...new Set(
@@ -616,9 +726,7 @@ export class ShoppingCartService {
       }
     }
 
-    if (toRemove.length) {
-      await this.shoppingCartRepo.remove(toRemove);
-    }
+    return toRemove;
   }
 
   private async removeL16ItemsFromCart(
@@ -749,7 +857,10 @@ export class ShoppingCartService {
   private async removeRewardLines(
     cart: ShoppingCartEntity[],
     filter: Partial<ShoppingCartEntity>,
+    manager?: EntityManager,
   ) {
+    const repo =
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo;
     const toRemove = cart.filter(
       (c) =>
         c.is_reward &&
@@ -757,7 +868,7 @@ export class ShoppingCartService {
           ([k, v]) => (c as unknown as Record<string, unknown>)[k] === v,
         ),
     );
-    if (toRemove.length) await this.shoppingCartRepo.remove(toRemove);
+    if (toRemove.length) await repo.remove(toRemove);
   }
 
   private async syncRewardsToCart(
@@ -772,8 +883,11 @@ export class ShoppingCartService {
         tier_id: number;
       }
     >,
+    manager?: EntityManager,
   ) {
-    const rewardInCart = await this.shoppingCartRepo.find({
+    const repo =
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo;
+    const rewardInCart = await repo.find({
       where: { mem_code, is_reward: true },
     });
 
@@ -797,10 +911,10 @@ export class ShoppingCartService {
     }
 
     if (toRemove.length) {
-      await this.shoppingCartRepo.remove(toRemove);
+      await repo.remove(toRemove);
       // refresh
       rewardCartMap.clear();
-      const refreshed = await this.shoppingCartRepo.find({
+      const refreshed = await repo.find({
         where: { mem_code, is_reward: true },
       });
       for (const r of refreshed) {
@@ -835,7 +949,7 @@ export class ShoppingCartService {
         const validatedLevel = [1, 2, 3].includes(unitLevel) ? unitLevel : 1;
 
         ops.push(
-          this.shoppingCartRepo.save({
+          repo.save({
             pro_code,
             mem_code,
             spc_unit_enum: String(validatedLevel) as '1' | '2' | '3',
@@ -853,7 +967,7 @@ export class ShoppingCartService {
         existing.promo_id !== promo_id
       ) {
         ops.push(
-          this.shoppingCartRepo.update(
+          repo.update(
             { spc_id: existing.spc_id },
             { spc_amount: qty, tier_id, promo_id, spc_datetime: new Date() },
           ),
@@ -866,14 +980,17 @@ export class ShoppingCartService {
   private async syncConditionTagsToCart(
     baseEligibleCart: ShoppingCartEntity[],
     conditionTagMap: Map<number, { promo_id: number; tier_id: number }>,
+    manager?: EntityManager,
   ) {
+    const repo =
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo;
     const ops: Promise<any>[] = [];
     for (const line of baseEligibleCart) {
       const tag = conditionTagMap.get(line.spc_id);
       if (tag) {
         if (line.promo_id !== tag.promo_id || line.tier_id !== tag.tier_id) {
           ops.push(
-            this.shoppingCartRepo.update(
+            repo.update(
               { spc_id: line.spc_id },
               { promo_id: tag.promo_id, tier_id: tag.tier_id },
             ),
@@ -881,7 +998,7 @@ export class ShoppingCartService {
         }
       } else if (line.promo_id != null || line.tier_id != null) {
         ops.push(
-          this.shoppingCartRepo.update(
+          repo.update(
             { spc_id: line.spc_id },
             // คอลัมน์ทั้งคู่เป็น int NULL ใน DB แต่ entity ประกาศเป็น number จึงต้อง cast
             {
@@ -921,7 +1038,16 @@ export class ShoppingCartService {
   async getCartSnapshot(
     mem_code: string,
     mem_route?: string,
+    basketId?: number,
   ): Promise<CartMutationResult> {
+    if (basketId !== undefined) {
+      const snapshot = await this.getBasketCheckoutSnapshot(mem_code, basketId);
+      const [cart, version] = await Promise.all([
+        this.getProductCart(mem_code, { checkoutRows: snapshot.cart }),
+        this.getCartVersionState(mem_code),
+      ]);
+      return { cart, ...version };
+    }
     await this.removeL16ItemsFromCart(mem_code, mem_route);
     const [cart, version] = await Promise.all([
       this.getProductCart(mem_code),
@@ -931,6 +1057,209 @@ export class ShoppingCartService {
       cart,
       ...version,
     };
+  }
+
+  parseBasketCheckoutId(value: unknown): number | undefined {
+    if (value === undefined) return undefined;
+    if (
+      typeof value !== 'number' &&
+      (typeof value !== 'string' || !/^[1-9]\d*$/.test(value))
+    ) {
+      throw new BadRequestException('basket_id must be a positive integer');
+    }
+    const id = Number(value);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new BadRequestException(
+        'basket_id must be a positive safe integer',
+      );
+    }
+    return id;
+  }
+
+  /** Read-only checkout projection. Generated gifts never replace saved cart rows. */
+  async getBasketCheckoutSnapshot(
+    mem_code: string,
+    basketId: number,
+    manager?: EntityManager,
+    lock = false,
+  ): Promise<{ cart: ShoppingCartEntity[]; sourceIds: number[] }> {
+    this.parseBasketCheckoutId(basketId);
+    const entityManager = manager ?? this.shoppingCartRepo.manager;
+    const basket = await entityManager.getRepository(CartBasketEntity).findOne({
+      where: { basket_id: basketId, mem_code },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
+    if (!basket) throw new NotFoundException('Basket not found');
+
+    const repo =
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo;
+    const query = repo
+      .createQueryBuilder('cart')
+      .leftJoinAndSelect('cart.product', 'product')
+      .leftJoinAndSelect('product.units', 'units')
+      .leftJoinAndSelect('product.creditor', 'creditor')
+      .leftJoinAndSelect('cart.member', 'member')
+      .where('cart.mem_code = :mem_code', { mem_code })
+      .andWhere('cart.basket_id = :basketId', { basketId })
+      .orderBy('cart.pro_code', 'ASC');
+    if (lock) query.setLock('pessimistic_write');
+    const source = await query.getMany();
+    const selected = source.filter(
+      (row) => row.spc_checked && Number(row.spc_amount) > 0,
+    );
+    const mainRows = selected.filter(
+      (row) => !row.is_reward && !row.hotdeal_free,
+    );
+    if (!mainRows.length)
+      throw new ConflictException('Basket is empty or already purchased');
+    if (mainRows.some((row) => !row.product)) {
+      throw new ConflictException('Basket product is unavailable');
+    }
+    if (
+      (await this.isL16Member(mem_code)) &&
+      mainRows.some((row) => row.product.pro_l16_only === 1)
+    ) {
+      throw new BadRequestException(
+        'กระเช้ามีสินค้าที่สมาชิก L16 ไม่สามารถสั่งซื้อได้',
+      );
+    }
+
+    const priceOption = mainRows[0].member?.mem_price ?? 'C';
+    const plan = await this.calculatePromotionRewards(
+      mainRows,
+      mem_code,
+      priceOption,
+    );
+    const cart = mainRows.map((row) => {
+      const tag = plan.tags.get(row.spc_id);
+      return repo.create({
+        ...row,
+        promo_id: tag?.promo_id,
+        tier_id: tag?.tier_id,
+      });
+    });
+    let virtualId = -1;
+    const codeRewards = selected.filter((row) => row.is_reward && row.use_code);
+    const invalidCodes = new Set(
+      await this.findInvalidUseCodeRewards(
+        [...mainRows, ...codeRewards],
+        priceOption,
+      ),
+    );
+    for (const row of codeRewards) {
+      if (!invalidCodes.has(row) && row.product && Number(row.spc_amount) > 0) {
+        cart.push(
+          repo.create({ ...row, spc_id: virtualId--, basket_id: basketId }),
+        );
+      }
+    }
+    for (const reward of plan.rewards.values()) {
+      const product = await this.productRepo.findOne({
+        where: { pro_code: reward.pro_code },
+        relations: { units: true },
+      });
+      if (!product)
+        throw new ConflictException('Basket reward product is unavailable');
+      const unit = this.findProductUnit(product, reward.unit);
+      const level = this.normalizeHotdealUnitLevel(unit?.level ?? 1);
+      if (!level)
+        throw new ConflictException('Basket reward unit is unavailable');
+      cart.push(
+        repo.create({
+          spc_id: virtualId--,
+          mem_code,
+          basket_id: basketId,
+          pro_code: reward.pro_code,
+          product,
+          spc_unit_enum: level,
+          spc_amount: reward.qty,
+          spc_checked: true,
+          is_reward: true,
+          hotdeal_free: false,
+          use_code: false,
+          promo_id: reward.promo_id,
+          tier_id: reward.tier_id,
+        }),
+      );
+    }
+    const hotdealContext = await this.getHotdealSyncContext(mem_code, cart);
+    for (const gift of this.calculateDesiredHotdealFreebies(
+      hotdealContext,
+    ).values()) {
+      const product = hotdealContext.hotdeals.find(
+        (deal) => deal.product2?.pro_code === gift.pro_code,
+      )?.product2;
+      if (!product)
+        throw new ConflictException('Basket hotdeal product is unavailable');
+      cart.push(
+        repo.create({
+          spc_id: virtualId--,
+          mem_code,
+          basket_id: basketId,
+          product,
+          pro_code: gift.pro_code,
+          spc_unit_enum: gift.spc_unit_enum,
+          spc_amount: gift.amount,
+          hotdeal_promain: gift.hotdeal_promain,
+          spc_checked: true,
+          hotdeal_free: true,
+          is_reward: false,
+          use_code: false,
+        }),
+      );
+    }
+    cart.sort((a, b) => a.pro_code.localeCompare(b.pro_code));
+    return { cart, sourceIds: source.map((row) => row.spc_id) };
+  }
+
+  async clearBasketCheckout(
+    mem_code: string,
+    basketId: number,
+    sourceIds: number[],
+    priceOption: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager.delete(ShoppingCartEntity, {
+      mem_code,
+      basket_id: basketId,
+      spc_id: In(sourceIds),
+    });
+    await manager.delete(CartBasketEntity, { mem_code, basket_id: basketId });
+    await this.checkPromotionReward(mem_code, priceOption, manager);
+    await this.syncHotdealFreebiesForCart(mem_code, manager);
+    await manager
+      .createQueryBuilder()
+      .update('users')
+      .set({
+        cart_version: () => 'cart_version + 1',
+        cart_synced_at: () => 'CURRENT_TIMESTAMP',
+      })
+      .where('mem_code = :mem_code', { mem_code })
+      .execute();
+  }
+
+  /// หลังระบบอื่นแก้ตะกร้าตรง ๆ (เช่น ระบบขายลด/คืนของในตะกร้า) — คิดของแถมโปร/ฮอตดีลใหม่ + ขยับ cart_version
+  /// แบบเดียวกับท้าย clearBasketCheckout
+  async resyncDerivedRows(
+    mem_code: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const [member] = await manager.query<{ mem_price: string | null }[]>(
+      'SELECT mem_price FROM users WHERE mem_code = ? LIMIT 1',
+      [mem_code],
+    );
+    const priceOption = member?.mem_price?.trim() || 'C';
+    await this.checkPromotionReward(mem_code, priceOption, manager);
+    await this.syncHotdealFreebiesForCart(mem_code, manager);
+    await manager
+      .createQueryBuilder()
+      .update('users')
+      .set({
+        cart_version: () => 'cart_version + 1',
+        cart_synced_at: () => 'CURRENT_TIMESTAMP',
+      })
+      .where('mem_code = :mem_code', { mem_code })
+      .execute();
   }
 
   private async handleCheckFlashsale(pro_code: string) {
@@ -991,8 +1320,20 @@ export class ShoppingCartService {
     company_day_source?: string;
     /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
     isPreorderFulfillment?: boolean;
+    /** ECWC-699 สินค้าสั่งทำ — ต้องผ่าน normalizeStickerOptions มาแล้ว (ส่งมาจาก StickerLabelService เท่านั้น) */
+    customOptions?: StickerCustomOptions;
   }): Promise<CartMutationResult> {
     try {
+      // สติ๊กเกอร์ต้องมีรูปแบบเสมอ — เพิ่ม/ลดผ่าน /ecom/sticker-label/* เท่านั้น
+      if (isStickerProCode(data.pro_code) && !data.customOptions) {
+        throw new BadRequestException(
+          'สินค้าสั่งทำต้องเพิ่มผ่านหน้าสติ๊กเกอร์ฉลากยา',
+        );
+      }
+      const customHash = data.customOptions
+        ? hashStickerOptions(data.customOptions)
+        : null;
+
       if (data.flashsale_end) {
         await this.handleCheckFlashsale(data.pro_code);
       }
@@ -1018,6 +1359,7 @@ export class ShoppingCartService {
       // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
 
       // แถวของกระเช้าโปร (basket_id) แยกจากสินค้าเดี่ยวเสมอ ห้ามรวมจำนวนเข้าไป
+      // สินค้าสั่งทำ: รูปแบบเดียวกันรวมจำนวน รูปแบบต่างกันเป็นคนละแถว
       const existing = await this.shoppingCartRepo.findOne({
         where: {
           mem_code: data.mem_code,
@@ -1026,6 +1368,7 @@ export class ShoppingCartService {
           hotdeal_free: false,
           is_reward: false,
           basket_id: IsNull(),
+          custom_options_hash: customHash ?? IsNull(),
         },
       });
 
@@ -1064,6 +1407,8 @@ export class ShoppingCartService {
           flashsale_end: data.flashsale_end ?? undefined,
           spc_comments: '',
           hotdeal_free: false,
+          custom_options: data.customOptions ?? null,
+          custom_options_hash: customHash,
         });
       }
       await this.checkHotdealByProCode(data.mem_code, data.pro_code);
@@ -1191,19 +1536,42 @@ export class ShoppingCartService {
   async checkPromotionReward(
     mem_code: string,
     priceOption: string,
+    manager?: EntityManager,
   ): Promise<CompanyDayRewardContext | null> {
-    const today = dayjs().toDate();
-    const promoMonth = today.getMonth() + 1;
-    const isL16 = await this.isL16Member(mem_code);
-
-    // ─── 1. โหลด cart ─────────────────────────────────────────────────────────
-    const cart = await this.shoppingCartRepo.find({
+    const repo =
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo;
+    const cart = await repo.find({
       where: { mem_code },
       relations: { product: { units: true } },
     });
+    await this.removeExpiredUseCodeRewards(
+      cart,
+      mem_code,
+      priceOption,
+      manager,
+    );
+    const plan = await this.calculatePromotionRewards(
+      cart,
+      mem_code,
+      priceOption,
+    );
+    if (!plan.hasPromotions) {
+      await this.removeRewardLines(cart, { use_code: false }, manager);
+      return null;
+    }
+    await this.syncRewardsToCart(mem_code, plan.rewards, manager);
+    await this.syncConditionTagsToCart(plan.eligibleCart, plan.tags, manager);
+    return plan.context;
+  }
 
-    // ─── 2. ลบ reward-use-code ที่ไม่ qualify แล้ว ────────────────────────────
-    await this.removeExpiredUseCodeRewards(cart, mem_code, priceOption);
+  private async calculatePromotionRewards(
+    cart: ShoppingCartEntity[],
+    mem_code: string,
+    priceOption: string,
+  ): Promise<PromotionRewardPlan> {
+    const today = dayjs().toDate();
+    const promoMonth = today.getMonth() + 1;
+    const isL16 = await this.isL16Member(mem_code);
 
     // ─── 3. baseEligibleCart + perProductTotalUnits ───────────────────────────
     // ของแถมในกระเช้าสำเร็จรูป (fixed = 0) ไม่นับเข้าเกณฑ์ เหมือน hotdeal_free
@@ -1237,8 +1605,13 @@ export class ShoppingCartService {
     });
 
     if (!promotions.length) {
-      await this.removeRewardLines(cart, { use_code: false });
-      return null;
+      return {
+        rewards: new Map(),
+        tags: new Map(),
+        eligibleCart: baseEligibleCart,
+        context: null,
+        hasPromotions: false,
+      };
     }
 
     // ─── 5. Build promoConditionMap ───────────────────────────────────────────
@@ -1319,6 +1692,7 @@ export class ShoppingCartService {
     const selectedTierContexts: Array<
       CompanyDayRewardContext & { min_amount: number }
     > = [];
+    const reachedTiers: ReachedPromotionTier[] = [];
 
     for (const tier of conditionBasedTiers) {
       const threshold = Number(tier.min_amount);
@@ -1359,6 +1733,7 @@ export class ShoppingCartService {
         tier: tier.tier_name,
         min_amount: threshold,
       });
+      reachedTiers.push(this.toReachedTier(tier, threshold, multiplier));
 
       // ── หัก remaining value (multiplier × threshold) จาก items ──────────────
       if (!tier.is_unit) {
@@ -1487,6 +1862,7 @@ export class ShoppingCartService {
           tier: tier.tier_name,
           min_amount: threshold,
         });
+        reachedTiers.push(this.toReachedTier(tier, threshold, multiplier));
 
         for (const line of tierCart) {
           if (!conditionTagMap.has(line.spc_id)) {
@@ -1521,13 +1897,16 @@ export class ShoppingCartService {
       }
     }
 
-    // ─── 8. Sync rewards ใน cart ──────────────────────────────────────────────
-    await this.syncRewardsToCart(mem_code, shouldHaveMap);
-
-    // ─── 9. Sync promo_id/tier_id บน non-reward items ────────────────────────
-    await this.syncConditionTagsToCart(baseEligibleCart, conditionTagMap);
-
-    if (!selectedTierContexts.length) return null;
+    if (!selectedTierContexts.length) {
+      return {
+        rewards: shouldHaveMap,
+        tags: conditionTagMap,
+        eligibleCart: baseEligibleCart,
+        context: null,
+        hasPromotions: true,
+        reachedTiers,
+      };
+    }
 
     selectedTierContexts.sort((a, b) => {
       if (b.min_amount !== a.min_amount) return b.min_amount - a.min_amount;
@@ -1537,10 +1916,295 @@ export class ShoppingCartService {
 
     const top = selectedTierContexts[0];
     return {
-      promo_id: top.promo_id,
-      promo_name: top.promo_name,
-      tier: top.tier,
+      rewards: shouldHaveMap,
+      tags: conditionTagMap,
+      eligibleCart: baseEligibleCart,
+      hasPromotions: true,
+      context: {
+        promo_id: top.promo_id,
+        promo_name: top.promo_name,
+        tier: top.tier,
+      },
+      reachedTiers,
     };
+  }
+
+  private toReachedTier(
+    tier: PromotionTierEntity & { promotion: PromotionEntity },
+    threshold: number,
+    multiplier: number,
+  ): ReachedPromotionTier {
+    return {
+      promo_id: tier.promotion.promo_id,
+      promo_name:
+        tier.promotion.promo_name?.trim() ?? `Company Day - ${tier.tier_name}`,
+      creditor_code: null,
+      tier_id: tier.tier_id,
+      tier_name: tier.tier_name,
+      min_amount: threshold,
+      is_unit: Boolean(tier.is_unit),
+      all_products: Boolean(tier.all_products),
+      multiplier,
+    };
+  }
+
+  /**
+   * คิดของแถมของ "รายการสินค้าที่ส่งมา" ด้วยกติกาเดียวกับตะกร้าเป๊ะ โดยไม่แตะ shopping_cart
+   * (ให้หน้ากิมมิคหลังหน้า Key ขายของระบบขาย — ลูกค้าและเซลส์เห็นของแถมชุดเดียวกัน)
+   * แปลงบรรทัดเป็นแถวตะกร้าเสมือน แล้วเรียก calculateCartSummary / calculatePromotionRewards /
+   * calculateDesiredHotdealFreebies ตัวเดียวกับที่ตะกร้าใช้
+   */
+  async previewCheckoutLines(
+    mem_code: string,
+    input: PreviewOrderLine[],
+    fallback: { price_option?: string; mem_route?: string } = {},
+  ): Promise<CheckoutLinesPreview> {
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_code', 'mem_price', 'mem_route'],
+    });
+    const rawPrice = (member?.mem_price ?? fallback.price_option ?? 'C')
+      .toString()
+      .trim()
+      .toUpperCase();
+    const price_option = (
+      ['A', 'B', 'C'].includes(rawPrice) ? rawPrice : 'C'
+    ) as 'A' | 'B' | 'C';
+    const route = member ? member.mem_route : fallback.mem_route;
+    const is_l16 = (route ?? '').toUpperCase() === 'L16';
+
+    const codes = [...new Set(input.map((l) => l.pro_code))];
+    const products = codes.length
+      ? await this.productRepo.find({
+          where: { pro_code: In(codes) },
+          relations: { units: true, flashsale: { flashsale: true } },
+        })
+      : [];
+    const productByCode = new Map(products.map((p) => [p.pro_code, p]));
+
+    const bkkNow = new Date(Date.now() + 7 * 3600 * 1000).toISOString();
+    const today = bkkNow.slice(0, 10);
+    const nowTime = bkkNow.slice(11, 19);
+
+    const skipped: CheckoutLinesPreview['skipped'] = [];
+    const rows: ShoppingCartEntity[] = [];
+    input.forEach((line, idx) => {
+      const product = productByCode.get(line.pro_code);
+      if (!product) {
+        skipped.push({
+          pro_code: line.pro_code,
+          unit: line.unit,
+          reason: 'unknown_product',
+        });
+        return;
+      }
+      if (!(Number(line.qty) > 0)) {
+        skipped.push({
+          pro_code: line.pro_code,
+          unit: line.unit,
+          reason: 'invalid_qty',
+        });
+        return;
+      }
+      const unit = this.findProductUnit(product, line.unit?.trim());
+      if (!unit) {
+        skipped.push({
+          pro_code: line.pro_code,
+          unit: line.unit,
+          reason: 'unknown_unit',
+        });
+        return;
+      }
+      // Flash Sale ที่กำลังเปิดอยู่ตอนนี้ = ตะกร้าจะมี flashsale_end (ราคา A)
+      const live = (product.flashsale ?? []).find(
+        (f) =>
+          f.flashsale?.is_active &&
+          String(f.flashsale.date).slice(0, 10) === today &&
+          f.flashsale.time_start <= nowTime &&
+          nowTime < f.flashsale.time_end,
+      );
+      rows.push(
+        Object.assign(new ShoppingCartEntity(), {
+          spc_id: idx + 1,
+          mem_code,
+          pro_code: product.pro_code,
+          product,
+          spc_amount: Number(line.qty),
+          spc_unit_enum: String(unit.level),
+          spc_checked: true,
+          is_reward: false,
+          hotdeal_free: false,
+          spc_fixed_total: null,
+          flashsale_end: live
+            ? `${today}T${live.flashsale.time_end}+07:00`
+            : null,
+          member: { mem_code, mem_price: price_option },
+        }),
+      );
+    });
+
+    const summary = rows.length
+      ? this.calculateCartSummary(rows)
+      : { total: 0, items: [], lines: [] };
+    const amountById = new Map(summary.lines.map((l) => [l.spc_id, l.amount]));
+
+    const plan = rows.length
+      ? await this.calculatePromotionRewards(rows, mem_code, price_option)
+      : null;
+    const reached = plan?.reachedTiers ?? [];
+
+    const hotdealCtx = rows.length
+      ? await this.getHotdealSyncContext(mem_code, rows)
+      : { cartRows: [], hotdeals: [] };
+    const hotdeal = this.calculateDesiredHotdealFreebies(hotdealCtx);
+
+    const progress = rows.length
+      ? await this.promotionProgressForRows(rows, price_option)
+      : { items: [], creditorByPromo: new Map<number, string | null>() };
+    for (const t of reached) {
+      t.creditor_code = progress.creditorByPromo.get(t.promo_id) ?? null;
+    }
+
+    return {
+      price_option,
+      is_l16,
+      total: summary.total,
+      lines: rows.map((r) => ({
+        pro_code: r.pro_code,
+        unit_level: String(r.spc_unit_enum),
+        qty: Number(r.spc_amount),
+        amount: amountById.get(r.spc_id) ?? 0,
+      })),
+      skipped,
+      reached_tiers: reached,
+      promo_gifts: [...(plan?.rewards.values() ?? [])].map((g) => ({
+        pro_code: g.pro_code,
+        unit: g.unit,
+        qty: g.qty,
+        promo_id: g.promo_id,
+        tier_id: g.tier_id,
+      })),
+      hotdeal_gifts: [...hotdeal.values()].map((g) => ({
+        pro_code: g.pro_code,
+        main_pro_code: g.hotdeal_promain,
+        unit_level: g.spc_unit_enum,
+        qty: g.amount,
+      })),
+      progress: progress.items,
+    };
+  }
+
+  /**
+   * ยอด/จำนวนชิ้นของใบเทียบกับแต่ละขั้นของโปรที่ใบนี้เกี่ยว → ขั้นถัดไปที่ยังไม่ถึงและขาดอีกเท่าไร
+   * (นับแบบรวม ไม่หักตามลำดับขั้นเหมือนการแจกของแถม — ใช้บอกเซลส์เท่านั้น)
+   */
+  private async promotionProgressForRows(
+    rows: ShoppingCartEntity[],
+    priceOption: string,
+  ): Promise<{
+    items: CheckoutLinesPreview['progress'];
+    creditorByPromo: Map<number, string | null>;
+  }> {
+    const today = dayjs().toDate();
+    const promoMonth = today.getMonth() + 1;
+    const promotions = await this.promotionRepo.find({
+      where: {
+        status: true,
+        start_date: LessThanOrEqual(today),
+        end_date: MoreThanOrEqual(today),
+      },
+      relations: { tiers: { exclusions: true }, creditor: true },
+    });
+    const creditorByPromo = new Map<number, string | null>(
+      promotions.map((p) => [p.promo_id, p.creditor?.creditor_code ?? null]),
+    );
+    if (!promotions.length) return { items: [], creditorByPromo };
+
+    const tierIds = promotions.flatMap((p) =>
+      (p.tiers ?? []).map((t) => t.tier_id),
+    );
+    const conditions = tierIds.length
+      ? await this.conRepo
+          .createQueryBuilder('cond')
+          .innerJoin('cond.tier', 'tier')
+          .innerJoin('cond.product', 'prod')
+          .select(['tier.tier_id AS tier_id', 'prod.pro_code AS pro_code'])
+          .where('tier.tier_id IN (:...tierIds)', { tierIds })
+          .getRawMany<{ tier_id: number; pro_code: string }>()
+      : [];
+    const condMap = new Map<number, Set<string>>();
+    for (const { tier_id, pro_code } of conditions) {
+      if (!condMap.has(Number(tier_id)))
+        condMap.set(Number(tier_id), new Set());
+      condMap.get(Number(tier_id))!.add(pro_code);
+    }
+
+    const totalUnits = new Map<string, number>();
+    for (const r of rows) {
+      const ratio = this.getUnitRatio(r.product, r.spc_unit_enum);
+      totalUnits.set(
+        r.pro_code,
+        (totalUnits.get(r.pro_code) ?? 0) + Number(r.spc_amount) * ratio,
+      );
+    }
+    const value = (r: ShoppingCartEntity) =>
+      Number(r.spc_amount) *
+      this.getUnitRatio(r.product, r.spc_unit_enum) *
+      promoUnitPrice(
+        r.product,
+        priceOption as PriceOption,
+        totalUnits.get(r.pro_code) ?? 0,
+        promoMonth,
+      );
+    const units = (r: ShoppingCartEntity) =>
+      Number(r.spc_amount) * this.getUnitRatio(r.product, r.spc_unit_enum);
+
+    const items: CheckoutLinesPreview['progress'] = [];
+    for (const promo of promotions) {
+      const measured = (promo.tiers ?? [])
+        .filter((t) => Number(t.min_amount) > 0)
+        .map((t) => {
+          let eligible: ShoppingCartEntity[];
+          if (t.all_products) {
+            const excluded = new Set(
+              (t.exclusions ?? []).map((e) => e.product_code),
+            );
+            eligible = rows.filter((r) => !excluded.has(r.pro_code));
+          } else {
+            const codes = condMap.get(t.tier_id);
+            eligible = codes ? rows.filter((r) => codes.has(r.pro_code)) : [];
+          }
+          const current = eligible.reduce(
+            (sum, r) => sum + (t.is_unit ? units(r) : value(r)),
+            0,
+          );
+          return { tier: t, current };
+        })
+        .filter((m) => m.current > 0)
+        .sort((a, b) => Number(a.tier.min_amount) - Number(b.tier.min_amount));
+      if (!measured.length) continue;
+      const next = measured.find((m) => m.current < Number(m.tier.min_amount));
+      const ref = next ?? measured[measured.length - 1];
+      items.push({
+        promo_id: promo.promo_id,
+        promo_name: promo.promo_name?.trim() ?? '',
+        creditor_code: promo.creditor?.creditor_code ?? null,
+        is_unit: Boolean(ref.tier.is_unit),
+        current: Math.round(ref.current * 100) / 100,
+        next_tier: next
+          ? {
+              tier_id: next.tier.tier_id,
+              tier_name: next.tier.tier_name,
+              min_amount: Number(next.tier.min_amount),
+              need:
+                Math.round(
+                  (Number(next.tier.min_amount) - next.current) * 100,
+                ) / 100,
+            }
+          : null,
+      });
+    }
+    return { items, creditorByPromo };
   }
 
   async checkedProductCart(data: {
@@ -1772,20 +2436,25 @@ export class ShoppingCartService {
 
   async getProductCart(
     mem_code: string,
-    options: { syncHotdeal?: boolean } = {},
+    options: {
+      syncHotdeal?: boolean;
+      checkoutRows?: ShoppingCartEntity[];
+    } = {},
   ): Promise<ShoppingProductCart[]> {
     try {
-      await this.removeL16ItemsFromCart(mem_code);
-      await this.shoppingCartRepo
-        .createQueryBuilder()
-        .delete()
-        .from(ShoppingCartEntity)
-        .where('mem_code = :mem_code', { mem_code })
-        .andWhere('spc_amount <= 0')
-        .execute();
+      if (!options.checkoutRows) {
+        await this.removeL16ItemsFromCart(mem_code);
+        await this.shoppingCartRepo
+          .createQueryBuilder()
+          .delete()
+          .from(ShoppingCartEntity)
+          .where('mem_code = :mem_code', { mem_code })
+          .andWhere('spc_amount <= 0')
+          .execute();
 
-      if (options.syncHotdeal !== false) {
-        await this.syncHotdealFreebiesForCart(mem_code);
+        if (options.syncHotdeal !== false) {
+          await this.syncHotdealFreebiesForCart(mem_code);
+        }
       }
 
       const isL16 = await this.isL16Member(mem_code);
@@ -1799,9 +2468,19 @@ export class ShoppingCartService {
         ? 'recommendedProductsReplace.pro_l16_only = 0 OR recommendedProductsReplace.pro_l16_only IS NULL'
         : undefined;
 
-      const raw: RawProductCart[] = await this.shoppingCartRepo
-        .createQueryBuilder('cart')
-        .leftJoinAndSelect('cart.product', 'product')
+      const baseQuery = options.checkoutRows
+        ? this.productRepo
+            .createQueryBuilder('product')
+            .leftJoin(
+              ShoppingCartEntity,
+              'cart',
+              'cart.pro_code = product.pro_code AND cart.mem_code = :mem_code AND cart.basket_id = :basketId',
+              { mem_code, basketId: options.checkoutRows[0]?.basket_id },
+            )
+        : this.shoppingCartRepo
+            .createQueryBuilder('cart')
+            .leftJoinAndSelect('cart.product', 'product');
+      let raw = await baseQuery
         // ECWC-643: ตะกร้าแสดงเฉพาะ lot ปัจจุบัน ไม่เอาประวัติ lot
         .leftJoinAndSelect('product.lot', 'lot', 'lot.is_active = 1')
         .leftJoinAndSelect('product.flashsale', 'fs')
@@ -1822,7 +2501,19 @@ export class ShoppingCartService {
           'recommendedProductsReplace',
           replaceInRecommendCondition,
         )
-        .where('cart.mem_code = :mem_code', { mem_code })
+        .where(
+          options.checkoutRows
+            ? 'product.pro_code IN (:...checkoutCodes)'
+            : 'cart.mem_code = :mem_code',
+          {
+            mem_code,
+            checkoutCodes: [
+              ...new Set(
+                options.checkoutRows?.map((row) => row.pro_code) ?? [],
+              ),
+            ],
+          },
+        )
         .select([
           'product.pro_code AS pro_code',
           'product.pro_name AS pro_name',
@@ -1856,6 +2547,7 @@ export class ShoppingCartService {
           'cart.is_reward AS is_reward',
           'cart.flashsale_end AS flashsale_end',
           'cart.hotdeal_promain AS hotdeal_promain',
+          'cart.custom_options AS custom_options',
           'fs.promotion_id AS promotion_id',
           'fs.limit AS flashsale_limit',
           'flashsale.date AS flashsale_date',
@@ -1875,6 +2567,25 @@ export class ShoppingCartService {
         .orderBy('product.pro_code', 'ASC')
         .getRawMany<RawProductCart>();
 
+      const checkoutRows = options.checkoutRows;
+      if (checkoutRows) {
+        raw = raw.flatMap((metadata) =>
+          checkoutRows
+            .filter((row) => row.pro_code === metadata.pro_code)
+            .map((row) => ({
+              ...metadata,
+              spc_id: row.spc_id,
+              spc_amount: String(row.spc_amount),
+              spc_unit_enum: row.spc_unit_enum,
+              spc_checked: Number(row.spc_checked),
+              is_reward: row.is_reward,
+              hotdeal_free: row.hotdeal_free,
+              hotdeal_promain: row.hotdeal_promain,
+              flashsale_end: row.flashsale_end ?? undefined,
+            })),
+        );
+      }
+
       const grouped: Record<string, ShoppingProductCart> = {};
 
       const allProCodes = [...new Set(raw.map((r) => r.pro_code))];
@@ -1890,24 +2601,36 @@ export class ShoppingCartService {
 
       // Prefetch แบบ batch (freebies + main-in-cart) กัน N+1 ในการคำนวณแต้ม/ของแถม
       const [freebiesAll, mainInCartAll] = await Promise.all([
-        this.shoppingCartRepo.find({
-          where: {
-            mem_code,
-            hotdeal_promain: In(allProCodes),
-            hotdeal_free: true,
-            spc_checked: true,
-          },
-          relations: { product: true },
-        }),
-        this.shoppingCartRepo.find({
-          where: {
-            mem_code,
-            pro_code: In(allProCodes),
-            hotdeal_free: false,
-            spc_checked: true,
-          },
-          relations: { product: { units: true } },
-        }),
+        options.checkoutRows
+          ? Promise.resolve(
+              options.checkoutRows.filter(
+                (row) => row.hotdeal_free && row.spc_checked,
+              ),
+            )
+          : this.shoppingCartRepo.find({
+              where: {
+                mem_code,
+                hotdeal_promain: In(allProCodes),
+                hotdeal_free: true,
+                spc_checked: true,
+              },
+              relations: { product: true },
+            }),
+        options.checkoutRows
+          ? Promise.resolve(
+              options.checkoutRows.filter(
+                (row) => !row.hotdeal_free && row.spc_checked,
+              ),
+            )
+          : this.shoppingCartRepo.find({
+              where: {
+                mem_code,
+                pro_code: In(allProCodes),
+                hotdeal_free: false,
+                spc_checked: true,
+              },
+              relations: { product: { units: true } },
+            }),
       ]);
 
       const freebiesByMain = new Map<string, ShoppingCartEntity[]>();
@@ -2099,7 +2822,24 @@ export class ShoppingCartService {
               `[getProductCart] spc_unit_enum is null/empty for spc_id=${row.spc_id} pro_code=${row.pro_code}, skipping row`,
             );
           } else {
+            const customOptions = parseStickerJson<StickerCustomOptions>(
+              row.custom_options,
+            );
+            const unitRatio =
+              row.spc_unit_enum === '3'
+                ? transformedProduct?.pro_ratio3
+                : row.spc_unit_enum === '2'
+                  ? transformedProduct?.pro_ratio2
+                  : transformedProduct?.pro_ratio1;
             grouped[key].shopping_cart.push({
+              custom_options: customOptions,
+              sticker_quantity: customOptions
+                ? stickerQuantity(
+                    Number(row.spc_amount),
+                    unitRatio || 1,
+                    customOptions.packSize,
+                  )
+                : null,
               spc_id: row.spc_id,
               spc_amount: row.spc_amount,
               spc_checked: row.spc_checked,
@@ -2191,10 +2931,13 @@ export class ShoppingCartService {
     }
   }
 
-  private async syncHotdealFreebiesForCart(mem_code: string): Promise<void> {
+  private async syncHotdealFreebiesForCart(
+    mem_code: string,
+    manager?: EntityManager,
+  ): Promise<void> {
     const [syncContext, existingFreebies] = await Promise.all([
-      this.getHotdealSyncContext(mem_code),
-      this.getExistingHotdealFreebies(mem_code),
+      this.getHotdealSyncContext(mem_code, undefined, manager),
+      this.getExistingHotdealFreebies(mem_code, manager),
     ]);
 
     const desiredFreebies = this.calculateDesiredHotdealFreebies(syncContext);
@@ -2203,24 +2946,31 @@ export class ShoppingCartService {
       mem_code,
       desiredFreebies,
       existingFreebies,
+      manager,
     );
   }
 
   private async getHotdealSyncContext(
     mem_code: string,
+    suppliedRows?: ShoppingCartEntity[],
+    manager?: EntityManager,
   ): Promise<HotdealSyncContext> {
-    const cartRows = await this.shoppingCartRepo.find({
-      where: {
-        mem_code,
-        hotdeal_free: false,
-        spc_checked: true,
-      },
-      relations: {
-        product: {
-          units: true,
-        },
-      },
-    });
+    const cartRows = suppliedRows
+      ? suppliedRows.filter((row) => row.spc_checked && !row.hotdeal_free)
+      : await (
+          manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo
+        ).find({
+          where: {
+            mem_code,
+            hotdeal_free: false,
+            spc_checked: true,
+          },
+          relations: {
+            product: {
+              units: true,
+            },
+          },
+        });
 
     const mainProCodes = [...new Set(cartRows.map((row) => row.pro_code))];
     if (mainProCodes.length === 0) {
@@ -2252,8 +3002,11 @@ export class ShoppingCartService {
 
   private async getExistingHotdealFreebies(
     mem_code: string,
+    manager?: EntityManager,
   ): Promise<ShoppingCartEntity[]> {
-    return this.shoppingCartRepo.find({
+    return (
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo
+    ).find({
       where: {
         mem_code,
         hotdeal_free: true,
@@ -2392,7 +3145,10 @@ export class ShoppingCartService {
     mem_code: string,
     desiredFreebies: Map<string, DesiredHotdealFreebie>,
     freebieRows: ShoppingCartEntity[],
+    manager?: EntityManager,
   ): Promise<void> {
+    const repo =
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo;
     const existingFreebieMap = new Map<string, ShoppingCartEntity>();
     const duplicateFreebies: ShoppingCartEntity[] = [];
     for (const freebie of freebieRows) {
@@ -2426,7 +3182,7 @@ export class ShoppingCartService {
       }),
     ];
     if (freebiesToRemove.length > 0) {
-      await this.deleteCartRowsById(freebiesToRemove);
+      await this.deleteCartRowsById(freebiesToRemove, manager);
     }
 
     const updateOps: Promise<unknown>[] = [];
@@ -2436,7 +3192,7 @@ export class ShoppingCartService {
       if (existing) {
         if (Number(existing.spc_amount) !== desired.amount) {
           updateOps.push(
-            this.shoppingCartRepo.update(
+            repo.update(
               { spc_id: existing.spc_id },
               {
                 spc_amount: desired.amount,
@@ -2462,7 +3218,7 @@ export class ShoppingCartService {
       await Promise.all(updateOps);
     }
     if (freebiesToCreate.length > 0) {
-      await this.shoppingCartRepo.save(freebiesToCreate);
+      await repo.save(freebiesToCreate);
     }
   }
 
@@ -2474,10 +3230,15 @@ export class ShoppingCartService {
     return `${hotdealPromain}::${proCode}::${unitEnum}`;
   }
 
-  private async deleteCartRowsById(rows: ShoppingCartEntity[]): Promise<void> {
+  private async deleteCartRowsById(
+    rows: ShoppingCartEntity[],
+    manager?: EntityManager,
+  ): Promise<void> {
     const ids = [...new Set(rows.map((row) => row.spc_id))];
     if (ids.length === 0) return;
-    await this.shoppingCartRepo.delete({ spc_id: In(ids) });
+    await (
+      manager?.getRepository(ShoppingCartEntity) ?? this.shoppingCartRepo
+    ).delete({ spc_id: In(ids) });
   }
 
   private normalizeHotdealUnitLevel(
@@ -2715,11 +3476,23 @@ export class ShoppingCartService {
    * ยอดตะกร้า + มูลค่าต่อบรรทัด ด้วยกติกาเดียวกันเป๊ะ (fixed total > promotion/flashsale > price tier)
    * ใช้โดย summaryCart และ happy hour preview เพื่อไม่ให้สองที่คิดเลขคนละแบบ
    */
-  async summaryCartDetailed(mem_code: string): Promise<{
+  async summaryCartDetailed(
+    mem_code: string,
+    basketId?: number,
+    manager?: EntityManager,
+  ): Promise<{
     total: number;
     items: { [key: string]: number }[];
     lines: { spc_id: number; pro_code: string; amount: number }[];
   }> {
+    if (basketId !== undefined) {
+      const snapshot = await this.getBasketCheckoutSnapshot(
+        mem_code,
+        basketId,
+        manager,
+      );
+      return this.calculateCartSummary(snapshot.cart);
+    }
     try {
       const result = await this.shoppingCartRepo
         .createQueryBuilder('cart')
@@ -2730,6 +3503,9 @@ export class ShoppingCartService {
         .leftJoinAndSelect('cart.member', 'member')
         .select([
           'cart.spc_id',
+          'cart.spc_checked',
+          'cart.is_reward',
+          'cart.hotdeal_free',
           'cart.spc_amount',
           'cart.spc_unit_enum',
           'cart.pro_code',
@@ -2760,134 +3536,142 @@ export class ShoppingCartService {
         .orderBy('cart.pro_code', 'ASC')
         .getMany();
 
-      const numberOfMonth = new Date().getMonth() + 1;
-      const splitData = groupCart(result, 80);
-
-      let total = 0;
-      const itemsArray: { index: number; grandTotalItems: number }[] = [];
-      const lines: { spc_id: number; pro_code: string; amount: number }[] = [];
-
-      for (const [index, dataGroup] of splitData.entries()) {
-        const productTotalAmounts = new Map<string, number>();
-
-        for (const item of dataGroup) {
-          if (!item.product) continue;
-
-          let ratio = 1;
-          const matchedUnit = item.product.units?.find(
-            (u) =>
-              u.unit_name === item.spc_unit_enum ||
-              String(u.level) === String(item.spc_unit_enum),
-          );
-          if (matchedUnit) {
-            ratio = matchedUnit.ratio;
-          } else {
-            throw new Error(
-              `Invalid unit enum ${item.spc_unit_enum} for product ${item.pro_code}`,
-            );
-          }
-          const baseAmount = Number(item.spc_amount) * Number(ratio);
-
-          productTotalAmounts.set(
-            item.pro_code,
-            (productTotalAmounts.get(item.pro_code) || 0) + baseAmount,
-          );
-        }
-
-        const promotionProducts: { pro_code: string }[] = [];
-        for (const item of dataGroup) {
-          if (!item.product) continue;
-          const totalAmount = productTotalAmounts.get(item.pro_code) || 0;
-          const isPromotionActive =
-            item.product.pro_promotion_month === numberOfMonth &&
-            totalAmount >= (item.product.pro_promotion_amount ?? 0);
-
-          const isFlashSale = item.flashsale_end
-            ? new Date(item.flashsale_end) >= new Date()
-            : false;
-
-          if (isPromotionActive || isFlashSale) {
-            if (!promotionProducts.find((p) => p.pro_code === item.pro_code)) {
-              promotionProducts.push({ pro_code: item.pro_code });
-            }
-          }
-        }
-
-        const priceByCode = new Map<
-          string,
-          { A: number; B: number; C: number }
-        >(
-          dataGroup.map((r) => [
-            r.pro_code,
-            {
-              A: Number(r.product?.pro_priceA ?? 0),
-              B: Number(r.product?.pro_priceB ?? 0),
-              C: Number(r.product?.pro_priceC ?? 0),
-            },
-          ]),
-        );
-
-        const promoSet = new Set<string>(
-          promotionProducts.map((p) => p.pro_code),
-        );
-
-        const split = dataGroup.reduce(
-          (acc, item) => {
-            (promoSet.has(item.pro_code) ? acc.promo : acc.nonPromo).push(item);
-            return acc;
-          },
-          {
-            promo: [] as typeof dataGroup,
-            nonPromo: [] as typeof dataGroup,
-          },
-        );
-
-        const tier = result[0]?.member?.mem_price ?? 'C';
-
-        const lineValue = (
-          item: (typeof dataGroup)[number],
-          t: 'A' | 'B' | 'C',
-        ): number => {
-          // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
-          if (this.hasFixedTotal(item)) return Number(item.spc_fixed_total);
-          let ratio = 0;
-          const matchedUnit = item.product.units?.find(
-            (u) =>
-              u.unit_name === item.spc_unit_enum ||
-              String(u.level) === String(item.spc_unit_enum),
-          );
-          if (matchedUnit) ratio = matchedUnit.ratio;
-          const quantity = Number(item.spc_amount) * Number(ratio);
-          const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
-          return quantity * price;
-        };
-
-        const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
-          items.reduce((sum, item) => {
-            const amount = lineValue(item, t);
-            lines.push({
-              spc_id: item.spc_id,
-              pro_code: item.pro_code,
-              amount,
-            });
-            return sum + amount;
-          }, 0);
-
-        const promoTotal = totalByTier(split.promo, 'A');
-        const nonPromoTotal = totalByTier(
-          split.nonPromo,
-          tier as 'A' | 'B' | 'C',
-        );
-
-        const grandTotalItems = promoTotal + nonPromoTotal;
-        total += grandTotalItems;
-        itemsArray.push({ index: index, grandTotalItems });
-      }
-
-      return { total: total, items: itemsArray, lines };
+      return this.calculateCartSummary(result);
     } catch {
       return { total: 0, items: [], lines: [] };
     }
+  }
+
+  calculateCartSummary(cart: ShoppingCartEntity[]): {
+    total: number;
+    items: { [key: string]: number }[];
+    lines: { spc_id: number; pro_code: string; amount: number }[];
+  } {
+    const result = cart.filter(
+      (row) => row.spc_checked && !row.is_reward && !row.hotdeal_free,
+    );
+    const numberOfMonth = new Date().getMonth() + 1;
+    const splitData = groupCart(result, 80);
+
+    let total = 0;
+    const itemsArray: { index: number; grandTotalItems: number }[] = [];
+    const lines: { spc_id: number; pro_code: string; amount: number }[] = [];
+
+    for (const [index, dataGroup] of splitData.entries()) {
+      const productTotalAmounts = new Map<string, number>();
+
+      for (const item of dataGroup) {
+        if (!item.product) continue;
+
+        let ratio = 1;
+        const matchedUnit = item.product.units?.find(
+          (u) =>
+            u.unit_name === item.spc_unit_enum ||
+            String(u.level) === String(item.spc_unit_enum),
+        );
+        if (matchedUnit) {
+          ratio = matchedUnit.ratio;
+        } else {
+          throw new Error(
+            `Invalid unit enum ${item.spc_unit_enum} for product ${item.pro_code}`,
+          );
+        }
+        const baseAmount = Number(item.spc_amount) * Number(ratio);
+
+        productTotalAmounts.set(
+          item.pro_code,
+          (productTotalAmounts.get(item.pro_code) || 0) + baseAmount,
+        );
+      }
+
+      const promotionProducts: { pro_code: string }[] = [];
+      for (const item of dataGroup) {
+        if (!item.product) continue;
+        const totalAmount = productTotalAmounts.get(item.pro_code) || 0;
+        const isPromotionActive =
+          item.product.pro_promotion_month === numberOfMonth &&
+          totalAmount >= (item.product.pro_promotion_amount ?? 0);
+
+        const isFlashSale = item.flashsale_end
+          ? new Date(item.flashsale_end) >= new Date()
+          : false;
+
+        if (isPromotionActive || isFlashSale) {
+          if (!promotionProducts.find((p) => p.pro_code === item.pro_code)) {
+            promotionProducts.push({ pro_code: item.pro_code });
+          }
+        }
+      }
+
+      const priceByCode = new Map<string, { A: number; B: number; C: number }>(
+        dataGroup.map((r) => [
+          r.pro_code,
+          {
+            A: Number(r.product?.pro_priceA ?? 0),
+            B: Number(r.product?.pro_priceB ?? 0),
+            C: Number(r.product?.pro_priceC ?? 0),
+          },
+        ]),
+      );
+
+      const promoSet = new Set<string>(
+        promotionProducts.map((p) => p.pro_code),
+      );
+
+      const split = dataGroup.reduce(
+        (acc, item) => {
+          (promoSet.has(item.pro_code) ? acc.promo : acc.nonPromo).push(item);
+          return acc;
+        },
+        {
+          promo: [] as typeof dataGroup,
+          nonPromo: [] as typeof dataGroup,
+        },
+      );
+
+      const tier = result[0]?.member?.mem_price ?? 'C';
+
+      const lineValue = (
+        item: (typeof dataGroup)[number],
+        t: 'A' | 'B' | 'C',
+      ): number => {
+        // กระเช้าสำเร็จรูป: ราคาถูกล็อกไว้ต่อบรรทัดแล้ว ไม่คิดจาก product
+        if (this.hasFixedTotal(item)) return Number(item.spc_fixed_total);
+        let ratio = 0;
+        const matchedUnit = item.product.units?.find(
+          (u) =>
+            u.unit_name === item.spc_unit_enum ||
+            String(u.level) === String(item.spc_unit_enum),
+        );
+        if (matchedUnit) ratio = matchedUnit.ratio;
+        const quantity = Number(item.spc_amount) * Number(ratio);
+        const price = priceByCode.get(item.pro_code)?.[t] ?? 0;
+        return quantity * price;
+      };
+
+      const totalByTier = (items: typeof dataGroup, t: 'A' | 'B' | 'C') =>
+        items.reduce((sum, item) => {
+          const amount = lineValue(item, t);
+          lines.push({
+            spc_id: item.spc_id,
+            pro_code: item.pro_code,
+            amount,
+          });
+          return sum + amount;
+        }, 0);
+
+      const promoTotal = totalByTier(split.promo, 'A');
+      const nonPromoTotal = totalByTier(
+        split.nonPromo,
+        tier as 'A' | 'B' | 'C',
+      );
+
+      const grandTotalItems = promoTotal + nonPromoTotal;
+      total += grandTotalItems;
+      itemsArray.push({ index: index, grandTotalItems });
+    }
+
+    return { total: total, items: itemsArray, lines };
   }
 
   async getOrderFromCartMember(

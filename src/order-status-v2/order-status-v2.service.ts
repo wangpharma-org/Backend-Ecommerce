@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError } from 'axios';
@@ -14,16 +14,25 @@ import { ShoppingHeadEntity } from '../shopping-head/shopping-head.entity';
 import { ShoppingOrderEntity } from '../shopping-order/shopping-order.entity';
 import { UserEntity } from '../users/users.entity';
 import { ProductsService } from '../products/products.service';
+import { StoreVisibilityService } from '../store-visibility/store-visibility.service';
 import { DhlTrackingService } from '../dhl-tracking/dhl-tracking.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
+  EcomLastDeliveredStore,
+  EcomLatestDeliveringStoreItem,
   EcomOrderDetailV2Res,
   EcomOrderListV2Order,
   EcomOrderListV2Res,
   EcomOrderStatusV2Evidence,
+  EcomOrderStatusV2Checkpoint,
   EcomOrderStatusV2Item,
   EcomOrderStatusV2Res,
   EcomOrderTimelineStatus,
+  SHOP_STATUS_LABEL,
+  ShopStatusLine,
+  ShopStatusBatchItem,
+  ShopStatusOrder,
+  ShopStatusTableRes,
 } from './types/order-status-v2.types';
 import {
   LegacyOrderDetailProduct,
@@ -34,6 +43,12 @@ import {
 } from './types/legacy-order-api.types';
 
 const PICKING_ORDERS_MONTHS_BACK = 3;
+// ECWC-600 (PDPA): ร้านที่ไม่ยินยอมให้คนอื่นเห็นชื่อ ก็ไม่ควรถูกซูมหาจากหมุด checkpoint ได้
+// ปัดพิกัดเหลือ 3 ตำแหน่ง ≈ 110 เมตร — ต้องปัดฝั่ง server เพราะถ้าปัดที่ frontend
+// พิกัดเต็มยังติดไปใน response อยู่ดี
+const CHECKPOINT_COARSE_DECIMALS = 3;
+// ECWC-601: บิลที่ยังอยู่ระหว่างจัดส่งควรเปิดไม่เกินกี่วัน — กันยิง batch ไป logistics ทั้งประวัติ
+const DELIVERING_ORDERS_DAYS_BACK = 7;
 
 // ECWC-4xx: mapping สถานะภายในของเรา → ข้อความ Thai แบบเดียวกับ API เก่าฝั่ง PHP (Akitokung)
 // ยืนยันแล้วจากตัวอย่างจริงแค่ 'opened' ("กำลังเปิดบิล") — ที่เหลือ best-effort ตาม pattern เดียวกัน
@@ -126,11 +141,18 @@ interface LogisticTrackingV2Res {
     latitude: string;
     longitude: string;
     time: string | null;
+    mem_code?: string; // ECWC-600: มีเฉพาะ STORE_DELIVERED
   } | null;
   store_latitude: string | null;
   store_longitude: string | null;
   evidence: EcomOrderStatusV2Evidence | null;
 }
+
+// name_granted แยกจาก store_name เพราะร้านที่ยินยอมแล้วแต่ไม่มี mem_nameSite ใน users ก็ได้
+// store_name = null — การปัดพิกัด (ECWC-600 ข้อ 2) ต้องดูความยินยอมจริง ไม่ใช่ดูว่ามีชื่อหรือไม่
+type LastDeliveredStoreRow = Omit<EcomLastDeliveredStore, 'delivered_at'> & {
+  name_granted: boolean;
+};
 
 type PickingBatchStatus = 'picking' | 'checking' | 'ready' | 'blocked';
 type DeliveryBatchStatus = 'DELIVERING' | 'DONE' | 'BACK' | 'CANCELLED';
@@ -157,6 +179,7 @@ export class OrderStatusV2Service {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly productService: ProductsService,
+    private readonly storeVisibilityService: StoreVisibilityService,
     private readonly dhlTrackingService: DhlTrackingService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -759,6 +782,9 @@ export class OrderStatusV2Service {
       : pickingRaw;
 
     const status = this.resolveTimelineStatus(picking, delivery);
+    // ECWC-600: ต้องรู้ด้วยว่าร้านล่าสุดยินยอมให้คนอื่นเห็นตัวเองไหม เพราะพิกัด checkpoint
+    // ต้องถูกปัดตามความยินยอมเดียวกันกับชื่อร้าน ไม่งั้นซ่อนชื่อแต่หมุดยังปักตรงอาคาร
+    const lastDelivered = await this.resolveLastDeliveredStore(delivery);
 
     return {
       soh_running,
@@ -782,14 +808,206 @@ export class OrderStatusV2Service {
             driver_name: delivery.driver_name || null,
             driver_emp_code: delivery.driver_emp_code,
             driver_tel: delivery.driver_tel,
+            checkpoint: this.toPublicCheckpoint(
+              delivery.checkpoint,
+              lastDelivered.name_granted,
+            ),
             departure_time: delivery.departure_time,
-            checkpoint: delivery.checkpoint,
             store_latitude: delivery.store_latitude,
             store_longitude: delivery.store_longitude,
             finished_at: delivery.finished_at,
             evidence: delivery.evidence,
+            last_delivered_store: lastDelivered.store,
           }
         : null,
+    };
+  }
+
+  // ECWC-601: หน้าหลัก (แถบใต้ navbar) — บิลของลูกค้าที่ขนส่งกำลังส่งอยู่ + ร้านล่าสุดที่ส่งถึงแล้ว
+  // เรียงร้านที่ส่งล่าสุดก่อน, ไม่มีบิลกำลังส่ง = [] (frontend ซ่อนแถบ)
+  // หาบิลย้อนหลัง DELIVERING_ORDERS_DAYS_BACK วัน ทั้งใน shopping_head และฝั่ง order-picking-service
+  // (บิลที่มีแค่ฝั่งคลังก็ขึ้นรถได้ — เจอจริง 005-090382 ไม่มีใน shopping_head แถบเลยไม่ขึ้น)
+  async getLatestDeliveringStores(
+    mem_code: string,
+  ): Promise<EcomLatestDeliveringStoreItem[]> {
+    const since = new Date();
+    since.setDate(since.getDate() - DELIVERING_ORDERS_DAYS_BACK);
+
+    const [heads, pickingEntries] = await Promise.all([
+      this.shoppingHeadRepo
+        .createQueryBuilder('head')
+        .where('head.mem_code = :mem_code', { mem_code })
+        .andWhere('head.soh_datetime >= :since', { since })
+        .select(['head.soh_running'])
+        .getMany(),
+      this.fetchPickingRunnings(mem_code, 1),
+    ]);
+    const runnings = [
+      ...new Set([
+        ...heads.map((h) => h.soh_running),
+        ...pickingEntries
+          .filter((e) => new Date(e.sh_datetime) >= since)
+          .map((e) => e.sh_running),
+      ]),
+    ];
+
+    const batch = await this.fetchDeliveryStatusBatch(runnings, mem_code);
+    const delivering = runnings.filter((r) => batch[r] === 'DELIVERING');
+    if (delivering.length === 0) return [];
+
+    const deliveries = await Promise.all(
+      delivering.map((r) => this.fetchDeliveryStatus(r, mem_code)),
+    );
+    const stores = await this.findStoresByMemCode(
+      deliveries.map((d) => this.lastDeliveredMemCode(d)),
+    );
+
+    // รถออกแล้วแต่ยังไม่ได้ส่งสักร้าน → last_delivered_store = null (frontend: "รถกำลังออกจากวังเภสัช")
+    const result: EcomLatestDeliveringStoreItem[] = delivering.map(
+      (soh_running, i) => ({
+        soh_running,
+        last_delivered_store: this.toLastDeliveredStore(deliveries[i], stores),
+      }),
+    );
+
+    // มีร้านที่ส่งถึงแล้วขึ้นก่อน เรียงส่งล่าสุดก่อน — frontend ใช้รายการแรก
+    const deliveredTime = (item: EcomLatestDeliveringStoreItem) =>
+      item.last_delivered_store
+        ? new Date(item.last_delivered_store.delivered_at ?? 0).getTime()
+        : -1;
+    return result.sort((a, b) => deliveredTime(b) - deliveredTime(a));
+  }
+
+  // ECWC-600: ร้านล่าสุดมีเฉพาะตอนกำลังส่ง และขนส่งส่งสำเร็จไปแล้วอย่างน้อย 1 ร้านในรอบนี้
+  // คืน name_granted มาด้วยเพื่อให้ผู้เรียกปัดพิกัด checkpoint ให้ตรงกับความยินยอมของร้านนั้น
+  private async resolveLastDeliveredStore(
+    delivery: LogisticTrackingV2Res | null,
+  ): Promise<{ store: EcomLastDeliveredStore | null; name_granted: boolean }> {
+    const memCode = this.lastDeliveredMemCode(delivery);
+    if (!memCode) return { store: null, name_granted: false };
+    const stores = await this.findStoresByMemCode([memCode]);
+    return {
+      store: this.toLastDeliveredStore(delivery, stores),
+      name_granted: stores.get(memCode)?.name_granted ?? false,
+    };
+  }
+
+  // ECWC-600: checkpoint ที่ส่งให้ลูกค้าได้ — map ทีละ field เพราะ checkpoint จาก logistics
+  // มี mem_code ของร้านอื่นติดมา ห้ามส่งต่อ และปัดพิกัดจุดส่งของร้านที่ไม่ยินยอม
+  // จุดออกรถ (DEPARTURE) เป็นคลังของวังเภสัชเอง ไม่ต้องปัด
+  private toPublicCheckpoint(
+    checkpoint: LogisticTrackingV2Res['checkpoint'],
+    nameGranted: boolean,
+  ): EcomOrderStatusV2Checkpoint | null {
+    if (!checkpoint) return null;
+    const coarse = checkpoint.type === 'STORE_DELIVERED' && !nameGranted;
+    return {
+      type: checkpoint.type,
+      latitude: coarse
+        ? this.coarseCoordinate(checkpoint.latitude)
+        : checkpoint.latitude,
+      longitude: coarse
+        ? this.coarseCoordinate(checkpoint.longitude)
+        : checkpoint.longitude,
+      time: checkpoint.time,
+      ...(coarse ? { approximate: true } : {}),
+    };
+  }
+
+  private coarseCoordinate(value: string): string {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+      ? parsed.toFixed(CHECKPOINT_COARSE_DECIMALS)
+      : value;
+  }
+
+  private lastDeliveredMemCode(
+    delivery: LogisticTrackingV2Res | null,
+  ): string | null {
+    if (delivery?.status !== 'DELIVERING') return null;
+    if (delivery.checkpoint?.type !== 'STORE_DELIVERED') return null;
+    return delivery.checkpoint.mem_code ?? null;
+  }
+
+  // ชื่อร้านใส่ให้เฉพาะร้านที่ยอมให้คนอื่นเห็นเอง (customer_store_visibility)
+  // อ่านค่าตั้งไม่ได้ = ซ่อนชื่อ ไม่ให้ชื่อร้านอื่นหลุด และไม่ทำให้หน้าสถานะทั้งหน้าพัง
+  private async findStoresByMemCode(
+    memCodes: (string | null)[],
+  ): Promise<Map<string, LastDeliveredStoreRow>> {
+    const unique = [...new Set(memCodes.filter((c): c is string => !!c))];
+    if (unique.length === 0) return new Map();
+    const [users, visible] = await Promise.all([
+      this.userRepo.find({
+        where: { mem_code: In(unique) },
+        select: {
+          mem_code: true,
+          mem_nameSite: true,
+          mem_road: true,
+          mem_tumbon: true,
+          mem_amphur: true,
+          mem_province: true,
+        },
+      }),
+      this.storeVisibilityService
+        .findVisibleMemCodes(unique)
+        .catch((error: unknown) => {
+          this.logger.error('Error read customer_store_visibility', error);
+          return new Set<string>();
+        }),
+    ]);
+    return new Map(
+      users.map((u) => [
+        u.mem_code,
+        {
+          name_granted: visible.has(u.mem_code),
+          store_name: visible.has(u.mem_code)
+            ? this.cleanText(u.mem_nameSite)
+            : null,
+          road: this.cleanRoad(u.mem_road),
+          tumbon: this.cleanText(u.mem_tumbon),
+          amphur: this.cleanText(u.mem_amphur),
+          province: this.cleanText(u.mem_province),
+        },
+      ]),
+    );
+  }
+
+  // ข้อมูลใน users มีทั้ง '' และช่องว่างต่อท้าย (เช่น 'เขาพนม   ') — ให้ frontend ได้ null แทน
+  private cleanText(value: string | null | undefined): string | null {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  // ECWC-600: mem_road ที่ลูกค้ากรอกเองมีทั้ง 'ถนนกาญจนวนิช', 'ถ.กาญจนวนิช', 'กาญจนวนิช' และ '-'
+  // ตัดคำนำหน้าออกให้เหลือชื่อถนนเปล่า (frontend เติม 'ถ.' เอง) และ '-' คือไม่ได้กรอก = null
+  // เคสที่ต้องได้ null: null | '' | '   ' | '-' | '--' | 'ถนน' | 'ถ.' | 'ถ. -'
+  // เคสที่ต้องได้ 'กาญจนวนิช': 'กาญจนวนิช' | 'ถนนกาญจนวนิช' | 'ถ.กาญจนวนิช' | 'ถ กาญจนวนิช'
+  //   | 'ถนน กาญจนวนิช' | '  ถ.กาญจนวนิช  '
+  // ห้ามตัด 'ถ' เปล่า ๆ ที่ไม่มีตัวคั่น ไม่งั้นถนนที่ขึ้นต้นด้วย ถ เช่น 'ถวายพระ' จะเหลือ 'วายพระ'
+  private cleanRoad(value: string | null | undefined): string | null {
+    const text = this.cleanText(value);
+    if (!text) return null;
+    const withoutPrefix = text
+      .replace(/^(?:ถนน\s*|ถ\s*\.\s*|ถ\s+)/u, '')
+      .trim();
+    // ตัดขีดที่ลูกค้ากรอกแทนการเว้นว่าง ('-', '--', 'ถ. -')
+    return /^-*$/u.test(withoutPrefix) ? null : withoutPrefix;
+  }
+
+  private toLastDeliveredStore(
+    delivery: LogisticTrackingV2Res | null,
+    stores: Map<string, LastDeliveredStoreRow>,
+  ): EcomLastDeliveredStore | null {
+    const memCode = this.lastDeliveredMemCode(delivery);
+    if (!memCode) return null;
+    const store = stores.get(memCode);
+    return {
+      store_name: store?.store_name ?? null,
+      road: store?.road ?? null,
+      tumbon: store?.tumbon ?? null,
+      amphur: store?.amphur ?? null,
+      province: store?.province ?? null,
+      delivered_at: delivery?.checkpoint?.time ?? null,
     };
   }
 
@@ -1382,5 +1600,297 @@ export class OrderStatusV2Service {
     }
 
     return steps;
+  }
+
+  // หน้า "สถานะออเดอร์" แบบเว็บร้านค้าเดิม (wang_shopping shopping-status-so-2.php) — ทุกบิลของร้าน
+  // ในช่วงวันที่ พร้อมรายการสินค้ารายตัว ให้หน้าเว็บ/แอปแสดงได้ทั้ง "ดูทั้งบิล" และ "ดูรายสินค้า"
+  // และให้ระบบขายเรียกผ่าน internal endpoint (แหล่งเดียว สถานะตรงกันทุกฝั่ง) — Tim 18 ต.ค. 2569
+  // สถานะมาจาก order-picking-service + logistics เหมือน getOrderList (ไม่อ่าน DB legacy)
+  async getShopStatusTable(
+    mem_code: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<ShopStatusTableRes> {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+    const bkkToday = new Date(Date.now() + 7 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const to = dateTo && ymd.test(dateTo) ? dateTo : bkkToday;
+    let from =
+      dateFrom && ymd.test(dateFrom)
+        ? dateFrom
+        : new Date(new Date(`${to}T00:00:00Z`).getTime() - 30 * 86400_000)
+            .toISOString()
+            .slice(0, 10);
+    if (from > to) from = to;
+    // เพดานช่วงวันที่ 92 วัน — order-picking-service เก็บย้อนหลังได้จำกัด และกัน query ระเบิด
+    const minFrom = new Date(
+      new Date(`${to}T00:00:00Z`).getTime() - 92 * 86400_000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    let truncated = false;
+    if (from < minFrom) {
+      from = minFrom;
+      truncated = true;
+    }
+    // วันที่ตามเวลาไทย (soh_datetime เก็บเป็น UTC ผ่าน TypeORM)
+    const fromTs = new Date(`${from}T00:00:00+07:00`);
+    const toTs = new Date(`${to}T23:59:59+07:00`);
+    const daysBack =
+      (new Date(`${bkkToday}T00:00:00Z`).getTime() -
+        new Date(`${from}T00:00:00Z`).getTime()) /
+      86400_000;
+    const monthsBack = Math.min(6, Math.max(1, Math.ceil(daysBack / 30) + 1));
+
+    let partial = false;
+    const [ecomHeads, pickingEntries] = await Promise.all([
+      this.shoppingHeadRepo
+        .createQueryBuilder('head')
+        .where('head.mem_code = :mem_code', { mem_code })
+        .andWhere('head.soh_datetime BETWEEN :fromTs AND :toTs', {
+          fromTs,
+          toTs,
+        })
+        .select(['head.soh_running', 'head.soh_datetime', 'head.soh_sumprice'])
+        .getMany(),
+      this.fetchPickingRunnings(mem_code, monthsBack),
+    ]);
+    const inRange = (d: string | Date) => {
+      const t = new Date(d).getTime();
+      return t >= fromTs.getTime() && t <= toTs.getTime();
+    };
+    const pickingStatus = new Map(
+      pickingEntries.map((e) => [e.sh_running, e.status]),
+    );
+    const ecomSet = new Set(ecomHeads.map((h) => h.soh_running));
+    type Entry = {
+      running: string;
+      datetime: string;
+      source: 'ecommerce' | 'order_picking';
+      sumprice: number | null;
+    };
+    const entries: Entry[] = [
+      ...ecomHeads.map((h) => ({
+        running: h.soh_running,
+        datetime: new Date(h.soh_datetime).toISOString(),
+        source: 'ecommerce' as const,
+        sumprice: h.soh_sumprice != null ? Number(h.soh_sumprice) : null,
+      })),
+      ...pickingEntries
+        .filter((e) => !ecomSet.has(e.sh_running) && inRange(e.sh_datetime))
+        .map((e) => ({
+          running: e.sh_running,
+          datetime: new Date(e.sh_datetime).toISOString(),
+          source: 'order_picking' as const,
+          sumprice: null,
+        })),
+    ].sort((a, b) => b.datetime.localeCompare(a.datetime));
+    const MAX_ORDERS = 200;
+    if (entries.length > MAX_ORDERS) {
+      entries.length = MAX_ORDERS;
+      truncated = true;
+    }
+    const runnings = entries.map((e) => e.running);
+    if (runnings.length === 0) {
+      return {
+        mem_code,
+        date_from: from,
+        date_to: to,
+        truncated,
+        partial,
+        labels: SHOP_STATUS_LABEL,
+        orders: [],
+      };
+    }
+
+    // รายการสินค้าจากคลัง (หลังตรวจนับ) — แบ่งชุดละ 50 บิล
+    const details = new Map<string, PickingOrderDetailBatchItem>();
+    for (let i = 0; i < runnings.length; i += 50) {
+      try {
+        const chunk = await this.fetchPickingOrderDetailsBatch(
+          mem_code,
+          runnings.slice(i, i + 50),
+        );
+        for (const d of chunk) details.set(d.sh_running, d);
+      } catch (error: unknown) {
+        partial = true;
+        this.logger.error('Error fetch picking details for shop status', error);
+      }
+    }
+    const unknownStatus = runnings.filter(
+      (r) => !pickingStatus.has(r) && !details.has(r),
+    );
+    const [extraStatus, deliveries] = await Promise.all([
+      this.fetchPickingStatusBatch(unknownStatus, mem_code),
+      this.fetchDeliveryStatusBatch(runnings, mem_code),
+    ]);
+
+    // บิลที่ยังไม่ถึงคลัง — ใช้รายการตอนสั่งของ ecommerce เอง
+    const ecomOnly = entries
+      .filter((e) => e.source === 'ecommerce' && !details.has(e.running))
+      .map((e) => e.running);
+    const ecomLines = new Map<string, ShopStatusLine[]>();
+    if (ecomOnly.length > 0) {
+      const rows = await this.shoppingOrderRepo
+        .createQueryBuilder('o')
+        .leftJoin('o.product', 'p')
+        .leftJoin('o.orderHeader', 'h')
+        .where('h.soh_running IN (:...ecomOnly)', { ecomOnly })
+        .select([
+          'o.spo_id',
+          'h.soh_running',
+          'o.pro_code',
+          'o.spo_qty',
+          'o.spo_unit',
+          'o.spo_price_unit',
+          'o.spo_total_decimal',
+          'p.pro_code',
+          'p.pro_name',
+        ])
+        .getMany()
+        .catch((error: unknown) => {
+          this.logger.error(
+            'Error read ecommerce lines for shop status',
+            error,
+          );
+          return [] as ShoppingOrderEntity[];
+        });
+      for (const r of rows) {
+        const key = r.orderHeader?.soh_running;
+        if (!key) continue;
+        const list = ecomLines.get(key) ?? [];
+        list.push({
+          pro_code: r.pro_code ?? r.product?.pro_code,
+          pro_name: r.product?.pro_name ?? null,
+          qty: Number(r.spo_qty),
+          unit: r.spo_unit ?? null,
+          price_unit:
+            r.spo_price_unit != null ? Number(r.spo_price_unit) : null,
+          price_total:
+            r.spo_total_decimal != null ? Number(r.spo_total_decimal) : null,
+          qc_price_total: null,
+          out_of_stock: false,
+          short: false,
+        });
+        ecomLines.set(key, list);
+      }
+    }
+
+    const orders: ShopStatusOrder[] = entries.map((e) => {
+      const d = details.get(e.running);
+      const status = this.resolveStatusFromParts(
+        pickingStatus.get(e.running) ??
+          d?.status ??
+          extraStatus[e.running] ??
+          null,
+        deliveries[e.running] ?? null,
+      );
+      const lines: ShopStatusLine[] = d
+        ? d.items.map((it) => ({
+            pro_code: it.pro_code,
+            pro_name: it.product_name,
+            qty: Number(it.qty),
+            unit: it.unit,
+            price_unit: it.price_unit,
+            price_total: it.price_total,
+            qc_price_total: it.qc_price_total,
+            out_of_stock: it.is_rt,
+            short:
+              !it.is_rt &&
+              it.qc_price_total != null &&
+              it.price_total != null &&
+              it.qc_price_total < it.price_total,
+          }))
+        : (ecomLines.get(e.running) ?? []);
+      const sum =
+        e.sumprice ??
+        (lines.length
+          ? lines.reduce(
+              (s, l) => s + (l.qc_price_total ?? l.price_total ?? 0),
+              0,
+            )
+          : null);
+      return {
+        soh_running: e.running,
+        soh_datetime: e.datetime,
+        source: e.source,
+        status,
+        status_label: SHOP_STATUS_LABEL[status],
+        bill_number: null,
+        sumprice: sum,
+        item_count: lines.length,
+        out_of_stock_count: lines.filter((l) => l.out_of_stock).length,
+        lines,
+      };
+    });
+
+    // เลขที่ใบกำกับ — มีเฉพาะบิลที่ผ่าน QC แล้ว ดึงทีละบิล (จำกัดจำนวน กันช้า)
+    const needBill = orders
+      .filter((o) =>
+        ['waiting_load', 'delivering', 'done', 'returned'].includes(o.status),
+      )
+      .slice(0, 40);
+    for (let i = 0; i < needBill.length; i += 5) {
+      await Promise.all(
+        needBill.slice(i, i + 5).map(async (o) => {
+          try {
+            const p = await this.fetchPickingStatus(o.soh_running, mem_code);
+            o.bill_number = p?.bill_number ?? null;
+          } catch {
+            partial = true;
+          }
+        }),
+      );
+    }
+
+    return {
+      mem_code,
+      date_from: from,
+      date_to: to,
+      truncated,
+      partial,
+      labels: SHOP_STATUS_LABEL,
+      orders,
+    };
+  }
+
+  // สถานะของหลายบิลหลายร้านในครั้งเดียว — ให้รายการ "ใบสั่งจองของฉัน" ในระบบขายแสดงสถานะต่อใบ
+  async getShopStatusBatch(
+    items: { sh_running: string; mem_code: string }[],
+  ): Promise<ShopStatusBatchItem[]> {
+    const byMem = new Map<string, string[]>();
+    for (const it of items.slice(0, 300)) {
+      if (!it?.sh_running || !it?.mem_code) continue;
+      const list = byMem.get(it.mem_code) ?? [];
+      if (!list.includes(it.sh_running)) list.push(it.sh_running);
+      byMem.set(it.mem_code, list);
+    }
+    // คืนเป็นรายการ (ร้าน + เลขบิล) ไม่ใช่ map ตามเลขบิล — เลขบิลซ้ำข้ามร้านได้ ห้ามทับกัน
+    const out: ShopStatusBatchItem[] = [];
+    const groups = [...byMem.entries()];
+    for (let i = 0; i < groups.length; i += 5) {
+      await Promise.all(
+        groups.slice(i, i + 5).map(async ([mem, runs]) => {
+          const [picking, delivery] = await Promise.all([
+            this.fetchPickingStatusBatch(runs, mem),
+            this.fetchDeliveryStatusBatch(runs, mem),
+          ]);
+          for (const r of runs) {
+            const status = this.resolveStatusFromParts(
+              picking[r] ?? null,
+              delivery[r] ?? null,
+            );
+            out.push({
+              sh_running: r,
+              mem_code: mem,
+              status,
+              status_label: SHOP_STATUS_LABEL[status],
+            });
+          }
+        }),
+      );
+    }
+    return out;
   }
 }

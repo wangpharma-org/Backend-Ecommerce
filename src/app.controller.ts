@@ -2,6 +2,7 @@ import { WangdayService } from './wangday/wangday.service';
 import {
   BadGatewayException,
   BadRequestException,
+  HttpCode,
   Body,
   Controller,
   DefaultValuePipe,
@@ -39,6 +40,7 @@ import { FlashsaleService } from './flashsale/flashsale.service';
 import { UseGuards, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { InternalTokenGuard } from './auth/internal-token.guard';
+import { parseHotdealGiftLines } from './hotdeal/hotdeal-gifts';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -64,6 +66,7 @@ import type {
 import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
+import { assertOwnShop, sessionOwnerFilter } from './sessions/session-owner';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
@@ -94,6 +97,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.service';
 import { TrackOrderService } from './track-order/track-order.service';
 import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service';
+import { OrderAccessService } from './order-status-v2/order-access.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
@@ -167,6 +171,7 @@ export class AppController {
     private readonly notifyRtService: NotifyRtService,
     private readonly trackOrderService: TrackOrderService,
     private readonly orderStatusV2Service: OrderStatusV2Service,
+    private readonly orderAccess: OrderAccessService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
@@ -573,6 +578,7 @@ export class AppController {
     @Body()
     data: {
       emp_code?: string;
+      basket_id?: number;
       mem_code: string;
       total_price: number;
       listFree:
@@ -593,8 +599,16 @@ export class AppController {
     },
   ) {
     const mem_code = req.user.mem_code;
+    if (data.basket_id !== undefined && typeof data.basket_id !== 'number') {
+      throw new BadRequestException('basket_id must be a positive integer');
+    }
+    const basketId = this.shoppingCartService.parseBasketCheckoutId(
+      data.basket_id,
+    );
     try {
-      await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      if (basketId === undefined) {
+        await this.shoppingOrderService.sendPurchaseEventToAnalytics(mem_code);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -603,7 +617,7 @@ export class AppController {
     }
 
     const result = await this.shoppingOrderService.submitOrder(
-      { ...data, mem_code, mem_route: req.user.mem_route },
+      { ...data, basket_id: basketId, mem_code, mem_route: req.user.mem_route },
       ip,
     );
     return result;
@@ -664,6 +678,46 @@ export class AppController {
     @Query('sort_by') sort_by?: string,
   ) {
     return this.productsService.listFree(sort_by, undefined, mem_route ?? '');
+  }
+
+  // หน้า "สถานะออเดอร์" แบบเว็บร้านค้าเดิม (ดูทั้งบิล / ดูรายสินค้า) — ร้านของผู้ที่ login เท่านั้น
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-status-table')
+  async shopStatusTable(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+  ) {
+    return this.orderStatusV2Service.getShopStatusTable(
+      req.user.mem_code,
+      date_from,
+      date_to,
+    );
+  }
+
+  // ให้ระบบขายเห็นสถานะออเดอร์ของร้านชุดเดียวกับที่ลูกค้าเห็น (แหล่งเดียว)
+  @UseGuards(InternalTokenGuard)
+  @Get('/ecom/internal/order-status-table/:memCode')
+  async internalShopStatusTable(
+    @Param('memCode') memCode: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+  ) {
+    return this.orderStatusV2Service.getShopStatusTable(
+      memCode,
+      date_from,
+      date_to,
+    );
+  }
+
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/order-status/batch')
+  async internalShopStatusBatch(
+    @Body() body: { items?: { sh_running: string; mem_code: string }[] },
+  ) {
+    return this.orderStatusV2Service.getShopStatusBatch(
+      Array.isArray(body?.items) ? body.items : [],
+    );
   }
 
   // @UseGuards(JwtAuthGuard)
@@ -862,16 +916,27 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/:mem_code')
-  async getProductCart(@Req() req: Request & { user: JwtPayload }) {
+  async getProductCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
+  ) {
     const memberCode = req.user.mem_code;
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.getCartSnapshot(
         memberCode,
         req.user.mem_route,
+        basketId,
       );
-    const summaryCart = await this.shoppingCartService.summaryCart(memberCode);
+    const summaryCart = await this.shoppingCartService.summaryCartDetailed(
+      memberCode,
+      basketId,
+    );
     const dataDeleteCart =
-      await this.shoppingCartService.getDeleteCartItem(memberCode);
+      basketId === undefined
+        ? await this.shoppingCartService.getDeleteCartItem(memberCode)
+        : [];
     for (const item of cart) {
       await this.imagedebugService.UpsercetImg({
         pro_code: item.pro_code,
@@ -925,7 +990,10 @@ export class AppController {
   @Get('/ecom/all-order-member/:memCode')
   async AllOrderByMember(
     @Param('memCode') memCode: string,
+    @Req() req: Request & { user: JwtPayload },
   ): Promise<AllOrderByMemberRes> {
+    // ร้านดูได้เฉพาะของตัวเอง — mem_code ใน URL ต้องตรงกับ token (หรือเป็น admin/เซลล์ที่ดูแลร้าน)
+    await this.orderAccess.assertShop(req.user, memCode);
     const result = await this.shoppingHeadService.AllOrderByMember(memCode);
     for (const order of result) {
       for (const orderItem of order.Newdetails) {
@@ -942,7 +1010,9 @@ export class AppController {
   @Get('/ecom/some-order/:soh_runing')
   async SomeOrderByMember(
     @Param('soh_runing') soh_runing: string,
+    @Req() req: Request & { user: JwtPayload },
   ): Promise<ShoppingHeadEntity> {
+    await this.orderAccess.assertOrder(req.user, soh_runing);
     const result = await this.shoppingHeadService.SomeOrderByMember(soh_runing);
     for (const orderItem of result.details) {
       await this.imagedebugService.UpsercetImg({
@@ -960,15 +1030,18 @@ export class AppController {
   @Get('/ecom/v2/order-list/:memCode')
   async AllOrderByMemberV2(
     @Param('memCode') memCode: string,
+    @Req() req: Request & { user: JwtPayload },
     @Query('date_from') date_from?: string,
     @Query('date_to') date_to?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('sort_order') sort_order?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    // คง route เดิม (แอป/เว็บส่ง mem_code ของตัวเองอยู่แล้ว) แต่ mem_code ใน URL ต้องเป็นร้านที่
+    // token มีสิทธิ์ — ไม่ใช่ก็ 403 แทนการคืนคำสั่งจองของร้านอื่น
+    await this.orderAccess.assertShop(req.user, memCode);
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getOrderListFromPhp(
         memCode,
@@ -1014,6 +1087,9 @@ export class AppController {
     @Param('soh_running') soh_running: string,
     @Req() req: Request & { user: JwtPayload },
   ) {
+    // บิลที่อยู่ในฐาน e-commerce เช็คเจ้าของได้ตรง ๆ · ทาง flag เปิด order-picking-service กรองด้วย
+    // mem_code จาก token อยู่แล้ว · ทาง flag ปิด (PHP) บิลที่ไม่อยู่ในฐาน e-commerce ยังเช็คเจ้าของไม่ได้
+    await this.orderAccess.assertOrder(req.user, soh_running);
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_detail_api',
     );
@@ -1039,17 +1115,21 @@ export class AppController {
   // ECWC-545: clone ของ Akitokung/api/order/order_list.php (PHP เก่า) ให้ mobile app สลับมาเรียก
   // ที่นี่แทนได้ — คุมด้วย feature flag 'new_order_list_api' flag ปิด = proxy ไปขอข้อมูลจาก PHP
   // เก่าตรงๆ แทน (ไม่ยิงไป order-picking-service/warehouse เอง) จน QA เทียบแอปจริงผ่านค่อยเปิด
-  // ไม่บังคับ JwtAuthGuard เพราะ endpoint เดิมก็รับแค่ mem_code จาก query ไม่มี auth header เหมือนกัน
+  // เดิมไม่บังคับ JwtAuthGuard (เลียน PHP ที่รับแค่ mem_code จาก query) — ใครรู้รหัสร้านก็ดูคำสั่งจองได้
+  // ตอนนี้ต้องมี token และ mem_code ต้องเป็นร้านที่ token มีสิทธิ์ (ยังไม่มีแอป/เว็บเรียก endpoint นี้
+  // — แอปยังเรียก PHP ตรง ตอนสลับมาต้องส่ง Bearer ด้วย)
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/legacy/order-list')
   async getLegacyOrderListV2(
+    @Req() req: Request & { user: JwtPayload },
     @Query('mem_code') mem_code: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    const enabled = await this.featureFlagsService.getFlag(
-      'new_order_list_api',
-    );
+    await this.orderAccess.assertShop(req.user, mem_code);
+    const enabled =
+      await this.featureFlagsService.getFlag('new_order_list_api');
     if (!enabled) {
       return this.orderStatusV2Service.getLegacyOrderListFromPhp(mem_code);
     }
@@ -1071,11 +1151,16 @@ export class AppController {
   // soh_runing เหมือนที่ระบบเดิมรับอยู่ ไม่เช็ค mem_code เพราะ PHP เดิมก็ไม่เช็คเจ้าของบิลเหมือนกัน)
   // — flag เปิดค่อยต้องการ mem_code เพิ่มเพื่อยืนยันตัวตนกับ order-picking-service ฝั่งแอปต้องแก้
   // เพิ่ม param นี้ตอนสลับมาใช้ระบบใหม่
+  @UseGuards(JwtAuthGuard)
   @Get('/ecom/legacy/order-detail')
   async getLegacyOrderDetailV2(
+    @Req() req: Request & { user: JwtPayload },
     @Query('soh_runing') soh_running: string,
     @Query('mem_code') mem_code: string,
   ) {
+    // ต้องมี token: mem_code (ถ้าส่งมา) ต้องเป็นร้านที่มีสิทธิ์ และบิลต้องไม่ใช่ของร้านอื่น
+    if (mem_code) await this.orderAccess.assertShop(req.user, mem_code);
+    await this.orderAccess.assertOrder(req.user, soh_running);
     const enabled = await this.featureFlagsService.getFlag(
       'new_order_detail_api',
     );
@@ -1084,7 +1169,16 @@ export class AppController {
     }
     return this.orderStatusV2Service.getLegacyOrderDetail(
       soh_running,
-      mem_code,
+      mem_code || req.user.mem_code,
+    );
+  }
+
+  // ECWC-601: แถบใต้ navbar หน้าหลัก — ขนส่งที่กำลังส่งของให้ลูกค้าส่งถึงร้านไหนแล้ว
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/delivery/latest-store')
+  async getLatestDeliveringStores(@Req() req: Request & { user: JwtPayload }) {
+    return this.orderStatusV2Service.getLatestDeliveringStores(
+      req.user.mem_code,
     );
   }
 
@@ -1723,6 +1817,20 @@ export class AppController {
     return this.promotionService.generateCodePromotion(data.mem_code);
   }
 
+  // ให้ sale service ถามของแถม Hot Deal ของรายการสินค้าที่กำลังคีย์ โดยไม่ต้องมี token ลูกค้าและไม่แตะตะกร้า
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/hotdeal-gifts')
+  @HttpCode(200)
+  async internalHotdealGifts(@Body() body: unknown) {
+    const lines = parseHotdealGiftLines(body);
+    if (!lines) {
+      throw new BadRequestException(
+        'items must be an array of { pro_code, unit, amount > 0 }',
+      );
+    }
+    return this.hotdealService.giftsForOrderLines(lines);
+  }
+
   @Get('/ecom/hotdeal/get-hotdeal-from-code/:pro_code')
   async getHotdealFromCode(@Param('pro_code') pro_code: string) {
     return await this.hotdealService.getHotdealFromCode(pro_code);
@@ -2250,40 +2358,74 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/active/:session_token')
-  async getActiveSession(@Param('session_token') session_token: string) {
-    return await this.sessionsService.findActiveSession(session_token);
+  async getActiveSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    const session = await this.sessionsService.findActiveSession(session_token);
+    if (!session) return session;
+    assertOwnShop(req.user, session.mem_code);
+    // แถวผู้ใช้ที่ join มามีรหัสผ่าน (hash) — ไม่ส่งออก
+    if (session.user) {
+      return { ...session, user: { ...session.user, mem_password: undefined } };
+    }
+    return session;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/user-sessions/:mem_code')
-  async getUserActiveSessions(@Param('mem_code') mem_code: string) {
+  async getUserActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     return await this.sessionsService.findUserActiveSessions(mem_code);
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('/ecom/session/update-activity/:session_token')
-  async updateSessionActivity(@Param('session_token') session_token: string) {
-    await this.sessionsService.updateLastActivity(session_token);
+  async updateSessionActivity(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('session_token') session_token: string,
+  ) {
+    await this.sessionsService.updateLastActivity(
+      session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Session activity updated successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout')
-  async logoutSession(@Body() data: { session_token: string }) {
-    await this.sessionsService.logoutSession(data.session_token);
+  async logoutSession(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { session_token: string },
+  ) {
+    await this.sessionsService.logoutSession(
+      data.session_token,
+      sessionOwnerFilter(req.user),
+    );
     return { message: 'Logout successful' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-all')
-  async logoutAllSessions(@Body() data: { mem_code: string }) {
+  async logoutAllSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutAllUserSessions(data.mem_code);
     return { message: 'All sessions logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/session/logout-recent')
-  async logoutRecentSessions(@Body() data: { mem_code: string }) {
+  async logoutRecentSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { mem_code: string },
+  ) {
+    assertOwnShop(req.user, data.mem_code);
     await this.sessionsService.logoutRecentUserSessions(data.mem_code);
     return { message: 'Recently active sessions logged out successfully' };
   }
@@ -2297,7 +2439,11 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/session/count/:mem_code')
-  async countActiveSessions(@Param('mem_code') mem_code: string) {
+  async countActiveSessions(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    assertOwnShop(req.user, mem_code);
     const count = await this.sessionsService.countUserActiveSessions(mem_code);
     return { active_sessions_count: count };
   }
@@ -2692,9 +2838,15 @@ export class AppController {
   @Get('/ecom/cart/summary')
   async summaryCart(
     @Req() req: Request & { user: JwtPayload },
+    @Query('basket_id') basketIdInput?: string,
   ): Promise<number> {
     const mem_code = req.user.mem_code;
-    const data = await this.shoppingCartService.summaryCart(mem_code);
+    const basketId =
+      this.shoppingCartService.parseBasketCheckoutId(basketIdInput);
+    const data = await this.shoppingCartService.summaryCartDetailed(
+      mem_code,
+      basketId,
+    );
     return data.total;
   }
 

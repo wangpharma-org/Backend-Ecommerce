@@ -251,4 +251,150 @@ describe('ProductsService — unit helpers', () => {
       expect((service as any).getRatioFromUnits(3, units)).toBe(1000);
     });
   });
+
+  // ─── searchProductsElastic — DB fallback ─────────────────────────────────
+
+  describe('searchProductsElastic DB fallback', () => {
+    const makeQb = (rows: unknown[] = [], raw: unknown[] = []) => {
+      const qb: Record<string, jest.Mock> = {};
+      for (const method of [
+        'leftJoinAndSelect',
+        'innerJoinAndSelect',
+        'innerJoin',
+        'setParameter',
+        'select',
+        'where',
+        'andWhere',
+        'orderBy',
+        'limit',
+      ]) {
+        qb[method] = jest.fn(() => qb);
+      }
+      qb.getMany = jest.fn().mockResolvedValue(rows);
+      qb.getRawMany = jest.fn().mockResolvedValue(raw);
+      return qb;
+    };
+    const product = (pro_code: string, pro_name = 'พาราเซตามอล') => ({
+      pro_code,
+      pro_name,
+      pro_priceA: 10,
+      pro_priceB: 10,
+      pro_priceC: 10,
+    });
+    const esResult = (codes: string[]) => ({
+      hits: {
+        total: { value: codes.length },
+        hits: codes.map((pro_code) => ({ _source: { pro_code } })),
+      },
+    });
+
+    const setup = (opts: {
+      esCodes: string[];
+      external?: string[];
+      enter?: string[];
+      dbCodes?: string[];
+      dbRows: ReturnType<typeof product>[];
+    }) => {
+      const qb = makeQb(opts.dbRows);
+      const fallback = jest.fn().mockResolvedValue(opts.dbCodes ?? []);
+      Object.assign(service, {
+        productRepo: { createQueryBuilder: jest.fn(() => qb) },
+        elasticsearchService: {
+          search: jest.fn().mockResolvedValue(esResult(opts.esCodes)),
+        },
+        isL16Member: jest.fn().mockResolvedValue(false),
+        searchExternalProducts: jest
+          .fn()
+          .mockResolvedValue((opts.external ?? []).map((c) => product(c))),
+        searchEnterProducts: jest.fn().mockResolvedValue(opts.enter ?? []),
+        searchProductCodesFromDb: fallback,
+        transformProductWithUnits: jest.fn((p) => Promise.resolve(p)),
+        attachProductLabels: jest.fn().mockResolvedValue(undefined),
+      });
+      return { fallback, qb };
+    };
+    const search = (keyword = 'พารา') =>
+      service.searchProductsElastic({
+        keyword,
+        offset: 0,
+        limit: 20,
+        mem_code: 'TEST',
+      });
+
+    it('falls back to the DB when ES and the old website find nothing', async () => {
+      const { fallback } = setup({
+        esCodes: [],
+        dbCodes: ['P1', 'P2'],
+        dbRows: [product('P2'), product('P1')],
+      });
+
+      const result = await search();
+
+      expect(fallback).toHaveBeenCalledWith({
+        keyword: 'พารา',
+        isL16: false,
+        creditor_codes: undefined,
+      });
+      expect(result.products.map((p) => p.pro_code)).toEqual(['P1', 'P2']);
+      expect(result.totalCount).toBe(2);
+    });
+
+    it('does not hit the DB fallback when the old website finds products', async () => {
+      const { fallback } = setup({
+        esCodes: [],
+        external: ['E1'],
+        dbRows: [product('E1')],
+      });
+
+      const result = await search();
+
+      expect(fallback).not.toHaveBeenCalled();
+      expect(result.products.map((p) => p.pro_code)).toEqual(['E1']);
+    });
+
+    it('does not hit the DB fallback when ES finds products', async () => {
+      const { fallback } = setup({ esCodes: ['S1'], dbRows: [product('S1')] });
+
+      await search();
+
+      expect(fallback).not.toHaveBeenCalled();
+      expect(service.searchExternalProducts).not.toHaveBeenCalled();
+    });
+
+    it('still drops free-gift rows returned by the DB fallback', async () => {
+      setup({
+        esCodes: [],
+        dbCodes: ['P1', 'F1'],
+        dbRows: [product('P1'), product('F1', 'ฟรี ยาดม')],
+      });
+
+      const result = await search();
+
+      expect(result.products.map((p) => p.pro_code)).toEqual(['P1']);
+      expect(result.totalCount).toBe(1);
+    });
+
+    it('escapes LIKE wildcards and filters L16-only products for non-L16 shops', async () => {
+      const qb = makeQb([], [{ pro_code: 'P1' }]);
+      Object.assign(service, {
+        productRepo: { createQueryBuilder: jest.fn(() => qb) },
+      });
+
+      const codes = await (service as any).searchProductCodesFromDb({
+        keyword: '50%_a',
+        isL16: false,
+      });
+
+      expect(codes).toEqual(['P1']);
+      const sub = { orWhere: jest.fn() };
+      qb.where.mock.calls[0][0].whereFactory(sub);
+      expect(sub.orWhere).toHaveBeenCalledWith('product.pro_name LIKE :like', {
+        like: '%50\\%\\_a%',
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+      );
+      expect(qb.innerJoin).not.toHaveBeenCalled();
+    });
+  });
 });
