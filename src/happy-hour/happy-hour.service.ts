@@ -32,6 +32,11 @@ import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { CreditorEntity } from 'src/products/creditor.entity';
 import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
+import {
+  excludePromotionLines,
+  HAPPY_HOUR_EXCLUDE_PROMOTION_FLAG,
+} from './happy-hour-promo-exclusion';
 
 // import * as ให้ type เป็น { default: PluginFunc } แต่ runtime CJS value คือ PluginFunc โดยตรง
 // ต้อง import แบบนี้เพื่อให้ type augmentation ของ .tz() / .utc() ทำงาน
@@ -121,7 +126,22 @@ export class HappyHourService implements OnModuleInit {
     @InjectRepository(CreditorEntity)
     private readonly creditorRepo: Repository<CreditorEntity>,
     private readonly shoppingCartService: ShoppingCartService,
+    private readonly featureFlagsService: FeatureFlagsService,
   ) {}
+
+  // ECWC-747: อ่าน flag ไม่ได้ → ถือว่าปิด (คง behavior เดิม) ไม่ให้ Happy Hour หายทั้งบิล
+  private async isPromotionExcluded(): Promise<boolean> {
+    try {
+      return Boolean(
+        await this.featureFlagsService.getFlag(
+          HAPPY_HOUR_EXCLUDE_PROMOTION_FLAG,
+        ),
+      );
+    } catch (error) {
+      this.logger.error('Error reading happy hour promotion flag:', error);
+      return false;
+    }
+  }
 
   async onModuleInit(): Promise<void> {
     try {
@@ -482,7 +502,12 @@ export class HappyHourService implements OnModuleInit {
 
   async calcHappyHourReward(
     orderAmount: number,
-    orderItems?: { pro_code: string; amount: number; vendor_code?: string }[],
+    orderItems?: {
+      pro_code: string;
+      amount: number;
+      vendor_code?: string;
+      promo_id?: number | null;
+    }[],
   ): Promise<{
     slot: HappyHourSlotEntity;
     numCards: number;
@@ -516,6 +541,15 @@ export class HappyHourService implements OnModuleInit {
 
       if (!slot) return null;
 
+      // ECWC-747: สินค้าที่นับเข้าโปร Company Day / Wang Day แล้ว ไม่นับเข้า Happy Hour
+      let excludedPromotionAmount = 0;
+      if (orderItems?.length && (await this.isPromotionExcluded())) {
+        const excluded = excludePromotionLines(orderAmount, orderItems);
+        orderAmount = excluded.orderAmount;
+        orderItems = excluded.items;
+        excludedPromotionAmount = excluded.excludedAmount;
+      }
+
       // คำนวณ qualifying_amount ตาม min_order_scope
       let qualifyingAmount = orderAmount;
       if (orderItems?.length) {
@@ -545,6 +579,7 @@ export class HappyHourService implements OnModuleInit {
         slotId: slot.id,
         scope: slot.min_order_scope,
         orderAmount,
+        excludedPromotionAmount,
         qualifyingAmount,
         minOrder,
         numCards,
@@ -735,6 +770,8 @@ export class HappyHourService implements OnModuleInit {
     qualifying_amount?: number;
     excess_discount?: number;
     total_reward?: number;
+    // ECWC-747: ยอดสินค้าที่ตัดออกเพราะนับเข้าโปรแล้ว (มีเฉพาะตอนเปิด flag happy_hour_exclude_promotion)
+    promotion_excluded_amount?: number;
     reward_items?: {
       pro_code: string;
       pro_name: string | null;
@@ -780,14 +817,26 @@ export class HappyHourService implements OnModuleInit {
 
     // ── Qualifying amount with scope filtering ──
     let orderAmount = Number(dto.order_amount ?? 0);
-    let items = dto.cart_items ?? [];
+    // promo_id มาจากแถวตะกร้า (memCode) หรือจาก caller ภายใน (checkout-preview) — ไม่อยู่ใน DTO ของ client
+    let items: { pro_code: string; amount: number; promo_id?: number | null }[] =
+      dto.cart_items ?? [];
     if (memCode) {
       const cart = scopedCart ?? await this.shoppingCartService.summaryCartDetailed(memCode);
       orderAmount = cart.total;
       items = cart.lines.map((line) => ({
         pro_code: line.pro_code,
         amount: line.amount,
+        promo_id: line.promo_id,
       }));
+    }
+
+    // ECWC-747: สินค้าที่นับเข้าโปร Company Day / Wang Day แล้ว ไม่นับเข้า Happy Hour
+    let promotionExcludedAmount: number | undefined;
+    if (items.length > 0 && (await this.isPromotionExcluded())) {
+      const excluded = excludePromotionLines(orderAmount, items);
+      orderAmount = excluded.orderAmount;
+      items = excluded.items;
+      promotionExcludedAmount = excluded.excludedAmount;
     }
     let qualifyingAmount = orderAmount;
 
@@ -824,7 +873,11 @@ export class HappyHourService implements OnModuleInit {
 
     const minOrder = Number(slot.min_order_amount);
     const num_cards = Math.floor(qualifyingAmount / minOrder);
-    if (num_cards === 0) return { is_happy_hour: false };
+    if (num_cards === 0)
+      return {
+        is_happy_hour: false,
+        promotion_excluded_amount: promotionExcludedAmount,
+      };
 
     const excess = qualifyingAmount - num_cards * minOrder;
     const excess_discount =
@@ -876,6 +929,7 @@ export class HappyHourService implements OnModuleInit {
       excess_discount,
       total_reward,
       reward_items,
+      promotion_excluded_amount: promotionExcludedAmount,
     };
   }
 

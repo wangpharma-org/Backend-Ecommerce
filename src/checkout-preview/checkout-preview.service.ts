@@ -58,6 +58,7 @@ export class CheckoutPreviewService {
             cart_items: base.lines.map((l) => ({
               pro_code: l.pro_code,
               amount: l.amount,
+              promo_id: l.promo_id,
             })),
           } as never)
         : { is_happy_hour: false };

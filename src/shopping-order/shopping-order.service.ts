@@ -815,18 +815,22 @@ export class ShoppingOrderService {
             totalsummaryfromCart.items[groupIndex]?.grandTotalItems || 0;
 
           // สร้าง order items สำหรับ Happy Hour scope filtering
-          const happyHourItems = orderSales.map((os) => ({
+          // orderSales map 1:1 จาก normalItems → index เดียวกันคือแถวตะกร้าเดียวกัน
+          const happyHourItems = orderSales.map((os, i) => ({
             pro_code: os.pro_code,
             amount: Number(os.spo_total_decimal),
             vendor_code:
               normalItems.find((n) => n.pro_code === os.pro_code)?.product
                 ?.creditor?.creditor_code ?? undefined,
+            // ECWC-747: แถวที่นับเข้าโปร Company Day / Wang Day ไม่นับเข้า Happy Hour
+            promo_id: normalItems[i]?.promo_id ?? null,
           }));
 
           submitLogContext.push({
             happyHourItemsForScope: happyHourItems.map((i) => ({
               pro_code: i.pro_code,
               amount: i.amount,
+              promo_id: i.promo_id,
             })),
             currentGroupTotal,
           });
