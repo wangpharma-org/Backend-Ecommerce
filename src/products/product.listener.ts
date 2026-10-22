@@ -50,6 +50,8 @@ export interface ProductEasyAcc {
   creditor_code?: string | null;
   pro_category?: number | null;
   drugregister?: string | null;
+  // WGDD-427: รหัสประเภทยา (null = เอาออกจากประเภท)
+  drug_type_code?: string | null;
 }
 
 @Controller()

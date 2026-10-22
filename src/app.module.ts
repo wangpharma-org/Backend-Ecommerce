@@ -58,6 +58,7 @@ import { HappyHourModule } from './happy-hour/happy-hour.module';
 import { WatermarkAuditModule } from './watermark-audit/watermark-audit.module';
 import { PreorderModule } from './preorder/preorder.module';
 import { StickerLabelModule } from './sticker-label/sticker-label.module';
+import { DrugTypeModule } from './drug-type/drug-type.module';
 import { DeliveryPreferenceModule } from './delivery-preference/delivery-preference.module';
 import { StoreVisibilityModule } from './store-visibility/store-visibility.module';
 import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
@@ -176,6 +177,7 @@ import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.
     WatermarkAuditModule,
     PreorderModule,
     StickerLabelModule,
+    DrugTypeModule,
     CheckoutPreviewModule,
     InternalCustomerCartModule,
     SalesCartSessionModule,

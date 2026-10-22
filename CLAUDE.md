@@ -72,6 +72,12 @@ e2e: `scripts/e2e/sticker-label.e2e.ts`
 เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
 e2e: `scripts/e2e/store-visibility.e2e.ts`
 
+## ประเภทยา + สินค้าแถม/ขายพ่วง (WGDD-427)
+
+โมดูล [src/drug-type/](src/drug-type/) — สำเนาจาก ProductService ผ่าน Kafka `drug_type_upsert_ecom` (ประเภท + rewards, อ้างอิงด้วย `code`) และ `product_update_from_easyacc` (`drug_type_code` ของสินค้า) **แสดงอย่างเดียว** ในหน้าสินค้า/ตะกร้า ยังไม่คิดของแถม/ราคาพ่วงในตะกร้า
+เปิดใช้ด้วย feature flag `drug_type_reward` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/drug-type-reward.md](docs/drug-type-reward.md)
+e2e: `scripts/e2e/drug-type-reward.e2e.ts`
+
 Team knowledge below is distilled from PR review feedback by the
 `learn-from-reviews` skill and ratified through normal PR review. It primes both
 human contributors and AI sessions so review feedback isn't re-learned every time.
