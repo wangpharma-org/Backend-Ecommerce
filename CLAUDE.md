@@ -54,6 +54,12 @@ DB_NAME=ecommerce-db
 
 `HappyHourService` implements `OnModuleInit` → seed default slots ลง `e-commerce-database-other` อัตโนมัติตอน app start ถ้าตารางว่างอยู่ ดู [src/happy-hour/happy-hour.service.ts](src/happy-hour/happy-hour.service.ts)
 
+## Happy Hour ไม่รวมกับ Promotion (Company Day / Wang Day)
+
+บรรทัดตะกร้าที่ติด `promo_id` (นับเข้า tier โปรที่ถึงเกณฑ์) ไม่นับเข้ายอดขั้นต่ำ Happy Hour — ใช้ทั้ง cart-preview, checkout-preview และ `submitOrder` ผ่าน `excludePromotionLines` ใน [src/happy-hour/happy-hour-promo-exclusion.ts](src/happy-hour/happy-hour-promo-exclusion.ts)
+เปิดใช้ด้วย feature flag `happy_hour_exclude_promotion` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/happy-hour-exclude-promotion.md](docs/happy-hour-exclude-promotion.md)
+e2e: `scripts/e2e/happy-hour-exclude-promotion.e2e.ts`
+
 ## Pre-order (สั่งจองสินค้า)
 
 โมดูล [src/preorder/](src/preorder/) — รอบจอง 2 โหมด (allocation / aggregation), คิวจาก `ordered_at` ที่ไม่ถูกแก้, admin ล็อค/จัดสรร, แจ้งร้านเมื่อของเข้าผ่าน `NewArrivalsService → PreorderService.handleArrivals`

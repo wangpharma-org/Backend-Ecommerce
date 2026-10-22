@@ -312,6 +312,7 @@ export interface CheckoutLinesPreview {
     unit_level: string;
     qty: number;
     amount: number;
+    promo_id?: number | null;
   }[];
   skipped: {
     pro_code: string;
@@ -2074,6 +2075,8 @@ export class ShoppingCartService {
         unit_level: String(r.spc_unit_enum),
         qty: Number(r.spc_amount),
         amount: amountById.get(r.spc_id) ?? 0,
+        // ECWC-747: แถวเสมือนไม่มีใน DB — ใช้ tag จากแผนโปรที่เพิ่งคำนวณ
+        promo_id: plan?.tags.get(r.spc_id)?.promo_id ?? null,
       })),
       skipped,
       reached_tiers: reached,
@@ -3483,7 +3486,12 @@ export class ShoppingCartService {
   ): Promise<{
     total: number;
     items: { [key: string]: number }[];
-    lines: { spc_id: number; pro_code: string; amount: number }[];
+    lines: {
+      spc_id: number;
+      pro_code: string;
+      amount: number;
+      promo_id?: number | null;
+    }[];
   }> {
     if (basketId !== undefined) {
       const snapshot = await this.getBasketCheckoutSnapshot(
@@ -3512,6 +3520,7 @@ export class ShoppingCartService {
           'cart.mem_code',
           'cart.flashsale_end',
           'cart.spc_fixed_total',
+          'cart.promo_id',
           'product.pro_code',
           'product.pro_priceA',
           'product.pro_priceB',
@@ -3545,7 +3554,12 @@ export class ShoppingCartService {
   calculateCartSummary(cart: ShoppingCartEntity[]): {
     total: number;
     items: { [key: string]: number }[];
-    lines: { spc_id: number; pro_code: string; amount: number }[];
+    lines: {
+      spc_id: number;
+      pro_code: string;
+      amount: number;
+      promo_id?: number | null;
+    }[];
   } {
     const result = cart.filter(
       (row) => row.spc_checked && !row.is_reward && !row.hotdeal_free,
@@ -3555,7 +3569,13 @@ export class ShoppingCartService {
 
     let total = 0;
     const itemsArray: { index: number; grandTotalItems: number }[] = [];
-    const lines: { spc_id: number; pro_code: string; amount: number }[] = [];
+    // promo_id: ECWC-747 Happy Hour ตัดบรรทัดที่นับเข้าโปรแล้วออก
+    const lines: {
+      spc_id: number;
+      pro_code: string;
+      amount: number;
+      promo_id?: number | null;
+    }[] = [];
 
     for (const [index, dataGroup] of splitData.entries()) {
       const productTotalAmounts = new Map<string, number>();
@@ -3656,6 +3676,7 @@ export class ShoppingCartService {
             spc_id: item.spc_id,
             pro_code: item.pro_code,
             amount,
+            promo_id: item.promo_id ?? null,
           });
           return sum + amount;
         }, 0);

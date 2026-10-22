@@ -12,6 +12,7 @@ import { ProductUnitEntity } from 'src/products/product-unit.entity';
 import { HappyHourSlotMinProductEntity } from './happy-hour-slot-min-product.entity';
 import { CreditorEntity } from 'src/products/creditor.entity';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
+import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
 
 /**
  * HappyHourService unit tests
@@ -82,9 +83,12 @@ describe('HappyHourService', () => {
   let configLogRepo: any;
   let productRepo: any;
   let productUnitRepo: any;
+  let getFlag: jest.Mock;
 
   beforeEach(async () => {
     summaryCartDetailed = jest.fn();
+    // ค่าเริ่มต้น: flag happy_hour_exclude_promotion ปิด (behavior เดิม)
+    getFlag = jest.fn().mockResolvedValue(false);
     configRepo = {
       findOneBy: jest.fn(),
       create: jest.fn((x) => x),
@@ -133,6 +137,7 @@ describe('HappyHourService', () => {
       providers: [
         HappyHourService,
         { provide: ShoppingCartService, useValue: { summaryCartDetailed } },
+        { provide: FeatureFlagsService, useValue: { getFlag } },
         { provide: getRepositoryToken(HappyHourConfigEntity), useValue: configRepo },
         { provide: getRepositoryToken(HappyHourSlotEntity), useValue: slotRepo },
         { provide: getRepositoryToken(HappyHourSlotRewardEntity), useValue: rewardRepo },
@@ -221,6 +226,83 @@ describe('HappyHourService', () => {
       await service.getCartPreview({ order_amount: 99999 }, 'M01');
       expect(summaryCartDetailed).toHaveBeenCalledTimes(1);
       expect(summaryCartDetailed).toHaveBeenCalledWith('M01');
+    });
+  });
+
+  describe('ECWC-747 exclude promotion lines', () => {
+    const slot = () =>
+      buildSlot({
+        min_order_amount: 1000,
+        card_value: 100,
+        excess_threshold: 500,
+        discount_per_step: 10,
+      });
+
+    beforeEach(() => {
+      configRepo.findOneBy.mockResolvedValue({ id: 1, is_enabled: true });
+      slotRepo.createQueryBuilder.mockImplementation(() => createQbMock(slot()));
+    });
+
+    const items = [
+      { pro_code: 'CD', amount: 2000, promo_id: 5 },
+      { pro_code: 'NORMAL', amount: 1200, promo_id: null },
+    ];
+
+    it('flag off: calcHappyHourReward still counts promotion lines', async () => {
+      const r = await service.calcHappyHourReward(3200, items);
+      expect(r!.numCards).toBe(3);
+    });
+
+    it('flag on: calcHappyHourReward drops promotion lines from the qualifying total', async () => {
+      getFlag.mockResolvedValue(true);
+      const r = await service.calcHappyHourReward(3200, items);
+      expect(getFlag).toHaveBeenCalledWith('happy_hour_exclude_promotion');
+      expect(r!.numCards).toBe(1);
+      expect(r!.excessDiscount).toBe(0);
+    });
+
+    it('flag on: no reward when every line belongs to a promotion', async () => {
+      getFlag.mockResolvedValue(true);
+      const r = await service.calcHappyHourReward(2000, [items[0]]);
+      expect(r).toBeNull();
+    });
+
+    it('flag read failure keeps legacy behaviour instead of dropping Happy Hour', async () => {
+      getFlag.mockRejectedValue(new Error('db down'));
+      const r = await service.calcHappyHourReward(3200, items);
+      expect(r!.numCards).toBe(3);
+    });
+
+    it('flag on: getCartPreview uses promo_id from the member cart lines', async () => {
+      getFlag.mockResolvedValue(true);
+      summaryCartDetailed.mockResolvedValue({
+        total: 3200,
+        items: [],
+        lines: [
+          { spc_id: 1, pro_code: 'CD', amount: 2000, promo_id: 5 },
+          { spc_id: 2, pro_code: 'NORMAL', amount: 1200, promo_id: null },
+        ],
+      });
+      const r = await service.getCartPreview({}, 'M01');
+      expect(r).toMatchObject({
+        is_happy_hour: true,
+        num_cards: 1,
+        qualifying_amount: 1200,
+        promotion_excluded_amount: 2000,
+      });
+    });
+
+    it('flag on: getCartPreview reports the excluded amount when nothing qualifies', async () => {
+      getFlag.mockResolvedValue(true);
+      summaryCartDetailed.mockResolvedValue({
+        total: 2000,
+        items: [],
+        lines: [{ spc_id: 1, pro_code: 'CD', amount: 2000, promo_id: 5 }],
+      });
+      await expect(service.getCartPreview({}, 'M01')).resolves.toEqual({
+        is_happy_hour: false,
+        promotion_excluded_amount: 2000,
+      });
     });
   });
 

@@ -15,6 +15,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'sticker_label',
   // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
   'store_name_consent',
+  // ECWC-747: Happy Hour ไม่นับยอดสินค้าที่เข้าโปร Company Day / Wang Day — เปิดเมื่อแจ้งลูกค้าแล้ว
+  'happy_hour_exclude_promotion',
 ]);
 
 @Injectable()

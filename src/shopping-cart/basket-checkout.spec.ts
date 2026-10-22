@@ -295,8 +295,8 @@ describe('basket checkout isolation', () => {
     const result = service.calculateCartSummary([paid, gift]);
     expect(result.total).toBe(12.5);
     expect(result.lines).toEqual([
-      { spc_id: 1, pro_code: 'PAID', amount: 12.5 },
-      { spc_id: 2, pro_code: 'GIFT', amount: 0 },
+      { spc_id: 1, pro_code: 'PAID', amount: 12.5, promo_id: null },
+      { spc_id: 2, pro_code: 'GIFT', amount: 0, promo_id: null },
     ]);
   });
 
@@ -315,7 +315,9 @@ describe('basket checkout isolation', () => {
     const hotdealGift = Object.assign(line(-2, 100), { hotdeal_free: true });
     const result = service.calculateCartSummary([paid, promoGift, hotdealGift]);
     expect(result.total).toBe(60);
-    expect(result.lines).toEqual([{ spc_id: 1, pro_code: 'PAID', amount: 60 }]);
+    expect(result.lines).toEqual([
+      { spc_id: 1, pro_code: 'PAID', amount: 60, promo_id: null },
+    ]);
   });
 
   it('monthly threshold aggregates converted units across selected same-product rows', () => {
