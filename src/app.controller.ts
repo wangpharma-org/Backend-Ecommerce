@@ -26,6 +26,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import axios from 'axios';
+import { CraftPosterService } from './campaigns/craft-poster.service';
 import { AppService } from './app.service';
 import { AuthService, SigninResponse } from './auth/auth.service';
 import { ProductsService } from './products/products.service';
@@ -3953,7 +3954,11 @@ export class AppController {
 
   @Get('/campaigns/proxy-image')
   async proxyImage(@Query('url') url: string, @Res() res: Response) {
-    if (!url || !url.startsWith('https://ideogram.ai/')) {
+    if (
+      !url ||
+      !(url.startsWith('https://ideogram.ai/') ||
+        CraftPosterService.isCraftPosterUrl(url))
+    ) {
       res.status(400).json({ error: 'Invalid URL' });
       return;
     }
