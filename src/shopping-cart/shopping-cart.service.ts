@@ -1435,7 +1435,8 @@ export class ShoppingCartService {
       this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException // WGDD-428: สินค้างดแสดง → 404
       ) {
         throw error;
       }
@@ -1515,7 +1516,8 @@ export class ShoppingCartService {
       this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException // WGDD-428: สินค้างดแสดง → 404
       ) {
         throw error;
       }
