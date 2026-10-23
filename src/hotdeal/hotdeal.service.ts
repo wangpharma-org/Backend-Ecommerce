@@ -23,6 +23,7 @@ import {
   HotdealGiftLine,
   InternalHotdealGiftResult,
 } from './hotdeal-gifts';
+import type { HotdealGiftDisplay } from './hotdeal-gift-display';
 
 export interface HotdealInput {
   pro1_code: string;
@@ -81,6 +82,65 @@ export class HotdealService {
       select: ['mem_route'],
     });
     return member?.mem_route?.toUpperCase() === 'L16';
+  }
+
+  /** อ่านของแถมของสินค้าหลายตัวพร้อมกัน เพื่อไม่ให้ product card เกิด N+1 */
+  async getGiftDisplaysByProductCodes(
+    proCodes: string[],
+    memRoute?: string,
+  ): Promise<Map<string, HotdealGiftDisplay[]>> {
+    const codes = [...new Set(proCodes.filter(Boolean))];
+    const result = new Map<string, HotdealGiftDisplay[]>();
+    if (codes.length === 0) return result;
+
+    const isL16 = await this.isL16Member(undefined, memRoute);
+    const query = this.hotdealRepo
+      .createQueryBuilder('hotdeal')
+      .leftJoinAndSelect('hotdeal.product', 'product')
+      .leftJoinAndSelect('product.units', 'productUnits')
+      .leftJoinAndSelect('hotdeal.product2', 'giftProduct')
+      .leftJoinAndSelect('giftProduct.units', 'giftUnits')
+      .where('product.pro_code IN (:...codes)', { codes })
+      .orderBy('hotdeal.order', 'ASC')
+      .addOrderBy('hotdeal.id', 'ASC');
+
+    if (!isL16) {
+      query
+        .andWhere('(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)')
+        .andWhere(
+          '(giftProduct.pro_l16_only = 0 OR giftProduct.pro_l16_only IS NULL)',
+        );
+    }
+
+    const unitName = (
+      unit: string,
+      units: { level: number; unit_name: string }[] | undefined,
+    ): string =>
+      units?.find((item) => String(item.level) === unit)?.unit_name ?? unit;
+
+    for (const deal of await query.getMany()) {
+      if (!deal.product || !deal.product2) continue;
+      const item: HotdealGiftDisplay = {
+        id: deal.id,
+        buy_amount: deal.pro1_amount,
+        buy_unit: unitName(deal.pro1_unit, deal.product.units),
+        gift_pro_code: deal.product2.pro_code,
+        gift_name:
+          deal.product2.pro_nameTH ||
+          deal.product2.pro_nameSale ||
+          deal.product2.pro_name ||
+          deal.product2.pro_code,
+        gift_image: deal.product2.pro_imgmain ?? null,
+        gift_amount: deal.pro2_amount,
+        gift_unit: unitName(deal.pro2_unit, deal.product2.units),
+        promo_title: deal.promo_title,
+        promo_body: deal.promo_body,
+      };
+      const items = result.get(deal.product.pro_code) ?? [];
+      items.push(item);
+      result.set(deal.product.pro_code, items);
+    }
+    return result;
   }
 
   private isUnitLevel(unit: string): unit is '1' | '2' | '3' {
@@ -286,7 +346,8 @@ export class HotdealService {
       const totalsByMember: Record<string, number> = {};
 
       for (const item of hotdealProductInCart) {
-        if (!item.hotdeal_free) { // ไม่นำของแถมมาคิดรวม
+        if (!item.hotdeal_free) {
+          // ไม่นำของแถมมาคิดรวม
           const ratio = unitRatioMap[item.spc_unit_enum] ?? 1;
           totalsByMember[item.mem_code] =
             (totalsByMember[item.mem_code] ?? 0) + item.spc_amount * ratio;
@@ -533,9 +594,7 @@ export class HotdealService {
 
     if (!isL16) {
       query
-        .andWhere(
-          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
-        )
+        .andWhere('(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)')
         .andWhere(
           '(product2.pro_l16_only = 0 OR product2.pro_l16_only IS NULL)',
         );
@@ -581,14 +640,9 @@ export class HotdealService {
       };
     };
 
-    const resolveCartItems = (
-      carts: ShoppingCartEntity[],
-      units: UnitDef[],
-    ) =>
+    const resolveCartItems = (carts: ShoppingCartEntity[], units: UnitDef[]) =>
       carts.map((cart) => {
-        const found = units.find(
-          (u) => u.level === Number(cart.spc_unit_enum),
-        );
+        const found = units.find((u) => u.level === Number(cart.spc_unit_enum));
         const cartObj = { ...(cart as unknown as Record<string, unknown>) };
         delete cartObj['spc_unit_enum'];
         return { ...cartObj, spc_unit: found?.unit_name ?? '' };
@@ -664,17 +718,23 @@ export class HotdealService {
     freebie_pro_code?: string,
   ): Promise<
     | {
-      pro_code: string;
-      match: boolean;
-      countFreeBies: string;
-      product2: { pro_code: string; pro_name: string; pro_nameTH?: string | null; pro_nameSale?: string | null; pro_imgmain?: string };
-      hotdeal: {
-        pro1_amount: string;
-        pro1_unit: string;
-        pro2_amount: string;
-        pro2_unit: string;
-      };
-    }
+        pro_code: string;
+        match: boolean;
+        countFreeBies: string;
+        product2: {
+          pro_code: string;
+          pro_name: string;
+          pro_nameTH?: string | null;
+          pro_nameSale?: string | null;
+          pro_imgmain?: string;
+        };
+        hotdeal: {
+          pro1_amount: string;
+          pro1_unit: string;
+          pro2_amount: string;
+          pro2_unit: string;
+        };
+      }
     | undefined
   > {
     try {
@@ -683,13 +743,13 @@ export class HotdealService {
         relations: ['product', 'product.units', 'product2', 'product2.units'],
       });
 
-
       // ใช้ transformProductWithUnits สำหรับแปลงหน่วย
       let pro1_unit = found?.pro1_unit;
       let pro2_unit = found?.pro2_unit;
 
       if (found?.product) {
-        const transformedProduct = await this.productService.transformProductWithUnits(found.product);
+        const transformedProduct =
+          await this.productService.transformProductWithUnits(found.product);
         const unitLevel = Number(found.pro1_unit);
         if (unitLevel === 1) pro1_unit = transformedProduct.pro_unit1;
         else if (unitLevel === 2) pro1_unit = transformedProduct.pro_unit2;
@@ -697,13 +757,13 @@ export class HotdealService {
       }
 
       if (found?.product2) {
-        const transformedProduct2 = await this.productService.transformProductWithUnits(found.product2);
+        const transformedProduct2 =
+          await this.productService.transformProductWithUnits(found.product2);
         const unitLevel = Number(found.pro2_unit);
         if (unitLevel === 1) pro2_unit = transformedProduct2.pro_unit1;
         else if (unitLevel === 2) pro2_unit = transformedProduct2.pro_unit2;
         else if (unitLevel === 3) pro2_unit = transformedProduct2.pro_unit3;
       }
-
 
       let fromFrontend = 0;
       for (const item of shopping_cart) {
@@ -822,7 +882,9 @@ export class HotdealService {
 
     // แปลง pro1_unit เป็น string ชื่อหน่วยจริง
     if (hotdeal.product?.pro_code) {
-      const transformed = await this.productService.transformProductWithUnits(hotdeal.product);
+      const transformed = await this.productService.transformProductWithUnits(
+        hotdeal.product,
+      );
       const unitLevel = Number(hotdeal.pro1_unit);
       if (unitLevel === 1) pro1_unit = transformed.pro_unit1;
       else if (unitLevel === 2) pro1_unit = transformed.pro_unit2;
@@ -830,7 +892,9 @@ export class HotdealService {
     }
     // แปลง pro2_unit เป็น string ชื่อหน่วยจริง
     if (hotdeal.product2?.pro_code) {
-      const transformed2 = await this.productService.transformProductWithUnits(hotdeal.product2);
+      const transformed2 = await this.productService.transformProductWithUnits(
+        hotdeal.product2,
+      );
       const unitLevel2 = Number(hotdeal.pro2_unit);
       if (unitLevel2 === 1) pro2_unit = transformed2.pro_unit1;
       else if (unitLevel2 === 2) pro2_unit = transformed2.pro_unit2;
@@ -864,17 +928,24 @@ export class HotdealService {
     });
   }
 
-  async uploadBannerHotdeal(file: Express.Multer.File | null, id_hotdeal: number) {
+  async uploadBannerHotdeal(
+    file: Express.Multer.File | null,
+    id_hotdeal: number,
+  ) {
     let imageUrl: string | undefined = undefined;
     try {
       if (!file) {
         throw new Error('No file uploaded');
       }
-      const hotdeal = await this.hotdealRepo.findOne({ where: { id: id_hotdeal } });
+      const hotdeal = await this.hotdealRepo.findOne({
+        where: { id: id_hotdeal },
+      });
       if (!hotdeal) {
         throw new Error('Hotdeal not found');
       }
-      const findBannerHotdeal = await this.bannerHotdealRepo.findOne({ where: { hotdeal: { id: id_hotdeal } } });
+      const findBannerHotdeal = await this.bannerHotdealRepo.findOne({
+        where: { hotdeal: { id: id_hotdeal } },
+      });
       if (findBannerHotdeal) {
         throw new Error('Banner for this hotdeal already exists');
       }
@@ -884,7 +955,6 @@ export class HotdealService {
         process.env.DO_SPACES_SECRET &&
         process.env.DO_SPACES_SECRET !== 'placeholder';
       if (hasValidCredentials) {
-
         const params = {
           Bucket: 'wang-storage',
           Key: `hotdeal-banners/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${file?.originalname}`,
@@ -950,8 +1020,13 @@ export class HotdealService {
 
       if (banner && banner.banner_url) {
         const bannerUrl = banner.banner_url;
-        if (bannerUrl.includes('digitaloceanspaces.com') && bannerUrl.includes('hotdeal-banners/')) {
-          const key = bannerUrl.substring(bannerUrl.indexOf('hotdeal-banners/'));
+        if (
+          bannerUrl.includes('digitaloceanspaces.com') &&
+          bannerUrl.includes('hotdeal-banners/')
+        ) {
+          const key = bannerUrl.substring(
+            bannerUrl.indexOf('hotdeal-banners/'),
+          );
           const hasValidCredentials =
             process.env.DO_SPACES_KEY &&
             process.env.DO_SPACES_KEY !== 'placeholder' &&
@@ -1030,18 +1105,33 @@ export class HotdealService {
       return null;
     }
 
-    const transformedProduct = await this.productService.transformProductWithUnits(product);
+    const transformedProduct =
+      await this.productService.transformProductWithUnits(product);
 
     // สร้าง units lookup สำหรับใช้ร่วมกัน
     const units = [
-      { unit_name: transformedProduct.pro_unit1, ratio: transformedProduct.pro_ratio1, level: 1 },
-      { unit_name: transformedProduct.pro_unit2, ratio: transformedProduct.pro_ratio2, level: 2 },
-      { unit_name: transformedProduct.pro_unit3, ratio: transformedProduct.pro_ratio3, level: 3 }
-    ].filter(u => u.unit_name);
+      {
+        unit_name: transformedProduct.pro_unit1,
+        ratio: transformedProduct.pro_ratio1,
+        level: 1,
+      },
+      {
+        unit_name: transformedProduct.pro_unit2,
+        ratio: transformedProduct.pro_ratio2,
+        level: 2,
+      },
+      {
+        unit_name: transformedProduct.pro_unit3,
+        ratio: transformedProduct.pro_ratio3,
+        level: 3,
+      },
+    ].filter((u) => u.unit_name);
 
     // Helper function สำหรับแปลงเป็น smallest unit
     const convertToSmallest = (amount: string, unit: string): number => {
-      const foundUnit = units.find(u => u.unit_name === unit || String(u.level) === unit);
+      const foundUnit = units.find(
+        (u) => u.unit_name === unit || String(u.level) === unit,
+      );
       return foundUnit ? Number(amount) * foundUnit.ratio : 0;
     };
 
@@ -1054,7 +1144,8 @@ export class HotdealService {
     else if (unitLevel1 === 3) pro1_unit = transformedProduct.pro_unit3;
 
     if (hotdeal.product2) {
-      const transformedProduct2 = await this.productService.transformProductWithUnits(hotdeal.product2);
+      const transformedProduct2 =
+        await this.productService.transformProductWithUnits(hotdeal.product2);
       const unitLevel2 = Number(hotdeal.pro2_unit);
       if (unitLevel2 === 1) pro2_unit = transformedProduct2.pro_unit1;
       else if (unitLevel2 === 2) pro2_unit = transformedProduct2.pro_unit2;
@@ -1067,7 +1158,10 @@ export class HotdealService {
       pro2_unit,
     };
 
-    const cartItems = await this.shoppingCartService.getOrderFromCartMember(mem_code, pro_code);
+    const cartItems = await this.shoppingCartService.getOrderFromCartMember(
+      mem_code,
+      pro_code,
+    );
 
     // คำนวณ totalAmountInSmallestUnit
     let totalAmountInSmallestUnit = 0;
@@ -1129,7 +1223,7 @@ export class HotdealService {
       totalAmountInSmallestUnit,
       eligibleForFreebie,
       remainingPoints,
-      freebies
+      freebies,
     };
   }
 
@@ -1168,8 +1262,12 @@ export class HotdealService {
     ] as string[];
 
     // ดึง units ของทุก code ในครั้งเดียว แล้ว transform จาก map — กัน N+1
-    const unitsMap = await this.productService.getUnitsMapByProCodes(uniqueCodes);
-    const transformedMap = new Map<string, { pro_unit1: string; pro_unit2: string; pro_unit3: string }>();
+    const unitsMap =
+      await this.productService.getUnitsMapByProCodes(uniqueCodes);
+    const transformedMap = new Map<
+      string,
+      { pro_unit1: string; pro_unit2: string; pro_unit3: string }
+    >();
     for (const code of uniqueCodes) {
       const t = await this.productService.transformProductWithUnits(
         { pro_code: code } as ProductEntity,
@@ -1178,7 +1276,13 @@ export class HotdealService {
       transformedMap.set(code, t);
     }
 
-    const resolveUnit = (transformed: { pro_unit1: string; pro_unit2: string; pro_unit3: string } | undefined, level: number, fallback: string) => {
+    const resolveUnit = (
+      transformed:
+        | { pro_unit1: string; pro_unit2: string; pro_unit3: string }
+        | undefined,
+      level: number,
+      fallback: string,
+    ) => {
       if (!transformed) return fallback;
       if (level === 1) return transformed.pro_unit1;
       if (level === 2) return transformed.pro_unit2;
@@ -1188,8 +1292,16 @@ export class HotdealService {
 
     return hotdeals.map((hotdeal) => ({
       ...hotdeal,
-      pro1_unit: resolveUnit(transformedMap.get(hotdeal.product?.pro_code), Number(hotdeal.pro1_unit), hotdeal.pro1_unit),
-      pro2_unit: resolveUnit(transformedMap.get(hotdeal.product2?.pro_code), Number(hotdeal.pro2_unit), hotdeal.pro2_unit),
+      pro1_unit: resolveUnit(
+        transformedMap.get(hotdeal.product?.pro_code),
+        Number(hotdeal.pro1_unit),
+        hotdeal.pro1_unit,
+      ),
+      pro2_unit: resolveUnit(
+        transformedMap.get(hotdeal.product2?.pro_code),
+        Number(hotdeal.pro2_unit),
+        hotdeal.pro2_unit,
+      ),
     }));
   }
 }

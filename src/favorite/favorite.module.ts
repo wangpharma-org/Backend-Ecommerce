@@ -5,11 +5,13 @@ import { FavoriteEntity } from './favorite.entity';
 import { FavoriteListener } from './favorite.listener';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductsModule } from 'src/products/products.module';
+import { HotdealModule } from 'src/hotdeal/hotdeal.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([FavoriteEntity, UserEntity]),
     ProductsModule,
+    HotdealModule,
   ],
   providers: [FavoriteService],
   controllers: [FavoriteListener],

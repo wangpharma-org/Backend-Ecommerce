@@ -28,6 +28,7 @@ import { Imagedebug } from 'src/imagedebug/imagedebug.entity';
 // import { integer } from 'aws-sdk/clients/cloudfront';
 // import { text } from 'aws-sdk/clients/customerprofiles';
 import { ProductUnitEntity } from './product-unit.entity';
+import type { HotdealGiftDisplay } from 'src/hotdeal/hotdeal-gift-display';
 
 @Entity({ name: 'product' })
 // index สำหรับหน้าสินค้าแลกแต้ม (redeem-product.criteria.ts) — สร้างใน migration release-1.48.0
@@ -42,6 +43,8 @@ import { ProductUnitEntity } from './product-unit.entity';
 @Index('IDX_product_redeem_rank', ['pro_redeem_rank'])
 export class ProductEntity {
   productLabels?: string[];
+  /** field response หน้าร้าน ไม่ได้บันทึกลงตาราง product */
+  hotdealGifts?: HotdealGiftDisplay[];
 
   @PrimaryColumn({ unique: true, length: 20 })
   pro_code!: string;

@@ -4,6 +4,7 @@ import { FavoriteEntity } from './favorite.entity';
 import { Repository } from 'typeorm';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { HotdealService } from 'src/hotdeal/hotdeal.service';
 
 @Injectable()
 export class FavoriteService {
@@ -13,6 +14,7 @@ export class FavoriteService {
     private readonly favoriteRepo: Repository<FavoriteEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    private readonly hotdealService: HotdealService,
   ) {}
 
   private async isL16Member(
@@ -194,6 +196,13 @@ export class FavoriteService {
       ]);
 
       const data = await qb.getMany();
+      const giftsByCode =
+        await this.hotdealService.getGiftDisplaysByProductCodes(
+          data
+            .map((favorite) => favorite.product?.pro_code)
+            .filter((proCode): proCode is string => Boolean(proCode)),
+          mem_route,
+        );
       return data.map((favorite) => {
         const units = (favorite.product?.units ?? []) as {
           level: number;
@@ -220,6 +229,8 @@ export class FavoriteService {
             pro_ratio2: unit2?.ratio ?? 1,
             pro_ratio3: unit3?.ratio ?? 1,
             inCarts,
+            hotdealGifts:
+              giftsByCode.get(favorite.product?.pro_code ?? '') ?? [],
           },
         } as unknown as FavoriteEntity & {
           isMonthlyDeal: boolean;

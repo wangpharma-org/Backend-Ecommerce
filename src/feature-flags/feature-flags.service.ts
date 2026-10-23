@@ -15,6 +15,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'sticker_label',
   // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
   'store_name_consent',
+  // เปิดหลังตรวจข้อความ/รูปของแถมในหน้าร้านจริงแล้ว
+  'hotdeal_gift_display',
 ]);
 
 @Injectable()

@@ -41,6 +41,7 @@ import {
 } from './redeem-product.criteria';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
+import { HotdealService } from 'src/hotdeal/hotdeal.service';
 
 interface OrderItem {
   pro_code: string;
@@ -144,7 +145,29 @@ export class ProductsService {
     private readonly productLabelRulesService: ProductLabelRulesService,
     private readonly redeemProductSetService: RedeemProductSetService,
     private readonly monthlyDealPublisher: MonthlyDealPublisherService,
+    @Inject(forwardRef(() => HotdealService))
+    private readonly hotdealService: HotdealService,
   ) {}
+
+  private async attachHotdealGifts<T extends { pro_code: string }>(
+    products: T[],
+    memRoute?: string,
+  ): Promise<
+    Array<
+      T & {
+        hotdealGifts: import('src/hotdeal/hotdeal-gift-display').HotdealGiftDisplay[];
+      }
+    >
+  > {
+    const giftsByCode = await this.hotdealService.getGiftDisplaysByProductCodes(
+      products.map((product) => product.pro_code),
+      memRoute,
+    );
+    return products.map((product) => ({
+      ...product,
+      hotdealGifts: giftsByCode.get(product.pro_code) ?? [],
+    }));
+  }
 
   private convertEnumToUnitName(
     unitEnum: 1 | 2 | 3 | string | undefined,
@@ -675,7 +698,7 @@ export class ProductsService {
 
       type UnitDef = { level: number; unit_name: string; ratio: number };
 
-      return data.map((product) => {
+      const displayProducts = data.map((product) => {
         const units = (product.units ?? []) as unknown as UnitDef[];
         const unit1 = units.find((u) => u.level === 1);
         const unit2 = units.find((u) => u.level === 2);
@@ -708,6 +731,15 @@ export class ProductsService {
           inCarts: resolvedCarts,
         };
       });
+      const giftsByCode =
+        await this.hotdealService.getGiftDisplaysByProductCodes(
+          data.map((product) => product.pro_code),
+          mem_route,
+        );
+      return displayProducts.map((product, index) => ({
+        ...product,
+        hotdealGifts: giftsByCode.get(data[index].pro_code) ?? [],
+      }));
     } catch (error) {
       this.logger.error('Error in getFlashSale:', error);
       throw new Error('Error in getFlashSale');
@@ -1148,7 +1180,11 @@ export class ProductsService {
         ...(transformedProduct.replace ? [transformedProduct.replace] : []),
         ...(transformedProduct.recommend?.products ?? []),
       ]);
-      return transformedProduct;
+      const [productWithHotdealGifts] = await this.attachHotdealGifts(
+        [transformedProduct],
+        data.mem_route,
+      );
+      return productWithHotdealGifts;
     } catch (error) {
       this.logger.error(error);
       throw new Error('Something Error in Product Detail');
@@ -1449,7 +1485,13 @@ export class ProductsService {
       }
 
       await this.attachProductLabels(productsWithUnits);
-      return { products: productsWithUnits, totalCount };
+      return {
+        products: await this.attachHotdealGifts(
+          productsWithUnits,
+          data.mem_route,
+        ),
+        totalCount,
+      };
     } catch (error) {
       this.logger.error('Error searching products:', error);
       throw new Error('Error searching products');
@@ -2116,7 +2158,7 @@ export class ProductsService {
       }
       await this.attachProductLabels(productEntity);
       return {
-        products: productEntity,
+        products: await this.attachHotdealGifts(productEntity, data.mem_route),
         totalCount,
       };
     } catch (error) {
