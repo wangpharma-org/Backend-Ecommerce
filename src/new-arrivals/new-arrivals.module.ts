@@ -8,6 +8,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import { PreorderModule } from 'src/preorder/preorder.module';
+import { HotdealModule } from 'src/hotdeal/hotdeal.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PreorderModule } from 'src/preorder/preorder.module';
     ProductsModule,
     LotModule,
     PreorderModule,
+    HotdealModule,
     ClientsModule.registerAsync([
       {
         name: 'OrderPickingService',

@@ -8,6 +8,7 @@ import * as dayjs from 'dayjs';
 import { PreorderService } from 'src/preorder/preorder.service';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import { LotArrivalInput, LotService } from 'src/lot/lot.service';
+import { HotdealService } from 'src/hotdeal/hotdeal.service';
 
 @Injectable()
 export class NewArrivalsService {
@@ -22,6 +23,7 @@ export class NewArrivalsService {
     private readonly kafkaClient: ClientKafka,
     private readonly lotService: LotService,
     private readonly preorderService: PreorderService,
+    private readonly hotdealService: HotdealService,
   ) {}
 
   private async isL16Member(
@@ -207,6 +209,12 @@ export class NewArrivalsService {
       .getMany();
 
     const seenProCodes = new Set<string>();
+    const giftsByCode = await this.hotdealService.getGiftDisplaysByProductCodes(
+      results
+        .map((item) => item.product?.pro_code)
+        .filter((proCode): proCode is string => Boolean(proCode)),
+      mem_route,
+    );
     // Return เฉพาะข้อมูล product พร้อมแปลง units → pro_unit1/2/3 และ spc_unit_enum → spc_unit
     return results
       .map((item) => {
@@ -261,6 +269,7 @@ export class NewArrivalsService {
           pro_ratio2: unit2?.ratio ?? 1,
           pro_ratio3: unit3?.ratio ?? 1,
           inCarts: resolvedCarts,
+          hotdealGifts: giftsByCode.get(product.pro_code) ?? [],
         };
       })
       .filter(Boolean);

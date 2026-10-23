@@ -24,6 +24,7 @@ import {
   MONTHLY_DEAL_KAFKA_CLIENT,
   MonthlyDealPublisherService,
 } from './monthly-deal-publisher.service';
+import { HotdealModule } from 'src/hotdeal/hotdeal.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import {
     ElasticsearchModule,
     ProductLabelRulesModule,
     FixFreeModule,
+    forwardRef(() => HotdealModule),
     forwardRef(() => ShoppingCartModule),
     ClientsModule.registerAsync([
       {
