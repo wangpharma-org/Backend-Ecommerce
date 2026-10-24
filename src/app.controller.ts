@@ -42,6 +42,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { InternalTokenGuard } from './auth/internal-token.guard';
 import { parseHotdealGiftLines } from './hotdeal/hotdeal-gifts';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
+import { canManageFeatureFlags } from './feature-flags/feature-flag-access';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
@@ -304,16 +305,59 @@ export class AppController {
     return this.featureFlagsService.getFlag(flag);
   }
 
+  // ECWC-749: รายการ/เปลี่ยน/ประวัติ flag — เฉพาะ Admin หรือคนที่ได้เมนู feature-flag
+  // (เดิมแค่ล็อกอินก็ทำได้ รวม token ร้านค้า และปิด flag "all" ได้ = ร้านทุกร้านใช้เว็บไม่ได้)
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/feature-flags')
-  async getAllFlags() {
+  async getAllFlags(@Req() req: Request & { user: JwtPayload }) {
+    this.assertCanManageFeatureFlags(req.user);
     return this.featureFlagsService.getAllFlags();
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/feature-flag/update-flag')
-  async updateFlag(@Body() data: { flag: string; status: boolean }) {
-    return this.featureFlagsService.updateFlag(data);
+  async updateFlag(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { flag?: unknown; status?: unknown },
+  ) {
+    this.assertCanManageFeatureFlags(req.user);
+    const flag = typeof data?.flag === 'string' ? data.flag.trim() : '';
+    if (!flag || flag.length > 255 || typeof data?.status !== 'boolean') {
+      throw new BadRequestException(
+        'ต้องส่ง flag (ข้อความ ไม่เกิน 255 ตัว) และ status (true/false)',
+      );
+    }
+    return this.featureFlagsService.updateFlag(
+      { flag, status: data.status },
+      {
+        mem_code: req.user.mem_code,
+        username: req.user.username ?? null,
+        role: req.user.role ?? null,
+      },
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/feature-flag-logs')
+  async getFeatureFlagLogs(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('flag') flag?: string,
+    @Query('limit') limit?: string,
+  ) {
+    this.assertCanManageFeatureFlags(req.user);
+    const n = limit === undefined ? 100 : Number(limit);
+    if (!Number.isInteger(n) || n < 1 || n > 500) {
+      throw new BadRequestException('limit ต้องเป็นจำนวนเต็ม 1-500');
+    }
+    return this.featureFlagsService.getChangeLogs(flag?.trim() || undefined, n);
+  }
+
+  private assertCanManageFeatureFlags(user: JwtPayload & { scope?: unknown }) {
+    if (!canManageFeatureFlags(user)) {
+      throw new ForbiddenException(
+        'ต้องเป็น Admin หรือได้รับสิทธิ์เมนูตั้งค่า feature flag',
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)

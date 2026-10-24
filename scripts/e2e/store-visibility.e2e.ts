@@ -58,7 +58,14 @@ if (E2E_ENV === 'local' && !IS_LOCAL) {
 const RUN_ID = Date.now();
 const mint = (mem_code: string, permission: boolean): string =>
   sign(
-    { username: mem_code, name: `E2E ${E2E_ENV}`, mem_code, permission },
+    // ECWC-749: เปิด/ปิด flag ต้องเป็น role Admin
+    {
+      username: mem_code,
+      name: `E2E ${E2E_ENV}`,
+      mem_code,
+      permission,
+      role: permission ? 'Admin' : 'User',
+    },
     jwtConstants.secret,
     { expiresIn: '1h' },
   );

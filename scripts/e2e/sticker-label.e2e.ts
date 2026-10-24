@@ -95,6 +95,7 @@ function decodeJwt(token: string): {
   mem_code?: string;
   username?: string;
   permission?: boolean;
+  role?: string;
 } {
   try {
     const part = token.split('.')[1] ?? '';
@@ -120,9 +121,14 @@ function stickerRows(cart: any[]): any[] {
 async function main() {
   const adminJwt = decodeJwt(ADMIN_TOKEN);
   const userJwt = decodeJwt(USER_TOKEN);
-  if (adminJwt.permission !== true || userJwt.permission === true) {
+  // ECWC-749: เปิด/ปิด flag ได้เฉพาะ role Admin (permission=true อย่างเดียวไม่พอแล้ว)
+  if (
+    adminJwt.permission !== true ||
+    adminJwt.role !== 'Admin' ||
+    userJwt.permission === true
+  ) {
     console.error(
-      'ADMIN_TOKEN ต้อง permission=true และ USER_TOKEN ต้องเป็นร้านธรรมดา',
+      'ADMIN_TOKEN ต้อง permission=true และ role=Admin และ USER_TOKEN ต้องเป็นร้านธรรมดา',
     );
     process.exit(2);
   }
