@@ -418,7 +418,7 @@ async function main() {
       `# E2E activity-tracking — ${E2E_ENV}`,
       '',
       `- environment: **${E2E_ENV}**`,
-      `- commit: \`${GIT_SHA}\``,
+      `- commit: Backend-Ecommerce \`${GIT_SHA}\` · sale-backend \`${process.env.SALE_COMMIT ?? 'ไม่ระบุ'}\``,
       `- เวลา: ${startedAt.toISOString()}`,
       `- e-commerce: ${BASE_URL} · sale-backend: ${SALE_URL}`,
       `- โปร: ${PROMO_ID} · สินค้า ${PRO_CODE} × ${QTY} · ร้าน ${MEM_CODE} · สั่งซื้อ: ${ALLOW_ORDER ? 'ใช่' : 'ไม่'}`,
