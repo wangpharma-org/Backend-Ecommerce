@@ -5,12 +5,14 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ACTIVITY_KAFKA_CLIENT } from './activity.constants';
 import { ActivityController } from './activity.controller';
 import { ActivityService } from './activity.service';
+import { PromotionScopeController } from './promotion-scope.controller';
+import { PromotionScopeService } from './promotion-scope.service';
 
 const logger = new Logger('ActivityModule');
 
 @Module({
   imports: [ConfigModule, FeatureFlagsModule],
-  controllers: [ActivityController],
+  controllers: [ActivityController, PromotionScopeController],
   providers: [
     {
       provide: ACTIVITY_KAFKA_CLIENT,
@@ -50,6 +52,7 @@ const logger = new Logger('ActivityModule');
       },
     },
     ActivityService,
+    PromotionScopeService,
   ],
   exports: [ActivityService],
 })
