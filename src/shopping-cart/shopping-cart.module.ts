@@ -9,6 +9,7 @@ import { PromotionTierEntity } from 'src/promotion/promotion-tier.entity';
 import { HotdealModule } from 'src/hotdeal/hotdeal.module';
 import { UserEntity } from 'src/users/users.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import { ActivityModule } from '../activity/activity.module';
 import { CompanyDayAnalyticModule } from 'src/company-day-analytic/company-day-analytic.module';
 import { DeleteCartEntity } from './delete-cart.entity';
 import { HotdealEntity } from 'src/hotdeal/hotdeal.entity';
@@ -32,6 +33,7 @@ import { PreorderCampaignEntity } from 'src/preorder/preorder-campaign.entity';
     forwardRef(() => ProductsModule),
     forwardRef(() => HotdealModule),
     CompanyDayAnalyticModule,
+    ActivityModule,
   ],
   providers: [ShoppingCartService],
   exports: [ShoppingCartService],

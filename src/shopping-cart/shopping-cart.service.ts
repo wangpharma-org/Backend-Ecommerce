@@ -3,6 +3,7 @@ import {
   ConflictException,
   forwardRef,
   Inject,
+  Optional,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -32,6 +33,8 @@ import {
   type CompanyDayContextPayload,
 } from 'src/company-day-analytic/company-day-analytic.service';
 import { Logger } from '@nestjs/common';
+import { ActivityService } from '../activity/activity.service';
+import type { ActivityChannel } from '../activity/activity.types';
 import { DeleteCartEntity } from './delete-cart.entity';
 import {
   promoUnitPrice,
@@ -440,6 +443,8 @@ export class ShoppingCartService {
     private readonly deleteCartRepo: Repository<DeleteCartEntity>,
     @InjectRepository(PreorderProductEntity)
     private readonly preorderProductRepo: Repository<PreorderProductEntity>,
+    @Optional()
+    private readonly activityService?: ActivityService,
   ) {}
 
   /** pro_code ที่กำลังเปิดจองล่วงหน้า (campaign เปิดและเริ่มแล้ว) ต้องสั่งผ่านหน้า Pre-order เท่านั้น ห้ามเข้าตะกร้าปกติ */
@@ -1318,6 +1323,8 @@ export class ShoppingCartService {
     flashsale_end?: string;
     clientVersion?: string | number;
     company_day_source?: string;
+    /** ช่องทางของคนที่กด (web/app) — ใช้กับอีเวนต์กิจกรรมเท่านั้น */
+    activity_channel?: ActivityChannel;
     /** true เฉพาะตอน PreorderService ส่งสินค้าที่จัดสรรแล้วของตัวเองเข้าตะกร้า — ไม่ใช่ลูกค้าเพิ่มเองผ่านช่องทางปกติ จึงข้าม guard preorder ได้ */
     isPreorderFulfillment?: boolean;
     /** ECWC-699 สินค้าสั่งทำ — ต้องผ่าน normalizeStickerOptions มาแล้ว (ส่งมาจาก StickerLabelService เท่านั้น) */
@@ -1440,6 +1447,19 @@ export class ShoppingCartService {
             payload,
           );
         }
+        this.activityService?.trackProductAddCart({
+          mem_code: data.mem_code,
+          pro_code: data.pro_code,
+          qty: Number(data.amount),
+          placement: source.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+          channel: data.activity_channel,
+          reached: companyDayContext
+            ? {
+                promo_id: companyDayContext.promo_id,
+                tier: companyDayContext.tier ?? null,
+              }
+            : null,
+        });
       }
       return { cart, ...version };
     } catch (error) {

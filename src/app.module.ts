@@ -44,6 +44,7 @@ import { BehaviorTrackingModule } from './behavior-tracking/behavior-tracking.mo
 import { NotifyRtModule } from './notifyapp/notifyapp.module';
 import { CompanyDayAnalyticModule } from './company-day-analytic/company-day-analytic.module';
 import { SearchCartTrackingModule } from './search-cart-tracking/search-cart-tracking.module';
+import { ActivityModule } from './activity/activity.module';
 import { LineOaMonitorModule } from './line-oa-monitor/line-oa-monitor.module';
 import { envValidationSchema } from './env.validation';
 import { ElasticsearchModule } from './elasticsearch/elasticsearch.module';
@@ -134,6 +135,7 @@ import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.
     NotifyRtModule,
     CompanyDayAnalyticModule,
     SearchCartTrackingModule,
+    ActivityModule,
     LineOaMonitorModule,
     ElasticsearchModule,
     HappyHourModule,
