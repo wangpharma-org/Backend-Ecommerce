@@ -1447,17 +1447,19 @@ export class ShoppingCartService {
             payload,
           );
         }
-        if (companyDayContext?.promo_id != null) {
-          this.activityService?.trackPromoAddCart({
-            mem_code: data.mem_code,
-            promo_id: companyDayContext.promo_id,
-            tier: companyDayContext.tier ?? null,
-            pro_code: data.pro_code,
-            qty: Number(data.amount),
-            placement: source.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-            channel: data.activity_channel,
-          });
-        }
+        this.activityService?.trackProductAddCart({
+          mem_code: data.mem_code,
+          pro_code: data.pro_code,
+          qty: Number(data.amount),
+          placement: source.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+          channel: data.activity_channel,
+          reached: companyDayContext
+            ? {
+                promo_id: companyDayContext.promo_id,
+                tier: companyDayContext.tier ?? null,
+              }
+            : null,
+        });
       }
       return { cart, ...version };
     } catch (error) {

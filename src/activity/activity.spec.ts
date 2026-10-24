@@ -274,4 +274,86 @@ describe('ActivityService', () => {
       'bundle_set:X1',
     ]);
   });
+
+  it('add_cart: one event per active promo the product counts toward, even before any tier is reached', async () => {
+    const { service, kafka, db } = make();
+    service.trackProductAddCart({
+      mem_code: 'S1',
+      pro_code: 'P1',
+      qty: 6,
+      placement: 'product_list',
+      channel: 'web',
+      reached: null,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(String((db.query.mock.calls as unknown[][])[0][0])).toMatch(
+      /promotion_condition/,
+    );
+    expect(((db.query.mock.calls as unknown[][])[0][1] as unknown[])[0]).toBe(
+      'P1',
+    );
+    const sent = (kafka.emit.mock.calls as unknown[][]).map(
+      (c) =>
+        JSON.parse((c[1] as { value: string }).value) as Record<
+          string,
+          unknown
+        >,
+    );
+    expect(
+      sent.map(
+        (e) => `${String(e.feature)}:${String(e.ref)}:${String(e.action)}`,
+      ),
+    ).toEqual(['company_day:10:add_cart', 'wang_day:20:add_cart']);
+    expect(sent[0]).toMatchObject({
+      pro_code: 'P1',
+      qty: 6,
+      placement: 'product_list',
+      props: null,
+    });
+  });
+
+  it('add_cart: tags the promo whose tier the cart reached', async () => {
+    const { service, kafka } = make();
+    service.trackProductAddCart({
+      mem_code: 'S1',
+      pro_code: 'P1',
+      qty: 30,
+      placement: 'product_list',
+      reached: { promo_id: 10, tier: 'ขั้น 1' },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    const sent = (kafka.emit.mock.calls as unknown[][]).map(
+      (c) =>
+        JSON.parse((c[1] as { value: string }).value) as {
+          ref: string;
+          props: unknown;
+        },
+    );
+    expect(sent.find((e) => e.ref === '10')?.props).toEqual({
+      reached_tier: 'ขั้น 1',
+    });
+    expect(sent.find((e) => e.ref === '20')?.props).toBeNull();
+  });
+
+  it('add_cart: products in no active promo send nothing; lookups are cached per product', async () => {
+    const { service, kafka, db } = make();
+    db.query.mockResolvedValue([]);
+    const now = new Date('2026-10-24T03:00:00Z');
+    expect(await service.activePromosForProduct('X', now)).toEqual([]);
+    await service.activePromosForProduct('X', new Date(now.getTime() + 30_000));
+    expect(db.query).toHaveBeenCalledTimes(1);
+    await service.activePromosForProduct('X', new Date(now.getTime() + 61_000));
+    expect(db.query).toHaveBeenCalledTimes(2);
+    service.trackProductAddCart({
+      mem_code: 'S1',
+      pro_code: 'X',
+      qty: 1,
+      placement: null,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(kafka.emit).not.toHaveBeenCalled();
+  });
 });

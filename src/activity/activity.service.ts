@@ -13,6 +13,7 @@ import { ActivityChannel, ActivityEvent, serverEvent } from './activity.types';
 
 const FLAG_TTL_MS = 30_000;
 const PROMO_TTL_MS = 10 * 60_000;
+const PRODUCT_PROMO_TTL_MS = 60_000;
 
 type PromoFeature = 'company_day' | 'wang_day';
 
@@ -41,6 +42,10 @@ export interface OrderActivityContext {
 export class ActivityService {
   private readonly logger = new Logger(ActivityService.name);
   private flag: { value: boolean; at: number } | null = null;
+  private readonly productPromos = new Map<
+    string,
+    { promos: Array<{ promo_id: number; feature: PromoFeature }>; at: number }
+  >();
   private readonly promoFeatures = new Map<
     number,
     { feature: PromoFeature; at: number }
@@ -140,38 +145,75 @@ export class ActivityService {
     });
   }
 
-  /** ใส่ตะกร้าสินค้าที่อยู่ในเงื่อนไขโปร (เรียกจาก shopping-cart หลังบันทึกสำเร็จ) */
-  trackPromoAddCart(input: {
+  /**
+   * โปรที่เปิดอยู่ตอนนี้ซึ่งสินค้านี้นับเข้าเงื่อนไข — อยู่ใน promotion_condition ของ tier ใด tier หนึ่ง
+   * หรือ tier นั้นเป็น "ทุกสินค้า" และไม่ได้ยกเว้นสินค้านี้ · cache ต่อสินค้า 1 นาที
+   */
+  async activePromosForProduct(
+    proCode: string,
+    now = new Date(),
+  ): Promise<Array<{ promo_id: number; feature: PromoFeature }>> {
+    const hit = this.productPromos.get(proCode);
+    if (hit && now.getTime() - hit.at < PRODUCT_PROMO_TTL_MS) return hit.promos;
+    const rows: { promo_id: number; creditor_code: string | null }[] =
+      await this.db.query(
+        `SELECT DISTINCT p.promo_id, p.creditor_code
+           FROM promotion p
+           JOIN promotion_tier t ON t.promo_id = p.promo_id
+           LEFT JOIN promotion_condition c ON c.tier_id = t.tier_id AND c.product_code = ?
+          WHERE p.status = 1 AND p.start_date <= ? AND p.end_date >= ?
+            AND (c.product_code IS NOT NULL
+                 OR (t.all_products = 1 AND NOT EXISTS (
+                       SELECT 1 FROM promotion_tier_exclusion x
+                        WHERE x.tier_id = t.tier_id AND x.product_code = ?)))`,
+        [proCode, now, now, proCode],
+      );
+    const promos = rows.map((r) => ({
+      promo_id: Number(r.promo_id),
+      feature: (r.creditor_code ? 'company_day' : 'wang_day') as PromoFeature,
+    }));
+    this.productPromos.set(proCode, { promos, at: now.getTime() });
+    return promos;
+  }
+
+  /**
+   * ใส่ตะกร้าสินค้าที่นับเข้าโปรที่เปิดอยู่ — หนึ่งอีเวนต์ต่อโปร ไม่ว่าตะกร้าจะถึงขั้นแล้วหรือยัง
+   * (เดิมนับเฉพาะตอนใส่แล้วถึงขั้น ทำให้การใส่ครั้งแรกที่ยอดยังไม่ถึงหายไป)
+   */
+  trackProductAddCart(input: {
     mem_code: string;
-    promo_id: number;
-    tier: string | null;
     pro_code: string;
     qty: number;
     placement: string | null;
     channel?: ActivityChannel;
+    /// ขั้นที่ตะกร้าถึงหลังใส่ (ถ้ามี)
+    reached?: { promo_id: number; tier: string | null } | null;
   }): void {
     void (async () => {
       try {
         if (!(await this.isEnabled())) return;
-        const feature = (await this.featuresForPromos([input.promo_id])).get(
-          input.promo_id,
+        const promos = await this.activePromosForProduct(input.pro_code);
+        if (!promos.length) return;
+        await this.emit(
+          promos.map((p) =>
+            serverEvent({
+              feature: p.feature,
+              action: 'add_cart',
+              mem_code: input.mem_code,
+              ref: String(p.promo_id),
+              channel: input.channel ?? 'unknown',
+              placement: input.placement,
+              pro_code: input.pro_code,
+              qty: input.qty,
+              props:
+                input.reached?.promo_id === p.promo_id && input.reached.tier
+                  ? { reached_tier: input.reached.tier }
+                  : null,
+            }),
+          ),
         );
-        if (!feature) return;
-        await this.emit([
-          serverEvent({
-            feature,
-            action: 'add_cart',
-            mem_code: input.mem_code,
-            ref: String(input.promo_id),
-            channel: input.channel ?? 'unknown',
-            placement: input.placement,
-            pro_code: input.pro_code,
-            qty: input.qty,
-            props: input.tier ? { tier: input.tier } : null,
-          }),
-        ]);
       } catch (error) {
-        this.logger.warn(`trackPromoAddCart failed: ${String(error)}`);
+        this.logger.warn(`trackProductAddCart failed: ${String(error)}`);
       }
     })();
   }

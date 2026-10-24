@@ -5,7 +5,7 @@
  * ทดสอบ Company Day เป็นฟีเจอร์แรก:
  *   1. POST /ecom/activity รับเฉพาะ impression/open/click/checkout, mem_code มาจาก token, ทิ้งรายการผิด
  *   2. feature "promotion" + promo_id ถูกแปลงเป็น company_day (ตะกร้าไม่รู้ว่าโปรเป็นประเภทไหน)
- *   3. ใส่ตะกร้าสินค้าในเงื่อนไข → add_cart จากฝั่ง server
+ *   3. ใส่ตะกร้าสินค้าในเงื่อนไข 2 ครั้ง (ครั้งแรกยังไม่ถึงขั้น) → add_cart จากฝั่ง server ทั้ง 2 ครั้ง
  *   4. สั่งซื้อ (เฉพาะ ALLOW_ORDER=1) → order พร้อมยอดบาท + emp_code (sales ทำแทน)
  *   5. sale-backend /activity/summary + /activity/stores เห็นครบ, ไม่มีสิทธิ์ = 403
  *
@@ -261,7 +261,25 @@ async function main() {
       `HTTP ${batch.status} ${JSON.stringify(b)}`,
     );
 
-    // --- 2. add_cart (server)
+    // --- 2. add_cart (server) — ครั้งแรก 1 ชิ้น ยอดยังไม่ถึงขั้นไหน ก็ต้องนับ
+    const first = await call(
+      BASE_URL,
+      'POST',
+      '/ecom/product-add-cart',
+      t.user,
+      {
+        mem_code: MEM_CODE,
+        pro_code: PRO_CODE,
+        pro_unit: PRO_UNIT,
+        amount: 1,
+        company_day_source: 'Product List',
+      },
+    );
+    check(
+      'ใส่ตะกร้า 1 ชิ้น (ยังไม่ถึงขั้น)',
+      first.status < 300,
+      `HTTP ${first.status}`,
+    );
     const add = await call(BASE_URL, 'POST', '/ecom/product-add-cart', t.user, {
       mem_code: MEM_CODE,
       pro_code: PRO_CODE,
@@ -269,7 +287,11 @@ async function main() {
       amount: QTY,
       company_day_source: 'Product List',
     });
-    check('ใส่ตะกร้าสินค้าในเงื่อนไข', add.status < 300, `HTTP ${add.status}`);
+    check(
+      `ใส่ตะกร้าจนครบ ${QTY} ชิ้น (ถึงขั้น)`,
+      add.status < 300,
+      `HTTP ${add.status}`,
+    );
 
     // --- 3. order (server)
     let running: string[] = [];
@@ -340,6 +362,11 @@ async function main() {
       'ร้านทดสอบอยู่ในรายชื่อร้าน ขั้นลึกสุดถูก',
       !!store && store.stage === (ALLOW_ORDER ? 'order' : 'add_cart'),
       JSON.stringify(store ?? null),
+    );
+    check(
+      'add_cart ครบ 2 ครั้ง รวมครั้งที่ยังไม่ถึงขั้น',
+      !!store && store.addCarts === 2,
+      `addCarts=${String(store?.addCarts)}`,
     );
     check(
       'channel = web (จาก User-Agent)',
