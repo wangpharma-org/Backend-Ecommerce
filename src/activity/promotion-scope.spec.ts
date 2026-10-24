@@ -104,8 +104,8 @@ describe('PromotionScopeService.scope', () => {
     // ของแถมนับตามช่วงโปรเมื่อไม่ระบุช่วง
     expect(query.mock.calls[5][1]).toEqual([
       7,
-      promo.start_date,
-      promo.end_date,
+      '2026-09-30 17:00:00',
+      '2026-10-31 16:59:59',
     ]);
   });
 
@@ -131,8 +131,8 @@ describe('PromotionScopeService.scope', () => {
     expect(scope.excluded_product_codes).toEqual([]);
     expect(query.mock.calls[5][1]).toEqual([
       7,
-      '2026-10-05 00:00:00',
-      '2026-10-06 23:59:59',
+      '2026-10-04 17:00:00',
+      '2026-10-06 16:59:59',
     ]);
   });
 });

@@ -21,7 +21,7 @@ export interface PromotionScope {
   promo_id: number;
   promo_name: string;
   feature: 'company_day' | 'wang_day';
-  /** เวลาไทยตามที่บันทึกในฐาน (YYYY-MM-DD HH:mm:ss) */
+  /** เวลาไทย (YYYY-MM-DD HH:mm:ss) — ฐานเก็บ UTC */
   start_date: string;
   end_date: string;
   status: boolean;
@@ -44,6 +44,14 @@ export interface PromotionListItem {
   start_date: string;
   end_date: string;
   status: boolean;
+}
+
+/** วัน+เวลาไทย → ข้อความเวลา UTC สำหรับเทียบกับคอลัมน์ datetime (เก็บเป็น UTC) */
+export function bangkokToUtc(day: string, time: string): string {
+  return new Date(Date.parse(`${day}T${time}+07:00`))
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
 }
 
 export function parseRange(
@@ -95,8 +103,8 @@ export class PromotionScopeService {
       }>
     >(
       `SELECT promo_id, promo_name, creditor_code, status,
-              DATE_FORMAT(start_date, '%Y-%m-%d %H:%i:%s') start_date,
-              DATE_FORMAT(end_date, '%Y-%m-%d %H:%i:%s') end_date
+              DATE_FORMAT(start_date + INTERVAL 7 HOUR, '%Y-%m-%d %H:%i:%s') start_date,
+              DATE_FORMAT(end_date + INTERVAL 7 HOUR, '%Y-%m-%d %H:%i:%s') end_date
          FROM promotion WHERE promo_id = ? AND deleted_at IS NULL`,
       [promoId],
     );
@@ -153,9 +161,13 @@ export class PromotionScopeService {
           .sort()
       : [];
 
+    // ฐานเก็บเวลาเป็น UTC (TypeORM timezone 'Z') — ช่วงที่ส่งมาเป็นวันตามเวลาไทย
     const window = range
-      ? [`${range.from} 00:00:00`, `${range.to} 23:59:59`]
-      : [promo.start_date, promo.end_date];
+      ? [bangkokToUtc(range.from, '00:00:00'), bangkokToUtc(range.to, '23:59:59')]
+      : [
+          bangkokToUtc(promo.start_date.slice(0, 10), promo.start_date.slice(11)),
+          bangkokToUtc(promo.end_date.slice(0, 10), promo.end_date.slice(11)),
+        ];
     const gifts = await this.db.query<
       Array<{ pro_code: string; unit: string; qty: string; orders: string }>
     >(
@@ -210,12 +222,12 @@ export class PromotionScopeService {
       }>
     >(
       `SELECT promo_id, promo_name, creditor_code, status,
-              DATE_FORMAT(start_date, '%Y-%m-%d %H:%i:%s') start_date,
-              DATE_FORMAT(end_date, '%Y-%m-%d %H:%i:%s') end_date
+              DATE_FORMAT(start_date + INTERVAL 7 HOUR, '%Y-%m-%d %H:%i:%s') start_date,
+              DATE_FORMAT(end_date + INTERVAL 7 HOUR, '%Y-%m-%d %H:%i:%s') end_date
          FROM promotion
         WHERE deleted_at IS NULL AND start_date <= ? AND end_date >= ?
         ORDER BY start_date DESC, promo_id DESC LIMIT 500`,
-      [`${range.to} 23:59:59`, `${range.from} 00:00:00`],
+      [bangkokToUtc(range.to, '23:59:59'), bangkokToUtc(range.from, '00:00:00')],
     );
     return rows.map((p) => ({
       promo_id: p.promo_id,
