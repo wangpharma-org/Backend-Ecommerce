@@ -72,6 +72,12 @@ e2e: `scripts/e2e/sticker-label.e2e.ts`
 เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
 e2e: `scripts/e2e/store-visibility.e2e.ts`
 
+## งดแสดงสินค้าบนหน้าร้าน (WGDD-428)
+
+`product.pro_hidden` = 1 → ซ่อนจากลูกค้าทุกหน้า (list/search/ES/category/promotion/flashsale/hotdeal/recommend/favorite) + detail/get-one ตอบ 404 + add-cart 404 + submit-order 400 — ค่ามาจาก productservice `is_display` ผ่าน Kafka `product_update_from_easyacc` (แอดมินกดใน resellerwebsite) ห้ามแก้ตรงใน ecommerce
+ทุก query สินค้าฝั่งลูกค้าใหม่ต้องใช้ `visibleProductSql` / `applyVisibleProductFilter` จาก [src/products/product-visibility.util.ts](src/products/product-visibility.util.ts) · ตอนถูกซ่อน `removeHiddenItemsFromCart` นำออกจากตะกร้า + `delete_cart.data.reason = 'hidden'` ให้หน้าบ้านแจ้งเตือน
+e2e: `scripts/e2e/product-hidden.e2e.ts`
+
 Team knowledge below is distilled from PR review feedback by the
 `learn-from-reviews` skill and ratified through normal PR review. It primes both
 human contributors and AI sessions so review feedback isn't re-learned every time.

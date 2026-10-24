@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { visibleProductSql } from 'src/products/product-visibility.util';
 import { FlashSaleEntity } from './flashsale.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -281,6 +282,8 @@ export class FlashsaleService {
           ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
           : '1=1',
       )
+      // WGDD-428: งดแสดงบนหน้าร้าน
+      .andWhere(visibleProductSql('product'))
       .select([
         'flash.promotion_id',
         'flash.promotion_name',

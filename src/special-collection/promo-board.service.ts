@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { isHiddenProduct } from 'src/products/product-visibility.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PromotionEntity } from '../promotion/promotion.entity';
@@ -185,8 +186,14 @@ export class PromoBoardService {
     ]);
 
     // ของเดิมเก็บ product list ซ้ำทุก tier — รวมเป็นชุดเดียวตามที่หน้าบ้านต้องใช้
+    // WGDD-428: สินค้าที่งดแสดงบนหน้าร้านไม่ต้องโชว์ในบอร์ดโปร
     const participatingCodes = Array.from(
-      new Set(conditions.map((cond) => cond.product?.pro_code).filter(Boolean)),
+      new Set(
+        conditions
+          .filter((cond) => !isHiddenProduct(cond.product))
+          .map((cond) => cond.product?.pro_code)
+          .filter(Boolean),
+      ),
     );
 
     const rewardCodes = Array.from(

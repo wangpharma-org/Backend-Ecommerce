@@ -34,6 +34,10 @@ import {
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
 import {
+  HIDDEN_PRODUCT_MESSAGE,
+  isHiddenProduct,
+} from 'src/products/product-visibility.util';
+import {
   promoUnitPrice,
   type PriceOption,
 } from 'src/promotion/promo-line-value';
@@ -625,6 +629,79 @@ export class ShoppingCartService {
         'สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้',
       );
     }
+  }
+
+  // WGDD-428: ห้ามเพิ่ม/เลือกสินค้าที่งดแสดงบนหน้าร้าน → ตอบเหมือนไม่พบสินค้า
+  private async ensureProductVisible(pro_code: string) {
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: ['pro_code', 'pro_hidden'],
+    });
+    if (isHiddenProduct(product)) {
+      throw new NotFoundException(HIDDEN_PRODUCT_MESSAGE);
+    }
+  }
+
+  // WGDD-428: นำสินค้าที่งดแสดงบนหน้าร้านออกจากตะกร้า (รวมของแถม hotdeal ที่ผูกอยู่)
+  // แล้วบันทึก delete_cart ให้หน้าบ้านแจ้งเตือนลูกค้า (data.reason = 'hidden')
+  async removeHiddenItemsFromCart(mem_code: string): Promise<boolean> {
+    const hiddenRows = await this.shoppingCartRepo
+      .createQueryBuilder('cart')
+      .innerJoin('cart.product', 'product')
+      .select([
+        'cart.spc_id',
+        'cart.pro_code',
+        'cart.spc_unit_enum',
+        'product.pro_code',
+        'product.pro_name',
+        'product.pro_imgmain',
+      ])
+      .where('cart.mem_code = :mem_code', { mem_code })
+      .andWhere('product.pro_hidden = 1')
+      .andWhere('cart.is_reward = false')
+      .andWhere('cart.hotdeal_free = false')
+      .getMany();
+
+    if (hiddenRows.length === 0) {
+      return false;
+    }
+
+    const hiddenCodes = [...new Set(hiddenRows.map((row) => row.pro_code))];
+    const notices = hiddenRows.map((row) =>
+      this.deleteCartRepo.create({
+        mem_code,
+        product: { pro_code: row.pro_code },
+        data: {
+          pro_imgmain: row.product?.pro_imgmain,
+          pro_name: row.product?.pro_name,
+          pro_unit_level: row.spc_unit_enum,
+          reason: 'hidden',
+        },
+      }),
+    );
+
+    await this.shoppingCartRepo.manager.transaction(async (manager) => {
+      await manager.getRepository(DeleteCartEntity).save(notices);
+      await manager
+        .getRepository(ShoppingCartEntity)
+        .delete({ spc_id: In(hiddenRows.map((row) => row.spc_id)) });
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from(ShoppingCartEntity)
+        .where('mem_code = :mem_code', { mem_code })
+        .andWhere('hotdeal_free = true')
+        .andWhere('hotdeal_promain IN (:...hiddenCodes)', { hiddenCodes })
+        .execute();
+    });
+
+    await this.incrementCartVersion(mem_code);
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_price'],
+    });
+    await this.checkPromotionReward(mem_code, member?.mem_price ?? 'C');
+    return true;
   }
 
   private async removeExpiredUseCodeRewards(
@@ -1339,6 +1416,7 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureProductVisible(data.pro_code);
       if (Number(data.amount) > 0 && !data.isPreorderFulfillment) {
         await this.ensureNotPreorderRestricted(data.pro_code);
       }
@@ -1446,7 +1524,8 @@ export class ShoppingCartService {
       this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException // WGDD-428: สินค้างดแสดง → 404
       ) {
         throw error;
       }
@@ -1470,6 +1549,7 @@ export class ShoppingCartService {
     const touchVersion = options?.touchVersion ?? true;
     try {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureProductVisible(data.pro_code);
       await this.ensureNotPreorderRestricted(data.pro_code);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
@@ -1525,7 +1605,8 @@ export class ShoppingCartService {
       this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException // WGDD-428: สินค้างดแสดง → 404
       ) {
         throw error;
       }
@@ -2221,6 +2302,7 @@ export class ShoppingCartService {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureProductVisible(data.pro_code);
       if (data.type === 'check') {
         if (!data.isPreorderFulfillment) {
           await this.ensureNotPreorderRestricted(data.pro_code);
@@ -2444,6 +2526,7 @@ export class ShoppingCartService {
     try {
       if (!options.checkoutRows) {
         await this.removeL16ItemsFromCart(mem_code);
+        await this.removeHiddenItemsFromCart(mem_code);
         await this.shoppingCartRepo
           .createQueryBuilder()
           .delete()

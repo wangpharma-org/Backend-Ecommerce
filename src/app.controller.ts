@@ -967,7 +967,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/get-one/:pro_code')
   async getProductCartOne(@Param('pro_code') pro_code: string) {
-    return this.productsService.getProductOne(pro_code);
+    return this.productsService.getVisibleProductOne(pro_code);
   }
 
   @UseGuards(JwtAuthGuard)

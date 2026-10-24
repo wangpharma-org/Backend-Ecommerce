@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, MoreThan, Not, Repository } from 'typeorm';
@@ -41,6 +42,11 @@ import {
 } from './redeem-product.criteria';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
+import {
+  applyVisibleProductFilter,
+  isHiddenProduct,
+  visibleProductSql,
+} from './product-visibility.util';
 
 interface OrderItem {
   pro_code: string;
@@ -559,6 +565,19 @@ export class ProductsService {
     }
   }
 
+  // WGDD-428: endpoint ฝั่งลูกค้าที่ดึงสินค้าตรงตาม SKU — งดแสดงบนหน้าร้าน/ไม่พบ → 404
+  // (getProductOne ใช้ภายในคำนวณ hotdeal ด้วย จึงไม่ใส่เงื่อนไขไว้ในนั้น)
+  async getVisibleProductOne(pro_code: string) {
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: { pro_code: true, pro_hidden: true },
+    });
+    if (!product || isHiddenProduct(product)) {
+      throw new NotFoundException('Product not found');
+    }
+    return this.getProductOne(pro_code);
+  }
+
   @Cron('0 0 * * *', { timeZone: 'Asia/Bangkok' })
   async resetFlashSale() {
     const today = new Date();
@@ -642,6 +661,7 @@ export class ProductsService {
         .where('product.pro_promotion_month = :month', {
           month: numberOfMonth,
         });
+      applyVisibleProductFilter(qb, 'product');
 
       if (isL16) {
         this.applyL16Filter(qb, 'product');
@@ -831,6 +851,7 @@ export class ProductsService {
         pro_priceC: newProduct.pro_priceC ?? null,
         creditor_code: newProduct.creditor?.creditor_code ?? null,
         pro_l16_only: newProduct.pro_l16_only,
+        pro_hidden: Boolean(newProduct.pro_hidden),
       };
       void this.elasticsearchService
         .indexProduct(esDoc)
@@ -987,15 +1008,16 @@ export class ProductsService {
   }): Promise<ProductEntityWithUnitEntity> {
     try {
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
+      // WGDD-428: สินค้าทดแทน/แนะนำที่งดแสดงบนหน้าร้านต้องไม่โผล่
       const replaceCondition = isL16
-        ? 'replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL'
-        : undefined;
+        ? `(replace.pro_l16_only = 0 OR replace.pro_l16_only IS NULL) AND ${visibleProductSql('replace')}`
+        : visibleProductSql('replace');
       const recommendCondition = isL16
-        ? 'products.pro_stock > 0 AND (products.pro_l16_only = 0 OR products.pro_l16_only IS NULL)'
-        : 'products.pro_stock > 0';
+        ? `products.pro_stock > 0 AND (products.pro_l16_only = 0 OR products.pro_l16_only IS NULL) AND ${visibleProductSql('products')}`
+        : `products.pro_stock > 0 AND ${visibleProductSql('products')}`;
       const replaceInRecommendCondition = isL16
-        ? 'replaceInRecommend.pro_l16_only = 0 OR replaceInRecommend.pro_l16_only IS NULL'
-        : undefined;
+        ? `(replaceInRecommend.pro_l16_only = 0 OR replaceInRecommend.pro_l16_only IS NULL) AND ${visibleProductSql('replaceInRecommend')}`
+        : visibleProductSql('replaceInRecommend');
 
       await this.productRepo.increment(
         { pro_code: data.pro_code },
@@ -1127,6 +1149,7 @@ export class ProductsService {
           'lot.received_at',
         ])
         .where('product.pro_code = :pro_code', { pro_code: data.pro_code });
+      applyVisibleProductFilter(qb, 'product');
 
       if (isL16) {
         this.applyL16Filter(qb, 'product');
@@ -1135,8 +1158,9 @@ export class ProductsService {
       // Query หลักเพื่อได้ relationships
       const product: ProductEntityWithUnitEntity | null = await qb.getOne();
 
+      // WGDD-428: ไม่พบ/งดแสดงบนหน้าร้าน → 404 ให้หน้าบ้านแสดงหน้าไม่พบสินค้า
       if (!product) {
-        throw new Error('Not found Product');
+        throw new NotFoundException('Not found Product');
       }
 
       // ECWC-643: เลือก lot ปัจจุบันจาก amount ที่รับเข้าเทียบกับ stock (กติกาเดียวกับตะกร้า)
@@ -1150,6 +1174,7 @@ export class ProductsService {
       ]);
       return transformedProduct;
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       this.logger.error(error);
       throw new Error('Something Error in Product Detail');
     }
@@ -1209,6 +1234,7 @@ export class ProductsService {
           }),
         );
 
+      applyVisibleProductFilter(qb, 'product');
       if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
@@ -1361,6 +1387,7 @@ export class ProductsService {
           );
       }
 
+      applyVisibleProductFilter(qb, 'product');
       if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
@@ -1695,6 +1722,7 @@ export class ProductsService {
       .andWhere('product.pro_priceB NOT IN (1, 10000000)')
       .andWhere('product.pro_priceC NOT IN (1, 10000000)')
       .andWhere('product.invisible_id IS NULL')
+      .andWhere(visibleProductSql('product'))
       .andWhere('product.pro_code NOT LIKE :mPrefix', { mPrefix: '@M%' })
       .andWhere(
         new Brackets((sub) => {
@@ -1824,6 +1852,8 @@ export class ProductsService {
                   { terms: { pro_priceB: [1, 10000000] } },
                   { terms: { pro_priceC: [1, 10000000] } },
                   { exists: { field: 'invisible_id' } },
+                  // WGDD-428: งดแสดงบนหน้าร้าน
+                  { term: { pro_hidden: true } },
                   ...(isL16
                     ? []
                     : [
@@ -2067,6 +2097,8 @@ export class ProductsService {
           '(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND product.pro_name NOT LIKE :slashFree))',
           { freePrefix: 'FREE/%', slashFree: '%/ฟรี%' },
         )
+        // WGDD-428: external/enter search ไม่ผ่าน ES filter → กรองงดแสดงซ้ำที่ DB
+        .andWhere(visibleProductSql('product'))
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -2347,6 +2379,7 @@ export class ProductsService {
           pro_priceB: true,
           pro_priceC: true,
           pro_l16_only: true,
+          pro_hidden: true,
         },
         relations: ['creditor'],
         // โหลดเฉพาะ FK ของ invisibleProduct ไม่โหลด entity เต็ม
@@ -2381,6 +2414,7 @@ export class ProductsService {
         // loadRelationIds ทำให้ invisibleProduct เป็น FK number แทน entity
         invisible_id: (p.invisibleProduct as unknown as number) ?? null,
         pro_l16_only: p.pro_l16_only,
+        pro_hidden: Boolean(p.pro_hidden),
       }));
 
       const result = await this.elasticsearchService.bulkIndex(docs);
@@ -2860,6 +2894,7 @@ export class ProductsService {
           }),
         );
 
+      applyVisibleProductFilter(qb, 'product');
       if (isL16) {
         this.applyL16Filter(qb, 'product');
       }
@@ -3048,6 +3083,7 @@ export class ProductsService {
               });
           }),
         );
+      applyVisibleProductFilter(qb, 'product');
 
       const products = await qb
         .select([
@@ -3199,6 +3235,7 @@ export class ProductsService {
       const product = await this.productRepo
         .createQueryBuilder('product')
         .where('product.pro_code IN (:...proCodes)', { proCodes })
+        .andWhere(visibleProductSql('product'))
         .select([
           'product.pro_code',
           'product.pro_name',
@@ -3271,6 +3308,7 @@ export class ProductsService {
       const productUnitsData = await this.productUnitRepo.find({
         where: { pro_code: data.product_code },
       });
+      const wasHidden = isHiddenProduct(productData);
 
       const isDeleting = (name?: string | null) =>
         name !== undefined && (!name || name.trim() === '');
@@ -3346,6 +3384,9 @@ export class ProductsService {
         productData.pro_category = data.pro_category as number;
       if (data.drugregister !== undefined)
         productData.pro_drugregister = data.drugregister as string;
+      // WGDD-428: is_display = false → งดแสดงบนหน้าร้าน
+      if (data.is_display !== undefined && data.is_display !== null)
+        productData.pro_hidden = !data.is_display;
 
       if (Object.keys(productData).length === 0) return;
 
@@ -3381,6 +3422,8 @@ export class ProductsService {
         esFields.pro_priceC = data.product_price_c ?? null;
       if (data.creditor_code !== undefined)
         esFields.creditor_code = data.creditor_code ?? null;
+      if (data.is_display !== undefined && data.is_display !== null)
+        esFields.pro_hidden = !data.is_display;
 
       if (Object.keys(esFields).length > 0) {
         void this.elasticsearchService
@@ -3391,6 +3434,10 @@ export class ProductsService {
               err,
             ),
           );
+      }
+
+      if (!wasHidden && isHiddenProduct(productData)) {
+        await this.removeHiddenProductFromCarts(data.product_code);
       }
 
       if (
@@ -3498,6 +3545,27 @@ export class ProductsService {
     } catch (error) {
       this.logger.error(error);
       throw new Error('Error in createDeleteCartByProcode');
+    }
+  }
+
+  // WGDD-428: สินค้าเพิ่งถูกงดแสดง → นำออกจากตะกร้าทุกร้านที่มีสินค้านี้ (รวมที่เป็นสินค้าหลักของแถม)
+  private async removeHiddenProductFromCarts(pro_code: string): Promise<void> {
+    const rows = await this.shoppingCartRepo
+      .createQueryBuilder('cart')
+      .select('DISTINCT cart.mem_code', 'mem_code')
+      .where('cart.pro_code = :pro_code', { pro_code })
+      .orWhere('cart.hotdeal_promain = :pro_code', { pro_code })
+      .getRawMany<{ mem_code: string }>();
+
+    for (const { mem_code } of rows) {
+      try {
+        await this.shoppingCartService.removeHiddenItemsFromCart(mem_code);
+      } catch (error) {
+        this.logger.error(
+          `Failed to remove hidden product ${pro_code} from cart of ${mem_code}`,
+          error,
+        );
+      }
     }
   }
 
