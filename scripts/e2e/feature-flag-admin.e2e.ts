@@ -182,6 +182,17 @@ async function main() {
     pub.status === 200,
     `HTTP ${pub.status} → ${JSON.stringify(pub.body)}`,
   );
+  // จำ id ล่าสุดของประวัติก่อนเริ่ม — ไม่กรองด้วยเวลา เพราะ created_at มาจากเวลาของ DB
+  // ซึ่งอาจคนละ timezone กับเครื่องที่รันสคริปต์ (เจอ +7 ชม. บน local)
+  const before = await call(
+    'GET',
+    `/ecom/feature-flag-logs?flag=${encodeURIComponent(FLAG)}&limit=1`,
+    t.admin,
+  );
+  const baselineId =
+    Array.isArray(before.body) && before.body.length
+      ? Number((before.body as Array<{ id: number }>)[0].id)
+      : 0;
   const start = await update(t.admin, { flag: FLAG, status: true });
   check(
     'Admin ตั้ง flag ทดสอบเป็นเปิดก่อนเริ่ม',
@@ -289,10 +300,7 @@ async function main() {
   const rows = Array.isArray(logs.body)
     ? (logs.body as Array<Record<string, unknown>>)
     : [];
-  const mine = rows.filter(
-    (r) =>
-      new Date(String(r.created_at)).getTime() >= startedAt.getTime() - 5000,
-  );
+  const mine = rows.filter((r) => Number(r.id) > baselineId);
   const adminMem = memOf(t.admin);
   const latest = mine[0];
   check(
