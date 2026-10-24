@@ -67,6 +67,7 @@ import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
 import { assertOwnShop, sessionOwnerFilter } from './sessions/session-owner';
+import { ownCartMemCode } from './shopping-cart/cart-owner';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
@@ -625,8 +626,13 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/cart/count/:mem_code')
-  async CountCart(@Param('mem_code') mem_code: string) {
-    return await this.shoppingCartService.getCartItemCount(mem_code);
+  async CountCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    return await this.shoppingCartService.getCartItemCount(
+      ownCartMemCode(req.user, mem_code),
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -753,6 +759,7 @@ export class AppController {
       search_query?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -827,6 +834,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -859,6 +867,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -891,6 +900,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     this.logger.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
