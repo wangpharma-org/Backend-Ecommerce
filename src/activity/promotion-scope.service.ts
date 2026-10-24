@@ -163,9 +163,15 @@ export class PromotionScopeService {
 
     // ฐานเก็บเวลาเป็น UTC (TypeORM timezone 'Z') — ช่วงที่ส่งมาเป็นวันตามเวลาไทย
     const window = range
-      ? [bangkokToUtc(range.from, '00:00:00'), bangkokToUtc(range.to, '23:59:59')]
+      ? [
+          bangkokToUtc(range.from, '00:00:00'),
+          bangkokToUtc(range.to, '23:59:59'),
+        ]
       : [
-          bangkokToUtc(promo.start_date.slice(0, 10), promo.start_date.slice(11)),
+          bangkokToUtc(
+            promo.start_date.slice(0, 10),
+            promo.start_date.slice(11),
+          ),
           bangkokToUtc(promo.end_date.slice(0, 10), promo.end_date.slice(11)),
         ];
     const gifts = await this.db.query<
@@ -227,7 +233,10 @@ export class PromotionScopeService {
          FROM promotion
         WHERE deleted_at IS NULL AND start_date <= ? AND end_date >= ?
         ORDER BY start_date DESC, promo_id DESC LIMIT 500`,
-      [bangkokToUtc(range.to, '23:59:59'), bangkokToUtc(range.from, '00:00:00')],
+      [
+        bangkokToUtc(range.to, '23:59:59'),
+        bangkokToUtc(range.from, '00:00:00'),
+      ],
     );
     return rows.map((p) => ({
       promo_id: p.promo_id,
