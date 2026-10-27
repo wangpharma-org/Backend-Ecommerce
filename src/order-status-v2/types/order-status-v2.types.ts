@@ -177,3 +177,67 @@ export interface EcomOrderStatusV2Res {
     last_delivered_store: EcomLastDeliveredStore | null;
   } | null;
 }
+
+// สถานะออเดอร์แบบหน้า "สถานะออเดอร์" ของเว็บร้านค้าเดิม (wang_shopping shopping-status-so-2.php)
+// ให้ลูกค้า (เว็บ/แอป) และเซลส์ (ระบบขาย ผ่าน internal endpoint) เห็นชุดเดียวกัน — Tim 18 ต.ค. 2569
+// คำนวณจาก order-picking-service + logistics (แหล่งเดียวกับหน้า order-status v2) ไม่อ่าน DB legacy
+export const SHOP_STATUS_LABEL: Record<EcomOrderTimelineStatus, string> = {
+  opened: 'รับใบสั่งจอง',
+  picking: 'กำลังจัดออเดอร์',
+  checking: 'จัดเสร็จแล้ว',
+  blocked: 'รอบัญชีอนุมัติ',
+  waiting_load: 'เตรียมส่ง',
+  delivering: 'กำลังส่ง',
+  done: 'จัดส่งสำเร็จ',
+  returned: 'จัดส่งไม่สำเร็จ (ตีกลับ)',
+  cancelled: 'ยกเลิกออเดอร์แล้ว',
+};
+
+// ป้ายระดับรายการ: สินค้าขาดชั่วคราว = คลังตัด RT (ลูกค้าไม่ได้ตัวนี้) เหมือน qc_check = 0 ของหน้าเดิม
+export const SHOP_LINE_OUT_OF_STOCK_LABEL = 'สินค้าขาดชั่วคราว';
+
+export interface ShopStatusLine {
+  pro_code: string;
+  pro_name: string | null;
+  qty: number;
+  unit: string | null;
+  price_unit: number | null;
+  price_total: number | null;
+  // ราคาหลัง QC (null = ยังไม่ถึงคลัง/ยังไม่ตรวจนับ)
+  qc_price_total: number | null;
+  out_of_stock: boolean;
+  // ตรวจนับได้น้อยกว่าที่สั่ง (ไม่ใช่ขาดทั้งรายการ)
+  short: boolean;
+}
+
+export interface ShopStatusOrder {
+  soh_running: string;
+  soh_datetime: string;
+  source: 'ecommerce' | 'order_picking';
+  status: EcomOrderTimelineStatus;
+  status_label: string;
+  bill_number: string | null;
+  sumprice: number | null;
+  item_count: number;
+  out_of_stock_count: number;
+  lines: ShopStatusLine[];
+}
+
+export interface ShopStatusTableRes {
+  mem_code: string;
+  date_from: string;
+  date_to: string;
+  // ช่วงวันที่ยาว/บิลเยอะเกินเพดาน — ตัดเหลือบิลล่าสุด
+  truncated: boolean;
+  // ดึงข้อมูลคลัง/ขนส่งไม่ได้ — สถานะอาจค้างที่ "รับใบสั่งจอง"
+  partial: boolean;
+  labels: Record<EcomOrderTimelineStatus, string>;
+  orders: ShopStatusOrder[];
+}
+
+export interface ShopStatusBatchItem {
+  sh_running: string;
+  mem_code: string;
+  status: EcomOrderTimelineStatus;
+  status_label: string;
+}

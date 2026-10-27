@@ -65,7 +65,11 @@ import { DhlTrackingModule } from './dhl-tracking/dhl-tracking.module';
 import { ProductLabelRulesModule } from './product-label-rules/product-label-rules.module';
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
+import { CustomerPromotionsModule } from './customer-promotions/customer-promotions.module';
 
+import { CheckoutPreviewModule } from './checkout-preview/checkout-preview.module';
+import { InternalCustomerCartModule } from './internal-customer-cart/internal-customer-cart.module';
+import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.module';
 @Module({
   imports: [
     AuthModule,
@@ -141,6 +145,7 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     ProductLabelRulesModule,
     SpecialCollectionModule,
     BundleSetModule,
+    CustomerPromotionsModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -173,6 +178,9 @@ import { BundleSetModule } from './bundle-set/bundle-set.module';
     WatermarkAuditModule,
     PreorderModule,
     StickerLabelModule,
+    CheckoutPreviewModule,
+    InternalCustomerCartModule,
+    SalesCartSessionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

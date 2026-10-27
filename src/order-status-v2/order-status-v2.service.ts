@@ -28,6 +28,11 @@ import {
   EcomOrderStatusV2Item,
   EcomOrderStatusV2Res,
   EcomOrderTimelineStatus,
+  SHOP_STATUS_LABEL,
+  ShopStatusLine,
+  ShopStatusBatchItem,
+  ShopStatusOrder,
+  ShopStatusTableRes,
 } from './types/order-status-v2.types';
 import {
   LegacyOrderDetailProduct,
@@ -1595,5 +1600,297 @@ export class OrderStatusV2Service {
     }
 
     return steps;
+  }
+
+  // หน้า "สถานะออเดอร์" แบบเว็บร้านค้าเดิม (wang_shopping shopping-status-so-2.php) — ทุกบิลของร้าน
+  // ในช่วงวันที่ พร้อมรายการสินค้ารายตัว ให้หน้าเว็บ/แอปแสดงได้ทั้ง "ดูทั้งบิล" และ "ดูรายสินค้า"
+  // และให้ระบบขายเรียกผ่าน internal endpoint (แหล่งเดียว สถานะตรงกันทุกฝั่ง) — Tim 18 ต.ค. 2569
+  // สถานะมาจาก order-picking-service + logistics เหมือน getOrderList (ไม่อ่าน DB legacy)
+  async getShopStatusTable(
+    mem_code: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<ShopStatusTableRes> {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+    const bkkToday = new Date(Date.now() + 7 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const to = dateTo && ymd.test(dateTo) ? dateTo : bkkToday;
+    let from =
+      dateFrom && ymd.test(dateFrom)
+        ? dateFrom
+        : new Date(new Date(`${to}T00:00:00Z`).getTime() - 30 * 86400_000)
+            .toISOString()
+            .slice(0, 10);
+    if (from > to) from = to;
+    // เพดานช่วงวันที่ 92 วัน — order-picking-service เก็บย้อนหลังได้จำกัด และกัน query ระเบิด
+    const minFrom = new Date(
+      new Date(`${to}T00:00:00Z`).getTime() - 92 * 86400_000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    let truncated = false;
+    if (from < minFrom) {
+      from = minFrom;
+      truncated = true;
+    }
+    // วันที่ตามเวลาไทย (soh_datetime เก็บเป็น UTC ผ่าน TypeORM)
+    const fromTs = new Date(`${from}T00:00:00+07:00`);
+    const toTs = new Date(`${to}T23:59:59+07:00`);
+    const daysBack =
+      (new Date(`${bkkToday}T00:00:00Z`).getTime() -
+        new Date(`${from}T00:00:00Z`).getTime()) /
+      86400_000;
+    const monthsBack = Math.min(6, Math.max(1, Math.ceil(daysBack / 30) + 1));
+
+    let partial = false;
+    const [ecomHeads, pickingEntries] = await Promise.all([
+      this.shoppingHeadRepo
+        .createQueryBuilder('head')
+        .where('head.mem_code = :mem_code', { mem_code })
+        .andWhere('head.soh_datetime BETWEEN :fromTs AND :toTs', {
+          fromTs,
+          toTs,
+        })
+        .select(['head.soh_running', 'head.soh_datetime', 'head.soh_sumprice'])
+        .getMany(),
+      this.fetchPickingRunnings(mem_code, monthsBack),
+    ]);
+    const inRange = (d: string | Date) => {
+      const t = new Date(d).getTime();
+      return t >= fromTs.getTime() && t <= toTs.getTime();
+    };
+    const pickingStatus = new Map(
+      pickingEntries.map((e) => [e.sh_running, e.status]),
+    );
+    const ecomSet = new Set(ecomHeads.map((h) => h.soh_running));
+    type Entry = {
+      running: string;
+      datetime: string;
+      source: 'ecommerce' | 'order_picking';
+      sumprice: number | null;
+    };
+    const entries: Entry[] = [
+      ...ecomHeads.map((h) => ({
+        running: h.soh_running,
+        datetime: new Date(h.soh_datetime).toISOString(),
+        source: 'ecommerce' as const,
+        sumprice: h.soh_sumprice != null ? Number(h.soh_sumprice) : null,
+      })),
+      ...pickingEntries
+        .filter((e) => !ecomSet.has(e.sh_running) && inRange(e.sh_datetime))
+        .map((e) => ({
+          running: e.sh_running,
+          datetime: new Date(e.sh_datetime).toISOString(),
+          source: 'order_picking' as const,
+          sumprice: null,
+        })),
+    ].sort((a, b) => b.datetime.localeCompare(a.datetime));
+    const MAX_ORDERS = 200;
+    if (entries.length > MAX_ORDERS) {
+      entries.length = MAX_ORDERS;
+      truncated = true;
+    }
+    const runnings = entries.map((e) => e.running);
+    if (runnings.length === 0) {
+      return {
+        mem_code,
+        date_from: from,
+        date_to: to,
+        truncated,
+        partial,
+        labels: SHOP_STATUS_LABEL,
+        orders: [],
+      };
+    }
+
+    // รายการสินค้าจากคลัง (หลังตรวจนับ) — แบ่งชุดละ 50 บิล
+    const details = new Map<string, PickingOrderDetailBatchItem>();
+    for (let i = 0; i < runnings.length; i += 50) {
+      try {
+        const chunk = await this.fetchPickingOrderDetailsBatch(
+          mem_code,
+          runnings.slice(i, i + 50),
+        );
+        for (const d of chunk) details.set(d.sh_running, d);
+      } catch (error: unknown) {
+        partial = true;
+        this.logger.error('Error fetch picking details for shop status', error);
+      }
+    }
+    const unknownStatus = runnings.filter(
+      (r) => !pickingStatus.has(r) && !details.has(r),
+    );
+    const [extraStatus, deliveries] = await Promise.all([
+      this.fetchPickingStatusBatch(unknownStatus, mem_code),
+      this.fetchDeliveryStatusBatch(runnings, mem_code),
+    ]);
+
+    // บิลที่ยังไม่ถึงคลัง — ใช้รายการตอนสั่งของ ecommerce เอง
+    const ecomOnly = entries
+      .filter((e) => e.source === 'ecommerce' && !details.has(e.running))
+      .map((e) => e.running);
+    const ecomLines = new Map<string, ShopStatusLine[]>();
+    if (ecomOnly.length > 0) {
+      const rows = await this.shoppingOrderRepo
+        .createQueryBuilder('o')
+        .leftJoin('o.product', 'p')
+        .leftJoin('o.orderHeader', 'h')
+        .where('h.soh_running IN (:...ecomOnly)', { ecomOnly })
+        .select([
+          'o.spo_id',
+          'h.soh_running',
+          'o.pro_code',
+          'o.spo_qty',
+          'o.spo_unit',
+          'o.spo_price_unit',
+          'o.spo_total_decimal',
+          'p.pro_code',
+          'p.pro_name',
+        ])
+        .getMany()
+        .catch((error: unknown) => {
+          this.logger.error(
+            'Error read ecommerce lines for shop status',
+            error,
+          );
+          return [] as ShoppingOrderEntity[];
+        });
+      for (const r of rows) {
+        const key = r.orderHeader?.soh_running;
+        if (!key) continue;
+        const list = ecomLines.get(key) ?? [];
+        list.push({
+          pro_code: r.pro_code ?? r.product?.pro_code,
+          pro_name: r.product?.pro_name ?? null,
+          qty: Number(r.spo_qty),
+          unit: r.spo_unit ?? null,
+          price_unit:
+            r.spo_price_unit != null ? Number(r.spo_price_unit) : null,
+          price_total:
+            r.spo_total_decimal != null ? Number(r.spo_total_decimal) : null,
+          qc_price_total: null,
+          out_of_stock: false,
+          short: false,
+        });
+        ecomLines.set(key, list);
+      }
+    }
+
+    const orders: ShopStatusOrder[] = entries.map((e) => {
+      const d = details.get(e.running);
+      const status = this.resolveStatusFromParts(
+        pickingStatus.get(e.running) ??
+          d?.status ??
+          extraStatus[e.running] ??
+          null,
+        deliveries[e.running] ?? null,
+      );
+      const lines: ShopStatusLine[] = d
+        ? d.items.map((it) => ({
+            pro_code: it.pro_code,
+            pro_name: it.product_name,
+            qty: Number(it.qty),
+            unit: it.unit,
+            price_unit: it.price_unit,
+            price_total: it.price_total,
+            qc_price_total: it.qc_price_total,
+            out_of_stock: it.is_rt,
+            short:
+              !it.is_rt &&
+              it.qc_price_total != null &&
+              it.price_total != null &&
+              it.qc_price_total < it.price_total,
+          }))
+        : (ecomLines.get(e.running) ?? []);
+      const sum =
+        e.sumprice ??
+        (lines.length
+          ? lines.reduce(
+              (s, l) => s + (l.qc_price_total ?? l.price_total ?? 0),
+              0,
+            )
+          : null);
+      return {
+        soh_running: e.running,
+        soh_datetime: e.datetime,
+        source: e.source,
+        status,
+        status_label: SHOP_STATUS_LABEL[status],
+        bill_number: null,
+        sumprice: sum,
+        item_count: lines.length,
+        out_of_stock_count: lines.filter((l) => l.out_of_stock).length,
+        lines,
+      };
+    });
+
+    // เลขที่ใบกำกับ — มีเฉพาะบิลที่ผ่าน QC แล้ว ดึงทีละบิล (จำกัดจำนวน กันช้า)
+    const needBill = orders
+      .filter((o) =>
+        ['waiting_load', 'delivering', 'done', 'returned'].includes(o.status),
+      )
+      .slice(0, 40);
+    for (let i = 0; i < needBill.length; i += 5) {
+      await Promise.all(
+        needBill.slice(i, i + 5).map(async (o) => {
+          try {
+            const p = await this.fetchPickingStatus(o.soh_running, mem_code);
+            o.bill_number = p?.bill_number ?? null;
+          } catch {
+            partial = true;
+          }
+        }),
+      );
+    }
+
+    return {
+      mem_code,
+      date_from: from,
+      date_to: to,
+      truncated,
+      partial,
+      labels: SHOP_STATUS_LABEL,
+      orders,
+    };
+  }
+
+  // สถานะของหลายบิลหลายร้านในครั้งเดียว — ให้รายการ "ใบสั่งจองของฉัน" ในระบบขายแสดงสถานะต่อใบ
+  async getShopStatusBatch(
+    items: { sh_running: string; mem_code: string }[],
+  ): Promise<ShopStatusBatchItem[]> {
+    const byMem = new Map<string, string[]>();
+    for (const it of items.slice(0, 300)) {
+      if (!it?.sh_running || !it?.mem_code) continue;
+      const list = byMem.get(it.mem_code) ?? [];
+      if (!list.includes(it.sh_running)) list.push(it.sh_running);
+      byMem.set(it.mem_code, list);
+    }
+    // คืนเป็นรายการ (ร้าน + เลขบิล) ไม่ใช่ map ตามเลขบิล — เลขบิลซ้ำข้ามร้านได้ ห้ามทับกัน
+    const out: ShopStatusBatchItem[] = [];
+    const groups = [...byMem.entries()];
+    for (let i = 0; i < groups.length; i += 5) {
+      await Promise.all(
+        groups.slice(i, i + 5).map(async ([mem, runs]) => {
+          const [picking, delivery] = await Promise.all([
+            this.fetchPickingStatusBatch(runs, mem),
+            this.fetchDeliveryStatusBatch(runs, mem),
+          ]);
+          for (const r of runs) {
+            const status = this.resolveStatusFromParts(
+              picking[r] ?? null,
+              delivery[r] ?? null,
+            );
+            out.push({
+              sh_running: r,
+              mem_code: mem,
+              status,
+              status_label: SHOP_STATUS_LABEL[status],
+            });
+          }
+        }),
+      );
+    }
+    return out;
   }
 }

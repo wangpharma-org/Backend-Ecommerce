@@ -103,6 +103,7 @@ describe('ECWC-421 product name responses', () => {
           },
           productRepo: { createQueryBuilder: () => qb },
           removeL16ItemsFromCart: jest.fn(),
+          removeHiddenItemsFromCart: jest.fn(),
           isL16Member: jest.fn(() => Promise.resolve(false)),
           hotdealService: {
             getHotdealByProCode: jest.fn(() => Promise.resolve([])),

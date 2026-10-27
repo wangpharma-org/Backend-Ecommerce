@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { visibleProductSql } from 'src/products/product-visibility.util';
 import { NewArrival } from './new-arrival.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -167,6 +168,8 @@ export class NewArrivalsService {
           ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
           : '1=1',
       )
+      // WGDD-428: งดแสดงบนหน้าร้าน
+      .andWhere(visibleProductSql('product'))
       .groupBy('product.pro_code')
       .addGroupBy('newArrival.id')
       .addGroupBy('newArrival.createdAt')

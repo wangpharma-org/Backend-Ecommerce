@@ -34,6 +34,10 @@ import {
 import { Logger } from '@nestjs/common';
 import { DeleteCartEntity } from './delete-cart.entity';
 import {
+  HIDDEN_PRODUCT_MESSAGE,
+  isHiddenProduct,
+} from 'src/products/product-visibility.util';
+import {
   promoUnitPrice,
   type PriceOption,
 } from 'src/promotion/promo-line-value';
@@ -280,6 +284,71 @@ interface PromotionRewardPlan {
   eligibleCart: ShoppingCartEntity[];
   context: CompanyDayRewardContext | null;
   hasPromotions: boolean;
+  /** ขั้นที่ถึง (ทุกขั้น ไม่ใช่แค่ขั้นบนสุด) — ใช้แสดงในหน้ากิมมิคของระบบขาย ตะกร้าไม่อ่านค่านี้ */
+  reachedTiers?: ReachedPromotionTier[];
+}
+
+export interface ReachedPromotionTier {
+  promo_id: number;
+  promo_name: string;
+  creditor_code: string | null;
+  tier_id: number;
+  tier_name: string;
+  min_amount: number;
+  is_unit: boolean;
+  all_products: boolean;
+  multiplier: number;
+}
+
+/** บรรทัดสินค้าของใบที่ระบบภายในส่งมาถาม (ไม่ใช่ตะกร้า) — หน่วยเป็นชื่อหน่วยหรือ level */
+export interface PreviewOrderLine {
+  pro_code: string;
+  unit: string;
+  qty: number;
+}
+
+export interface CheckoutLinesPreview {
+  price_option: 'A' | 'B' | 'C';
+  is_l16: boolean;
+  total: number;
+  lines: {
+    pro_code: string;
+    unit_level: string;
+    qty: number;
+    amount: number;
+  }[];
+  skipped: {
+    pro_code: string;
+    unit: string;
+    reason: 'unknown_product' | 'unknown_unit' | 'invalid_qty';
+  }[];
+  reached_tiers: ReachedPromotionTier[];
+  promo_gifts: {
+    pro_code: string;
+    unit: string;
+    qty: number;
+    promo_id: number;
+    tier_id: number;
+  }[];
+  hotdeal_gifts: {
+    pro_code: string;
+    main_pro_code: string;
+    unit_level: string;
+    qty: number;
+  }[];
+  progress: {
+    promo_id: number;
+    promo_name: string;
+    creditor_code: string | null;
+    is_unit: boolean;
+    current: number;
+    next_tier: {
+      tier_id: number;
+      tier_name: string;
+      min_amount: number;
+      need: number;
+    } | null;
+  }[];
 }
 
 // prefetch แบบ batch สำหรับ getProductCart — กัน N+1 ในการคำนวณแต้ม/ของแถม
@@ -560,6 +629,79 @@ export class ShoppingCartService {
         'สินค้านี้ถูกซ่อนจากสมาชิก L16 และไม่สามารถสั่งซื้อได้',
       );
     }
+  }
+
+  // WGDD-428: ห้ามเพิ่ม/เลือกสินค้าที่งดแสดงบนหน้าร้าน → ตอบเหมือนไม่พบสินค้า
+  private async ensureProductVisible(pro_code: string) {
+    const product = await this.productRepo.findOne({
+      where: { pro_code },
+      select: ['pro_code', 'pro_hidden'],
+    });
+    if (isHiddenProduct(product)) {
+      throw new NotFoundException(HIDDEN_PRODUCT_MESSAGE);
+    }
+  }
+
+  // WGDD-428: นำสินค้าที่งดแสดงบนหน้าร้านออกจากตะกร้า (รวมของแถม hotdeal ที่ผูกอยู่)
+  // แล้วบันทึก delete_cart ให้หน้าบ้านแจ้งเตือนลูกค้า (data.reason = 'hidden')
+  async removeHiddenItemsFromCart(mem_code: string): Promise<boolean> {
+    const hiddenRows = await this.shoppingCartRepo
+      .createQueryBuilder('cart')
+      .innerJoin('cart.product', 'product')
+      .select([
+        'cart.spc_id',
+        'cart.pro_code',
+        'cart.spc_unit_enum',
+        'product.pro_code',
+        'product.pro_name',
+        'product.pro_imgmain',
+      ])
+      .where('cart.mem_code = :mem_code', { mem_code })
+      .andWhere('product.pro_hidden = 1')
+      .andWhere('cart.is_reward = false')
+      .andWhere('cart.hotdeal_free = false')
+      .getMany();
+
+    if (hiddenRows.length === 0) {
+      return false;
+    }
+
+    const hiddenCodes = [...new Set(hiddenRows.map((row) => row.pro_code))];
+    const notices = hiddenRows.map((row) =>
+      this.deleteCartRepo.create({
+        mem_code,
+        product: { pro_code: row.pro_code },
+        data: {
+          pro_imgmain: row.product?.pro_imgmain,
+          pro_name: row.product?.pro_name,
+          pro_unit_level: row.spc_unit_enum,
+          reason: 'hidden',
+        },
+      }),
+    );
+
+    await this.shoppingCartRepo.manager.transaction(async (manager) => {
+      await manager.getRepository(DeleteCartEntity).save(notices);
+      await manager
+        .getRepository(ShoppingCartEntity)
+        .delete({ spc_id: In(hiddenRows.map((row) => row.spc_id)) });
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from(ShoppingCartEntity)
+        .where('mem_code = :mem_code', { mem_code })
+        .andWhere('hotdeal_free = true')
+        .andWhere('hotdeal_promain IN (:...hiddenCodes)', { hiddenCodes })
+        .execute();
+    });
+
+    await this.incrementCartVersion(mem_code);
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_price'],
+    });
+    await this.checkPromotionReward(mem_code, member?.mem_price ?? 'C');
+    return true;
   }
 
   private async removeExpiredUseCodeRewards(
@@ -1173,6 +1315,30 @@ export class ShoppingCartService {
       .execute();
   }
 
+  /// หลังระบบอื่นแก้ตะกร้าตรง ๆ (เช่น ระบบขายลด/คืนของในตะกร้า) — คิดของแถมโปร/ฮอตดีลใหม่ + ขยับ cart_version
+  /// แบบเดียวกับท้าย clearBasketCheckout
+  async resyncDerivedRows(
+    mem_code: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const [member] = await manager.query<{ mem_price: string | null }[]>(
+      'SELECT mem_price FROM users WHERE mem_code = ? LIMIT 1',
+      [mem_code],
+    );
+    const priceOption = member?.mem_price?.trim() || 'C';
+    await this.checkPromotionReward(mem_code, priceOption, manager);
+    await this.syncHotdealFreebiesForCart(mem_code, manager);
+    await manager
+      .createQueryBuilder()
+      .update('users')
+      .set({
+        cart_version: () => 'cart_version + 1',
+        cart_synced_at: () => 'CURRENT_TIMESTAMP',
+      })
+      .where('mem_code = :mem_code', { mem_code })
+      .execute();
+  }
+
   private async handleCheckFlashsale(pro_code: string) {
     const data = await this.productRepo.findOne({
       where: { pro_code },
@@ -1250,6 +1416,7 @@ export class ShoppingCartService {
       }
 
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureProductVisible(data.pro_code);
       if (Number(data.amount) > 0 && !data.isPreorderFulfillment) {
         await this.ensureNotPreorderRestricted(data.pro_code);
       }
@@ -1357,7 +1524,8 @@ export class ShoppingCartService {
       this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException // WGDD-428: สินค้างดแสดง → 404
       ) {
         throw error;
       }
@@ -1381,6 +1549,7 @@ export class ShoppingCartService {
     const touchVersion = options?.touchVersion ?? true;
     try {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureProductVisible(data.pro_code);
       await this.ensureNotPreorderRestricted(data.pro_code);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
@@ -1436,7 +1605,8 @@ export class ShoppingCartService {
       this.logger.error('Error saving product cart:', error);
       if (
         error instanceof ConflictException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException // WGDD-428: สินค้างดแสดง → 404
       ) {
         throw error;
       }
@@ -1603,6 +1773,7 @@ export class ShoppingCartService {
     const selectedTierContexts: Array<
       CompanyDayRewardContext & { min_amount: number }
     > = [];
+    const reachedTiers: ReachedPromotionTier[] = [];
 
     for (const tier of conditionBasedTiers) {
       const threshold = Number(tier.min_amount);
@@ -1643,6 +1814,7 @@ export class ShoppingCartService {
         tier: tier.tier_name,
         min_amount: threshold,
       });
+      reachedTiers.push(this.toReachedTier(tier, threshold, multiplier));
 
       // ── หัก remaining value (multiplier × threshold) จาก items ──────────────
       if (!tier.is_unit) {
@@ -1771,6 +1943,7 @@ export class ShoppingCartService {
           tier: tier.tier_name,
           min_amount: threshold,
         });
+        reachedTiers.push(this.toReachedTier(tier, threshold, multiplier));
 
         for (const line of tierCart) {
           if (!conditionTagMap.has(line.spc_id)) {
@@ -1812,6 +1985,7 @@ export class ShoppingCartService {
         eligibleCart: baseEligibleCart,
         context: null,
         hasPromotions: true,
+        reachedTiers,
       };
     }
 
@@ -1832,7 +2006,286 @@ export class ShoppingCartService {
         promo_name: top.promo_name,
         tier: top.tier,
       },
+      reachedTiers,
     };
+  }
+
+  private toReachedTier(
+    tier: PromotionTierEntity & { promotion: PromotionEntity },
+    threshold: number,
+    multiplier: number,
+  ): ReachedPromotionTier {
+    return {
+      promo_id: tier.promotion.promo_id,
+      promo_name:
+        tier.promotion.promo_name?.trim() ?? `Company Day - ${tier.tier_name}`,
+      creditor_code: null,
+      tier_id: tier.tier_id,
+      tier_name: tier.tier_name,
+      min_amount: threshold,
+      is_unit: Boolean(tier.is_unit),
+      all_products: Boolean(tier.all_products),
+      multiplier,
+    };
+  }
+
+  /**
+   * คิดของแถมของ "รายการสินค้าที่ส่งมา" ด้วยกติกาเดียวกับตะกร้าเป๊ะ โดยไม่แตะ shopping_cart
+   * (ให้หน้ากิมมิคหลังหน้า Key ขายของระบบขาย — ลูกค้าและเซลส์เห็นของแถมชุดเดียวกัน)
+   * แปลงบรรทัดเป็นแถวตะกร้าเสมือน แล้วเรียก calculateCartSummary / calculatePromotionRewards /
+   * calculateDesiredHotdealFreebies ตัวเดียวกับที่ตะกร้าใช้
+   */
+  async previewCheckoutLines(
+    mem_code: string,
+    input: PreviewOrderLine[],
+    fallback: { price_option?: string; mem_route?: string } = {},
+  ): Promise<CheckoutLinesPreview> {
+    const member = await this.userRepo.findOne({
+      where: { mem_code },
+      select: ['mem_code', 'mem_price', 'mem_route'],
+    });
+    const rawPrice = (member?.mem_price ?? fallback.price_option ?? 'C')
+      .toString()
+      .trim()
+      .toUpperCase();
+    const price_option = (
+      ['A', 'B', 'C'].includes(rawPrice) ? rawPrice : 'C'
+    ) as 'A' | 'B' | 'C';
+    const route = member ? member.mem_route : fallback.mem_route;
+    const is_l16 = (route ?? '').toUpperCase() === 'L16';
+
+    const codes = [...new Set(input.map((l) => l.pro_code))];
+    const products = codes.length
+      ? await this.productRepo.find({
+          where: { pro_code: In(codes) },
+          relations: { units: true, flashsale: { flashsale: true } },
+        })
+      : [];
+    const productByCode = new Map(products.map((p) => [p.pro_code, p]));
+
+    const bkkNow = new Date(Date.now() + 7 * 3600 * 1000).toISOString();
+    const today = bkkNow.slice(0, 10);
+    const nowTime = bkkNow.slice(11, 19);
+
+    const skipped: CheckoutLinesPreview['skipped'] = [];
+    const rows: ShoppingCartEntity[] = [];
+    input.forEach((line, idx) => {
+      const product = productByCode.get(line.pro_code);
+      if (!product) {
+        skipped.push({
+          pro_code: line.pro_code,
+          unit: line.unit,
+          reason: 'unknown_product',
+        });
+        return;
+      }
+      if (!(Number(line.qty) > 0)) {
+        skipped.push({
+          pro_code: line.pro_code,
+          unit: line.unit,
+          reason: 'invalid_qty',
+        });
+        return;
+      }
+      const unit = this.findProductUnit(product, line.unit?.trim());
+      if (!unit) {
+        skipped.push({
+          pro_code: line.pro_code,
+          unit: line.unit,
+          reason: 'unknown_unit',
+        });
+        return;
+      }
+      // Flash Sale ที่กำลังเปิดอยู่ตอนนี้ = ตะกร้าจะมี flashsale_end (ราคา A)
+      const live = (product.flashsale ?? []).find(
+        (f) =>
+          f.flashsale?.is_active &&
+          String(f.flashsale.date).slice(0, 10) === today &&
+          f.flashsale.time_start <= nowTime &&
+          nowTime < f.flashsale.time_end,
+      );
+      rows.push(
+        Object.assign(new ShoppingCartEntity(), {
+          spc_id: idx + 1,
+          mem_code,
+          pro_code: product.pro_code,
+          product,
+          spc_amount: Number(line.qty),
+          spc_unit_enum: String(unit.level),
+          spc_checked: true,
+          is_reward: false,
+          hotdeal_free: false,
+          spc_fixed_total: null,
+          flashsale_end: live
+            ? `${today}T${live.flashsale.time_end}+07:00`
+            : null,
+          member: { mem_code, mem_price: price_option },
+        }),
+      );
+    });
+
+    const summary = rows.length
+      ? this.calculateCartSummary(rows)
+      : { total: 0, items: [], lines: [] };
+    const amountById = new Map(summary.lines.map((l) => [l.spc_id, l.amount]));
+
+    const plan = rows.length
+      ? await this.calculatePromotionRewards(rows, mem_code, price_option)
+      : null;
+    const reached = plan?.reachedTiers ?? [];
+
+    const hotdealCtx = rows.length
+      ? await this.getHotdealSyncContext(mem_code, rows)
+      : { cartRows: [], hotdeals: [] };
+    const hotdeal = this.calculateDesiredHotdealFreebies(hotdealCtx);
+
+    const progress = rows.length
+      ? await this.promotionProgressForRows(rows, price_option)
+      : { items: [], creditorByPromo: new Map<number, string | null>() };
+    for (const t of reached) {
+      t.creditor_code = progress.creditorByPromo.get(t.promo_id) ?? null;
+    }
+
+    return {
+      price_option,
+      is_l16,
+      total: summary.total,
+      lines: rows.map((r) => ({
+        pro_code: r.pro_code,
+        unit_level: String(r.spc_unit_enum),
+        qty: Number(r.spc_amount),
+        amount: amountById.get(r.spc_id) ?? 0,
+      })),
+      skipped,
+      reached_tiers: reached,
+      promo_gifts: [...(plan?.rewards.values() ?? [])].map((g) => ({
+        pro_code: g.pro_code,
+        unit: g.unit,
+        qty: g.qty,
+        promo_id: g.promo_id,
+        tier_id: g.tier_id,
+      })),
+      hotdeal_gifts: [...hotdeal.values()].map((g) => ({
+        pro_code: g.pro_code,
+        main_pro_code: g.hotdeal_promain,
+        unit_level: g.spc_unit_enum,
+        qty: g.amount,
+      })),
+      progress: progress.items,
+    };
+  }
+
+  /**
+   * ยอด/จำนวนชิ้นของใบเทียบกับแต่ละขั้นของโปรที่ใบนี้เกี่ยว → ขั้นถัดไปที่ยังไม่ถึงและขาดอีกเท่าไร
+   * (นับแบบรวม ไม่หักตามลำดับขั้นเหมือนการแจกของแถม — ใช้บอกเซลส์เท่านั้น)
+   */
+  private async promotionProgressForRows(
+    rows: ShoppingCartEntity[],
+    priceOption: string,
+  ): Promise<{
+    items: CheckoutLinesPreview['progress'];
+    creditorByPromo: Map<number, string | null>;
+  }> {
+    const today = dayjs().toDate();
+    const promoMonth = today.getMonth() + 1;
+    const promotions = await this.promotionRepo.find({
+      where: {
+        status: true,
+        start_date: LessThanOrEqual(today),
+        end_date: MoreThanOrEqual(today),
+      },
+      relations: { tiers: { exclusions: true }, creditor: true },
+    });
+    const creditorByPromo = new Map<number, string | null>(
+      promotions.map((p) => [p.promo_id, p.creditor?.creditor_code ?? null]),
+    );
+    if (!promotions.length) return { items: [], creditorByPromo };
+
+    const tierIds = promotions.flatMap((p) =>
+      (p.tiers ?? []).map((t) => t.tier_id),
+    );
+    const conditions = tierIds.length
+      ? await this.conRepo
+          .createQueryBuilder('cond')
+          .innerJoin('cond.tier', 'tier')
+          .innerJoin('cond.product', 'prod')
+          .select(['tier.tier_id AS tier_id', 'prod.pro_code AS pro_code'])
+          .where('tier.tier_id IN (:...tierIds)', { tierIds })
+          .getRawMany<{ tier_id: number; pro_code: string }>()
+      : [];
+    const condMap = new Map<number, Set<string>>();
+    for (const { tier_id, pro_code } of conditions) {
+      if (!condMap.has(Number(tier_id)))
+        condMap.set(Number(tier_id), new Set());
+      condMap.get(Number(tier_id))!.add(pro_code);
+    }
+
+    const totalUnits = new Map<string, number>();
+    for (const r of rows) {
+      const ratio = this.getUnitRatio(r.product, r.spc_unit_enum);
+      totalUnits.set(
+        r.pro_code,
+        (totalUnits.get(r.pro_code) ?? 0) + Number(r.spc_amount) * ratio,
+      );
+    }
+    const value = (r: ShoppingCartEntity) =>
+      Number(r.spc_amount) *
+      this.getUnitRatio(r.product, r.spc_unit_enum) *
+      promoUnitPrice(
+        r.product,
+        priceOption as PriceOption,
+        totalUnits.get(r.pro_code) ?? 0,
+        promoMonth,
+      );
+    const units = (r: ShoppingCartEntity) =>
+      Number(r.spc_amount) * this.getUnitRatio(r.product, r.spc_unit_enum);
+
+    const items: CheckoutLinesPreview['progress'] = [];
+    for (const promo of promotions) {
+      const measured = (promo.tiers ?? [])
+        .filter((t) => Number(t.min_amount) > 0)
+        .map((t) => {
+          let eligible: ShoppingCartEntity[];
+          if (t.all_products) {
+            const excluded = new Set(
+              (t.exclusions ?? []).map((e) => e.product_code),
+            );
+            eligible = rows.filter((r) => !excluded.has(r.pro_code));
+          } else {
+            const codes = condMap.get(t.tier_id);
+            eligible = codes ? rows.filter((r) => codes.has(r.pro_code)) : [];
+          }
+          const current = eligible.reduce(
+            (sum, r) => sum + (t.is_unit ? units(r) : value(r)),
+            0,
+          );
+          return { tier: t, current };
+        })
+        .filter((m) => m.current > 0)
+        .sort((a, b) => Number(a.tier.min_amount) - Number(b.tier.min_amount));
+      if (!measured.length) continue;
+      const next = measured.find((m) => m.current < Number(m.tier.min_amount));
+      const ref = next ?? measured[measured.length - 1];
+      items.push({
+        promo_id: promo.promo_id,
+        promo_name: promo.promo_name?.trim() ?? '',
+        creditor_code: promo.creditor?.creditor_code ?? null,
+        is_unit: Boolean(ref.tier.is_unit),
+        current: Math.round(ref.current * 100) / 100,
+        next_tier: next
+          ? {
+              tier_id: next.tier.tier_id,
+              tier_name: next.tier.tier_name,
+              min_amount: Number(next.tier.min_amount),
+              need:
+                Math.round(
+                  (Number(next.tier.min_amount) - next.current) * 100,
+                ) / 100,
+            }
+          : null,
+      });
+    }
+    return { items, creditorByPromo };
   }
 
   async checkedProductCart(data: {
@@ -1849,6 +2302,7 @@ export class ShoppingCartService {
     try {
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
+      await this.ensureProductVisible(data.pro_code);
       if (data.type === 'check') {
         if (!data.isPreorderFulfillment) {
           await this.ensureNotPreorderRestricted(data.pro_code);
@@ -2072,6 +2526,7 @@ export class ShoppingCartService {
     try {
       if (!options.checkoutRows) {
         await this.removeL16ItemsFromCart(mem_code);
+        await this.removeHiddenItemsFromCart(mem_code);
         await this.shoppingCartRepo
           .createQueryBuilder()
           .delete()
