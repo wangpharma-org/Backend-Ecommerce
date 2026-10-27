@@ -11,6 +11,7 @@ import { UserEntity } from 'src/users/users.entity';
 import { HttpModule } from '@nestjs/axios';
 import { RefreshTokenEntity } from './refresh-token.entity';
 import { EmployeesModule } from 'src/employees/employees.module';
+import { MemberLoginBlockModule } from 'src/member-login-block/member-login-block.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EmployeesModule } from 'src/employees/employees.module';
       secret: jwtConstants.secret,
     }),
     EmployeesModule,
+    MemberLoginBlockModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

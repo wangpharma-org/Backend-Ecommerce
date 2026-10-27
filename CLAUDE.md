@@ -72,6 +72,12 @@ e2e: `scripts/e2e/sticker-label.e2e.ts`
 เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
 e2e: `scripts/e2e/store-visibility.e2e.ts`
 
+## ระงับการเข้าใช้งานรายร้าน (sale สั่ง)
+
+โมดูล [src/member-login-block/](src/member-login-block/) — sale-backend เรียก `/ecom/internal/members/:mem_code/login-block` (x-internal-token) · บล็อคแล้ว login ทุกทาง + refresh ตอบ `403 LOGIN_BLOCKED` และ `JwtStrategy` กัน token เดิมทุก request (snapshot ในหน่วยความจำ 30 วิ) · ตอนบล็อคลบ refresh token + ปิด session ทั้งหมด · สถานะ + log อยู่ตารางแยก (`users` ถูก upsert จาก ERP)
+เปิดใช้ด้วย feature flag `member_login_block` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/member-login-block.md](docs/member-login-block.md)
+e2e: `scripts/e2e/member-login-block.e2e.ts`
+
 ## งดแสดงสินค้าบนหน้าร้าน (WGDD-428)
 
 `product.pro_hidden` = 1 → ซ่อนจากลูกค้าทุกหน้า (list/search/ES/category/promotion/flashsale/hotdeal/recommend/favorite) + detail/get-one ตอบ 404 + add-cart 404 + submit-order 400 — ค่ามาจาก productservice `is_display` ผ่าน Kafka `product_update_from_easyacc` (แอดมินกดใน resellerwebsite) ห้ามแก้ตรงใน ecommerce

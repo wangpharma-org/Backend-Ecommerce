@@ -15,6 +15,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'sticker_label',
   // ECWC-617: แสดงชื่อร้านต้องรอเซ็น LIA + สเปกความยินยอมก่อน
   'store_name_consent',
+  // SSN0-273: sale ระงับการเข้าใช้งานรายร้าน — เปิดเมื่อ sale-backend/sale-services ขึ้นครบ
+  'member_login_block',
 ]);
 
 @Injectable()
