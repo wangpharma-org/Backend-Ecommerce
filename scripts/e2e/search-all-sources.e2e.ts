@@ -11,6 +11,7 @@
  * ตัวเลือก:
  *   KEYWORD=<คำค้นที่เจอหลายตัว> (ค่าเริ่มต้น "พารา") · CATEGORY=<เลขหมวด> (ค่าเริ่มต้น 1)
  *   MISSING_PRO_CODE=<รหัสที่มีใน DB แต่ ES ไม่มี> + MISSING_NAME_KEYWORD=<คำในชื่อที่ ES เจอตัวอื่น> — local หาให้เองจาก DB + ES (อ่านอย่างเดียว)
+ *   SELLABLE_FREE_PRO_CODE=<สินค้าขายชื่อมี /ฟรีไซส์ หรือ /ฟรี1ชิ้น> — local หาให้เองจาก DB
  *
  * อ่านอย่างเดียว ยกเว้น: สลับ flag search_all_sources แล้วคืนค่าเดิม และ search tracking ตามปกติของ endpoint
  * ผลเขียนลง docs/e2e/search-all-sources-<env>-<timestamp>.md
@@ -24,6 +25,7 @@ import { sign } from 'jsonwebtoken';
 import { createConnection, RowDataPacket } from 'mysql2/promise';
 import { join } from 'path';
 import { jwtConstants } from '../../src/auth/constants';
+import { SLASH_FREE_SELLABLE_REGEXP } from '../../src/products/free-gift-name.util';
 
 const BASE_URL = (process.env.BASE_URL ?? 'http://localhost:3021/api').replace(
   /\/+$/,
@@ -233,6 +235,37 @@ async function findDbOnlyProducts(): Promise<
       `DB ตัวอย่าง ${rows.length} รหัส · ไม่มีใน ES ${missing.length} รหัส`,
     );
     return missing as unknown as { pro_code: string; pro_name: string }[];
+  } finally {
+    await conn.end();
+  }
+}
+
+// local: สินค้าขายที่ชื่อมี /ฟรีไซส์ หรือ /ฟรี<n>ชิ้น (ไม่ใช่ของแถม) — เดิมกฎ */ฟรี* ซ่อนทิ้ง
+async function findSellableSlashFreeCodes(): Promise<string[]> {
+  if (process.env.SELLABLE_FREE_PRO_CODE) {
+    return [process.env.SELLABLE_FREE_PRO_CODE];
+  }
+  if (!IS_LOCAL) return [];
+  const conn = await createConnection({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT),
+    user: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+  });
+  try {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT p.pro_code FROM product p
+       WHERE p.pro_name REGEXP ? AND p.pro_name NOT LIKE '%ฟรี'
+         AND p.pro_priceA > 1 AND p.pro_priceB > 1 AND p.pro_priceC > 1
+         AND p.pro_priceA < 10000000 AND p.invisible_id IS NULL
+         AND (p.pro_hidden = 0 OR p.pro_hidden IS NULL)
+         AND (p.pro_l16_only = 0 OR p.pro_l16_only IS NULL)
+         AND EXISTS (SELECT 1 FROM product_unit u WHERE u.pro_code = p.pro_code)
+       ORDER BY p.pro_code LIMIT 5`,
+      [SLASH_FREE_SELLABLE_REGEXP],
+    );
+    return rows.map((row) => String(row.pro_code));
   } finally {
     await conn.end();
   }
@@ -466,6 +499,38 @@ async function main() {
         ok: r.status < 300 && r.codes.length === 0 && r.totalCount === 0,
       };
     });
+
+    let sellableFree: string[] = [];
+    try {
+      sellableFree = await findSellableSlashFreeCodes();
+    } catch (e) {
+      notes.push(
+        `หาสินค้า /ฟรีไซส์ /ฟรี<n>ชิ้น ไม่ได้: ${(e as Error).message}`,
+      );
+    }
+    if (sellableFree.length) {
+      await step(
+        `C9 สินค้าขายชื่อมี /ฟรีไซส์ หรือ /ฟรี<n>ชิ้น ค้นด้วยรหัสเจอ (${sellableFree.join(', ')})`,
+        async () => {
+          const missed: string[] = [];
+          let status = 0;
+          for (const code of sellableFree) {
+            const r = await searchPage(code, 0, 10);
+            status = r.status;
+            if (!r.codes.includes(code)) missed.push(code);
+          }
+          return {
+            status,
+            ok: status < 300 && missed.length === 0,
+            detail: `ไม่เจอ=${missed.join(',') || '-'}`,
+          };
+        },
+      );
+    } else {
+      notes.push(
+        'ไม่มีสินค้า /ฟรีไซส์ /ฟรี<n>ชิ้น ให้ทดสอบ C9 (deployed: ส่ง SELLABLE_FREE_PRO_CODE)',
+      );
+    }
   } finally {
     await step(`Z คืนค่า flag ${FLAG} = ${originalFlag}`, async () => {
       const r = await setFlag(originalFlag);
