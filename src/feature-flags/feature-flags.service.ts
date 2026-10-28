@@ -17,6 +17,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'store_name_consent',
   // policy ลูกค้า (popup ยอมรับ + Footer) — ปิดไว้จนกว่าเนื้อหาจะพร้อม
   'policy_doc',
+  // ECWC-751: ค้นหาสินค้ารวมทุกแหล่ง (ES + เว็บเก่า + DB) — ปิดไว้จนกว่าจะวัดความเร็วบน prod
+  'search_all_sources',
 ]);
 
 @Injectable()
