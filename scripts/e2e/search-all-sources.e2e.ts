@@ -276,8 +276,13 @@ async function main() {
     }));
 
     let offDbOnly: SearchPage | null = null;
+    // คำแรกจากชื่อสินค้า — ES มักเจอตัวอื่นที่ชื่อคล้าย แบบเดิมจึงไม่ไปค้น DB ต่อ
+    const nameKeyword =
+      dbOnly?.pro_name?.split(/[\s/]+/).find((word) => word.length >= 3) ?? '';
+    let offName: Awaited<ReturnType<typeof searchAllPages>> | null = null;
     if (dbOnly) {
       offDbOnly = await searchPage(dbOnly.pro_code, 0, 20);
+      if (nameKeyword) offName = await searchAllPages(nameKeyword);
     }
 
     // ---------- flag เปิด = รวมทุกแหล่ง ----------
@@ -340,6 +345,23 @@ async function main() {
           };
         },
       );
+      if (nameKeyword) {
+        await step(
+          `C5b ค้นด้วยชื่อ "${nameKeyword}" (ES เจอตัวอื่น) ต้องเห็น ${target.pro_code} ด้วย`,
+          async () => {
+            const onName = await searchAllPages(nameKeyword);
+            return {
+              status: onName.status,
+              ok:
+                onName.status < 300 &&
+                onName.complete &&
+                onName.all.includes(target.pro_code) &&
+                onName.duplicates.length === 0,
+              detail: `flag ปิด: total=${offName?.totalCount ?? '-'} เจอ=${offName?.all.includes(target.pro_code) ?? '-'} · flag เปิด: total=${onName.totalCount} เจอ=${onName.all.includes(target.pro_code)}`,
+            };
+          },
+        );
+      }
     } else {
       notes.push(
         'ไม่มีสินค้าที่ ES ไม่มีให้ทดสอบ C5 (deployed: ส่ง MISSING_PRO_CODE)',
