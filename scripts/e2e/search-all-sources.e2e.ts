@@ -34,8 +34,8 @@ const E2E_ENV = process.env.E2E_ENV ?? (IS_LOCAL ? 'local' : '');
 const FLAG = 'search_all_sources';
 const KEYWORD = process.env.KEYWORD ?? 'พารา';
 const CATEGORY = Number(process.env.CATEGORY ?? 1);
-const PAGE_SIZE = 10;
-const MAX_PAGES = 10;
+const PAGE_SIZE = 20;
+const MAX_PAGES = 30;
 const GIT_SHA = (() => {
   try {
     return execSync('git rev-parse --short HEAD', {
@@ -154,14 +154,20 @@ async function searchAllPages(keyword: string) {
   let totalCount = 0;
   let status = 0;
   let slowest = 0;
+  let complete = false;
+  // หน้าอาจได้ไม่ครบ PAGE_SIZE (สินค้าใน ES ที่ DB ไม่มี/ถูกกรองตอนโหลด) — เดินต่อจนเลย total
   for (let page = 0; page < MAX_PAGES; page++) {
-    const r = await searchPage(keyword, page * PAGE_SIZE, PAGE_SIZE);
+    const offset = page * PAGE_SIZE;
+    const r = await searchPage(keyword, offset, PAGE_SIZE);
     status = r.status;
     slowest = Math.max(slowest, r.ms);
     if (r.status >= 300) break;
     totalCount = r.totalCount;
     all.push(...r.codes);
-    if (r.codes.length < PAGE_SIZE || all.length >= totalCount) break;
+    if (offset + PAGE_SIZE >= totalCount) {
+      complete = true;
+      break;
+    }
   }
   const seen = new Set<string>();
   const duplicates = all.filter((code) => {
@@ -169,7 +175,7 @@ async function searchAllPages(keyword: string) {
     seen.add(code);
     return false;
   });
-  return { status, all, totalCount, duplicates, slowest };
+  return { status, all, totalCount, duplicates, slowest, complete };
 }
 
 // local: หารหัสที่อยู่ใน DB (ผ่านตัวกรองค้นหา + มีหน่วย) แต่ ES ไม่มี — อ่านอย่างเดียวทั้ง DB และ ES
@@ -206,10 +212,11 @@ async function findDbOnlyProduct(): Promise<{
       },
       timeout: 30000,
     });
-    const mget = await es.post('/products/_mget', {
-      ids: rows.map((row) => row.pro_code),
-      _source: false,
-    });
+    const mget = await es.post(
+      '/products/_mget',
+      { ids: rows.map((row) => row.pro_code) },
+      { params: { _source: false } },
+    );
     const inEs = new Set(
       (mget.data?.docs ?? [])
         .filter((doc: any) => doc.found)
@@ -293,8 +300,7 @@ async function main() {
       async () => {
         const onSet = new Set(on.all);
         // เทียบเฉพาะช่วงที่เดินครบทั้งสองฝั่ง — ถ้าถูกตัดที่ MAX_PAGES ให้ดู total
-        const comparable =
-          off.all.length >= off.totalCount && on.all.length >= on.totalCount;
+        const comparable = off.complete && on.complete;
         const lost = comparable
           ? off.all.filter((code) => !onSet.has(code))
           : [];
