@@ -10,7 +10,7 @@
  * local: mint token เองด้วย secret ของแอป
  * ตัวเลือก:
  *   KEYWORD=<คำค้นที่เจอหลายตัว> (ค่าเริ่มต้น "พารา") · CATEGORY=<เลขหมวด> (ค่าเริ่มต้น 1)
- *   MISSING_PRO_CODE=<รหัสที่มีใน DB แต่ ES ไม่มี> — local หาให้เองจาก DB + ES (อ่านอย่างเดียว)
+ *   MISSING_PRO_CODE=<รหัสที่มีใน DB แต่ ES ไม่มี> + MISSING_NAME_KEYWORD=<คำในชื่อที่ ES เจอตัวอื่น> — local หาให้เองจาก DB + ES (อ่านอย่างเดียว)
  *
  * อ่านอย่างเดียว ยกเว้น: สลับ flag search_all_sources แล้วคืนค่าเดิม และ search tracking ตามปกติของ endpoint
  * ผลเขียนลง docs/e2e/search-all-sources-<env>-<timestamp>.md
@@ -179,11 +179,10 @@ async function searchAllPages(keyword: string) {
 }
 
 // local: หารหัสที่อยู่ใน DB (ผ่านตัวกรองค้นหา + มีหน่วย) แต่ ES ไม่มี — อ่านอย่างเดียวทั้ง DB และ ES
-async function findDbOnlyProduct(): Promise<{
-  pro_code: string;
-  pro_name: string;
-} | null> {
-  if (!IS_LOCAL) return null;
+async function findDbOnlyProducts(): Promise<
+  { pro_code: string; pro_name: string }[]
+> {
+  if (!IS_LOCAL) return [];
   const conn = await createConnection({
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT),
@@ -203,7 +202,7 @@ async function findDbOnlyProduct(): Promise<{
          AND EXISTS (SELECT 1 FROM product_unit u WHERE u.pro_code = p.pro_code)
        ORDER BY p.pro_code LIMIT 2000`,
     );
-    if (!rows.length) return null;
+    if (!rows.length) return [];
     const es = axios.create({
       baseURL: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
       auth: {
@@ -226,7 +225,7 @@ async function findDbOnlyProduct(): Promise<{
     notes.push(
       `DB ตัวอย่าง ${rows.length} รหัส · ไม่มีใน ES ${missing.length} รหัส`,
     );
-    return (missing[0] as { pro_code: string; pro_name: string }) ?? null;
+    return missing as unknown as { pro_code: string; pro_name: string }[];
   } finally {
     await conn.end();
   }
@@ -236,17 +235,23 @@ async function main() {
   const original = await admin.get(`/ecom/feature-flag/${FLAG}`);
   const originalFlag = original.data === true;
 
-  let dbOnly: { pro_code: string; pro_name?: string } | null = process.env
+  let missingList: { pro_code: string; pro_name?: string }[] = process.env
     .MISSING_PRO_CODE
-    ? { pro_code: process.env.MISSING_PRO_CODE }
-    : null;
-  if (!dbOnly) {
+    ? [
+        {
+          pro_code: process.env.MISSING_PRO_CODE,
+          pro_name: process.env.MISSING_NAME_KEYWORD,
+        },
+      ]
+    : [];
+  if (!missingList.length) {
     try {
-      dbOnly = await findDbOnlyProduct();
+      missingList = await findDbOnlyProducts();
     } catch (e) {
       notes.push(`หาสินค้าที่ ES ไม่มีไม่ได้: ${(e as Error).message}`);
     }
   }
+  const dbOnly = missingList[0] ?? null;
 
   try {
     // ---------- กติกาพื้นฐาน ----------
@@ -276,13 +281,37 @@ async function main() {
     }));
 
     let offDbOnly: SearchPage | null = null;
-    // คำแรกจากชื่อสินค้า — ES มักเจอตัวอื่นที่ชื่อคล้าย แบบเดิมจึงไม่ไปค้น DB ต่อ
-    const nameKeyword =
-      dbOnly?.pro_name?.split(/[\s/]+/).find((word) => word.length >= 3) ?? '';
-    let offName: Awaited<ReturnType<typeof searchAllPages>> | null = null;
     if (dbOnly) {
       offDbOnly = await searchPage(dbOnly.pro_code, 0, 20);
-      if (nameKeyword) offName = await searchAllPages(nameKeyword);
+    }
+
+    // หากรณีที่เป็นบั๊กจริง: ค้นด้วยคำจากชื่อแล้ว ES เจอตัวอื่น (total > 0) แบบเดิมจึงไม่ค้น DB ต่อ
+    // → สินค้าที่ ES ไม่มีหายไปจากผล ต้องโผล่เมื่อเปิด flag
+    let nameCase: {
+      pro_code: string;
+      keyword: string;
+      off: Awaited<ReturnType<typeof searchAllPages>>;
+    } | null = null;
+    for (const candidate of missingList.slice(0, 30)) {
+      const words = (candidate.pro_name ?? '')
+        .split(/[\s/()]+/)
+        .filter((word) => word.length >= 3)
+        .slice(0, 2);
+      for (const word of words) {
+        const probe = await searchPage(word, 0, 1);
+        if (probe.totalCount === 0 || probe.totalCount > MAX_PAGES * PAGE_SIZE)
+          continue;
+        const offWord = await searchAllPages(word);
+        if (offWord.complete && !offWord.all.includes(candidate.pro_code)) {
+          nameCase = {
+            pro_code: candidate.pro_code,
+            keyword: word,
+            off: offWord,
+          };
+          break;
+        }
+      }
+      if (nameCase) break;
     }
 
     // ---------- flag เปิด = รวมทุกแหล่ง ----------
@@ -345,26 +374,32 @@ async function main() {
           };
         },
       );
-      if (nameKeyword) {
-        await step(
-          `C5b ค้นด้วยชื่อ "${nameKeyword}" (ES เจอตัวอื่น) ต้องเห็น ${target.pro_code} ด้วย`,
-          async () => {
-            const onName = await searchAllPages(nameKeyword);
-            return {
-              status: onName.status,
-              ok:
-                onName.status < 300 &&
-                onName.complete &&
-                onName.all.includes(target.pro_code) &&
-                onName.duplicates.length === 0,
-              detail: `flag ปิด: total=${offName?.totalCount ?? '-'} เจอ=${offName?.all.includes(target.pro_code) ?? '-'} · flag เปิด: total=${onName.totalCount} เจอ=${onName.all.includes(target.pro_code)}`,
-            };
-          },
-        );
-      }
     } else {
       notes.push(
         'ไม่มีสินค้าที่ ES ไม่มีให้ทดสอบ C5 (deployed: ส่ง MISSING_PRO_CODE)',
+      );
+    }
+
+    if (nameCase) {
+      const found = nameCase;
+      await step(
+        `C5b ค้น "${found.keyword}": แบบเดิม ES เจอตัวอื่นจนไม่เห็น ${found.pro_code} — รวมทุกแหล่งต้องเห็น`,
+        async () => {
+          const onName = await searchAllPages(found.keyword);
+          return {
+            status: onName.status,
+            ok:
+              onName.status < 300 &&
+              onName.complete &&
+              onName.all.includes(found.pro_code) &&
+              onName.duplicates.length === 0,
+            detail: `flag ปิด: total=${found.off.totalCount} เจอ=false · flag เปิด: total=${onName.totalCount} เจอ=${onName.all.includes(found.pro_code)} ซ้ำ=${onName.duplicates.length}`,
+          };
+        },
+      );
+    } else {
+      notes.push(
+        'ไม่พบกรณีที่ ES เจอตัวอื่นแต่ไม่มีสินค้าที่ ES ขาด — C5b ไม่ได้รัน (deployed: ส่ง MISSING_PRO_CODE + MISSING_NAME_KEYWORD)',
       );
     }
 
