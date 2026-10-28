@@ -65,9 +65,16 @@ if (!Number.isInteger(CATEGORY) || CATEGORY < 1) {
 
 const RUN_ID = Date.now();
 const MEM_CODE = `E2E-SRCH-${RUN_ID}`;
+// role Admin: ตั้งแต่ ECWC-749 การสลับ flag ต้องเป็น role Admin (permission อย่างเดียว 403)
 const mint = (mem_code: string, permission: boolean): string =>
   sign(
-    { username: mem_code, name: `E2E ${E2E_ENV}`, mem_code, permission },
+    {
+      username: mem_code,
+      name: `E2E ${E2E_ENV}`,
+      mem_code,
+      permission,
+      role: permission ? 'Admin' : 'User',
+    },
     jwtConstants.secret,
     { expiresIn: '1h' },
   );
