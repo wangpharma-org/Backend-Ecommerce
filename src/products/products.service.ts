@@ -44,6 +44,11 @@ import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service
 import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
 import {
+  notSlashFreeGiftSql,
+  SLASH_FREE_GIFT_ES_CLAUSE,
+  slashFreeGiftParams,
+} from './free-gift-name.util';
+import {
   esWindowFor,
   mergeSearchPage,
   SearchCandidateRow,
@@ -1397,9 +1402,10 @@ export class ProductsService {
                 .andWhere('product.pro_name NOT LIKE :freePrefix', {
                   freePrefix: 'FREE/%',
                 })
-                .andWhere('product.pro_name NOT LIKE :slashFree', {
-                  slashFree: '%/ฟรี%',
-                });
+                .andWhere(
+                  notSlashFreeGiftSql('product'),
+                  slashFreeGiftParams(),
+                );
 
               if (data.category === 7) {
                 qb.andWhere('product.pro_promotion_month = :month', {
@@ -1785,7 +1791,7 @@ export class ProductsService {
             .andWhere('product.pro_name NOT LIKE :p8', { p8: '.%' })
             .andWhere('product.pro_name NOT LIKE :p9', { p9: 'FREE/%' })
             .andWhere('product.pro_name NOT LIKE :c1', { c1: '%ฟรี' })
-            .andWhere('product.pro_name NOT LIKE :c2', { c2: '%/ฟรี%' })
+            .andWhere(notSlashFreeGiftSql('product'), slashFreeGiftParams())
             .andWhere('product.pro_name NOT LIKE :c3', { c3: '%บัตรโลตัส%' })
             .andWhere('product.pro_name NOT LIKE :c4', { c4: '%สนับสนุน%' })
             .andWhere('product.pro_name NOT LIKE :c5', { c5: '%ชดเชย%' });
@@ -1852,7 +1858,7 @@ export class ProductsService {
           { prefix: { 'pro_name.keyword': 'ค่า' } },
           { prefix: { 'pro_name.keyword': '.' } },
           { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
-          { wildcard: { 'pro_name.keyword': { value: '*/ฟรี*' } } },
+          SLASH_FREE_GIFT_ES_CLAUSE,
           {
             wildcard: {
               'pro_name.keyword': { value: '*บัตรโลตัส*' },
@@ -2370,8 +2376,8 @@ export class ProductsService {
         .where('product.pro_code IN (:...proCodes)', { proCodes })
         // ของแถม FREE/* อาจหลุดมาจาก external/enter search ที่ไม่ผ่าน ES filter
         .andWhere(
-          '(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND product.pro_name NOT LIKE :slashFree))',
-          { freePrefix: 'FREE/%', slashFree: '%/ฟรี%' },
+          `(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND ${notSlashFreeGiftSql('product')}))`,
+          { freePrefix: 'FREE/%', ...slashFreeGiftParams() },
         )
         // WGDD-428: external/enter search ไม่ผ่าน ES filter → กรองงดแสดงซ้ำที่ DB
         .andWhere(visibleProductSql('product'))
