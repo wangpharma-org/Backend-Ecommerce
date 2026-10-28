@@ -73,7 +73,10 @@ import { ProductKeywordService } from './product-keyword/product-keyword.service
 import { BannerEntity } from './banner/banner.entity';
 import { HotdealEntity } from './hotdeal/hotdeal.entity';
 import { RecommendService } from './recommend/recommend.service';
-import { PolicyDocService } from './policy-doc/policy-doc.service';
+import {
+  PolicyDocService,
+  POLICY_DOC_FLAG,
+} from './policy-doc/policy-doc.service';
 import { PolicyDocMember } from './policy-doc/policy-doc-member.entity';
 import { ContractLogService } from './contract-log/contract-log.service';
 import { ContractLogBanner } from './contract-log/contract-log-banner.entity';
@@ -3254,6 +3257,8 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/policy/check-policy')
   async ensureUserHasPolicyMember(@Req() req: Request & { user: JwtPayload }) {
+    // flag ปิด = ไม่ส่ง policy ให้ลูกค้า → popup ยอมรับนโยบายไม่เด้ง (FE แสดงเมื่อ array ไม่ว่าง)
+    if (!(await this.featureFlagsService.getFlag(POLICY_DOC_FLAG))) return [];
     const mem_code = req.user.mem_code;
     return await this.policyDocService.checkAndGetCorrectPolicy(mem_code);
   }
@@ -3264,6 +3269,9 @@ export class AppController {
     @Req() req: Request & { user: JwtPayload },
     @Body() body: { policyID: number },
   ): Promise<PolicyDocMember | void | { message: string }> {
+    if (!(await this.featureFlagsService.getFlag(POLICY_DOC_FLAG))) {
+      throw new ForbiddenException('Policy feature is disabled');
+    }
     const mem_code = req.user.mem_code;
     this.logger.log('Member code agreeing to policy:', mem_code);
     this.logger.log('Policy document ID:', body);
@@ -3283,6 +3291,8 @@ export class AppController {
       latestVersion: string;
     }[]
   > {
+    // flag ปิด = Footer เปิดโมดัลนโยบายไม่ขึ้น (FE แสดงเมื่อ array ไม่ว่าง)
+    if (!(await this.featureFlagsService.getFlag(POLICY_DOC_FLAG))) return [];
     return await this.policyDocService.getAllPolicies();
   }
 
