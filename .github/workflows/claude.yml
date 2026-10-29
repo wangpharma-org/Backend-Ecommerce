@@ -50,4 +50,8 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
+          # จำกัดให้ @claude อ่านและตอบได้อย่างเดียว ไม่แก้ไฟล์ ไม่เปิดเว็บ (token ของ job นี้ก็อ่านอย่างเดียวอยู่แล้ว)
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh issue view:*),Bash(gh run view:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+            --disallowedTools "Edit,Write,NotebookEdit,WebFetch,WebSearch"
 
