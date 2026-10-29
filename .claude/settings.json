@@ -25,5 +25,46 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch)",
+      "Bash(git fetch*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr list*)",
+      "Bash(gh run view*)",
+      "Bash(gh run list*)",
+      "Bash(npm run build*)",
+      "Bash(npm run lint*)",
+      "Bash(npm test)",
+      "Bash(npm run test)",
+      "Bash(npm test -- *)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(npx jest*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f)",
+      "Bash(gh repo delete *)"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "wangpharma": {
+      "source": {
+        "source": "github",
+        "repo": "wangpharma-org/claude-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "wang-dev@wangpharma": true
   }
 }
