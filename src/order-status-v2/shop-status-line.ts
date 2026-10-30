@@ -18,6 +18,10 @@ export interface PickingOrderDetailItem {
   change_from_procode?: string | null;
 }
 
+// order-picking คิด qc_price_total = qc_qty × price_unit เป็น float (3 × 27.9 = 83.6999…)
+// เทียบตรงๆ กับ price_total 83.7 จะขึ้น "ตรวจนับขาด" ทั้งที่ได้ครบ — เผื่อครึ่งสตางค์
+const PRICE_EPSILON = 0.005;
+
 // SSN0-367: ฝ่ายขายต้องแจ้งลูกค้าเป็นจำนวน (สั่ง 10 ได้ 6 ขาด 4)
 // short คิดจากจำนวนเมื่อมีผล QC — แบบเดิมเทียบราคา บิลที่ไม่มีราคา (บิลพนักงานคีย์) จึงไม่เคยขึ้นว่าไม่ครบ
 export function toShopStatusLine(it: PickingOrderDetailItem): ShopStatusLine {
@@ -31,7 +35,7 @@ export function toShopStatusLine(it: PickingOrderDetailItem): ShopStatusLine {
       : !it.is_rt &&
         it.qc_price_total != null &&
         it.price_total != null &&
-        it.qc_price_total < it.price_total;
+        it.qc_price_total < it.price_total - PRICE_EPSILON;
   return {
     pro_code: it.pro_code,
     pro_name: it.product_name,

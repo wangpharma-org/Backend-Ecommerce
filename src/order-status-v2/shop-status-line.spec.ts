@@ -88,6 +88,19 @@ describe('toShopStatusLine (SSN0-367)', () => {
     });
   });
 
+  // ข้อมูลจริง order-picking บิล 0350-441133: ครบ 3 × 27.9 แต่ qc_price_total = 83.69999999999999
+  it('order-picking เวอร์ชันเก่า: เศษ float ของราคาไม่ทำให้ขึ้นว่าไม่ครบ', () => {
+    const line = toShopStatusLine(
+      item({
+        qty: 3,
+        price_unit: 27.9,
+        price_total: 83.7,
+        qc_price_total: 3 * 27.9,
+      }),
+    );
+    expect(line.short).toBe(false);
+  });
+
   it('ส่งรหัสสินค้าเดิมเมื่อคลังเปลี่ยนสินค้า', () => {
     const line = toShopStatusLine(
       item({ qc_status: 'pending', change_from_procode: 'P000' }),
