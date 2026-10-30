@@ -20,6 +20,7 @@ import axios from 'axios';
 import { execSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { isSlashFreeGiftName } from '../../src/products/free-gift-name.util';
 
 const BASE_URL = (process.env.BASE_URL ?? 'http://localhost:3021/api').replace(
   /\/+$/,
@@ -61,8 +62,9 @@ const skip = (name: string, why: string) => {
 };
 
 type Product = { pro_code: string; pro_name: string | null };
+// ECWC-751: /ฟรีไซส์, /ฟรี1ชิ้น เป็นสินค้าขาย ไม่ใช่ของแถม — ใช้กฎเดียวกับ backend
 const isFreeGift = (p: Product) =>
-  /^FREE\//i.test(p.pro_name ?? '') || (p.pro_name ?? '').includes('/ฟรี');
+  /^FREE\//i.test(p.pro_name ?? '') || isSlashFreeGiftName(p.pro_name);
 const freeIn = (products: Product[]) =>
   products.filter(isFreeGift).map((p) => p.pro_code);
 

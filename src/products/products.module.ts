@@ -24,6 +24,7 @@ import {
   MONTHLY_DEAL_KAFKA_CLIENT,
   MonthlyDealPublisherService,
 } from './monthly-deal-publisher.service';
+import { FeatureFlagsModule } from 'src/feature-flags/feature-flags.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import {
     BackendModule,
     ImagedebugModule,
     ElasticsearchModule,
+    FeatureFlagsModule,
     ProductLabelRulesModule,
     FixFreeModule,
     forwardRef(() => ShoppingCartModule),

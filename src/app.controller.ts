@@ -5046,9 +5046,16 @@ export class AppController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-search-autocomplete')
-  async productSearchAutoComplete(@Query('search') search: string) {
+  async productSearchAutoComplete(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('search') search: string,
+  ) {
     try {
-      return await this.productsService.searchExternalProducts(search);
+      return await this.productsService.searchAutocompleteProducts(
+        search,
+        req.user.mem_code,
+        req.user.mem_route,
+      );
     } catch {
       throw new HttpException(
         { success: false, error: { code: 'PRODUCT_SEARCH_FAILED' } },
