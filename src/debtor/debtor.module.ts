@@ -5,6 +5,7 @@ import { DebtorEntity } from './debtor.entity';
 import { DebtorDetailEntity } from './debtor-detail.entity';
 import { ReductionRTDetail } from './reduct-rt-detail.entity';
 import { ReductionRT } from './reduct-rt.entity';
+import { SaleReceivablesSyncService } from './sale-receivables-sync.service';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { ReductionRT } from './reduct-rt.entity';
       ReductionRTDetail,
     ]),
   ],
-  providers: [DebtorService],
+  providers: [DebtorService, SaleReceivablesSyncService],
   exports: [DebtorService],
 })
 export class DebtorModule {}
