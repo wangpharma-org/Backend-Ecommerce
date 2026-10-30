@@ -41,6 +41,7 @@ import {
   LegacyOrderListProduct,
   LegacyTimelineStep,
 } from './types/legacy-order-api.types';
+import { PickingOrderDetailItem, toShopStatusLine } from './shop-status-line';
 
 const PICKING_ORDERS_MONTHS_BACK = 3;
 // ECWC-600 (PDPA): ร้านที่ไม่ยินยอมให้คนอื่นเห็นชื่อ ก็ไม่ควรถูกซูมหาจากหมุด checkpoint ได้
@@ -95,18 +96,6 @@ const THAI_MONTHS_ABBR = [
   'พ.ย.',
   'ธ.ค.',
 ];
-
-interface PickingOrderDetailItem {
-  pro_code: string;
-  product_name: string | null;
-  qty: number;
-  unit: string | null;
-  price_unit: number | null;
-  price_total: number | null;
-  // ราคาหลัง QC (RT → 0, ตรวจนับขาด → คิดตามจำนวนจริง, ยังไม่ตรวจนับ → เท่า price_total) — ECWC-4xx
-  qc_price_total: number | null;
-  is_rt: boolean;
-}
 
 interface PickingOrderDetailBatchItem {
   sh_running: string;
@@ -1772,6 +1761,11 @@ export class OrderStatusV2Service {
           qc_price_total: null,
           out_of_stock: false,
           short: false,
+          // ยังไม่ถึงคลัง — ไม่มีผล QC
+          received_qty: null,
+          missing_qty: null,
+          qc_note: null,
+          changed_from: null,
         });
         ecomLines.set(key, list);
       }
@@ -1787,21 +1781,7 @@ export class OrderStatusV2Service {
         deliveries[e.running] ?? null,
       );
       const lines: ShopStatusLine[] = d
-        ? d.items.map((it) => ({
-            pro_code: it.pro_code,
-            pro_name: it.product_name,
-            qty: Number(it.qty),
-            unit: it.unit,
-            price_unit: it.price_unit,
-            price_total: it.price_total,
-            qc_price_total: it.qc_price_total,
-            out_of_stock: it.is_rt,
-            short:
-              !it.is_rt &&
-              it.qc_price_total != null &&
-              it.price_total != null &&
-              it.qc_price_total < it.price_total,
-          }))
+        ? d.items.map(toShopStatusLine)
         : (ecomLines.get(e.running) ?? []);
       const sum =
         e.sumprice ??
