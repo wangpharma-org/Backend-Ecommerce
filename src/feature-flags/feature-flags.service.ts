@@ -17,6 +17,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'store_name_consent',
   // policy ลูกค้า (popup ยอมรับ + Footer) — ปิดไว้จนกว่าเนื้อหาจะพร้อม
   'policy_doc',
+  // อีเวนต์กิจกรรมกลาง (activity_event) — เปิดเมื่อ sale-backend รับ topic แล้ว
+  'activity_tracking',
 ]);
 
 @Injectable()

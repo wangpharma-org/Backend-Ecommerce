@@ -103,6 +103,11 @@ import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service'
 import { OrderAccessService } from './order-status-v2/order-access.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+import { ActivityService } from './activity/activity.service';
+import {
+  type ActivityChannel,
+  channelFromRequest,
+} from './activity/activity.types';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
 import { toThaiDate } from './utils/date.util';
 
@@ -176,6 +181,7 @@ export class AppController {
     private readonly orderStatusV2Service: OrderStatusV2Service,
     private readonly orderAccess: OrderAccessService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    private readonly activityService: ActivityService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
 
@@ -623,6 +629,11 @@ export class AppController {
       { ...data, basket_id: basketId, mem_code, mem_route: req.user.mem_route },
       ip,
     );
+    this.activityService.trackOrders(result ?? [], {
+      mem_code,
+      emp_code: data.emp_code,
+      channel: channelFromRequest(req),
+    });
     return result;
   }
 
@@ -769,6 +780,7 @@ export class AppController {
       // hotdeal_free: boolean;
       clientVersion?: string | number;
       company_day_source?: string;
+      activity_channel?: ActivityChannel;
     } = {
       mem_code: data.mem_code,
       pro_code: data.pro_code,
@@ -779,6 +791,7 @@ export class AppController {
       flashsale_end: data.flashsale_end,
       clientVersion: data.clientVersion ?? data.cartVersion,
       company_day_source: data.company_day_source,
+      activity_channel: channelFromRequest(req),
     };
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
