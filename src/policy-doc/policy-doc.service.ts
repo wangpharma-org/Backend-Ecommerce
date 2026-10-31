@@ -6,6 +6,9 @@ import { PolicyDocMember } from './policy-doc-member.entity';
 import { PolicyDocCatagory } from './policy-doc-catagory.entity';
 import { UsersService } from 'src/users/users.service';
 
+// ปิด = ลูกค้าไม่เห็น policy (popup ยอมรับ + โมดัลใน Footer) ส่วน API ฝั่งแอดมินยังใช้ได้ตามเดิม
+export const POLICY_DOC_FLAG = 'policy_doc';
+
 @Injectable()
 export class PolicyDocService {
   constructor(

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { visibleProductSql } from 'src/products/product-visibility.util';
 import { NewArrival } from './new-arrival.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -57,11 +58,17 @@ export class NewArrivalsService {
 
     try {
       const arrData: NewArrival[] = [];
+      // ระบบจัดออเดอร์ใช้ pro_code/createdAt/amount/unit · ระบบขายใช้ new_arrival_id/lot/mfg/exp
+      // เก็บประวัติ lot ให้หน้า Key ขาย F3 (SSN0-344) — เพิ่ม field เท่านั้น ห้ามเปลี่ยนของเดิม
       const kafkaEvents: {
         pro_code: string;
         createdAt: string;
         amount: number;
         unit: string;
+        new_arrival_id?: number;
+        lot: string;
+        mfg: string;
+        exp: string;
       }[] = [];
       const arrivedLots: LotArrivalInput[] = [];
       await queryRunner.connect();
@@ -95,6 +102,9 @@ export class NewArrivalsService {
           createdAt: dayjs(normalizedDate).format('YYYY-MM-DD'),
           amount,
           unit,
+          lot: LOT,
+          mfg: MFG,
+          exp: EXP,
         });
 
         // สร้างและบันทึกข้อมูลใหม่
@@ -117,6 +127,10 @@ export class NewArrivalsService {
         });
       }
       await queryRunner.manager.save(arrData);
+      // kafkaEvents กับ arrData push คู่กันทุกรอบ — id ได้หลัง save
+      arrData.forEach((arrival, index) => {
+        kafkaEvents[index].new_arrival_id = arrival.id;
+      });
 
       // ECWC-643: เก็บ lot + จำนวนรับเข้าลงตาราง lot ด้วย — เฉพาะรายการใหม่ (รายการซ้ำถูกข้ามด้านบน
       // ไม่งั้น amount จะถูกบวกซ้ำ)
@@ -167,6 +181,8 @@ export class NewArrivalsService {
           ? '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)'
           : '1=1',
       )
+      // WGDD-428: งดแสดงบนหน้าร้าน
+      .andWhere(visibleProductSql('product'))
       .groupBy('product.pro_code')
       .addGroupBy('newArrival.id')
       .addGroupBy('newArrival.createdAt')

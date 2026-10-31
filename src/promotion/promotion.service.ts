@@ -8,6 +8,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { isHiddenProduct } from 'src/products/product-visibility.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PromotionEntity } from './promotion.entity';
 import { CreditorEntity } from 'src/products/creditor.entity';
@@ -622,6 +623,7 @@ export class PromotionService {
           'product.order_quantity',
           'product.pro_lowest_stock',
           'product.viwers',
+          'product.pro_hidden',
 
           'cart.mem_code',
           'cart.spc_amount',
@@ -636,13 +638,15 @@ export class PromotionService {
       const transformedTier = tier as PromotionTierWithTransformedConditions;
 
       if (transformedTier.conditions) {
+        // WGDD-428: ไม่แสดงสินค้าที่งดแสดงบนหน้าร้านในหน้าโปรโมชัน
+        const visibleConditions = transformedTier.conditions.filter(
+          (condition) => !isHiddenProduct(condition.product),
+        );
         // Transform product data ก่อน
-        const transformedConditions = transformedTier.conditions.map(
-          (condition) => ({
-            ...condition,
-            product: this.transformProductData(condition.product),
-          }),
-        ) as PromotionConditionWithTransformedProduct[];
+        const transformedConditions = visibleConditions.map((condition) => ({
+          ...condition,
+          product: this.transformProductData(condition.product),
+        })) as PromotionConditionWithTransformedProduct[];
 
         // Sort หลัง transform
         transformedTier.conditions = transformedConditions.sort((a, b) => {
