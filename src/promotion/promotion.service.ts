@@ -34,9 +34,8 @@ import {
   getTodayRange,
   toThaiDate,
   toThaiDateTime,
-  toUtcStart,
-  toUtcEnd,
 } from 'src/utils/date.util';
+import { toPromotionDateRange } from './promotion-date-range.util';
 import { Cron } from '@nestjs/schedule';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 import { CodePromotionEntity } from './code-promotion.entity';
@@ -891,6 +890,8 @@ export class PromotionService {
     status: boolean;
     file?: Express.Multer.File;
   }) {
+    // เช็คก่อนอัปโหลดรูป — กันรูปค้างใน S3 เมื่อช่วงวันที่ผิด
+    const dateRange = toPromotionDateRange(data.start_date, data.end_date);
     try {
       let promo_poster: string | null = null;
 
@@ -922,8 +923,7 @@ export class PromotionService {
             ? { creditor_code: data.creditor_codes[0] }
             : undefined,
           creditors,
-          start_date: toUtcStart(data.start_date),
-          end_date: toUtcEnd(data.end_date),
+          ...dateRange,
           status: data.status,
           promo_poster,
         });
@@ -1464,12 +1464,8 @@ export class PromotionService {
     data: { promo_id: number; start_date: string; end_date: string },
     admin: { mem_code: string; username: string },
   ) {
-    if (data.start_date > data.end_date) {
-      throw new BadRequestException('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
-    }
-
-    const newStartDate = toUtcStart(data.start_date);
-    const newEndDate = toUtcEnd(data.end_date);
+    const { start_date: newStartDate, end_date: newEndDate } =
+      toPromotionDateRange(data.start_date, data.end_date);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
@@ -2191,6 +2187,7 @@ export class PromotionService {
     start_date: Date;
     end_date: Date;
   }) {
+    const dateRange = toPromotionDateRange(data.start_date, data.end_date);
     const source = await this.promotionRepo.findOne({
       withDeleted: true,
       where: { promo_id: data.promo_id },
@@ -2243,8 +2240,7 @@ export class PromotionService {
           promo_name: source.promo_name,
           creditor: source.creditor ?? undefined,
           creditors: source.creditors ?? [],
-          start_date: toUtcStart(data.start_date),
-          end_date: toUtcEnd(data.end_date),
+          ...dateRange,
           status: false,
         }),
       );
