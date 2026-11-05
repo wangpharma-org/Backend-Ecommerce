@@ -144,3 +144,41 @@ describe('PDF ฉลาก 2 ภาษา', () => {
     expect(html).not.toContain('<bdi class="l2" lang="en" dir="auto"></bdi>');
   });
 });
+
+describe('PDF ฟอนต์ที่ลูกค้าเลือก', () => {
+  it('ฝังเฉพาะฟอนต์ที่ใช้ + ใช้กับทั้งดวงและหัวฉลาก', () => {
+    const html = buildStickerSheetHtml(
+      [{ snapshot: snapshot({ font: 'kanit' }), pages: 1 }],
+      {
+        googleFonts: false,
+      },
+    );
+    expect(html).toContain("@font-face{font-family:'Kanit'");
+    expect(html).toContain("font-family:'Kanit','Sarabun'");
+    expect(html).toContain("--head-font:'Kanit'");
+    expect(html).not.toContain("font-family:'Charm'");
+  });
+
+  it('ไม่มี font = Sarabun ขนาดเดิม · Charm ขยายตาม scale', () => {
+    const plain = buildStickerSheetHtml([{ snapshot: snapshot(), pages: 1 }], {
+      googleFonts: false,
+    });
+    expect(plain).toContain("font-family:'Sarabun','Sarabun'");
+    expect(plain).toContain('font-size:10.5px');
+    const charm = buildStickerSheetHtml(
+      [{ snapshot: snapshot({ font: 'charm' }), pages: 1 }],
+      {
+        googleFonts: false,
+      },
+    );
+    expect(charm).toContain('font-size:11.55px');
+  });
+
+  it('ฟอนต์ไม่รู้จักจากข้อมูลเก่า → Sarabun', () => {
+    const html = buildStickerSheetHtml(
+      [{ snapshot: snapshot({ font: 'xx' as never }), pages: 1 }],
+      { googleFonts: false },
+    );
+    expect(html).toContain("font-family:'Sarabun','Sarabun'");
+  });
+});

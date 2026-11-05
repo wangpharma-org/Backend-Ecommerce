@@ -26,6 +26,7 @@ import {
 import {
   DOTS_PER_SHEET,
   STICKER_FEATURE_FLAG,
+  STICKER_FONTS,
   STICKER_MAX_LENGTH,
   STICKER_PACKS,
   STICKER_PRO_CODE,
@@ -175,6 +176,7 @@ export class StickerLabelService {
     return {
       printModes,
       langs: enabledStickerLangs(),
+      fonts: STICKER_FONTS,
       maxLength: STICKER_MAX_LENGTH,
       dotsPerSheet: DOTS_PER_SHEET,
     };
@@ -332,6 +334,7 @@ export class StickerLabelService {
       line3: snapshot.line3,
       lang: snapshot.lang,
       ...(snapshot.lang2 ? { lang2: snapshot.lang2 } : {}),
+      ...(snapshot.font ? { font: snapshot.font } : {}),
       printMode: snapshot.printMode,
       color: snapshot.color,
       packSize: snapshot.packSize,

@@ -10,6 +10,22 @@ export const STICKER_FEATURE_FLAG = 'sticker_label';
 
 export type StickerPrintMode = 'bw' | 'color';
 export type StickerLang = 'th' | 'en' | 'zh' | 'ru' | 'ar' | 'my';
+
+/**
+ * ฟอนต์ของฉลาก (ทั้งดวง) — Google Fonts ไลเซนส์ OFL ฝังในไฟล์พิมพ์ (src/sticker-label/fonts)
+ * มีเฉพาะอักษรไทย/ละติน · จีน/อาหรับ/พม่า/รัสเซีย fallback ไปฟอนต์ Noto ของภาษานั้น
+ * ไม่ระบุ = sarabun (ข้อมูลเดิมก่อนมีฟิลด์นี้)
+ */
+export const STICKER_FONTS = [
+  'sarabun',
+  'prompt',
+  'kanit',
+  'mitr',
+  'trirong',
+  'charm',
+] as const;
+export type StickerFont = (typeof STICKER_FONTS)[number];
+export const DEFAULT_STICKER_FONT: StickerFont = 'sarabun';
 export type StickerPackSize = '1' | '50';
 
 /** print mode กำหนดรหัสสินค้า — client ส่งได้แค่ mode */
@@ -56,6 +72,8 @@ export interface StickerCustomOptions {
    * ไม่มี = ฉลากภาษาเดียว (ข้อมูลเดิมก่อนมีฟิลด์นี้ก็เป็นแบบนี้)
    */
   lang2?: StickerLang;
+  /** ไม่ระบุ = sarabun */
+  font?: StickerFont;
   printMode: StickerPrintMode;
   /** hex #RRGGBB เฉพาะ mode color · bw เป็น null เสมอ */
   color: string | null;
@@ -141,6 +159,16 @@ export function normalizeStickerOptions(
     }
   }
 
+  let font: StickerFont | undefined;
+  if (raw.font != null && raw.font !== '') {
+    font = raw.font as StickerFont;
+    if (!STICKER_FONTS.includes(font)) {
+      throw new BadRequestException(`font ต้องเป็น ${STICKER_FONTS.join('|')}`);
+    }
+    // ค่าเริ่มต้นไม่เก็บ — รูปแบบเดิม (ไม่มี font) กับ sarabun เป็นแบบเดียวกัน
+    if (font === DEFAULT_STICKER_FONT) font = undefined;
+  }
+
   let color: string | null = null;
   if (printMode === 'color') {
     if (typeof raw.color !== 'string' || !HEX_COLOR.test(raw.color)) {
@@ -164,6 +192,7 @@ export function normalizeStickerOptions(
     line3: text(raw.line3, 'line3'),
     lang,
     ...(lang2 ? { lang2 } : {}),
+    ...(font ? { font } : {}),
     printMode,
     color,
     packSize,
@@ -182,6 +211,10 @@ export function hashStickerOptions(options: StickerCustomOptions): string {
     options.packSize,
     // ต่อท้ายเฉพาะฉลาก 2 ภาษา — hash ของฉลากภาษาเดียวเท่าเดิม
     ...(options.lang2 ? [options.lang2] : []),
+    // ฟอนต์ที่ไม่ใช่ค่าเริ่มต้น — hash ของรูปแบบเดิมเท่าเดิม
+    ...(options.font && options.font !== DEFAULT_STICKER_FONT
+      ? [`font:${options.font}`]
+      : []),
   ]);
   return createHash('sha1').update(canonical).digest('hex');
 }

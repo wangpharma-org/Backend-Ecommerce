@@ -219,3 +219,34 @@ describe('ฉลาก 2 ภาษา (lang2)', () => {
     );
   });
 });
+
+describe('ฟอนต์ของฉลาก', () => {
+  it('รับเฉพาะฟอนต์ในรายการ · sarabun (ค่าเริ่มต้น) ไม่เก็บ', () => {
+    expect(
+      normalizeStickerOptions({ ...base, font: 'kanit' }, ALL_LANGS).font,
+    ).toBe('kanit');
+    expect(
+      normalizeStickerOptions({ ...base, font: 'sarabun' }, ALL_LANGS),
+    ).not.toHaveProperty('font');
+    expect(
+      normalizeStickerOptions({ ...base, font: '' }, ALL_LANGS),
+    ).not.toHaveProperty('font');
+    expect(() =>
+      normalizeStickerOptions({ ...base, font: 'Comic Sans' }, ALL_LANGS),
+    ).toThrow(BadRequestException);
+  });
+
+  it('hash ของรูปแบบเดิม (ไม่มี font) เท่า sarabun · ฟอนต์อื่นได้ hash ใหม่', () => {
+    const plain = normalizeStickerOptions(base, ALL_LANGS);
+    const sarabun = normalizeStickerOptions(
+      { ...base, font: 'sarabun' },
+      ALL_LANGS,
+    );
+    const kanit = normalizeStickerOptions(
+      { ...base, font: 'kanit' },
+      ALL_LANGS,
+    );
+    expect(hashStickerOptions(sarabun)).toBe(hashStickerOptions(plain));
+    expect(hashStickerOptions(kanit)).not.toBe(hashStickerOptions(plain));
+  });
+});
