@@ -12,7 +12,7 @@ interface PairWindow {
   end: Date;
 }
 
-interface PairConflict {
+export interface PairConflict {
   source: string;
   buyCode: string;
   giftCode: string;
@@ -48,7 +48,18 @@ export class PromoOverlapService {
     buyCodes: string[];
     giftCodes: string[];
   }): Promise<void> {
-    if (!data.buyCodes.length || !data.giftCodes.length) return;
+    this.throwIfConflict(await this.findPromotionPairConflicts(data));
+  }
+
+  // เหมือน assertPromotionPairAvailable แต่คืนรายการที่ชนแทนการ throw — ใช้ตอนเพิ่มสินค้าหลายตัวแล้วข้ามตัวที่ชน
+  async findPromotionPairConflicts(data: {
+    promo_id: number;
+    start_date: Date;
+    end_date: Date;
+    buyCodes: string[];
+    giftCodes: string[];
+  }): Promise<PairConflict[]> {
+    if (!data.buyCodes.length || !data.giftCodes.length) return [];
 
     const window: PairWindow = { start: data.start_date, end: data.end_date };
     const [hotdealConflicts, promotionConflicts] = await Promise.all([
@@ -63,7 +74,7 @@ export class PromoOverlapService {
         excludePromoId: data.promo_id,
       }),
     ]);
-    this.throwIfConflict([...hotdealConflicts, ...promotionConflicts]);
+    return [...hotdealConflicts, ...promotionConflicts];
   }
 
   private async findHotdealConflicts(

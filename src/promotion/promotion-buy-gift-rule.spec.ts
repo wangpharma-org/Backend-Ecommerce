@@ -110,6 +110,7 @@ describe('PromotionService buy/gift rule (ทุก tier ในโปรเด�
       {} as unknown as Repository<PromotionTypePolicyEntity>,
       dataSource as unknown as DataSource,
       overlap as never,
+      {} as never,
     );
     usage = jest.spyOn(
       service as unknown as {

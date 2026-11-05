@@ -29,6 +29,7 @@ describe('PromotionService.cronCleanupExpiredPromotions', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     await service.cronCleanupExpiredPromotions();
