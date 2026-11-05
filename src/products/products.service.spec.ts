@@ -14,6 +14,7 @@ import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 import { ProductLabelRulesService } from 'src/product-label-rules/product-label-rules.service';
+import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -89,6 +90,10 @@ describe('ProductsService — unit helpers', () => {
         {
           provide: MonthlyDealPublisherService,
           useValue: { publishSnapshot: jest.fn() },
+        },
+        {
+          provide: FeatureFlagsService,
+          useValue: { getFlag: jest.fn().mockResolvedValue(false) },
         },
       ],
     }).compile();
@@ -263,6 +268,7 @@ describe('ProductsService — unit helpers', () => {
         'innerJoin',
         'setParameter',
         'select',
+        'addSelect',
         'where',
         'andWhere',
         'orderBy',
@@ -296,7 +302,11 @@ describe('ProductsService — unit helpers', () => {
       dbRows: ReturnType<typeof product>[];
     }) => {
       const qb = makeQb(opts.dbRows);
-      const fallback = jest.fn().mockResolvedValue(opts.dbCodes ?? []);
+      const fallback = jest
+        .fn()
+        .mockResolvedValue(
+          (opts.dbCodes ?? []).map((pro_code) => ({ pro_code })),
+        );
       Object.assign(service, {
         productRepo: { createQueryBuilder: jest.fn(() => qb) },
         elasticsearchService: {
@@ -374,18 +384,120 @@ describe('ProductsService — unit helpers', () => {
       expect(result.totalCount).toBe(1);
     });
 
+    describe('flag search_all_sources เปิด (ECWC-751)', () => {
+      // ES: E1,E2 · DB LIKE: P1,E1,E9 (E9 อยู่ใน ES แต่คนละหน้า) · เว็บเก่า: X1 (ผ่านตัวกรอง), X2 (ถูกกรองทิ้ง)
+      const setupMerged = (opts: {
+        esCodes: string[];
+        esFails?: boolean;
+        esAlsoMatches?: string[];
+        dbRows?: { pro_code: string; pro_barcode1?: string }[];
+        external?: string[];
+        legacyAllowed?: string[];
+      }) => {
+        const allCodes = [
+          ...opts.esCodes,
+          ...(opts.dbRows ?? []).map((row) => row.pro_code),
+          ...(opts.external ?? []),
+        ];
+        const { fallback } = setup({
+          esCodes: [],
+          external: opts.external,
+          dbRows: allCodes.map((code) => product(code)),
+        });
+        fallback.mockImplementation((args: { pro_codes?: string[] }) =>
+          Promise.resolve(
+            args.pro_codes
+              ? args.pro_codes
+                  .filter((code) => opts.legacyAllowed?.includes(code))
+                  .map((pro_code) => ({ pro_code }))
+              : (opts.dbRows ?? []),
+          ),
+        );
+        const esSearch = jest.fn((body: { query: { bool: object } }) => {
+          if (opts.esFails) {
+            return Promise.reject(new Error('es down'));
+          }
+          const isMembershipCheck = 'must' in body.query.bool;
+          return Promise.resolve(
+            esResult(
+              isMembershipCheck
+                ? [...opts.esCodes, ...(opts.esAlsoMatches ?? [])]
+                : opts.esCodes,
+            ),
+          );
+        });
+        Object.assign(service, {
+          elasticsearchService: { search: esSearch },
+          featureFlagsService: { getFlag: jest.fn().mockResolvedValue(true) },
+        });
+        return { fallback, esSearch };
+      };
+
+      it('รวม ES + เว็บเก่า + DB ไม่ซ้ำ และตัดตัวที่ ES นับไว้แล้ว', async () => {
+        setupMerged({
+          esCodes: ['E1', 'E2'],
+          esAlsoMatches: ['E9'],
+          dbRows: [{ pro_code: 'P1' }, { pro_code: 'E1' }, { pro_code: 'E9' }],
+          external: ['X1', 'X2'],
+          legacyAllowed: ['X1'],
+        });
+
+        const result = await search();
+
+        expect(result.products.map((p) => p.pro_code)).toEqual([
+          'E1',
+          'E2',
+          'X1',
+          'P1',
+        ]);
+        // esTotal 2 + rest X1,P1 (E1 ซ้ำ, E9 ES นับแล้ว, X2 ถูกกรอง)
+        expect(result.totalCount).toBe(4);
+      });
+
+      it('รหัส/บาร์โค้ดตรงเป๊ะที่ ES หาไม่เจอขึ้นก่อนผล ES', async () => {
+        setupMerged({
+          esCodes: ['E1'],
+          dbRows: [
+            { pro_code: 'P1' },
+            { pro_code: 'B1', pro_barcode1: 'พารา' },
+          ],
+        });
+
+        const result = await search();
+
+        expect(result.products.map((p) => p.pro_code)).toEqual([
+          'B1',
+          'E1',
+          'P1',
+        ]);
+      });
+
+      it('ES ล่มยังได้ผลจาก DB', async () => {
+        setupMerged({
+          esCodes: ['E1'],
+          esFails: true,
+          dbRows: [{ pro_code: 'P1' }],
+        });
+
+        const result = await search();
+
+        expect(result.products.map((p) => p.pro_code)).toEqual(['P1']);
+        expect(result.totalCount).toBe(1);
+      });
+    });
+
     it('escapes LIKE wildcards and filters L16-only products for non-L16 shops', async () => {
       const qb = makeQb([], [{ pro_code: 'P1' }]);
       Object.assign(service, {
         productRepo: { createQueryBuilder: jest.fn(() => qb) },
       });
 
-      const codes = await (service as any).searchProductCodesFromDb({
+      const rows = await (service as any).searchProductCodesFromDb({
         keyword: '50%_a',
         isL16: false,
       });
 
-      expect(codes).toEqual(['P1']);
+      expect(rows).toEqual([{ pro_code: 'P1' }]);
       const sub = { orWhere: jest.fn() };
       qb.where.mock.calls[0][0].whereFactory(sub);
       expect(sub.orWhere).toHaveBeenCalledWith('product.pro_name LIKE :like', {

@@ -66,6 +66,12 @@ e2e: `scripts/e2e/preorder.e2e.ts`
 เปิดใช้ด้วย feature flag `sticker_label` (migration สร้างไว้เป็นปิด) + env `STICKER_LABEL_ENABLED_LANGS`, `STICKER_PRINTERS` รายละเอียดใน [docs/sticker-label.md](docs/sticker-label.md)
 e2e: `scripts/e2e/sticker-label.e2e.ts`
 
+## ค้นหาสินค้ารวมทุกแหล่ง
+
+`search-products` / `category-products` / `product-search-autocomplete` — flag `search_all_sources` เปิด = ยิง ES + เว็บเก่า + DB พร้อมกันแล้วรวมไม่ซ้ำ (ปิด = ES ก่อน แหล่งอื่นเฉพาะเมื่อ ES ได้ 0) ลำดับ/แบ่งหน้าอยู่ใน [src/products/search-merge.util.ts](src/products/search-merge.util.ts) ผลเว็บเก่าต้องกรองซ้ำที่ DB เสมอ
+เปิดใช้ด้วย feature flag `search_all_sources` (migration สร้างไว้เป็นปิด) + env `SEARCH_LEGACY_TIMEOUT_MS` รายละเอียดใน [docs/search-all-sources.md](docs/search-all-sources.md)
+e2e: `scripts/e2e/search-all-sources.e2e.ts`
+
 ## ร้านล่าสุดที่รถส่งถึง + ความยินยอมแสดงชื่อร้าน (PDPA)
 
 โมดูล [src/store-visibility/](src/store-visibility/) + `order-status-v2` — ที่อยู่ ต./อ./จ. แสดงเสมอ (ม.24(5)), ชื่อร้าน/พิกัดเป๊ะเฉพาะร้านที่ยินยอม (ม.19) สถานะ 3 แบบ + log เพิ่มอย่างเดียว, ข้อความ consent อยู่ฝั่ง backend (`store-visibility.consent.ts`) — แยกจาก popup ToS ของ `policy-doc` โดยตั้งใจ

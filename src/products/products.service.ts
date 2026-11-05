@@ -42,6 +42,18 @@ import {
 } from './redeem-product.criteria';
 import { RedeemProductSetService } from 'src/fix-free/redeem-product-set.service';
 import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
+import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
+import {
+  notSlashFreeGiftSql,
+  SLASH_FREE_GIFT_ES_CLAUSE,
+  slashFreeGiftParams,
+} from './free-gift-name.util';
+import {
+  esWindowFor,
+  mergeSearchPage,
+  SearchCandidateRow,
+  splitExtraCandidates,
+} from './search-merge.util';
 import {
   applyVisibleProductFilter,
   isHiddenProduct,
@@ -112,6 +124,15 @@ interface ApiResponse {
 
 type L16VisibilityFilter = 'all' | 'hidden' | 'visible';
 
+// ECWC-751: ค้นหาสินค้ารวมทุกแหล่ง
+const SEARCH_ALL_SOURCES_FLAG = 'search_all_sources';
+const LEGACY_SEARCH_TIMEOUT_MS = 10000;
+// ยิงเว็บเก่าคู่กับ ES/DB ทุกครั้ง → รอสั้นกว่าตอนเป็น fallback ไม่งั้นช่องค้นหาช้าตามเว็บเก่า
+const DEFAULT_PARALLEL_LEGACY_TIMEOUT_MS = 3000;
+// ค้นในหมวดหมู่: ดึงรหัสจาก ES ไปรวมใน SQL ได้สูงสุดเท่านี้
+const CATEGORY_ES_CODE_LIMIT = 500;
+const AUTOCOMPLETE_LIMIT = 20;
+
 interface ProductL16StatusQuery {
   page?: number;
   limit?: number;
@@ -150,6 +171,7 @@ export class ProductsService {
     private readonly productLabelRulesService: ProductLabelRulesService,
     private readonly redeemProductSetService: RedeemProductSetService,
     private readonly monthlyDealPublisher: MonthlyDealPublisherService,
+    private readonly featureFlagsService: FeatureFlagsService,
   ) {}
 
   private convertEnumToUnitName(
@@ -1279,6 +1301,16 @@ export class ProductsService {
       const currentDate = now.toISOString().split('T')[0];
       const currentTime = now.toTimeString().split(' ')[0];
 
+      // ECWC-751: flag search_all_sources เปิด = รวมรหัสที่ ES/เว็บเก่าเจอเข้ากับ LIKE ด้วย
+      // (หมวดแลกแต้ม 8 ไม่ใช้ keyword อยู่แล้ว) ตัวซ้ำไม่เกิดเพราะรวมกันใน WHERE เดียว
+      const keyword = data.keyword?.trim();
+      const extraCodes =
+        data.category !== 8 &&
+        keyword &&
+        (await this.isSearchAllSourcesEnabled())
+          ? await this.searchCategoryExtraCodes(keyword, isL16)
+          : [];
+
       const qb = this.productRepo
         .createQueryBuilder('product')
         .leftJoinAndSelect(
@@ -1333,6 +1365,11 @@ export class ProductsService {
                 .orWhere('product.pro_nameTH LIKE :keyword', {
                   keyword: `%${data.keyword}%`,
                 });
+              if (extraCodes.length > 0) {
+                qb.orWhere('product.pro_code IN (:...extraCodes)', {
+                  extraCodes,
+                });
+              }
             }),
           )
           .andWhere(
@@ -1365,9 +1402,10 @@ export class ProductsService {
                 .andWhere('product.pro_name NOT LIKE :freePrefix', {
                   freePrefix: 'FREE/%',
                 })
-                .andWhere('product.pro_name NOT LIKE :slashFree', {
-                  slashFree: '%/ฟรี%',
-                });
+                .andWhere(
+                  notSlashFreeGiftSql('product'),
+                  slashFreeGiftParams(),
+                );
 
               if (data.category === 7) {
                 qb.andWhere('product.pro_promotion_month = :month', {
@@ -1680,13 +1718,13 @@ export class ProductsService {
   // fallback สุดท้ายเมื่อ ES และเว็บเก่า (search_auto/search_enter) ไม่เจออะไรเลย
   // ค้น LIKE ตรงใน DB แบบเดิม — คืนแค่ pro_code ให้ไป fetch/paginate ร่วมกับ flow ปกติ
   // เงื่อนไขกรองต้องตรงกับ must_not ของ ES (isSearchExcludedProduct กรองซ้ำอีกชั้นหลัง fetch)
+  // ECWC-751: ส่ง pro_codes แทน keyword = กรองรหัสจากแหล่งอื่น (เว็บเก่า) ด้วยเงื่อนไขชุดเดียวกับ ES
   private async searchProductCodesFromDb(data: {
-    keyword: string;
+    keyword?: string;
+    pro_codes?: string[];
     isL16: boolean;
     creditor_codes?: string[];
-  }): Promise<string[]> {
-    const escaped = data.keyword.replace(/[\\%_]/g, (c) => `\\${c}`);
-    const like = `%${escaped}%`;
+  }): Promise<SearchCandidateRow[]> {
     const searchColumns = [
       'pro_code',
       'pro_name',
@@ -1708,14 +1746,30 @@ export class ProductsService {
     const qb = this.productRepo
       .createQueryBuilder('product')
       .select('product.pro_code', 'pro_code')
-      .where(
+      .addSelect('product.pro_barcode1', 'pro_barcode1')
+      .addSelect('product.pro_barcode2', 'pro_barcode2')
+      .addSelect('product.pro_barcode3', 'pro_barcode3');
+
+    if (data.pro_codes) {
+      if (data.pro_codes.length === 0) {
+        return [];
+      }
+      qb.where('product.pro_code IN (:...restrictCodes)', {
+        restrictCodes: data.pro_codes,
+      });
+    } else {
+      const escaped = (data.keyword ?? '').replace(/[\\%_]/g, (c) => `\\${c}`);
+      const like = `%${escaped}%`;
+      qb.where(
         new Brackets((sub) => {
           for (const column of searchColumns) {
             sub.orWhere(`product.${column} LIKE :like`, { like });
           }
         }),
-      )
-      .andWhere('product.pro_priceA > 0')
+      );
+    }
+
+    qb.andWhere('product.pro_priceA > 0')
       .andWhere('product.pro_priceB > 0')
       .andWhere('product.pro_priceC > 0')
       .andWhere('product.pro_priceA NOT IN (1, 10000000)')
@@ -1737,7 +1791,7 @@ export class ProductsService {
             .andWhere('product.pro_name NOT LIKE :p8', { p8: '.%' })
             .andWhere('product.pro_name NOT LIKE :p9', { p9: 'FREE/%' })
             .andWhere('product.pro_name NOT LIKE :c1', { c1: '%ฟรี' })
-            .andWhere('product.pro_name NOT LIKE :c2', { c2: '%/ฟรี%' })
+            .andWhere(notSlashFreeGiftSql('product'), slashFreeGiftParams())
             .andWhere('product.pro_name NOT LIKE :c3', { c3: '%บัตรโลตัส%' })
             .andWhere('product.pro_name NOT LIKE :c4', { c4: '%สนับสนุน%' })
             .andWhere('product.pro_name NOT LIKE :c5', { c5: '%ชดเชย%' });
@@ -1757,8 +1811,414 @@ export class ProductsService {
       );
     }
 
-    const rows = await qb.getRawMany<{ pro_code: string }>();
-    return rows.map((row) => row.pro_code).filter(Boolean);
+    const rows = await qb.getRawMany<SearchCandidateRow>();
+    return rows.filter((row) => Boolean(row.pro_code));
+  }
+
+  // ECWC-751: query เดียวกันใช้ทั้งค้นหาหลัก, เช็คว่า ES เจอรหัสไหนบ้าง และดึงรหัสไปรวมในค้นหาหมวดหมู่
+  private buildProductEsQuery(
+    keyword: string | undefined,
+    isL16: boolean,
+    creditorCodes?: string[],
+  ): Record<string, unknown> {
+    return {
+      bool: {
+        filter: [
+          { range: { pro_priceA: { gt: 0 } } },
+          { range: { pro_priceB: { gt: 0 } } },
+          { range: { pro_priceC: { gt: 0 } } },
+          ...(creditorCodes?.length
+            ? [
+                {
+                  terms: {
+                    'creditor_code.keyword': creditorCodes,
+                  },
+                },
+              ]
+            : []),
+        ],
+        must_not: [
+          { prefix: { 'pro_code.keyword': '@MESSAGE' } },
+          { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
+          { prefix: { 'pro_code.keyword': '@M' } },
+          { prefix: { 'pro_name.keyword': 'ฟรี' } },
+          {
+            prefix: {
+              'pro_name.keyword': {
+                value: 'FREE/',
+                case_insensitive: true,
+              },
+            },
+          },
+          { prefix: { 'pro_name.keyword': '@' } },
+          { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
+          { prefix: { 'pro_name.keyword': 'รีเบท' } },
+          { prefix: { 'pro_name.keyword': '-' } },
+          { prefix: { 'pro_name.keyword': '/' } },
+          { prefix: { 'pro_name.keyword': 'ค่า' } },
+          { prefix: { 'pro_name.keyword': '.' } },
+          { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
+          SLASH_FREE_GIFT_ES_CLAUSE,
+          {
+            wildcard: {
+              'pro_name.keyword': { value: '*บัตรโลตัส*' },
+            },
+          },
+          {
+            wildcard: {
+              'pro_name.keyword': { value: '*สนับสนุน*' },
+            },
+          },
+          { wildcard: { 'pro_name.keyword': { value: '*ชดเชย*' } } },
+          { terms: { pro_priceA: [1, 10000000] } },
+          { terms: { pro_priceB: [1, 10000000] } },
+          { terms: { pro_priceC: [1, 10000000] } },
+          { exists: { field: 'invisible_id' } },
+          // WGDD-428: งดแสดงบนหน้าร้าน
+          { term: { pro_hidden: true } },
+          ...(isL16
+            ? []
+            : [
+                {
+                  term: {
+                    pro_l16_only: 1,
+                  },
+                },
+              ]),
+        ],
+        ...(keyword
+          ? {
+              should: [
+                {
+                  term: {
+                    'pro_code.keyword': {
+                      value: keyword,
+                      boost: 200,
+                    },
+                  },
+                },
+                {
+                  term: {
+                    'pro_barcode1.keyword': {
+                      value: keyword,
+                      boost: 180,
+                    },
+                  },
+                },
+                {
+                  term: {
+                    'pro_barcode2.keyword': {
+                      value: keyword,
+                      boost: 160,
+                    },
+                  },
+                },
+                {
+                  term: {
+                    'pro_barcode3.keyword': {
+                      value: keyword,
+                      boost: 160,
+                    },
+                  },
+                },
+                {
+                  term: {
+                    'pro_keysearch.keyword': {
+                      value: keyword,
+                      boost: 100,
+                    },
+                  },
+                },
+                {
+                  match_phrase: {
+                    pro_keysearch: {
+                      query: keyword,
+                      boost: 80,
+                    },
+                  },
+                },
+                {
+                  match_phrase: {
+                    pro_name: {
+                      query: keyword,
+                      boost: 70,
+                    },
+                  },
+                },
+                {
+                  match_phrase: {
+                    pro_nameSale: {
+                      query: keyword,
+                      boost: 70,
+                    },
+                  },
+                },
+                {
+                  match: {
+                    pro_keysearch: {
+                      query: keyword,
+                      operator: 'and',
+                      fuzziness: 'AUTO',
+                      boost: 50,
+                    },
+                  },
+                },
+                {
+                  multi_match: {
+                    query: keyword,
+                    fields: [
+                      'pro_keysearch^20',
+                      'pro_name^10',
+                      'pro_nameSale^10',
+                      'pro_nameEN^5',
+                      'pro_nameMain^5',
+                      'pro_nameTH^5',
+                      'pro_genericname^5',
+                      'pro_drugmain^3',
+                      'pro_drugmain2^3',
+                      'pro_drugmain3^3',
+                      'pro_drugmain4^3',
+                    ],
+                    type: 'best_fields',
+                    operator: 'and',
+                    // fuzziness: 'AUTO',
+                    boost: 30,
+                  },
+                },
+                {
+                  wildcard: {
+                    'pro_keysearch.keyword': {
+                      value: `*${keyword}*`,
+                      case_insensitive: true,
+                      boost: 70,
+                    },
+                  },
+                },
+                {
+                  wildcard: {
+                    'pro_name.keyword': {
+                      value: `*${keyword}*`,
+                      case_insensitive: true,
+                      boost: 40,
+                    },
+                  },
+                },
+                {
+                  wildcard: {
+                    'pro_nameSale.keyword': {
+                      value: `*${keyword}*`,
+                      case_insensitive: true,
+                      boost: 40,
+                    },
+                  },
+                },
+                {
+                  regexp: {
+                    'pro_keysearch.keyword': {
+                      value: `.*${keyword.split('').join('.*')}.*`,
+                      case_insensitive: true,
+                      boost: 20,
+                    },
+                  },
+                },
+              ],
+              minimum_should_match: 1,
+            }
+          : {}),
+      },
+    };
+  }
+
+  private async isSearchAllSourcesEnabled(): Promise<boolean> {
+    try {
+      return await this.featureFlagsService.getFlag(SEARCH_ALL_SOURCES_FLAG);
+    } catch (error) {
+      this.logger.warn(
+        `อ่าน flag ${SEARCH_ALL_SOURCES_FLAG} ไม่ได้ — ใช้การค้นแบบเดิม`,
+        error,
+      );
+      return false;
+    }
+  }
+
+  private parallelLegacyTimeoutMs(): number {
+    const value = Number(process.env.SEARCH_LEGACY_TIMEOUT_MS);
+    return Number.isInteger(value) && value > 0
+      ? value
+      : DEFAULT_PARALLEL_LEGACY_TIMEOUT_MS;
+  }
+
+  // ผลจากเว็บเก่าและ DB ที่ผ่านตัวกรองชุดเดียวกับ ES แล้ว — เว็บเก่าก่อน (ลำดับความเกี่ยวข้องของเว็บเก่า)
+  // ตามด้วย DB (เรียงชื่อ) ผลจากเว็บเก่าไม่ผ่านตัวกรองใดๆ มาเลย จึงต้องกรองซ้ำที่ DB
+  private async searchCandidatesOutsideEs(data: {
+    keyword: string;
+    isL16: boolean;
+    creditor_codes?: string[];
+  }): Promise<SearchCandidateRow[]> {
+    const timeoutMs = this.parallelLegacyTimeoutMs();
+    const [dbResult, externalResult, enterResult] = await Promise.allSettled([
+      this.searchProductCodesFromDb(data),
+      this.searchExternalProducts(data.keyword, timeoutMs),
+      this.searchEnterProducts(data.keyword, timeoutMs),
+    ]);
+
+    const dbRows = dbResult.status === 'fulfilled' ? dbResult.value : [];
+    if (dbResult.status === 'rejected') {
+      this.logger.warn('DB search failed', dbResult.reason);
+    }
+    const legacyCodes = [
+      ...(enterResult.status === 'fulfilled' ? enterResult.value : []),
+      ...(externalResult.status === 'fulfilled'
+        ? externalResult.value.map((product) => product.pro_code)
+        : []),
+    ];
+
+    const dbCodes = new Set(dbRows.map((row) => row.pro_code));
+    const legacyOnly = Array.from(new Set(legacyCodes)).filter(
+      (code) => Boolean(code) && !dbCodes.has(code),
+    );
+    if (legacyOnly.length === 0) {
+      return dbRows;
+    }
+
+    try {
+      const filtered = await this.searchProductCodesFromDb({
+        pro_codes: legacyOnly,
+        isL16: data.isL16,
+        creditor_codes: data.creditor_codes,
+      });
+      const filteredMap = new Map(filtered.map((row) => [row.pro_code, row]));
+      const legacyRows = legacyOnly
+        .map((code) => filteredMap.get(code))
+        .filter(Boolean) as SearchCandidateRow[];
+      return [...legacyRows, ...dbRows];
+    } catch (error) {
+      this.logger.warn('Filter legacy search results failed', error);
+      return dbRows;
+    }
+  }
+
+  // ECWC-751: ค้นทุกแหล่งพร้อมกันแล้วรวมเป็นหน้าเดียว ไม่ซ้ำ — ดูลำดับใน search-merge.util.ts
+  private async searchProductCodesAllSources(data: {
+    keyword: string;
+    isL16: boolean;
+    creditor_codes?: string[];
+    offset: number;
+    limit: number;
+  }): Promise<{ codes: string[]; totalCount: number }> {
+    const query = this.buildProductEsQuery(
+      data.keyword,
+      data.isL16,
+      data.creditor_codes,
+    );
+    const esWindow = esWindowFor(data.offset, data.limit);
+
+    const [esResult, candidates] = await Promise.all([
+      this.elasticsearchService
+        .search<{ pro_code: string }>({
+          from: esWindow.from,
+          size: esWindow.size,
+          track_total_hits: true,
+          sort: [{ _score: { order: 'desc' } }],
+          _source: ['pro_code'],
+          query,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            'Elasticsearch search failed, using other sources only',
+            error,
+          );
+          return null;
+        }),
+      this.searchCandidatesOutsideEs(data),
+    ]);
+
+    const esCodes = esResult
+      ? esResult.hits.hits
+          .map((hit) => hit._source?.pro_code)
+          .filter((code): code is string => Boolean(code))
+      : [];
+    const esTotal = esResult
+      ? typeof esResult.hits.total === 'number'
+        ? esResult.hits.total
+        : (esResult.hits.total?.value ?? 0)
+      : 0;
+
+    // ES ดึงมาแค่หน้าปัจจุบัน — ต้องถาม ES ว่าตัวที่แหล่งอื่นเจอ ES นับรวมอยู่แล้วหรือยัง
+    // ไม่งั้นตัวเดียวกันจะโผล่ทั้งในช่วงผล ES (หน้าอื่น) และช่วงท้าย
+    const esMatched = new Set(esCodes);
+    const toCheck = Array.from(
+      new Set(candidates.map((row) => row.pro_code)),
+    ).filter((code) => !esMatched.has(code));
+    if (esResult && toCheck.length > 0) {
+      try {
+        const check = await this.elasticsearchService.search<{
+          pro_code: string;
+        }>({
+          size: toCheck.length,
+          _source: ['pro_code'],
+          query: {
+            bool: {
+              must: [query],
+              filter: [{ terms: { 'pro_code.keyword': toCheck } }],
+            },
+          },
+        });
+        for (const hit of check.hits.hits) {
+          if (hit._source?.pro_code) {
+            esMatched.add(hit._source.pro_code);
+          }
+        }
+      } catch (error) {
+        this.logger.warn('Elasticsearch membership check failed', error);
+      }
+    }
+
+    const { pinned, rest } = splitExtraCandidates(
+      data.keyword,
+      candidates,
+      esMatched,
+    );
+    return mergeSearchPage({
+      pinned,
+      esCodes,
+      esFrom: esWindow.from,
+      esTotal,
+      rest,
+      offset: data.offset,
+      limit: data.limit,
+    });
+  }
+
+  // ECWC-751: รหัสที่ ES + เว็บเก่าเจอ เอาไปรวมกับ LIKE ของค้นในหมวดหมู่ (หมวด/สถานะ/ตัวกรองยังทำใน SQL)
+  private async searchCategoryExtraCodes(
+    keyword: string,
+    isL16: boolean,
+  ): Promise<string[]> {
+    const timeoutMs = this.parallelLegacyTimeoutMs();
+    const [esCodes, externalCodes, enterCodes] = await Promise.all([
+      this.elasticsearchService
+        .search<{ pro_code: string }>({
+          size: CATEGORY_ES_CODE_LIMIT,
+          sort: [{ _score: { order: 'desc' } }],
+          _source: ['pro_code'],
+          query: this.buildProductEsQuery(keyword, isL16),
+        })
+        .then((result) =>
+          result.hits.hits.map((hit) => hit._source?.pro_code ?? ''),
+        )
+        .catch((error: unknown) => {
+          this.logger.warn('Elasticsearch category search failed', error);
+          return [] as string[];
+        }),
+      this.searchExternalProducts(keyword, timeoutMs).then((products) =>
+        products.map((product) => product.pro_code),
+      ),
+      this.searchEnterProducts(keyword, timeoutMs),
+    ]);
+    return Array.from(
+      new Set([...esCodes, ...externalCodes, ...enterCodes]),
+    ).filter(Boolean);
   }
 
   async searchProductsElastic(data: {
@@ -1789,290 +2249,112 @@ export class ProductsService {
 
       const isL16 = await this.isL16Member(data.mem_code, data.mem_route);
 
-      try {
-        const esResult =
-          await this.elasticsearchService.search<EsProductSource>({
-            from: data.offset,
-            size: data.limit,
-            track_total_hits: true,
-            sort: keyword
-              ? [{ _score: { order: 'desc' } }]
-              : [{ 'pro_code.keyword': { order: 'asc' } }],
-            _source: ['pro_code', 'pro_name', 'pro_nameSale', 'pro_keysearch'],
-            query: {
-              bool: {
-                filter: [
-                  { range: { pro_priceA: { gt: 0 } } },
-                  { range: { pro_priceB: { gt: 0 } } },
-                  { range: { pro_priceC: { gt: 0 } } },
-                  ...(data.creditor_codes?.length
-                    ? [
-                        {
-                          terms: {
-                            'creditor_code.keyword': data.creditor_codes,
-                          },
-                        },
-                      ]
-                    : []),
-                ],
-                must_not: [
-                  { prefix: { 'pro_code.keyword': '@MESSAGE' } },
-                  { prefix: { 'pro_code.keyword': '@MAESSAGE' } },
-                  { prefix: { 'pro_code.keyword': '@M' } },
-                  { prefix: { 'pro_name.keyword': 'ฟรี' } },
-                  {
-                    prefix: {
-                      'pro_name.keyword': {
-                        value: 'FREE/',
-                        case_insensitive: true,
-                      },
-                    },
-                  },
-                  { prefix: { 'pro_name.keyword': '@' } },
-                  { prefix: { 'pro_name.keyword': 'ส่งเสริม' } },
-                  { prefix: { 'pro_name.keyword': 'รีเบท' } },
-                  { prefix: { 'pro_name.keyword': '-' } },
-                  { prefix: { 'pro_name.keyword': '/' } },
-                  { prefix: { 'pro_name.keyword': 'ค่า' } },
-                  { prefix: { 'pro_name.keyword': '.' } },
-                  { wildcard: { 'pro_name.keyword': { value: '*ฟรี' } } },
-                  { wildcard: { 'pro_name.keyword': { value: '*/ฟรี*' } } },
-                  {
-                    wildcard: {
-                      'pro_name.keyword': { value: '*บัตรโลตัส*' },
-                    },
-                  },
-                  {
-                    wildcard: {
-                      'pro_name.keyword': { value: '*สนับสนุน*' },
-                    },
-                  },
-                  { wildcard: { 'pro_name.keyword': { value: '*ชดเชย*' } } },
-                  { terms: { pro_priceA: [1, 10000000] } },
-                  { terms: { pro_priceB: [1, 10000000] } },
-                  { terms: { pro_priceC: [1, 10000000] } },
-                  { exists: { field: 'invisible_id' } },
-                  // WGDD-428: งดแสดงบนหน้าร้าน
-                  { term: { pro_hidden: true } },
-                  ...(isL16
-                    ? []
-                    : [
-                        {
-                          term: {
-                            pro_l16_only: 1,
-                          },
-                        },
-                      ]),
-                ],
-                ...(keyword
-                  ? {
-                      should: [
-                        {
-                          term: {
-                            'pro_code.keyword': {
-                              value: keyword,
-                              boost: 200,
-                            },
-                          },
-                        },
-                        {
-                          term: {
-                            'pro_barcode1.keyword': {
-                              value: keyword,
-                              boost: 180,
-                            },
-                          },
-                        },
-                        {
-                          term: {
-                            'pro_barcode2.keyword': {
-                              value: keyword,
-                              boost: 160,
-                            },
-                          },
-                        },
-                        {
-                          term: {
-                            'pro_barcode3.keyword': {
-                              value: keyword,
-                              boost: 160,
-                            },
-                          },
-                        },
-                        {
-                          term: {
-                            'pro_keysearch.keyword': {
-                              value: keyword,
-                              boost: 100,
-                            },
-                          },
-                        },
-                        {
-                          match_phrase: {
-                            pro_keysearch: {
-                              query: keyword,
-                              boost: 80,
-                            },
-                          },
-                        },
-                        {
-                          match_phrase: {
-                            pro_name: {
-                              query: keyword,
-                              boost: 70,
-                            },
-                          },
-                        },
-                        {
-                          match_phrase: {
-                            pro_nameSale: {
-                              query: keyword,
-                              boost: 70,
-                            },
-                          },
-                        },
-                        {
-                          match: {
-                            pro_keysearch: {
-                              query: keyword,
-                              operator: 'and',
-                              fuzziness: 'AUTO',
-                              boost: 50,
-                            },
-                          },
-                        },
-                        {
-                          multi_match: {
-                            query: keyword,
-                            fields: [
-                              'pro_keysearch^20',
-                              'pro_name^10',
-                              'pro_nameSale^10',
-                              'pro_nameEN^5',
-                              'pro_nameMain^5',
-                              'pro_nameTH^5',
-                              'pro_genericname^5',
-                              'pro_drugmain^3',
-                              'pro_drugmain2^3',
-                              'pro_drugmain3^3',
-                              'pro_drugmain4^3',
-                            ],
-                            type: 'best_fields',
-                            operator: 'and',
-                            // fuzziness: 'AUTO',
-                            boost: 30,
-                          },
-                        },
-                        {
-                          wildcard: {
-                            'pro_keysearch.keyword': {
-                              value: `*${keyword}*`,
-                              case_insensitive: true,
-                              boost: 70,
-                            },
-                          },
-                        },
-                        {
-                          wildcard: {
-                            'pro_name.keyword': {
-                              value: `*${keyword}*`,
-                              case_insensitive: true,
-                              boost: 40,
-                            },
-                          },
-                        },
-                        {
-                          wildcard: {
-                            'pro_nameSale.keyword': {
-                              value: `*${keyword}*`,
-                              case_insensitive: true,
-                              boost: 40,
-                            },
-                          },
-                        },
-                        {
-                          regexp: {
-                            'pro_keysearch.keyword': {
-                              value: `.*${keyword.split('').join('.*')}.*`,
-                              case_insensitive: true,
-                              boost: 20,
-                            },
-                          },
-                        },
-                      ],
-                      minimum_should_match: 1,
-                    }
-                  : {}),
-              },
-            },
-          });
-
-        const hits = esResult?.hits?.hits;
-        totalCount =
-          typeof esResult.hits.total === 'number'
-            ? esResult.hits.total
-            : (esResult.hits.total?.value ?? 0);
-
-        proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
-      } catch {
-        this.logger.warn(
-          'Elasticsearch search failed, falling back to DB search',
-        );
-      }
-
-      const fetchExternalAndEnter = async () => {
-        const [external, enter] = await Promise.all([
-          this.searchExternalProducts(data.keyword),
-          this.searchEnterProducts(data.keyword),
-        ]);
-        return { external, enter };
-      };
-
-      let additionalProCodes: string[] = [];
-
-      if (totalCount === 0) {
+      // ECWC-751: flag search_all_sources เปิด = ค้นทุกแหล่งพร้อมกันแล้วรวมไม่ซ้ำ
+      // ปิด = แบบเดิม (ES ก่อน แหล่งอื่นเฉพาะเมื่อ ES ไม่เจอเลย)
+      const searchAllSources = keyword
+        ? await this.isSearchAllSourcesEnabled()
+        : false;
+      if (searchAllSources) {
+        const merged = await this.searchProductCodesAllSources({
+          keyword,
+          isL16,
+          creditor_codes: data.creditor_codes,
+          offset: data.offset,
+          limit: data.limit,
+        });
+        proCodes = merged.codes;
+        totalCount = merged.totalCount;
+      } else {
         try {
-          const result = await fetchExternalAndEnter();
-          const externalCodes = result.external.map((p) => p.pro_code);
-          additionalProCodes = [...externalCodes, ...result.enter];
+          const esResult =
+            await this.elasticsearchService.search<EsProductSource>({
+              from: data.offset,
+              size: data.limit,
+              track_total_hits: true,
+              sort: keyword
+                ? [{ _score: { order: 'desc' } }]
+                : [{ 'pro_code.keyword': { order: 'asc' } }],
+              _source: [
+                'pro_code',
+                'pro_name',
+                'pro_nameSale',
+                'pro_keysearch',
+              ],
+              query: this.buildProductEsQuery(
+                keyword,
+                isL16,
+                data.creditor_codes,
+              ),
+            });
+
+          const hits = esResult?.hits?.hits;
+          totalCount =
+            typeof esResult.hits.total === 'number'
+              ? esResult.hits.total
+              : (esResult.hits.total?.value ?? 0);
+
+          proCodes = hits.map((hit) => hit._source?.pro_code).filter(Boolean);
         } catch {
-          this.logger.warn('Search external/enter products failed');
+          this.logger.warn(
+            'Elasticsearch search failed, falling back to DB search',
+          );
         }
 
-        if (additionalProCodes.length === 0 && keyword) {
+        const fetchExternalAndEnter = async () => {
+          const [external, enter] = await Promise.all([
+            this.searchExternalProducts(data.keyword),
+            this.searchEnterProducts(data.keyword),
+          ]);
+          return { external, enter };
+        };
+
+        let additionalProCodes: string[] = [];
+
+        if (totalCount === 0) {
           try {
-            additionalProCodes = await this.searchProductCodesFromDb({
-              keyword,
-              isL16,
-              creditor_codes: data.creditor_codes,
-            });
-          } catch (error) {
-            this.logger.warn('DB fallback search failed', error);
+            const result = await fetchExternalAndEnter();
+            const externalCodes = result.external.map((p) => p.pro_code);
+            additionalProCodes = [...externalCodes, ...result.enter];
+          } catch {
+            this.logger.warn('Search external/enter products failed');
+          }
+
+          if (additionalProCodes.length === 0 && keyword) {
+            try {
+              const rows = await this.searchProductCodesFromDb({
+                keyword,
+                isL16,
+                creditor_codes: data.creditor_codes,
+              });
+              additionalProCodes = rows.map((row) => row.pro_code);
+            } catch (error) {
+              this.logger.warn('DB fallback search failed', error);
+            }
           }
         }
-      }
 
-      if (additionalProCodes.length > 0) {
-        const uniqueNewCodes = Array.from(new Set(additionalProCodes)).filter(
-          (code) => !proCodes.includes(code),
-        );
-
-        const esTotalCount = totalCount;
-        totalCount += uniqueNewCodes.length;
-
-        const localOffset = Math.max(0, data.offset - esTotalCount);
-        const esConsumed = Math.max(
-          0,
-          Math.min(data.limit, esTotalCount - data.offset),
-        );
-        const neededFromNewCodes = data.limit - esConsumed;
-
-        if (neededFromNewCodes > 0) {
-          const paginatedNewCodes = uniqueNewCodes.slice(
-            localOffset,
-            localOffset + neededFromNewCodes,
+        if (additionalProCodes.length > 0) {
+          const uniqueNewCodes = Array.from(new Set(additionalProCodes)).filter(
+            (code) => !proCodes.includes(code),
           );
-          proCodes.push(...paginatedNewCodes);
+
+          const esTotalCount = totalCount;
+          totalCount += uniqueNewCodes.length;
+
+          const localOffset = Math.max(0, data.offset - esTotalCount);
+          const esConsumed = Math.max(
+            0,
+            Math.min(data.limit, esTotalCount - data.offset),
+          );
+          const neededFromNewCodes = data.limit - esConsumed;
+
+          if (neededFromNewCodes > 0) {
+            const paginatedNewCodes = uniqueNewCodes.slice(
+              localOffset,
+              localOffset + neededFromNewCodes,
+            );
+            proCodes.push(...paginatedNewCodes);
+          }
         }
       }
 
@@ -2094,8 +2376,8 @@ export class ProductsService {
         .where('product.pro_code IN (:...proCodes)', { proCodes })
         // ของแถม FREE/* อาจหลุดมาจาก external/enter search ที่ไม่ผ่าน ES filter
         .andWhere(
-          '(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND product.pro_name NOT LIKE :slashFree))',
-          { freePrefix: 'FREE/%', slashFree: '%/ฟรี%' },
+          `(product.pro_name IS NULL OR (product.pro_name NOT LIKE :freePrefix AND ${notSlashFreeGiftSql('product')}))`,
+          { freePrefix: 'FREE/%', ...slashFreeGiftParams() },
         )
         // WGDD-428: external/enter search ไม่ผ่าน ES filter → กรองงดแสดงซ้ำที่ DB
         .andWhere(visibleProductSql('product'))
@@ -3200,14 +3482,17 @@ export class ProductsService {
     }
   }
 
-  async searchExternalProducts(search: string): Promise<ProductEntity[]> {
+  async searchExternalProducts(
+    search: string,
+    timeoutMs = LEGACY_SEARCH_TIMEOUT_MS,
+  ): Promise<ProductEntity[]> {
     try {
       const response = await axios.get<ApiResponse>(
         `${process.env.OLD_WEBSITE_URL}/API/appV3/search_auto.php`,
         {
           params: { search },
           // เว็บเก่าเคยค้างนานถึง 16 นาที → กัน event loop congestion
-          timeout: 10000,
+          timeout: timeoutMs,
         },
       );
 
@@ -3228,38 +3513,71 @@ export class ProductsService {
         .map((item) => item.pro_code)
         .filter(Boolean);
 
-      if (!proCodes.length) {
-        return [];
-      }
-
-      const product = await this.productRepo
-        .createQueryBuilder('product')
-        .where('product.pro_code IN (:...proCodes)', { proCodes })
-        .andWhere(visibleProductSql('product'))
-        .select([
-          'product.pro_code',
-          'product.pro_name',
-          'product.pro_priceA',
-          'product.pro_priceB',
-          'product.pro_priceC',
-          'product.pro_imgmain',
-          'product.pro_genericname',
-          'product.pro_nameSale',
-          'product.pro_nameEN',
-          'product.pro_keysearch',
-          'creditor.creditor_code',
-        ])
-        .leftJoin('product.creditor', 'creditor')
-        .getMany();
-
-      return product;
+      return await this.loadAutocompleteProducts(proCodes);
     } catch (error) {
       this.logger.error('Error searching external products:', error);
       return [];
     }
   }
 
-  async searchEnterProducts(search: string): Promise<string[]> {
+  private async loadAutocompleteProducts(
+    proCodes: string[],
+  ): Promise<ProductEntity[]> {
+    if (!proCodes.length) {
+      return [];
+    }
+
+    return this.productRepo
+      .createQueryBuilder('product')
+      .where('product.pro_code IN (:...proCodes)', { proCodes })
+      .andWhere(visibleProductSql('product'))
+      .select([
+        'product.pro_code',
+        'product.pro_name',
+        'product.pro_priceA',
+        'product.pro_priceB',
+        'product.pro_priceC',
+        'product.pro_imgmain',
+        'product.pro_genericname',
+        'product.pro_nameSale',
+        'product.pro_nameEN',
+        'product.pro_keysearch',
+        'creditor.creditor_code',
+      ])
+      .leftJoin('product.creditor', 'creditor')
+      .getMany();
+  }
+
+  // ECWC-751: flag search_all_sources ปิด = เว็บเก่าอย่างเดียวแบบเดิม
+  // เปิด = รวมทุกแหล่งผ่านตัวกรองเดียวกับช่องค้นหาหลัก เรียงตามลำดับที่รวมได้
+  async searchAutocompleteProducts(
+    search: string,
+    mem_code?: string,
+    mem_route?: string,
+  ): Promise<ProductEntity[]> {
+    const keyword = search?.trim();
+    if (!keyword || !(await this.isSearchAllSourcesEnabled())) {
+      return this.searchExternalProducts(search);
+    }
+
+    const isL16 = await this.isL16Member(mem_code, mem_route);
+    const { codes } = await this.searchProductCodesAllSources({
+      keyword,
+      isL16,
+      offset: 0,
+      limit: AUTOCOMPLETE_LIMIT,
+    });
+    const products = await this.loadAutocompleteProducts(codes);
+    const productMap = new Map(products.map((p) => [p.pro_code, p]));
+    return codes
+      .map((code) => productMap.get(code))
+      .filter(Boolean) as ProductEntity[];
+  }
+
+  async searchEnterProducts(
+    search: string,
+    timeoutMs = LEGACY_SEARCH_TIMEOUT_MS,
+  ): Promise<string[]> {
     try {
       if (!search) {
         return [];
@@ -3270,7 +3588,7 @@ export class ProductsService {
         {
           params: { search },
           // เว็บเก่าเคยค้างนานถึง 16 นาที → กัน event loop congestion
-          timeout: 10000,
+          timeout: timeoutMs,
         },
       );
 
