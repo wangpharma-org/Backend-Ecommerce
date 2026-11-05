@@ -208,6 +208,12 @@ export interface ShopStatusLine {
   out_of_stock: boolean;
   // ตรวจนับได้น้อยกว่าที่สั่ง (ไม่ใช่ขาดทั้งรายการ)
   short: boolean;
+  // SSN0-367: ผล QC เป็นจำนวน (หน่วยเดียวกับ qty) · null = ยังไม่ตรวจนับ / ไม่มีข้อมูลจากคลัง
+  received_qty: number | null;
+  missing_qty: number | null;
+  qc_note: string | null;
+  // รหัสสินค้าเดิม ถ้าคลังเปลี่ยนสินค้าให้ระหว่างจัด
+  changed_from: string | null;
 }
 
 export interface ShopStatusOrder {
