@@ -1,6 +1,6 @@
 {
   "repo": "wangpharma-org/Backend-Ecommerce",
-  "last_run": "2026-08-10",
+  "last_run": "2026-09-28",
   "approvers": [
     "62theories"
   ],
@@ -180,6 +180,22 @@
       "confidence": "medium",
       "first_seen": "2026-08-10",
       "last_seen": "2026-08-10",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "id": "Q-002",
+      "kind": "preference",
+      "file": ".ai/quarantine.md",
+      "status": "quarantined",
+      "origin": "human",
+      "source_prs": [255],
+      "reviewers": [
+        "62theories"
+      ],
+      "confidence": "low",
+      "first_seen": "2026-09-28",
+      "last_seen": "2026-09-28",
       "approved_by": null,
       "approved_at": null
     }
