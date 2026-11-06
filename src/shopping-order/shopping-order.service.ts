@@ -30,7 +30,7 @@ import { lastValueFrom } from 'rxjs';
 import { lineDiscountPercent } from 'src/promotion/promo-line-value';
 import {
   HIDDEN_PRODUCT_MESSAGE,
-  isHiddenProduct,
+  isBlockedCustomerProduct,
 } from 'src/products/product-visibility.util';
 import {
   parseStickerJson,
@@ -384,16 +384,18 @@ export class ShoppingOrderService {
           }
         }
 
-        // WGDD-428: สินค้าที่งดแสดงบนหน้าร้านห้ามสั่งซื้อ (ไม่นับของแถม/รางวัล)
-        const hiddenItems = cart.filter(
-          (item) =>
-            !item.hotdeal_free &&
-            !item.is_reward &&
-            isHiddenProduct(item.product),
-        );
-        if (hiddenItems.length > 0) {
+        // WGDD-428 / ECWC-744: บล็อกสินค้าขาย (ยกเว้นของแถมและบรรทัดของแถมใน fixed set)
+        const blockedItems = cart.filter((item) => {
+          const isFixedSetGift =
+            item.basket_id !== null &&
+            item.spc_fixed_total !== null &&
+            Number(item.spc_fixed_total) === 0;
+          const isGift = item.hotdeal_free || item.is_reward || isFixedSetGift;
+          return !isGift && isBlockedCustomerProduct(item.product);
+        });
+        if (blockedItems.length > 0) {
           const codes = [
-            ...new Set(hiddenItems.map((item) => item.pro_code)),
+            ...new Set(blockedItems.map((item) => item.pro_code)),
           ].join(', ');
           throw new BadRequestException(`${HIDDEN_PRODUCT_MESSAGE}: ${codes}`);
         }

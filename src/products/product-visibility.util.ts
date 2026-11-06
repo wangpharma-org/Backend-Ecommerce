@@ -3,9 +3,19 @@
 
 export const HIDDEN_PRODUCT_MESSAGE = 'สินค้านี้งดจำหน่ายชั่วคราว';
 
+export const blockedProductNameSql = (alias: string): string =>
+  `${alias}.pro_name LIKE '-%'`;
+
+export const allowedProductNameSql = (alias: string): string =>
+  `(${alias}.pro_name IS NULL OR ${alias}.pro_name NOT LIKE '-%')`;
+
+/** Gift products remain visible when their name starts with a hyphen. */
+export const notHiddenProductSql = (alias: string): string =>
+  `(${alias}.pro_hidden = 0 OR ${alias}.pro_hidden IS NULL)`;
+
 /** SQL condition: สินค้าที่แสดงบนหน้าร้านได้ (alias = alias ของ product ใน query builder) */
 export const visibleProductSql = (alias: string): string =>
-  `(${alias}.pro_hidden = 0 OR ${alias}.pro_hidden IS NULL)`;
+  `${notHiddenProductSql(alias)} AND ${allowedProductNameSql(alias)}`;
 
 export function applyVisibleProductFilter(
   qb: { andWhere: (sql: string, params?: Record<string, unknown>) => unknown },
@@ -17,3 +27,17 @@ export function applyVisibleProductFilter(
 export const isHiddenProduct = (
   product?: { pro_hidden?: boolean | number | null } | null,
 ): boolean => Boolean(product?.pro_hidden);
+
+export const hasBlockedProductName = (
+  product?: { pro_name?: string | null } | null,
+): boolean => product?.pro_name?.startsWith('-') ?? false;
+
+export const isBlockedCustomerProduct = (
+  product?: {
+    pro_hidden?: boolean | number | null;
+    pro_name?: string | null;
+  } | null,
+  allowBlockedName = false,
+): boolean =>
+  isHiddenProduct(product) ||
+  (!allowBlockedName && hasBlockedProductName(product));

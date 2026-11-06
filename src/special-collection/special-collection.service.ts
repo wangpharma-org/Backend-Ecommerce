@@ -4,7 +4,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { isHiddenProduct } from 'src/products/product-visibility.util';
+import {
+  hasBlockedProductName,
+  isHiddenProduct,
+} from 'src/products/product-visibility.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { SpecialCollectionEntity } from './special-collection.entity';
@@ -408,6 +411,7 @@ export class SpecialCollectionService {
   private async resolveItems(
     items: SpecialCollectionItemEntity[],
     option: PriceOption,
+    customer = false,
   ): Promise<ResolvedCollectionItem[]> {
     if (items.length === 0) return [];
 
@@ -423,10 +427,10 @@ export class SpecialCollectionService {
       await Promise.all([
         this.loadPromotions(numericIds('promotion')),
         this.loadTiers(numericIds('tier')),
-        this.loadProducts(idsOf('product')),
-        this.loadHotdeals(numericIds('hotdeal')),
+        this.loadProducts(idsOf('product'), customer),
+        this.loadHotdeals(numericIds('hotdeal'), customer),
         this.loadFlashsales(numericIds('flashsale')),
-        this.loadBundleSets(idsOf('bundle_set'), option),
+        this.loadBundleSets(idsOf('bundle_set'), option, customer),
       ]);
 
     const lookup: Record<string, Map<string, unknown>> = {
@@ -525,7 +529,8 @@ export class SpecialCollectionService {
       ]);
 
     for (const row of promotions) {
-      if (row.promo_name) labels.set(`promotion:${row.promo_id}`, row.promo_name);
+      if (row.promo_name)
+        labels.set(`promotion:${row.promo_id}`, row.promo_name);
     }
     for (const row of tiers) {
       if (row.tier_name) labels.set(`tier:${row.tier_id}`, row.tier_name);
@@ -623,7 +628,10 @@ export class SpecialCollectionService {
     };
   }
 
-  private async loadProducts(codes: string[]): Promise<Map<string, unknown>> {
+  private async loadProducts(
+    codes: string[],
+    customer: boolean,
+  ): Promise<Map<string, unknown>> {
     const map = new Map<string, unknown>();
     if (codes.length === 0) return map;
 
@@ -631,12 +639,21 @@ export class SpecialCollectionService {
       where: { pro_code: In(codes) },
     });
     for (const product of rows) {
+      if (
+        customer &&
+        (isHiddenProduct(product) || hasBlockedProductName(product))
+      ) {
+        continue;
+      }
       map.set(product.pro_code, product);
     }
     return map;
   }
 
-  private async loadHotdeals(ids: number[]): Promise<Map<string, unknown>> {
+  private async loadHotdeals(
+    ids: number[],
+    customer: boolean,
+  ): Promise<Map<string, unknown>> {
     const map = new Map<string, unknown>();
     if (ids.length === 0) return map;
 
@@ -661,7 +678,12 @@ export class SpecialCollectionService {
 
     for (const hotdeal of rows) {
       // WGDD-428: ดีลของสินค้าที่งดแสดงบนหน้าร้านไม่ต้องโชว์
-      if (isHiddenProduct(hotdeal.product)) continue;
+      if (
+        isHiddenProduct(hotdeal.product) ||
+        (customer && hasBlockedProductName(hotdeal.product))
+      ) {
+        continue;
+      }
       map.set(String(hotdeal.id), {
         id: hotdeal.id,
         special_deal: hotdeal.special_deal,
@@ -711,6 +733,7 @@ export class SpecialCollectionService {
   private async loadBundleSets(
     codes: string[],
     option: PriceOption,
+    customer: boolean,
   ): Promise<Map<string, unknown>> {
     const map = new Map<string, unknown>();
     if (codes.length === 0) return map;
@@ -734,7 +757,12 @@ export class SpecialCollectionService {
     const views = await Promise.all(
       rows.map((row) => this.bundleSetService.getSetView(row.set_code, option)),
     );
-    views.forEach((view) => map.set(view.set_code, view));
+    views.forEach((view) => {
+      if (customer && view.items.some((line) => hasBlockedProductName(line))) {
+        return;
+      }
+      map.set(view.set_code, view);
+    });
     return map;
   }
 
@@ -831,7 +859,7 @@ export class SpecialCollectionService {
       where: { collection_id: In(collections.map((c) => c.collection_id)) },
       order: { sort_order: 'ASC', item_id: 'ASC' },
     });
-    const resolved = await this.resolveItems(allItems, option);
+    const resolved = await this.resolveItems(allItems, option, true);
 
     const byCollection = new Map<number, ResolvedCollectionItem[]>();
     allItems.forEach((item, index) => {

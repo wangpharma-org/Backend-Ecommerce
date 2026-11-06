@@ -21,6 +21,10 @@ import {
 } from 'src/flashsale/flashsale.service';
 import { BundleSetEntity } from 'src/bundle-set/bundle-set.entity';
 import { ProductEntity } from 'src/products/products.entity';
+import {
+  notHiddenProductSql,
+  visibleProductSql,
+} from 'src/products/product-visibility.util';
 import { SpecialCollectionService } from 'src/special-collection/special-collection.service';
 import { HappyHourService } from 'src/happy-hour/happy-hour.service';
 import { WangdayService } from 'src/wangday/wangday.service';
@@ -185,6 +189,7 @@ export class CustomerPromotionsService {
       .addSelect('product.pro_nameTH', 'proNameTH')
       .addSelect('product.pro_imgmain', 'img')
       .where('c.tier_id IN (:...tierIds)', { tierIds })
+      .andWhere(visibleProductSql('product'))
       .orderBy('c.tier_id', 'ASC')
       .addOrderBy('product.pro_code', 'ASC')
       .getRawMany<{
@@ -413,6 +418,9 @@ export class CustomerPromotionsService {
         '(product2.pro_l16_only = 0 OR product2.pro_l16_only IS NULL)',
       );
     }
+    q.andWhere(visibleProductSql('product')).andWhere(
+      notHiddenProductSql('product2'),
+    );
     return q;
   }
 
