@@ -103,7 +103,7 @@ export class BundleSetCustomerController {
 
   @Get(':setCode')
   getOne(@Param('setCode') setCode: string, @Req() req: { user: JwtUser }) {
-    return this.bundleSetService.getSetView(
+    return this.bundleSetService.getCustomerSetView(
       setCode,
       toPriceOption(req.user.price_option),
     );

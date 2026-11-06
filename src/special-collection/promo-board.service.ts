@@ -1,5 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { isHiddenProduct } from 'src/products/product-visibility.util';
+import {
+  hasBlockedProductName,
+  isHiddenProduct,
+} from 'src/products/product-visibility.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PromotionEntity } from '../promotion/promotion.entity';
@@ -10,10 +13,7 @@ import { ProductEntity } from '../products/products.entity';
 import { ProductUnitEntity } from '../products/product-unit.entity';
 import { ShoppingCartEntity } from '../shopping-cart/shopping-cart.entity';
 import type { PriceOption } from '../bundle-set/bundle-set.service';
-import {
-  allocateTierSets,
-  totalTierSets,
-} from '../promotion/tier-allocation';
+import { allocateTierSets, totalTierSets } from '../promotion/tier-allocation';
 import { promoUnitPrice } from '../promotion/promo-line-value';
 
 export interface BoardReward {
@@ -190,7 +190,11 @@ export class PromoBoardService {
     const participatingCodes = Array.from(
       new Set(
         conditions
-          .filter((cond) => !isHiddenProduct(cond.product))
+          .filter(
+            (cond) =>
+              !isHiddenProduct(cond.product) &&
+              !hasBlockedProductName(cond.product),
+          )
           .map((cond) => cond.product?.pro_code)
           .filter(Boolean),
       ),
@@ -441,7 +445,6 @@ export class PromoBoardService {
     return { boardTiers, setsByTier };
   }
 
-
   /** ของแถมต่อขั้น พร้อมแปลง level ใน promotion_reward.unit เป็นชื่อหน่วยจริง */
   private buildRewardsByTier(
     rewards: PromotionRewardEntity[],
@@ -474,7 +477,6 @@ export class PromoBoardService {
     }
     return rewardsByTier;
   }
-
 
   /**
    * ตีราคากระเช้าที่ยังไม่ได้ใส่ตะกร้า แล้วบอกว่าจะได้ของแถมกี่ชุด
@@ -584,5 +586,4 @@ export class PromoBoardService {
       ),
     };
   }
-
 }
