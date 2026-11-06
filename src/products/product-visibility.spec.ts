@@ -1,7 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { ShoppingCartService } from 'src/shopping-cart/shopping-cart.service';
-import { isHiddenProduct, visibleProductSql } from './product-visibility.util';
+import {
+  hasBlockedProductName,
+  isHiddenProduct,
+  visibleProductSql,
+} from './product-visibility.util';
 import { DeleteCartEntity } from 'src/shopping-cart/delete-cart.entity';
 import { ShoppingCartEntity } from 'src/shopping-cart/shopping-cart.entity';
 
@@ -10,7 +14,7 @@ describe('WGDD-428 product visibility', () => {
   describe('util', () => {
     it('builds a null-safe SQL condition for the given alias', () => {
       expect(visibleProductSql('p')).toBe(
-        '(p.pro_hidden = 0 OR p.pro_hidden IS NULL)',
+        "(p.pro_hidden = 0 OR p.pro_hidden IS NULL) AND (p.pro_name IS NULL OR p.pro_name NOT LIKE '-%')",
       );
     });
 
@@ -19,6 +23,12 @@ describe('WGDD-428 product visibility', () => {
       expect(isHiddenProduct({ pro_hidden: true })).toBe(true);
       expect(isHiddenProduct({ pro_hidden: 0 })).toBe(false);
       expect(isHiddenProduct(null)).toBe(false);
+    });
+
+    it('blocks names beginning with a hyphen only', () => {
+      expect(hasBlockedProductName({ pro_name: '-ยา' })).toBe(true);
+      expect(hasBlockedProductName({ pro_name: 'ยา-เก่า' })).toBe(false);
+      expect(hasBlockedProductName({ pro_name: null })).toBe(false);
     });
   });
 
@@ -113,6 +123,24 @@ describe('WGDD-428 product visibility', () => {
   });
 
   describe('ProductsService.getVisibleProductOne', () => {
+    it('returns 404 for a product whose name starts with a hyphen', async () => {
+      const service: ProductsService = Object.assign(
+        Object.create(ProductsService.prototype) as ProductsService,
+        {
+          productRepo: {
+            findOne: jest.fn().mockResolvedValue({
+              pro_code: 'A001',
+              pro_hidden: false,
+              pro_name: '-ยา',
+            }),
+          },
+        },
+      );
+      await expect(service.getVisibleProductOne('A001')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
     it('returns 404 for a hidden product', async () => {
       const service: ProductsService = Object.assign(
         Object.create(ProductsService.prototype) as ProductsService,

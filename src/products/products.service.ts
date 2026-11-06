@@ -45,6 +45,7 @@ import { MonthlyDealPublisherService } from './monthly-deal-publisher.service';
 import {
   applyVisibleProductFilter,
   isHiddenProduct,
+  hasBlockedProductName,
   visibleProductSql,
 } from './product-visibility.util';
 
@@ -570,9 +571,13 @@ export class ProductsService {
   async getVisibleProductOne(pro_code: string) {
     const product = await this.productRepo.findOne({
       where: { pro_code },
-      select: { pro_code: true, pro_hidden: true },
+      select: { pro_code: true, pro_hidden: true, pro_name: true },
     });
-    if (!product || isHiddenProduct(product)) {
+    if (
+      !product ||
+      isHiddenProduct(product) ||
+      hasBlockedProductName(product)
+    ) {
       throw new NotFoundException('Product not found');
     }
     return this.getProductOne(pro_code);
