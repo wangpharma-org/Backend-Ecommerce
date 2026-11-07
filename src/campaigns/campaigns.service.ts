@@ -12,6 +12,7 @@ import { CampaignPosterBannerLinkEntity } from './campaigns-poster-banner-link.e
 import { ProductEntity } from '../products/products.entity';
 import axios, { AxiosResponse } from 'axios';
 import { IdeogramBrowserService } from './ideogram-browser.service';
+import { CraftPosterService } from './craft-poster.service';
 import * as AWS from 'aws-sdk';
 
 export interface UploadResponse {
@@ -171,6 +172,7 @@ export class CampaignsService {
     @InjectRepository(ProductEntity)
     private readonly productRepository: Repository<ProductEntity>,
     private readonly ideogramBrowser: IdeogramBrowserService,
+    private readonly craftPoster: CraftPosterService,
   ) {
     this.s3 = new AWS.S3({
       endpoint: new AWS.Endpoint('https://sgp1.digitaloceanspaces.com'),
@@ -507,6 +509,21 @@ export class CampaignsService {
     }[] = [],
     session_cookies: string,
   ) {
+    if (CraftPosterService.isEnabled()) {
+      try {
+        return await this.craftPoster.generatePosterRequest(
+          prompt,
+          aspectRatio,
+          imageItems,
+        );
+      } catch (error) {
+        this.logger.error(
+          'Error generating poster via the render service:',
+          error,
+        );
+        return;
+      }
+    }
     try {
       const uploaded: { id: string; label: string; type?: string }[] = [];
 
@@ -570,6 +587,9 @@ export class CampaignsService {
   }
 
   async getAllResults(request_id: string, session_cookies?: string) {
+    if (CraftPosterService.isCraftRequest(request_id)) {
+      return this.craftPoster.getResult(request_id);
+    }
     try {
       return (await this.ideogramBrowser.getAllResults(
         request_id,
