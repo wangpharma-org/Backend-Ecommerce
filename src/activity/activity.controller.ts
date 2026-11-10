@@ -28,7 +28,7 @@ export class ActivityController {
   /**
    * รับอีเวนต์ impression/open/click/checkout จากหน้าเว็บ/แอป เป็นชุด
    * mem_code มาจาก token เสมอ · add_cart/order ส่งจาก server เท่านั้น (รายการแบบนั้นถูกทิ้ง)
-   * enabled=false บอกให้ client หยุดส่งไปจนจบ session
+   * enabled=false บอกให้ client หยุดส่งไปจนจบ session · accepted = จำนวนที่รับไว้ส่งเบื้องหลัง
    */
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/activity')
@@ -56,7 +56,8 @@ export class ActivityController {
     const events = raw
       .map((r) => normalizeClientEvent(r, ctx))
       .filter((e): e is ActivityEvent => e !== null);
-    const accepted = await this.activity.emit(
+    // ไม่รอ Kafka — broker ช้าหรือล่มต้องไม่ทำให้ request ค้าง
+    const accepted = this.activity.queue(
       await this.activity.resolvePromotionFeature(events),
     );
     return { enabled, accepted, dropped: raw.length - accepted };

@@ -14,6 +14,11 @@ import { ActivityChannel, ActivityEvent, serverEvent } from './activity.types';
 const FLAG_TTL_MS = 30_000;
 const PROMO_TTL_MS = 10 * 60_000;
 const PRODUCT_PROMO_TTL_MS = 60_000;
+/** รอ Kafka ต่อชุดไม่เกินนี้ (connect ที่ลองใหม่เองอาจนานกว่า 15 วินาที) */
+const SEND_TIMEOUT_MS = 5_000;
+/** ส่งพลาดติดกันกี่ชุดจึงพักการส่ง และพักนานเท่าไร (circuit breaker) */
+const BREAKER_FAILURES = 3;
+const BREAKER_PAUSE_MS = 60_000;
 
 type PromoFeature = 'company_day' | 'wang_day';
 
@@ -50,6 +55,8 @@ export class ActivityService {
     number,
     { feature: PromoFeature; at: number }
   >();
+  private failures = 0;
+  private pausedUntil = 0;
 
   constructor(
     @Optional()
@@ -72,28 +79,62 @@ export class ActivityService {
     }
   }
 
-  /** ส่งอีเวนต์ชุดหนึ่ง — คืนจำนวนที่ส่งออกไป */
+  /** broker ส่งพลาดติดกันจนพักการส่งอยู่ — ระหว่างนี้อีเวนต์ถูกทิ้งทันที ไม่รอ Kafka */
+  isPaused(now = Date.now()): boolean {
+    return now < this.pausedUntil;
+  }
+
+  /**
+   * ส่งอีเวนต์ทั้งชุดใน producer.send ครั้งเดียว รอไม่เกิน SEND_TIMEOUT_MS — คืนจำนวนที่ส่งออกไป
+   * ไม่ throw · ส่งพลาด BREAKER_FAILURES ชุดติดกัน = พักส่ง BREAKER_PAUSE_MS
+   */
   async emit(events: ActivityEvent[]): Promise<number> {
     if (!events.length || !(await this.isEnabled()) || !this.kafka) return 0;
-    let sent = 0;
-    for (const event of events) {
-      try {
-        await lastValueFrom(
-          this.kafka.emit(ACTIVITY_TOPIC, {
-            key: event.mem_code ?? 'anonymous',
-            value: JSON.stringify(event),
+    if (this.isPaused()) return 0;
+    try {
+      await withTimeout(
+        lastValueFrom(
+          this.kafka.emitBatch(ACTIVITY_TOPIC, {
+            messages: events.map((event) => ({
+              key: event.mem_code ?? 'anonymous',
+              value: JSON.stringify(event),
+            })),
           }),
-        );
-        sent++;
-      } catch (error) {
-        this.logger.warn(
-          `activity emit failed (${event.feature}/${event.action}): ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+        ),
+        SEND_TIMEOUT_MS,
+      );
+      this.failures = 0;
+      return events.length;
+    } catch (error) {
+      this.sendFailed(events.length, error);
+      return 0;
     }
-    return sent;
+  }
+
+  /**
+   * สำหรับ request ของ client: ตอบทันทีแล้วส่งเบื้องหลัง ไม่ถือ connection ไว้รอ Kafka
+   * คืนจำนวนที่รับไว้ส่ง (0 ถ้าไม่มี broker หรือกำลังพักส่ง)
+   */
+  queue(events: ActivityEvent[]): number {
+    if (!events.length || !this.kafka || this.isPaused()) return 0;
+    void this.emit(events);
+    return events.length;
+  }
+
+  private sendFailed(count: number, error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    this.failures++;
+    if (this.failures >= BREAKER_FAILURES) {
+      this.failures = 0;
+      this.pausedUntil = Date.now() + BREAKER_PAUSE_MS;
+      this.logger.warn(
+        `activity emit failed ${BREAKER_FAILURES} times in a row — pausing ${BREAKER_PAUSE_MS / 1000}s: ${reason}`,
+      );
+    } else {
+      this.logger.warn(`activity emit failed (${count} events): ${reason}`);
+    }
+    // ClientKafka จำ connect ที่พลาดไว้ตลอด — ปิดทิ้งเพื่อให้รอบถัดไปต่อใหม่ได้เมื่อ broker กลับมา
+    this.kafka?.close().catch(() => undefined);
   }
 
   /** Company Day (มี creditor) หรือ Wang Day (ไม่มี) — ตารางเดียวกัน แยกด้วย creditor_code */
@@ -111,7 +152,7 @@ export class ActivityService {
     if (missing.length) {
       const rows: { promo_id: number; creditor_code: string | null }[] =
         await this.db.query(
-          'SELECT promo_id, creditor_code FROM promotion WHERE promo_id IN (?)',
+          'SELECT promo_id, creditor_code FROM promotion WHERE promo_id IN (?) AND deleted_at IS NULL',
           [missing],
         );
       for (const row of rows) {
@@ -147,7 +188,7 @@ export class ActivityService {
 
   /**
    * โปรที่เปิดอยู่ตอนนี้ซึ่งสินค้านี้นับเข้าเงื่อนไข — อยู่ใน promotion_condition ของ tier ใด tier หนึ่ง
-   * หรือ tier นั้นเป็น "ทุกสินค้า" และไม่ได้ยกเว้นสินค้านี้ · cache ต่อสินค้า 1 นาที
+   * หรือ tier นั้นเป็น "ทุกสินค้า" และไม่ได้ยกเว้นสินค้านี้ · โปร/ขั้นที่ถูก soft delete ไม่นับ · cache ต่อสินค้า 1 นาที
    */
   async activePromosForProduct(
     proCode: string,
@@ -162,6 +203,7 @@ export class ActivityService {
            JOIN promotion_tier t ON t.promo_id = p.promo_id
            LEFT JOIN promotion_condition c ON c.tier_id = t.tier_id AND c.product_code = ?
           WHERE p.status = 1 AND p.start_date <= ? AND p.end_date >= ?
+            AND p.deleted_at IS NULL AND t.deleted_at IS NULL
             AND (c.product_code IS NOT NULL
                  OR (t.all_products = 1 AND NOT EXISTS (
                        SELECT 1 FROM promotion_tier_exclusion x
@@ -316,4 +358,12 @@ export class ActivityService {
       ),
     );
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }

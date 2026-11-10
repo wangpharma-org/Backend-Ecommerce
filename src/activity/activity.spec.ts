@@ -1,4 +1,4 @@
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { ActivityService } from './activity.service';
 import {
   channelFromUserAgent,
@@ -112,7 +112,10 @@ describe('serverEvent', () => {
 
 describe('ActivityService', () => {
   const make = (opts: { flag?: boolean; kafka?: boolean } = {}) => {
-    const kafka = { emit: jest.fn().mockReturnValue(of(undefined)) };
+    const kafka = {
+      emitBatch: jest.fn().mockReturnValue(of(undefined)),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
     const flags = { getFlag: jest.fn().mockResolvedValue(opts.flag ?? true) };
     const db = {
       query: jest.fn().mockResolvedValue([
@@ -127,6 +130,15 @@ describe('ActivityService', () => {
     );
     return { service, kafka, flags, db };
   };
+  /** อีเวนต์ทั้งหมดที่ส่งเข้า Kafka (ทุก emitBatch) */
+  const sentEvents = (kafka: { emitBatch: jest.Mock }) =>
+    (kafka.emitBatch.mock.calls as unknown[][]).flatMap((c) =>
+      (c[1] as { messages: { value: string }[] }).messages.map(
+        (m) => JSON.parse(m.value) as Record<string, unknown>,
+      ),
+    );
+  const ev = (mem: string) =>
+    serverEvent({ feature: 'x', action: 'open', mem_code: mem });
 
   it('does not emit when the flag is off', async () => {
     const { service, kafka } = make({ flag: false });
@@ -134,7 +146,7 @@ describe('ActivityService', () => {
       serverEvent({ feature: 'x', action: 'open', mem_code: 'S1' }),
     ]);
     expect(sent).toBe(0);
-    expect(kafka.emit).not.toHaveBeenCalled();
+    expect(kafka.emitBatch).not.toHaveBeenCalled();
   });
 
   it('is disabled without a broker even if the flag is on', async () => {
@@ -143,18 +155,89 @@ describe('ActivityService', () => {
     expect(flags.getFlag).not.toHaveBeenCalled();
   });
 
-  it('emits JSON keyed by mem_code to activity_event and counts failures out', async () => {
+  it('sends the whole batch in one producer send, JSON keyed by mem_code', async () => {
     const { service, kafka } = make();
-    kafka.emit
-      .mockReturnValueOnce(of(undefined))
-      .mockReturnValueOnce(throwError(() => new Error('broker down')));
-    const a = serverEvent({ feature: 'x', action: 'open', mem_code: 'S1' });
-    const b = serverEvent({ feature: 'x', action: 'open', mem_code: 'S2' });
-    expect(await service.emit([a, b])).toBe(1);
-    expect(kafka.emit).toHaveBeenCalledWith(ACTIVITY_TOPIC, {
-      key: 'S1',
-      value: JSON.stringify(a),
+    const a = ev('S1');
+    const b = ev('S2');
+    expect(await service.emit([a, b])).toBe(2);
+    expect(kafka.emitBatch).toHaveBeenCalledTimes(1);
+    expect(kafka.emitBatch).toHaveBeenCalledWith(ACTIVITY_TOPIC, {
+      messages: [
+        { key: 'S1', value: JSON.stringify(a) },
+        { key: 'S2', value: JSON.stringify(b) },
+      ],
     });
+  });
+
+  it('a failed send returns 0, does not throw, and resets the client so the next send reconnects', async () => {
+    const { service, kafka } = make();
+    kafka.emitBatch.mockReturnValueOnce(
+      throwError(() => new Error('broker down')),
+    );
+    expect(await service.emit([ev('S1')])).toBe(0);
+    expect(kafka.close).toHaveBeenCalledTimes(1);
+    expect(await service.emit([ev('S1')])).toBe(1);
+  });
+
+  describe('when the broker is slow or down', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('gives up waiting for a hung broker after 5s', async () => {
+      const { service, kafka } = make();
+      kafka.emitBatch.mockReturnValue(NEVER);
+      const result = service.emit([ev('S1')]);
+      await jest.advanceTimersByTimeAsync(5_000);
+      await expect(result).resolves.toBe(0);
+    });
+
+    it('pauses sending for 60s after 3 failed batches in a row, then tries again', async () => {
+      const { service, kafka } = make();
+      kafka.emitBatch.mockReturnValue(
+        throwError(() => new Error('broker down')),
+      );
+      for (let i = 0; i < 3; i++) await service.emit([ev('S1')]);
+      expect(kafka.emitBatch).toHaveBeenCalledTimes(3);
+      expect(service.isPaused()).toBe(true);
+
+      expect(await service.emit([ev('S1')])).toBe(0);
+      expect(service.queue([ev('S1')])).toBe(0);
+      expect(kafka.emitBatch).toHaveBeenCalledTimes(3);
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      kafka.emitBatch.mockReturnValue(of(undefined));
+      expect(service.isPaused()).toBe(false);
+      expect(await service.emit([ev('S1')])).toBe(1);
+    });
+
+    it('queue() answers at once and sends in the background even if Kafka never answers', async () => {
+      const { service, kafka } = make();
+      kafka.emitBatch.mockReturnValue(NEVER);
+      expect(service.queue([ev('S1'), ev('S2')])).toBe(2);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(kafka.emitBatch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('queue() accepts nothing without a broker', () => {
+    const { service } = make({ kafka: false });
+    expect(service.queue([ev('S1')])).toBe(0);
+  });
+
+  it("ignores soft-deleted promotions and tiers when finding a product's active promos", async () => {
+    const { service, db } = make();
+    await service.activePromosForProduct('P1');
+    const sql = String((db.query.mock.calls as unknown[][])[0][0]);
+    expect(sql).toMatch(/p\.deleted_at IS NULL/);
+    expect(sql).toMatch(/t\.deleted_at IS NULL/);
+  });
+
+  it('ignores soft-deleted promotions when resolving company_day / wang_day', async () => {
+    const { service, db } = make();
+    await service.featuresForPromos([10]);
+    expect(String((db.query.mock.calls as unknown[][])[0][0])).toMatch(
+      /deleted_at IS NULL/,
+    );
   });
 
   it('caches the flag for 30s', async () => {
@@ -293,13 +376,7 @@ describe('ActivityService', () => {
     expect(((db.query.mock.calls as unknown[][])[0][1] as unknown[])[0]).toBe(
       'P1',
     );
-    const sent = (kafka.emit.mock.calls as unknown[][]).map(
-      (c) =>
-        JSON.parse((c[1] as { value: string }).value) as Record<
-          string,
-          unknown
-        >,
-    );
+    const sent = sentEvents(kafka);
     expect(
       sent.map(
         (e) => `${String(e.feature)}:${String(e.ref)}:${String(e.action)}`,
@@ -324,13 +401,7 @@ describe('ActivityService', () => {
     });
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
-    const sent = (kafka.emit.mock.calls as unknown[][]).map(
-      (c) =>
-        JSON.parse((c[1] as { value: string }).value) as {
-          ref: string;
-          props: unknown;
-        },
-    );
+    const sent = sentEvents(kafka);
     expect(sent.find((e) => e.ref === '10')?.props).toEqual({
       reached_tier: 'ขั้น 1',
     });
@@ -354,6 +425,6 @@ describe('ActivityService', () => {
     });
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
-    expect(kafka.emit).not.toHaveBeenCalled();
+    expect(kafka.emitBatch).not.toHaveBeenCalled();
   });
 });
