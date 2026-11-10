@@ -7,6 +7,7 @@ import { ReductionRT } from './reduct-rt.entity';
 import { ReductionRTDetail } from './reduct-rt-detail.entity';
 import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
+import { SaleReceivablesSyncService } from './sale-receivables-sync.service';
 
 export interface ImportDataRequestInvoice {
   date: string;
@@ -54,6 +55,7 @@ export class DebtorService {
     private readonly reductionRTRepo: Repository<ReductionRT>,
     @InjectRepository(ReductionRTDetail)
     private readonly reductionRTDetailRepo: Repository<ReductionRTDetail>,
+    private readonly saleReceivablesSync: SaleReceivablesSyncService,
   ) {}
 
   async getAllDebtors(mem_code: string): Promise<
@@ -170,6 +172,8 @@ export class DebtorService {
         }
       }
 
+      // ส่งต่อทั้งชุดให้ระบบขาย (SSN0-365) — ไม่รอ: การนำเข้าสำเร็จแล้ว ไม่ให้ระบบขายทำให้ช้า/ล้ม
+      void this.saleReceivablesSync.forward('billing_slip', data);
       return importedInvoices;
     } catch (error) {
       if (error instanceof Error) {
@@ -268,6 +272,7 @@ export class DebtorService {
           );
         }
       }
+      void this.saleReceivablesSync.forward('credit_note', data);
       return importedRTs;
     } catch (error) {
       if (error instanceof Error) {
