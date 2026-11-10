@@ -49,7 +49,8 @@ const product = {
 
 describe('ECWC-421 product name responses', () => {
   it('includes both names in product detail and selects names for related products', async () => {
-    const qb = queryMock([product]);
+    const detailProduct = { ...product, pro_category: 3 };
+    const qb = queryMock([detailProduct]);
     const service: ProductsService = Object.assign(
       Object.create(ProductsService.prototype) as ProductsService,
       {
@@ -69,7 +70,7 @@ describe('ECWC-421 product name responses', () => {
       pro_code: 'P001',
       mem_code: 'TEST',
     });
-    expect(result).toMatchObject(product);
+    expect(result).toMatchObject(detailProduct);
     expect(qb.select).toHaveBeenCalledWith(
       expect.arrayContaining(['products.pro_nameTH', 'replace.pro_nameTH']),
     );
