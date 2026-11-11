@@ -6,15 +6,32 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const TZ = 'Asia/Bangkok';
+const HAS_UTC_OFFSET = /(Z|[+-]\d{2}:?\d{2})$/i;
 
-/** Bangkok date string 'YYYY-MM-DD' → UTC Date at Bangkok midnight */
-export function toUtcStart(date: Date | string): Date {
-  return dayjs.tz(date, TZ).startOf('day').toDate();
+// string ที่มี Z/offset คือเวลาจริงอยู่แล้ว — dayjs.tz(string) จะตัด offset ทิ้งแล้วอ่านเป็นเวลาไทย
+// ทำให้ '2026-10-11T17:00:00Z' (เที่ยงคืน 12/10 ไทย) กลายเป็นวันที่ 11 จึงต้องแปลงเป็นเวลาไทยก่อน
+function toBangkok(date: Date | string): dayjs.Dayjs {
+  if (typeof date === 'string' && !HAS_UTC_OFFSET.test(date)) {
+    return dayjs.tz(date, TZ);
+  }
+  return dayjs(date).tz(TZ);
 }
 
-/** Bangkok date string 'YYYY-MM-DD' → UTC Date at Bangkok 23:59:59 */
+/** true เมื่อแปลงเป็นวันที่ได้ — dayjs.tz โยน RangeError ถ้าเจอค่าที่ไม่ใช่วันที่ จึงต้องเช็คก่อน */
+export function isValidDateInput(date: unknown): date is Date | string {
+  return (
+    (typeof date === 'string' || date instanceof Date) && dayjs(date).isValid()
+  );
+}
+
+/** Bangkok date 'YYYY-MM-DD' (หรือ ISO ที่มี offset / Date) → UTC Date at Bangkok 00:00:00 */
+export function toUtcStart(date: Date | string): Date {
+  return toBangkok(date).startOf('day').toDate();
+}
+
+/** Bangkok date 'YYYY-MM-DD' (หรือ ISO ที่มี offset / Date) → UTC Date at Bangkok 23:59:59 */
 export function toUtcEnd(date: Date | string): Date {
-  return dayjs.tz(date, TZ).endOf('day').millisecond(0).toDate();
+  return toBangkok(date).endOf('day').millisecond(0).toDate();
 }
 
 /** UTC Date → Bangkok date string 'YYYY-MM-DD' for display */
