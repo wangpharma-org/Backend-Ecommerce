@@ -241,3 +241,15 @@ export interface ShopStatusBatchItem {
   status: EcomOrderTimelineStatus;
   status_label: string;
 }
+
+// SSN0-397 สถานะ + รายการของหลายบิลหลายร้าน — หน้า "สถานะออเดอร์" รวมทุกร้านของระบบขาย
+export interface ShopStatusDetailOrder extends ShopStatusOrder {
+  mem_code: string;
+}
+
+export interface ShopStatusDetailsRes {
+  // ดึงข้อมูลคลัง/ขนส่งไม่ได้บางส่วน — สถานะอาจค้างที่ "รับใบสั่งจอง"
+  partial: boolean;
+  labels: Record<EcomOrderTimelineStatus, string>;
+  orders: ShopStatusDetailOrder[];
+}
