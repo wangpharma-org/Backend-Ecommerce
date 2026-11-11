@@ -31,6 +31,8 @@ import {
   SHOP_STATUS_LABEL,
   ShopStatusLine,
   ShopStatusBatchItem,
+  ShopStatusDetailOrder,
+  ShopStatusDetailsRes,
   ShopStatusOrder,
   ShopStatusTableRes,
 } from './types/order-status-v2.types';
@@ -163,6 +165,14 @@ interface CardWithPickingStatus {
   card: EcomOrderListV2Order;
   pickingStatus: PickingBatchStatus | null;
 }
+
+// บิลหนึ่งใบก่อนประกอบสถานะ — datetime = null เมื่อไม่มีใน shopping_head (ใช้เวลาจากคลังแทน)
+type ShopStatusEntry = {
+  running: string;
+  datetime: string | null;
+  source: 'ecommerce' | 'order_picking';
+  sumprice: number | null;
+};
 
 @Injectable()
 export class OrderStatusV2Service {
@@ -1664,13 +1674,7 @@ export class OrderStatusV2Service {
       pickingEntries.map((e) => [e.sh_running, e.status]),
     );
     const ecomSet = new Set(ecomHeads.map((h) => h.soh_running));
-    type Entry = {
-      running: string;
-      datetime: string;
-      source: 'ecommerce' | 'order_picking';
-      sumprice: number | null;
-    };
-    const entries: Entry[] = [
+    const entries: ShopStatusEntry[] = [
       ...ecomHeads.map((h) => ({
         running: h.soh_running,
         datetime: new Date(h.soh_datetime).toISOString(),
@@ -1703,6 +1707,35 @@ export class OrderStatusV2Service {
         orders: [],
       };
     }
+
+    const built = await this.buildShopStatusOrders(
+      mem_code,
+      entries,
+      pickingStatus,
+    );
+    partial = partial || built.partial;
+
+    return {
+      mem_code,
+      date_from: from,
+      date_to: to,
+      truncated,
+      partial,
+      labels: SHOP_STATUS_LABEL,
+      orders: built.orders,
+    };
+  }
+
+  // สร้างบิล (สถานะ + รายการสินค้า + เลขที่ใบกำกับ) ของร้านเดียว — ใช้ร่วมกันระหว่าง
+  // getShopStatusTable (ทุกบิลของร้านในช่วงวันที่) และ getShopStatusDetails (บิลที่ระบบขายระบุ, SSN0-397)
+  private async buildShopStatusOrders(
+    mem_code: string,
+    entries: ShopStatusEntry[],
+    pickingStatus: Map<string, PickingBatchStatus>,
+  ): Promise<{ orders: ShopStatusOrder[]; partial: boolean }> {
+    let partial = false;
+    const runnings = entries.map((e) => e.running);
+    if (runnings.length === 0) return { orders: [], partial };
 
     // รายการสินค้าจากคลัง (หลังตรวจนับ) — แบ่งชุดละ 50 บิล
     const details = new Map<string, PickingOrderDetailBatchItem>();
@@ -1813,7 +1846,10 @@ export class OrderStatusV2Service {
           : null);
       return {
         soh_running: e.running,
-        soh_datetime: e.datetime,
+        // บิลที่ไม่มีใน shopping_head (ใบจากระบบขาย) ใช้เวลาจากคลัง
+        soh_datetime:
+          e.datetime ??
+          (d?.sh_datetime ? new Date(d.sh_datetime).toISOString() : ''),
         source: e.source,
         status,
         status_label: SHOP_STATUS_LABEL[status],
@@ -1844,15 +1880,69 @@ export class OrderStatusV2Service {
       );
     }
 
-    return {
-      mem_code,
-      date_from: from,
-      date_to: to,
-      truncated,
-      partial,
-      labels: SHOP_STATUS_LABEL,
-      orders,
-    };
+    return { orders, partial };
+  }
+
+  // SSN0-397 สถานะ + รายการของหลายบิลหลายร้าน (≤ 200) — ให้หน้า "สถานะออเดอร์" รวมทุกร้านของระบบขาย
+  // แสดงแบบเดียวกับหน้าของร้าน · บิลที่ไม่เจอที่ไหนเลยคืนเป็นสถานะ "รับใบสั่งจอง" รายการว่าง
+  async getShopStatusDetails(
+    items: { sh_running: string; mem_code: string }[],
+  ): Promise<ShopStatusDetailsRes> {
+    const byMem = new Map<string, string[]>();
+    for (const it of (Array.isArray(items) ? items : []).slice(0, 200)) {
+      const run = typeof it?.sh_running === 'string' ? it.sh_running.trim() : '';
+      const mem = typeof it?.mem_code === 'string' ? it.mem_code.trim() : '';
+      if (!run || !mem || run.length > 40 || mem.length > 30) continue;
+      const list = byMem.get(mem) ?? [];
+      if (!list.includes(run)) list.push(run);
+      byMem.set(mem, list);
+    }
+    let partial = false;
+    const orders: ShopStatusDetailOrder[] = [];
+    const groups = [...byMem.entries()];
+    for (let i = 0; i < groups.length; i += 5) {
+      await Promise.all(
+        groups.slice(i, i + 5).map(async ([mem, runs]) => {
+          const heads = await this.shoppingHeadRepo
+            .createQueryBuilder('head')
+            .where('head.mem_code = :mem', { mem })
+            .andWhere('head.soh_running IN (:...runs)', { runs })
+            .select([
+              'head.soh_running',
+              'head.soh_datetime',
+              'head.soh_sumprice',
+            ])
+            .getMany();
+          const headOf = new Map(heads.map((h) => [h.soh_running, h]));
+          const entries: ShopStatusEntry[] = runs.map((run) => {
+            const h = headOf.get(run);
+            return h
+              ? {
+                  running: run,
+                  datetime: new Date(h.soh_datetime).toISOString(),
+                  source: 'ecommerce' as const,
+                  sumprice:
+                    h.soh_sumprice != null ? Number(h.soh_sumprice) : null,
+                }
+              : {
+                  running: run,
+                  datetime: null,
+                  source: 'order_picking' as const,
+                  sumprice: null,
+                };
+          });
+          const built = await this.buildShopStatusOrders(
+            mem,
+            entries,
+            new Map(),
+          );
+          if (built.partial) partial = true;
+          for (const o of built.orders) orders.push({ ...o, mem_code: mem });
+        }),
+      );
+    }
+    orders.sort((a, b) => b.soh_datetime.localeCompare(a.soh_datetime));
+    return { partial, labels: SHOP_STATUS_LABEL, orders };
   }
 
   // สถานะของหลายบิลหลายร้านในครั้งเดียว — ให้รายการ "ใบสั่งจองของฉัน" ในระบบขายแสดงสถานะต่อใบ

@@ -773,6 +773,17 @@ export class AppController {
     );
   }
 
+  // SSN0-397 สถานะ + รายการสินค้าของหลายบิลหลายร้าน (≤ 200) — หน้า "สถานะออเดอร์" รวมทุกร้านของระบบขาย
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/order-status/details')
+  async internalShopStatusDetails(
+    @Body() body: { items?: { sh_running: string; mem_code: string }[] },
+  ) {
+    return this.orderStatusV2Service.getShopStatusDetails(
+      Array.isArray(body?.items) ? body.items : [],
+    );
+  }
+
   // @UseGuards(JwtAuthGuard)
   // @Post('/ecom/products/upload-product-flashsale')
   // async uploadProductFlashSale(
