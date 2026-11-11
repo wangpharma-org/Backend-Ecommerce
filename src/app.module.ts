@@ -1,4 +1,9 @@
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -65,6 +70,7 @@ import { ProductLabelRulesModule } from './product-label-rules/product-label-rul
 import { SpecialCollectionModule } from './special-collection/special-collection.module';
 import { BundleSetModule } from './bundle-set/bundle-set.module';
 import { CustomerPromotionsModule } from './customer-promotions/customer-promotions.module';
+import { HttpRequestLoggingMiddleware } from './logger/http-request-logging.middleware';
 
 import { CheckoutPreviewModule } from './checkout-preview/checkout-preview.module';
 import { InternalCustomerCartModule } from './internal-customer-cart/internal-customer-cart.module';
@@ -181,6 +187,12 @@ import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.
     SalesCartSessionModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, HttpRequestLoggingMiddleware],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(HttpRequestLoggingMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+  }
+}
