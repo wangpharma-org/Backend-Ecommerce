@@ -10,6 +10,7 @@ import { In, Repository } from 'typeorm';
 import { BundleSetEntity } from './bundle-set.entity';
 import { BundleSetItemEntity } from './bundle-set-item.entity';
 import { ProductEntity } from '../products/products.entity';
+import { hasBlockedProductName } from '../products/product-visibility.util';
 import { ProductUnitEntity } from '../products/product-unit.entity';
 import { CreateSetDto } from './dto/create-set.dto';
 import { UpdateSetDto } from './dto/update-set.dto';
@@ -286,6 +287,18 @@ export class BundleSetService {
     };
   }
 
+  /** Customer view: sold lines with a blocked product name make the fixed-price set unavailable. Gifts remain visible. */
+  async getCustomerSetView(
+    setCode: string,
+    option: PriceOption,
+  ): Promise<SetView> {
+    const view = await this.getSetView(setCode, option);
+    if (view.items.some((line) => hasBlockedProductName(line))) {
+      throw new NotFoundException('ไม่พบกระเช้า');
+    }
+    return view;
+  }
+
   /** กระเช้าที่เปิดขายอยู่ ณ ตอนนี้ */
   async listActiveSets(option: PriceOption): Promise<SetView[]> {
     const now = new Date();
@@ -300,8 +313,11 @@ export class BundleSetService {
       .addOrderBy('bundle.set_code', 'ASC')
       .getMany();
 
-    return Promise.all(
+    const views = await Promise.all(
       sets.map((set) => this.getSetView(set.set_code, option)),
+    );
+    return views.filter(
+      (view) => !view.items.some((line) => hasBlockedProductName(line)),
     );
   }
 
@@ -311,7 +327,7 @@ export class BundleSetService {
     setQty: number,
     option: PriceOption,
   ): Promise<ExplodedLine[]> {
-    const view = await this.getSetView(setCode, option);
+    const view = await this.getCustomerSetView(setCode, option);
     if (view.availability.available_sets < setQty) {
       throw new ConflictException(
         `สั่งได้สูงสุด ${view.availability.available_sets} ชุด (สินค้าในชุดไม่พอ)`,

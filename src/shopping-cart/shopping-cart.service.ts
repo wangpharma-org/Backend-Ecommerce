@@ -38,7 +38,7 @@ import type { ActivityChannel } from '../activity/activity.types';
 import { DeleteCartEntity } from './delete-cart.entity';
 import {
   HIDDEN_PRODUCT_MESSAGE,
-  isHiddenProduct,
+  isBlockedCustomerProduct,
 } from 'src/products/product-visibility.util';
 import {
   promoUnitPrice,
@@ -636,43 +636,71 @@ export class ShoppingCartService {
     }
   }
 
-  // WGDD-428: ห้ามเพิ่ม/เลือกสินค้าที่งดแสดงบนหน้าร้าน → ตอบเหมือนไม่พบสินค้า
-  private async ensureProductVisible(pro_code: string) {
+  // WGDD-428 / ECWC-744: ปฏิเสธสินค้าที่ซ่อนไว้หรือไม่ขายจากช่องทางลูกค้า.
+  // ของแถมที่ขึ้นต้นด้วย '-' เป็นข้อยกเว้นชื่อเท่านั้น; pro_hidden ยังบล็อกตามเดิม.
+  private async ensureProductVisible(
+    pro_code: string,
+    allowBlockedName = false,
+  ) {
     const product = await this.productRepo.findOne({
       where: { pro_code },
-      select: ['pro_code', 'pro_hidden'],
+      select: ['pro_code', 'pro_hidden', 'pro_name'],
     });
-    if (isHiddenProduct(product)) {
+    if (isBlockedCustomerProduct(product, allowBlockedName)) {
       throw new NotFoundException(HIDDEN_PRODUCT_MESSAGE);
     }
   }
 
-  // WGDD-428: นำสินค้าที่งดแสดงบนหน้าร้านออกจากตะกร้า (รวมของแถม hotdeal ที่ผูกอยู่)
-  // แล้วบันทึก delete_cart ให้หน้าบ้านแจ้งเตือนลูกค้า (data.reason = 'hidden')
+  // WGDD-428 / ECWC-744: นำสินค้าที่ไม่ขายออกจากตะกร้าพร้อมบันทึกแจ้งเตือน.
+  // fixed-price bundle เป็นก้อนเดียว; ของแถมใน bundle ระบุด้วย spc_fixed_total = 0.
   async removeHiddenItemsFromCart(mem_code: string): Promise<boolean> {
-    const hiddenRows = await this.shoppingCartRepo
+    const blockedRows = await this.shoppingCartRepo
       .createQueryBuilder('cart')
       .innerJoin('cart.product', 'product')
       .select([
         'cart.spc_id',
         'cart.pro_code',
         'cart.spc_unit_enum',
+        'cart.basket_id',
+        'cart.spc_fixed_total',
         'product.pro_code',
         'product.pro_name',
         'product.pro_imgmain',
       ])
       .where('cart.mem_code = :mem_code', { mem_code })
-      .andWhere('product.pro_hidden = 1')
+      .andWhere(
+        '(product.pro_hidden = 1 OR (product.pro_name LIKE :blockedPrefix AND (cart.spc_fixed_total IS NULL OR cart.spc_fixed_total <> 0)))',
+        { blockedPrefix: '-%' },
+      )
       .andWhere('cart.is_reward = false')
       .andWhere('cart.hotdeal_free = false')
       .getMany();
 
-    if (hiddenRows.length === 0) {
+    if (blockedRows.length === 0) {
       return false;
     }
 
-    const hiddenCodes = [...new Set(hiddenRows.map((row) => row.pro_code))];
-    const notices = hiddenRows.map((row) =>
+    const blockedCodes = [...new Set(blockedRows.map((row) => row.pro_code))];
+    const setBasketIds = blockedRows
+      .map((row) => row.basket_id)
+      .filter(
+        (basketId): basketId is number =>
+          typeof basketId === 'number' && basketId > 0,
+      );
+    const fixedPriceSetIds = setBasketIds.length
+      ? (
+          await this.shoppingCartRepo.manager
+            .getRepository(CartBasketEntity)
+            .find({ where: { mem_code, basket_id: In(setBasketIds) } })
+        )
+          .filter((basket) => basket.set_code !== null)
+          .map((basket) => basket.basket_id)
+      : [];
+    const fixedPriceSetIdSet = new Set(fixedPriceSetIds);
+    const rowsToDelete = blockedRows.filter(
+      (row) => row.basket_id === null || !fixedPriceSetIdSet.has(row.basket_id),
+    );
+    const notices = blockedRows.map((row) =>
       this.deleteCartRepo.create({
         mem_code,
         product: { pro_code: row.pro_code },
@@ -687,16 +715,27 @@ export class ShoppingCartService {
 
     await this.shoppingCartRepo.manager.transaction(async (manager) => {
       await manager.getRepository(DeleteCartEntity).save(notices);
-      await manager
-        .getRepository(ShoppingCartEntity)
-        .delete({ spc_id: In(hiddenRows.map((row) => row.spc_id)) });
+      if (rowsToDelete.length) {
+        await manager
+          .getRepository(ShoppingCartEntity)
+          .delete({ spc_id: In(rowsToDelete.map((row) => row.spc_id)) });
+      }
+      if (fixedPriceSetIds.length) {
+        await manager.getRepository(ShoppingCartEntity).delete({
+          mem_code,
+          basket_id: In(fixedPriceSetIds),
+        });
+        await manager
+          .getRepository(CartBasketEntity)
+          .delete({ mem_code, basket_id: In(fixedPriceSetIds) });
+      }
       await manager
         .createQueryBuilder()
         .delete()
         .from(ShoppingCartEntity)
         .where('mem_code = :mem_code', { mem_code })
         .andWhere('hotdeal_free = true')
-        .andWhere('hotdeal_promain IN (:...hiddenCodes)', { hiddenCodes })
+        .andWhere('hotdeal_promain IN (:...blockedCodes)', { blockedCodes })
         .execute();
     });
 
@@ -1569,7 +1608,7 @@ export class ShoppingCartService {
     const touchVersion = options?.touchVersion ?? true;
     try {
       await this.ensureL16Access(data.mem_code, data.pro_code, data.mem_route);
-      await this.ensureProductVisible(data.pro_code);
+      await this.ensureProductVisible(data.pro_code, data.hotdeal_free);
       await this.ensureNotPreorderRestricted(data.pro_code);
       await this.ensureCartVersionFresh(data.mem_code, data.clientVersion);
 
