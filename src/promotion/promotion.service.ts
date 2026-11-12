@@ -496,9 +496,11 @@ export class PromotionService {
       await Promise.all(
         promo.map(async (p) => {
           await this.cartRepo.update(
+            // สินค้าปกติก็มี promo_id (แปะไว้ให้ QC) ต้องกรองเฉพาะของแถม ไม่งั้นคืนถัดไปจะลบทั้งตะกร้า
             {
               use_code: false,
               promo_id: p.promo_id,
+              is_reward: true,
             },
             {
               spc_checked: false,
