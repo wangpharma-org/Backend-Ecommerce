@@ -322,6 +322,15 @@ export class AuthService {
       mem_code: user.mem_code,
       refresh_token: refresh_token,
     });
+    this.logger.log({
+      event: 'login_success',
+      route: '/api/ecom/login',
+      actor: {
+        memCode: user.mem_code ?? '',
+        username: user.mem_username,
+      },
+      success: true,
+    });
     return { token: access_token, refresh_token: refresh_token };
   }
 
