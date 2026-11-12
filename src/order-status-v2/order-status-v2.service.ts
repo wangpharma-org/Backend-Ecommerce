@@ -35,6 +35,7 @@ import {
   ShopStatusDetailsRes,
   ShopStatusOrder,
   ShopStatusTableRes,
+  PickingStage,
 } from './types/order-status-v2.types';
 import {
   LegacyOrderDetailProduct,
@@ -158,6 +159,32 @@ type LastDeliveredStoreRow = Omit<EcomLastDeliveredStore, 'delivered_at'> & {
 
 type PickingBatchStatus = 'picking' | 'checking' | 'ready' | 'blocked';
 type DeliveryBatchStatus = 'DELIVERING' | 'DONE' | 'BACK' | 'CANCELLED';
+
+// ขั้นละเอียด → ชุดสถานะเดิมของ order-picking (ลูกค้าเห็นชุดเดิม)
+const STAGE_TO_PICKING_STATUS: Record<PickingStage, PickingBatchStatus> = {
+  waiting_pick: 'picking',
+  picking: 'picking',
+  picked: 'checking',
+  qc: 'checking',
+  ready: 'ready',
+  blocked: 'blocked',
+};
+function stagesToPickingStatus(
+  stages: Record<string, PickingStage>,
+): Record<string, PickingBatchStatus> {
+  const out: Record<string, PickingBatchStatus> = {};
+  for (const [run, stage] of Object.entries(stages)) {
+    const mapped = STAGE_TO_PICKING_STATUS[stage];
+    if (mapped) out[run] = mapped;
+  }
+  return out;
+}
+// ส่งขั้นละเอียดเฉพาะตอนบิลยังไม่ถึงมือขนส่ง
+const IN_WAREHOUSE_STATUSES: EcomOrderTimelineStatus[] = [
+  'picking',
+  'checking',
+  'waiting_load',
+];
 
 // การ์ดพร้อม pickingStatus ดิบ — getOrderList ต้อง resolve status สุดท้ายรวมกับ delivery batch
 // ของทั้งหน้า (ecom+picking) ทีเดียว ไม่ใช่ resolve แยกตอน build การ์ดแต่ละแหล่ง
@@ -1191,6 +1218,31 @@ export class OrderStatusV2Service {
     }
   }
 
+  // null = เรียกไม่สำเร็จ (รวม 404 จาก order-picking เวอร์ชันเก่า) ให้ผู้เรียก fallback ไป batch เดิม
+  private async fetchPickingStageBatch(
+    sh_running: string[],
+    mem_code: string,
+  ): Promise<Record<string, PickingStage> | null> {
+    if (sh_running.length === 0) return {};
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<Record<string, PickingStage>>(
+          `${this.orderPickingUrl}/api/ecom/order-status/stage-batch`,
+          { sh_running, mem_code },
+        ),
+      );
+      const data = response.data;
+      return data && typeof data === 'object' && !Array.isArray(data)
+        ? data
+        : null;
+    } catch (error: unknown) {
+      this.logger.warn(
+        `stage-batch unavailable, falling back to status batch: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
   private async fetchDeliveryStatusBatch(
     sh_running: string[],
     mem_code: string,
@@ -1962,20 +2014,27 @@ export class OrderStatusV2Service {
     for (let i = 0; i < groups.length; i += 5) {
       await Promise.all(
         groups.slice(i, i + 5).map(async ([mem, runs]) => {
-          const [picking, delivery] = await Promise.all([
-            this.fetchPickingStatusBatch(runs, mem),
+          const [stages, delivery] = await Promise.all([
+            this.fetchPickingStageBatch(runs, mem),
             this.fetchDeliveryStatusBatch(runs, mem),
           ]);
+          // order-picking ที่ยังไม่มี stage-batch (deploy ก่อน/หลัง) → ใช้ batch เดิม ไม่มีขั้นละเอียด
+          const picking = stages
+            ? stagesToPickingStatus(stages)
+            : await this.fetchPickingStatusBatch(runs, mem);
           for (const r of runs) {
             const status = this.resolveStatusFromParts(
               picking[r] ?? null,
               delivery[r] ?? null,
             );
+            const stage = stages?.[r] ?? null;
             out.push({
               sh_running: r,
               mem_code: mem,
               status,
               status_label: SHOP_STATUS_LABEL[status],
+              picking_stage:
+                stage && IN_WAREHOUSE_STATUSES.includes(status) ? stage : null,
             });
           }
         }),

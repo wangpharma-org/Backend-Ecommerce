@@ -235,11 +235,23 @@ export interface ShopStatusTableRes {
   orders: ShopStatusOrder[];
 }
 
+// ขั้นละเอียดในคลังจาก order-picking (POST /api/ecom/order-status/stage-batch) — ให้ระบบขายเท่านั้น
+// หน้าลูกค้ายังใช้ status ชุดเดิม · Tim 8 พ.ย. 2569: รอจัด/กำลังจัด/จัดเสร็จ รอ QC/กำลัง QC/QC ผ่าน
+export type PickingStage =
+  | 'waiting_pick'
+  | 'picking'
+  | 'picked'
+  | 'qc'
+  | 'ready'
+  | 'blocked';
+
 export interface ShopStatusBatchItem {
   sh_running: string;
   mem_code: string;
   status: EcomOrderTimelineStatus;
   status_label: string;
+  // มีเฉพาะตอนบิลยังอยู่ในคลัง (status picking/checking/waiting_load) และ order-picking ตอบได้
+  picking_stage?: PickingStage | null;
 }
 
 // SSN0-397 สถานะ + รายการของหลายบิลหลายร้าน — หน้า "สถานะออเดอร์" รวมทุกร้านของระบบขาย
