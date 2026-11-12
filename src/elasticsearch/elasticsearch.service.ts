@@ -59,6 +59,8 @@ export interface EsProductDoc {
   creditor_code?: string | null;
   invisible_id?: number | null;
   pro_l16_only?: number;
+  // WGDD-428: งดแสดงสินค้าบนหน้าร้าน
+  pro_hidden?: boolean;
 }
 
 @Injectable()

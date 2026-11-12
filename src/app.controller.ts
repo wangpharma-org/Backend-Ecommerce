@@ -42,6 +42,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { InternalTokenGuard } from './auth/internal-token.guard';
 import { parseHotdealGiftLines } from './hotdeal/hotdeal-gifts';
 import { FeatureFlagsService } from './feature-flags/feature-flags.service';
+import { canManageFeatureFlags } from './feature-flags/feature-flag-access';
 import { BannerService } from './banner/banner.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { HotdealInput, HotdealService } from './hotdeal/hotdeal.service';
@@ -67,6 +68,7 @@ import { DebtorEntity } from './debtor/debtor.entity';
 import { ReductionRT } from './debtor/reduct-rt.entity';
 import { SessionsService } from './sessions/sessions.service';
 import { assertOwnShop, sessionOwnerFilter } from './sessions/session-owner';
+import { ownCartMemCode } from './shopping-cart/cart-owner';
 import { EmployeesService } from './employees/employees.service';
 import { EmployeeEntity } from './employees/employees.entity';
 import { ProductKeywordService } from './product-keyword/product-keyword.service';
@@ -103,6 +105,11 @@ import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service'
 import { OrderAccessService } from './order-status-v2/order-access.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
+import { ActivityService } from './activity/activity.service';
+import {
+  type ActivityChannel,
+  channelFromRequest,
+} from './activity/activity.types';
 import { SearchCartTrackingService } from './search-cart-tracking/search-cart-tracking.service';
 import { toThaiDate } from './utils/date.util';
 
@@ -176,6 +183,7 @@ export class AppController {
     private readonly orderStatusV2Service: OrderStatusV2Service,
     private readonly orderAccess: OrderAccessService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
+    private readonly activityService: ActivityService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
   ) {}
 
@@ -307,16 +315,59 @@ export class AppController {
     return this.featureFlagsService.getFlag(flag);
   }
 
+  // ECWC-749: รายการ/เปลี่ยน/ประวัติ flag — เฉพาะ Admin หรือคนที่ได้เมนู feature-flag
+  // (เดิมแค่ล็อกอินก็ทำได้ รวม token ร้านค้า และปิด flag "all" ได้ = ร้านทุกร้านใช้เว็บไม่ได้)
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/feature-flags')
-  async getAllFlags() {
+  async getAllFlags(@Req() req: Request & { user: JwtPayload }) {
+    this.assertCanManageFeatureFlags(req.user);
     return this.featureFlagsService.getAllFlags();
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('/ecom/feature-flag/update-flag')
-  async updateFlag(@Body() data: { flag: string; status: boolean }) {
-    return this.featureFlagsService.updateFlag(data);
+  async updateFlag(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() data: { flag?: unknown; status?: unknown },
+  ) {
+    this.assertCanManageFeatureFlags(req.user);
+    const flag = typeof data?.flag === 'string' ? data.flag.trim() : '';
+    if (!flag || flag.length > 255 || typeof data?.status !== 'boolean') {
+      throw new BadRequestException(
+        'ต้องส่ง flag (ข้อความ ไม่เกิน 255 ตัว) และ status (true/false)',
+      );
+    }
+    return this.featureFlagsService.updateFlag(
+      { flag, status: data.status },
+      {
+        mem_code: req.user.mem_code,
+        username: req.user.username ?? null,
+        role: req.user.role ?? null,
+      },
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/feature-flag-logs')
+  async getFeatureFlagLogs(
+    @Req() req: Request & { user: JwtPayload },
+    @Query('flag') flag?: string,
+    @Query('limit') limit?: string,
+  ) {
+    this.assertCanManageFeatureFlags(req.user);
+    const n = limit === undefined ? 100 : Number(limit);
+    if (!Number.isInteger(n) || n < 1 || n > 500) {
+      throw new BadRequestException('limit ต้องเป็นจำนวนเต็ม 1-500');
+    }
+    return this.featureFlagsService.getChangeLogs(flag?.trim() || undefined, n);
+  }
+
+  private assertCanManageFeatureFlags(user: JwtPayload & { scope?: unknown }) {
+    if (!canManageFeatureFlags(user)) {
+      throw new ForbiddenException(
+        'ต้องเป็น Admin หรือได้รับสิทธิ์เมนูตั้งค่า feature flag',
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -623,13 +674,23 @@ export class AppController {
       { ...data, basket_id: basketId, mem_code, mem_route: req.user.mem_route },
       ip,
     );
+    this.activityService.trackOrders(result ?? [], {
+      mem_code,
+      emp_code: data.emp_code,
+      channel: channelFromRequest(req),
+    });
     return result;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/cart/count/:mem_code')
-  async CountCart(@Param('mem_code') mem_code: string) {
-    return await this.shoppingCartService.getCartItemCount(mem_code);
+  async CountCart(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('mem_code') mem_code: string,
+  ) {
+    return await this.shoppingCartService.getCartItemCount(
+      ownCartMemCode(req.user, mem_code),
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -723,6 +784,17 @@ export class AppController {
     );
   }
 
+  // SSN0-397 สถานะ + รายการสินค้าของหลายบิลหลายร้าน (≤ 200) — หน้า "สถานะออเดอร์" รวมทุกร้านของระบบขาย
+  @UseGuards(InternalTokenGuard)
+  @Post('/ecom/internal/order-status/details')
+  async internalShopStatusDetails(
+    @Body() body: { items?: { sh_running: string; mem_code: string }[] },
+  ) {
+    return this.orderStatusV2Service.getShopStatusDetails(
+      Array.isArray(body?.items) ? body.items : [],
+    );
+  }
+
   // @UseGuards(JwtAuthGuard)
   // @Post('/ecom/products/upload-product-flashsale')
   // async uploadProductFlashSale(
@@ -756,6 +828,7 @@ export class AppController {
       search_query?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     const priceCondition = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -769,6 +842,7 @@ export class AppController {
       // hotdeal_free: boolean;
       clientVersion?: string | number;
       company_day_source?: string;
+      activity_channel?: ActivityChannel;
     } = {
       mem_code: data.mem_code,
       pro_code: data.pro_code,
@@ -779,6 +853,7 @@ export class AppController {
       flashsale_end: data.flashsale_end,
       clientVersion: data.clientVersion ?? data.cartVersion,
       company_day_source: data.company_day_source,
+      activity_channel: channelFromRequest(req),
     };
     const { cart, cartVersion, cartSyncedAt } =
       await this.shoppingCartService.addProductCart(payload);
@@ -830,6 +905,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -862,6 +938,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
       mem_code: string;
@@ -894,6 +971,7 @@ export class AppController {
       clientVersion?: string;
     },
   ) {
+    data = { ...data, mem_code: ownCartMemCode(req.user, data?.mem_code) };
     this.logger.log('Check cart data:', data);
     const priceOption = req.user.price_option ?? 'C';
     const payload: {
@@ -970,7 +1048,7 @@ export class AppController {
   @UseGuards(JwtAuthGuard)
   @Get('/ecom/product-cart/get-one/:pro_code')
   async getProductCartOne(@Param('pro_code') pro_code: string) {
-    return this.productsService.getProductOne(pro_code);
+    return this.productsService.getVisibleProductOne(pro_code);
   }
 
   @UseGuards(JwtAuthGuard)

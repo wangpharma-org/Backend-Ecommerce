@@ -1,5 +1,6 @@
 import { InjectRepository } from '@nestjs/typeorm';
 import { Injectable, Logger } from '@nestjs/common';
+import { visibleProductSql } from 'src/products/product-visibility.util';
 import { FavoriteEntity } from './favorite.entity';
 import { Repository } from 'typeorm';
 import { UserEntity } from 'src/users/users.entity';
@@ -134,7 +135,9 @@ export class FavoriteService {
         .leftJoinAndSelect('product.hotdeal', 'hotdeal')
         .leftJoinAndSelect('hotdeal.product2', 'hotdealProduct2')
         .setParameter('memCode', mem_code)
-        .where('fav.member.mem_code = :mem_code', { mem_code });
+        .where('fav.member.mem_code = :mem_code', { mem_code })
+        // WGDD-428: งดแสดงบนหน้าร้าน — ซ่อนชั่วคราว ไม่ลบออกจากรายการโปรด
+        .andWhere(visibleProductSql('product'));
 
       switch (sort_by) {
         case '1':

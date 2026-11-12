@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { isHiddenProduct } from 'src/products/product-visibility.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { SpecialCollectionEntity } from './special-collection.entity';
@@ -659,6 +660,8 @@ export class SpecialCollectionService {
       (proCode ? unitName.get(`${proCode}:${Number(level)}`) : '') || '';
 
     for (const hotdeal of rows) {
+      // WGDD-428: ดีลของสินค้าที่งดแสดงบนหน้าร้านไม่ต้องโชว์
+      if (isHiddenProduct(hotdeal.product)) continue;
       map.set(String(hotdeal.id), {
         id: hotdeal.id,
         special_deal: hotdeal.special_deal,

@@ -152,6 +152,10 @@ export class ProductEntity {
   @Column({ type: 'tinyint', default: 0 })
   pro_l16_only!: number;
 
+  // WGDD-428: งดแสดงสินค้าบนหน้าร้าน (sync จาก productservice is_display = false)
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  pro_hidden!: boolean;
+
   @Column({ default: false })
   is_detect_amount!: boolean;
 

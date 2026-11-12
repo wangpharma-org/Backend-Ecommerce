@@ -50,6 +50,8 @@ export interface ProductEasyAcc {
   creditor_code?: string | null;
   pro_category?: number | null;
   drugregister?: string | null;
+  // WGDD-428: false = งดแสดงสินค้าบนหน้าร้าน
+  is_display?: boolean | null;
 }
 
 @Controller()
