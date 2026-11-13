@@ -10,6 +10,7 @@ import { StoreVisibilityModule } from '../store-visibility/store-visibility.modu
 import { DhlTrackingModule } from '../dhl-tracking/dhl-tracking.module';
 import { OrderStatusV2Service } from './order-status-v2.service';
 import { OrderAccessService } from './order-access.service';
+import { BillDownloadService } from './bill-download.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { OrderAccessService } from './order-access.service';
     HttpModule,
     ConfigModule,
   ],
-  providers: [OrderStatusV2Service, OrderAccessService],
-  exports: [OrderStatusV2Service, OrderAccessService],
+  providers: [OrderStatusV2Service, OrderAccessService, BillDownloadService],
+  exports: [OrderStatusV2Service, OrderAccessService, BillDownloadService],
 })
 export class OrderStatusV2Module {}

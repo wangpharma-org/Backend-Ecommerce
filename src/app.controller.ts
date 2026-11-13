@@ -21,6 +21,7 @@ import {
   Query,
   Req,
   Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -103,6 +104,7 @@ import { BehaviorTrackingService } from './behavior-tracking/behavior-tracking.s
 import { TrackOrderService } from './track-order/track-order.service';
 import { OrderStatusV2Service } from './order-status-v2/order-status-v2.service';
 import { OrderAccessService } from './order-status-v2/order-access.service';
+import { BillDownloadService } from './order-status-v2/bill-download.service';
 import { NotifyRtService } from './notifyapp/notifyapp.service';
 import { CompanyDayAnalyticService } from './company-day-analytic/company-day-analytic.service';
 import { ActivityService } from './activity/activity.service';
@@ -182,6 +184,7 @@ export class AppController {
     private readonly trackOrderService: TrackOrderService,
     private readonly orderStatusV2Service: OrderStatusV2Service,
     private readonly orderAccess: OrderAccessService,
+    private readonly billDownloadService: BillDownloadService,
     private readonly companyDayAnalyticService: CompanyDayAnalyticService,
     private readonly activityService: ActivityService,
     private readonly searchCartTrackingService: SearchCartTrackingService,
@@ -1102,6 +1105,25 @@ export class AppController {
       });
     }
     return result;
+  }
+
+  // ECWC-767: ดาวน์โหลดบิล PDF (format เดียวกับบิลที่พิมพ์) จากระบบบิล — เฉพาะบิลของร้านที่ token มีสิทธิ์
+  @UseGuards(JwtAuthGuard)
+  @Get('/ecom/v2/order-bill-pdf/:memCode/:shRunning')
+  async downloadOrderBillPdf(
+    @Param('memCode') memCode: string,
+    @Param('shRunning') shRunning: string,
+    @Req() req: Request & { user: JwtPayload },
+  ): Promise<StreamableFile> {
+    await this.orderAccess.assertShop(req.user, memCode);
+    const { fileName, data } = await this.billDownloadService.downloadPdf(
+      memCode,
+      shRunning,
+    );
+    return new StreamableFile(data, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   // ECWC-398/406: เหมือน all-order-member เดิม แต่รองรับ filter ช่วงวันที่ — endpoint ใหม่ ไม่แก้ของเดิม

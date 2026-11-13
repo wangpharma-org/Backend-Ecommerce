@@ -97,6 +97,7 @@ const createService = (calls: { mem: string; runs: string[] }[]) =>
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     http as never,
     { get: () => undefined } as unknown as ConfigService,
   );

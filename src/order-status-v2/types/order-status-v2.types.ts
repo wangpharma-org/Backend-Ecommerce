@@ -30,6 +30,8 @@ export interface EcomOrderListV2Order {
   Newdetails: EcomOrderListV2Detail[];
   status: EcomOrderTimelineStatus;
   status_label: string;
+  // ECWC-767: เลขบิลจากระบบบิล (ดาวน์โหลด PDF ได้) · null = ยังไม่มีบิล
+  bill_invoice_no?: string | null;
 }
 
 export interface EcomOrderListV2Res {
@@ -221,6 +223,8 @@ export interface ShopStatusOrder {
   item_count: number;
   out_of_stock_count: number;
   lines: ShopStatusLine[];
+  // ECWC-767: เลขบิลจากระบบบิล (ดาวน์โหลด PDF ได้) · null = ยังไม่มีบิล · ไม่มี field = บิลจาก endpoint ระบบขาย
+  bill_invoice_no?: string | null;
 }
 
 export interface ShopStatusTableRes {

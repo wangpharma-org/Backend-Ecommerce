@@ -16,6 +16,7 @@ import { UserEntity } from '../users/users.entity';
 import { ProductsService } from '../products/products.service';
 import { StoreVisibilityService } from '../store-visibility/store-visibility.service';
 import { DhlTrackingService } from '../dhl-tracking/dhl-tracking.service';
+import { BillDownloadService } from './bill-download.service';
 import {
   ECOM_ORDER_TIMELINE_LABEL,
   EcomLastDeliveredStore,
@@ -44,7 +45,10 @@ import {
   LegacyTimelineStep,
 } from './types/legacy-order-api.types';
 
-const PICKING_ORDERS_MONTHS_BACK = 3;
+// ECWC-767: บิลฝั่ง order-picking (legacy) ย้อนหลัง 6 เดือน
+const PICKING_ORDERS_MONTHS_BACK = 6;
+// เพดานช่วงวันที่ของหน้าตาราง — 6 เดือนปฏิทินยาวได้ถึง 184 วัน
+const SHOP_STATUS_MAX_DAYS = 186;
 // ECWC-600 (PDPA): ร้านที่ไม่ยินยอมให้คนอื่นเห็นชื่อ ก็ไม่ควรถูกซูมหาจากหมุด checkpoint ได้
 // ปัดพิกัดเหลือ 3 ตำแหน่ง ≈ 110 เมตร — ต้องปัดฝั่ง server เพราะถ้าปัดที่ frontend
 // พิกัดเต็มยังติดไปใน response อยู่ดี
@@ -191,6 +195,7 @@ export class OrderStatusV2Service {
     private readonly productService: ProductsService,
     private readonly storeVisibilityService: StoreVisibilityService,
     private readonly dhlTrackingService: DhlTrackingService,
+    private readonly billDownloadService: BillDownloadService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
@@ -246,10 +251,10 @@ export class OrderStatusV2Service {
         this.fetchPickingRunnings(mem_code, PICKING_ORDERS_MONTHS_BACK),
       ]);
 
-      // pickingEntries มี status ติดมาด้วยอยู่แล้ว (ย้อนหลังได้ไม่เกิน 3 เดือน — ข้อจำกัดเดียวกับที่
+      // pickingEntries มี status ติดมาด้วยอยู่แล้ว (ย้อนหลังได้ไม่เกิน 6 เดือน — ข้อจำกัดเดียวกับที่
       // หน้า order-list บอกผู้ใช้ไว้อยู่แล้ว) ใช้ตรงนี้แทนการยิง fetchPickingStatusBatch แยกอีกรอบ
       // ให้บิล ecom-sourced ที่อยู่ในช่วงนี้ — ลด round-trip ไป order-picking-service ผ่าน ngrok
-      // ที่ช้า (~3s/ครั้ง) เหลือแค่ตอนบิลเก่ากว่า 3 เดือนที่ pickingEntries ไม่ครอบคลุมเท่านั้น
+      // ที่ช้า (~3s/ครั้ง) เหลือแค่ตอนบิลเก่ากว่า 6 เดือนที่ pickingEntries ไม่ครอบคลุมเท่านั้น
       const pickingStatusByRunning = new Map(
         pickingEntries.map((e) => [e.sh_running, e.status]),
       );
@@ -313,16 +318,21 @@ export class OrderStatusV2Service {
         .map((e) => e.running);
       const allRunningsForPage = pageEntries.map((e) => e.running);
 
-      const [ecomResults, pickingResults, deliveryBatch] = await Promise.all([
-        this.buildEcomOrderCards(
-          ecomRunningsForPage,
-          mem_code,
-          sortOrder,
-          pickingStatusByRunning,
-        ),
-        this.buildPickingOrderCards(pickingRunningsForPage, mem_code),
-        this.fetchDeliveryStatusBatch(allRunningsForPage, mem_code),
-      ]);
+      const [ecomResults, pickingResults, deliveryBatch, issuedInvoices] =
+        await Promise.all([
+          this.buildEcomOrderCards(
+            ecomRunningsForPage,
+            mem_code,
+            sortOrder,
+            pickingStatusByRunning,
+          ),
+          this.buildPickingOrderCards(pickingRunningsForPage, mem_code),
+          this.fetchDeliveryStatusBatch(allRunningsForPage, mem_code),
+          this.billDownloadService.findIssuedInvoices(
+            mem_code,
+            allRunningsForPage,
+          ),
+        ]);
 
       const resultByRunning = new Map<
         string,
@@ -349,9 +359,10 @@ export class OrderStatusV2Service {
             ...r.card,
             status,
             status_label: ECOM_ORDER_TIMELINE_LABEL[status],
+            bill_invoice_no: issuedInvoices.get(entry.running) ?? null,
           };
         })
-        .filter((c): c is EcomOrderListV2Order => c !== null);
+        .filter((c): c is NonNullable<typeof c> => c !== null);
 
       return {
         data,
@@ -372,7 +383,7 @@ export class OrderStatusV2Service {
   //
   // knownPickingStatus: มาจาก fetchPickingRunnings ที่ getOrderList ดึงมาแล้ว (ครอบคลุมไม่เกิน 3
   // เดือนย้อนหลัง) ใช้ตรงนี้แทนการยิง fetchPickingStatusBatch ซ้ำ — ยิงเฉพาะ soh_running ที่ไม่อยู่
-  // ใน map นี้ (บิลเก่ากว่า 3 เดือน) เท่านั้น กัน round-trip ไป order-picking-service โดยไม่จำเป็น
+  // ใน map นี้ (บิลเก่ากว่า 6 เดือน) เท่านั้น กัน round-trip ไป order-picking-service โดยไม่จำเป็น
   private async buildEcomOrderCards(
     soh_runnings: string[],
     mem_code: string,
@@ -1394,8 +1405,17 @@ export class OrderStatusV2Service {
     const data = phpOrders.map((o) => this.mapPhpOrderToV2(o));
     const total = data.length;
     const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    const pageData = data.slice((page - 1) * pageSize, page * pageSize);
+    // ECWC-767: ปุ่มดาวน์โหลดบิลต้องใช้ได้ไม่ว่า flag จะเปิดหรือปิด
+    const issuedInvoices = await this.billDownloadService.findIssuedInvoices(
+      mem_code,
+      pageData.map((o) => o.soh_running),
+    );
     return {
-      data: data.slice((page - 1) * pageSize, page * pageSize),
+      data: pageData.map((o) => ({
+        ...o,
+        bill_invoice_no: issuedInvoices.get(o.soh_running) ?? null,
+      })),
       total,
       page,
       pageSize,
@@ -1633,9 +1653,9 @@ export class OrderStatusV2Service {
             .toISOString()
             .slice(0, 10);
     if (from > to) from = to;
-    // เพดานช่วงวันที่ 92 วัน — order-picking-service เก็บย้อนหลังได้จำกัด และกัน query ระเบิด
+    // เพดานช่วงวันที่ ≈ 6 เดือน — order-picking-service เก็บย้อนหลังได้จำกัด และกัน query ระเบิด
     const minFrom = new Date(
-      new Date(`${to}T00:00:00Z`).getTime() - 92 * 86400_000,
+      new Date(`${to}T00:00:00Z`).getTime() - SHOP_STATUS_MAX_DAYS * 86400_000,
     )
       .toISOString()
       .slice(0, 10);
@@ -1651,7 +1671,8 @@ export class OrderStatusV2Service {
       (new Date(`${bkkToday}T00:00:00Z`).getTime() -
         new Date(`${from}T00:00:00Z`).getTime()) /
       86400_000;
-    const monthsBack = Math.min(6, Math.max(1, Math.ceil(daysBack / 30) + 1));
+    // 7 เดือนกันช่วง 186 วันที่คร่อมเดือนเกิน 6 เดือนปฏิทินไปนิด
+    const monthsBack = Math.min(7, Math.max(1, Math.ceil(daysBack / 30) + 1));
 
     let partial = false;
     const [ecomHeads, pickingEntries] = await Promise.all([
@@ -1708,11 +1729,10 @@ export class OrderStatusV2Service {
       };
     }
 
-    const built = await this.buildShopStatusOrders(
-      mem_code,
-      entries,
-      pickingStatus,
-    );
+    const [built, issuedInvoices] = await Promise.all([
+      this.buildShopStatusOrders(mem_code, entries, pickingStatus),
+      this.billDownloadService.findIssuedInvoices(mem_code, runnings),
+    ]);
     partial = partial || built.partial;
 
     return {
@@ -1722,7 +1742,10 @@ export class OrderStatusV2Service {
       truncated,
       partial,
       labels: SHOP_STATUS_LABEL,
-      orders: built.orders,
+      orders: built.orders.map((order) => ({
+        ...order,
+        bill_invoice_no: issuedInvoices.get(order.soh_running) ?? null,
+      })),
     };
   }
 
@@ -1890,7 +1913,8 @@ export class OrderStatusV2Service {
   ): Promise<ShopStatusDetailsRes> {
     const byMem = new Map<string, string[]>();
     for (const it of (Array.isArray(items) ? items : []).slice(0, 200)) {
-      const run = typeof it?.sh_running === 'string' ? it.sh_running.trim() : '';
+      const run =
+        typeof it?.sh_running === 'string' ? it.sh_running.trim() : '';
       const mem = typeof it?.mem_code === 'string' ? it.mem_code.trim() : '';
       if (!run || !mem || run.length > 40 || mem.length > 30) continue;
       const list = byMem.get(mem) ?? [];

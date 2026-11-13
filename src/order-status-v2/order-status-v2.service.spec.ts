@@ -12,6 +12,7 @@ const createService = () =>
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     { get: () => undefined } as unknown as ConfigService,
   );
 
