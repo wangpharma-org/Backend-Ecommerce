@@ -69,6 +69,7 @@ import { CustomerPromotionsModule } from './customer-promotions/customer-promoti
 
 import { CheckoutPreviewModule } from './checkout-preview/checkout-preview.module';
 import { InternalCustomerCartModule } from './internal-customer-cart/internal-customer-cart.module';
+import { StockCallbackModule } from './stock-callback/stock-callback.module';
 import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.module';
 @Module({
   imports: [
@@ -180,6 +181,7 @@ import { SalesCartSessionModule } from './sales-cart-session/sales-cart-session.
     StickerLabelModule,
     CheckoutPreviewModule,
     InternalCustomerCartModule,
+    StockCallbackModule,
     SalesCartSessionModule,
   ],
   controllers: [AppController],
