@@ -22,6 +22,8 @@ const MESSAGE_KEY = 'เกินกว่าสินค้าคงเหล�
 const trimSlash = (url: string) => url.replace(/\/+$/, '');
 const BASE_URL = trimSlash(process.env.BASE_URL ?? 'http://localhost:3021/api');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
+/** ไม่บังคับ — ตั้งแล้วจะเทส internal API ที่ระบบขายใช้ (รายการ/เปลี่ยนสถานะคำขอติดต่อกลับ) */
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? '';
 const USER_TOKEN = process.env.USER_TOKEN ?? '';
 const PRO_CODE = process.env.PRO_CODE ?? '';
 const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE_URL);
@@ -43,6 +45,15 @@ const client = (token: string) =>
   });
 const shop = client(USER_TOKEN);
 const admin = client(ADMIN_TOKEN);
+const internal = axios.create({
+  baseURL: BASE_URL,
+  validateStatus: () => true,
+  timeout: 30000,
+  headers: { 'x-internal-token': INTERNAL_TOKEN },
+});
+const callbackIds = new Set<number>();
+const requestCallback = (body: Record<string, unknown>) =>
+  shop.post('/ecom/cart/stock-callback-request', body);
 
 const memCode = (() => {
   try {
@@ -229,6 +240,121 @@ async function main() {
     `HTTP ${mixed.status} · ในตะกร้า ${await cartSmallestUnits()}`,
   );
 
+  // ── ปุ่ม "แจ้งฝ่ายขายให้ติดต่อกลับ" (ตะกร้าตอนนี้พอดีสต็อก)
+  const cb1 = await requestCallback({
+    pro_code: PRO_CODE,
+    pro_unit: small.name,
+    amount: 3,
+  });
+  const cbId = Number(cb1.data?.id);
+  if (cbId) callbackIds.add(cbId);
+  check(
+    'แจ้งฝ่ายขายให้ติดต่อกลับ → 201 สร้างคำขอ',
+    cb1.status === 201 && cbId > 0 && cb1.data?.status === 'open',
+    `HTTP ${cb1.status} · ${JSON.stringify(cb1.data)}`,
+  );
+  const cb2 = await requestCallback({
+    pro_code: PRO_CODE,
+    pro_unit: big.name,
+    amount: 2,
+  });
+  check(
+    'กดซ้ำ (สินค้าเดิมที่ยังเปิดอยู่) → แถวเดิม ไม่สร้างใหม่ + ไม่นับเพิ่มภายใน 60 วิ',
+    cb2.status === 201 &&
+      Number(cb2.data?.id) === cbId &&
+      cb2.data?.repeated === true,
+    `HTTP ${cb2.status} · ${JSON.stringify(cb2.data)}`,
+  );
+  const badCb = await requestCallback({ pro_code: PRO_CODE, amount: '2a' });
+  check(
+    'แจ้งฝ่ายขาย: จำนวนไม่ใช่ตัวเลข → 400',
+    badCb.status === 400,
+    `HTTP ${badCb.status} · ${msg(badCb)}`,
+  );
+  const badCbUnit = await requestCallback({
+    pro_code: PRO_CODE,
+    pro_unit: 'หน่วยที่ไม่มีจริง E2E',
+    amount: 1,
+  });
+  check(
+    'แจ้งฝ่ายขาย: หน่วยไม่ถูกต้อง → 400',
+    badCbUnit.status === 400,
+    `HTTP ${badCbUnit.status} · ${msg(badCbUnit)}`,
+  );
+  const noToken = await axios.post(
+    `${BASE_URL}/ecom/cart/stock-callback-request`,
+    { pro_code: PRO_CODE, amount: 1 },
+    { validateStatus: () => true },
+  );
+  check(
+    'แจ้งฝ่ายขาย: ไม่มี token → ถูกปฏิเสธ',
+    noToken.status === 401 || noToken.status === 403,
+    `HTTP ${noToken.status}`,
+  );
+
+  const forbidden = await axios.get(
+    `${BASE_URL}/ecom/internal/stock-callback-requests`,
+    { validateStatus: () => true, headers: { 'x-internal-token': 'wrong' } },
+  );
+  check(
+    'internal รายการ: token ผิด → 403',
+    forbidden.status === 403,
+    `HTTP ${forbidden.status}`,
+  );
+  if (INTERNAL_TOKEN) {
+    const list = await internal.get('/ecom/internal/stock-callback-requests', {
+      params: { status: 'open', q: PRO_CODE },
+    });
+    const row = ((list.data?.items ?? []) as any[]).find((r) => r.id === cbId);
+    check(
+      'internal รายการ: เห็นคำขอ + ร้าน/สินค้า/จำนวนที่ต้องการ (หน่วยเล็กสุด) + สต็อก',
+      list.status === 200 &&
+        row?.mem_code === memCode &&
+        row?.pro_code === PRO_CODE &&
+        row?.requested_smallest === stock + 2 * big.ratio &&
+        row?.stock_smallest === stock &&
+        row?.request_count === 1,
+      `HTTP ${list.status} · ${JSON.stringify(row ?? {}).slice(0, 300)}`,
+    );
+    const done = await internal.patch(
+      `/ecom/internal/stock-callback-requests/${cbId}`,
+      {
+        status: 'contacted',
+        emp_code: 'E2E',
+        emp_name: `E2E ${E2E_ENV}`,
+        note: `E2E ${E2E_ENV} โทรแล้ว`,
+      },
+    );
+    check(
+      'internal เปลี่ยนสถานะ → ติดต่อแล้ว + บันทึกผู้ดำเนินการ/เวลา',
+      done.status === 200 &&
+        done.data?.status === 'contacted' &&
+        done.data?.handled_by_emp === 'E2E' &&
+        Boolean(done.data?.handled_at),
+      `HTTP ${done.status} · ${done.data?.status} · ${done.data?.handled_by_name}`,
+    );
+    const badStatus = await internal.patch(
+      `/ecom/internal/stock-callback-requests/${cbId}`,
+      { status: 'toString', emp_code: 'E2E' },
+    );
+    check(
+      'internal เปลี่ยนสถานะ: ค่าไม่รู้จัก → 400',
+      badStatus.status === 400,
+      `HTTP ${badStatus.status}`,
+    );
+    const cb3 = await requestCallback({
+      pro_code: PRO_CODE,
+      pro_unit: small.name,
+      amount: 1,
+    });
+    if (Number(cb3.data?.id)) callbackIds.add(Number(cb3.data.id));
+    check(
+      'หลังติดต่อแล้ว ลูกค้ากดอีก → เปิดคำขอใหม่ (แถวใหม่)',
+      cb3.status === 201 && Number(cb3.data?.id) !== cbId,
+      `HTTP ${cb3.status} · id=${cb3.data?.id}`,
+    );
+  }
+
   // ── validation เดิมยังทำงาน (ตัวเลขผิด/หน่วยผิดไม่ถูกกลืนเป็นข้อความสต็อก)
   const badUnit = await shop.post('/ecom/product-add-cart', {
     mem_code: memCode,
@@ -245,6 +371,16 @@ async function main() {
 
 async function restore() {
   await removeFromCart();
+  if (INTERNAL_TOKEN) {
+    for (const id of callbackIds) {
+      await internal.patch(`/ecom/internal/stock-callback-requests/${id}`, {
+        status: 'closed',
+        emp_code: 'E2E',
+        emp_name: `E2E ${E2E_ENV}`,
+        note: `E2E ${E2E_ENV} cleanup`,
+      });
+    }
+  }
   if (originalFlag !== null) {
     const r = await setFlag(originalFlag);
     check(
@@ -288,7 +424,7 @@ function writeReport(failure?: string): boolean {
     `- **Base URL:** ${BASE_URL}`,
     `- **Commit ที่ทดสอบ:** ${commit}`,
     `- **เวลา (UTC):** ${new Date().toISOString()}`,
-    `- **ข้อมูลทดสอบ:** สินค้า \`${PRO_CODE}\` (stock ${stock}) · ร้าน \`${memCode || '-'}\` · flag \`${FLAG}\` คืนค่าเดิม (${String(originalFlag)}) เมื่อจบ`,
+    `- **ข้อมูลทดสอบ:** คำขอติดต่อกลับ #${[...callbackIds].join(', #') || '-'} (ปิดเมื่อจบ) · สินค้า \`${PRO_CODE}\` (stock ${stock}) · ร้าน \`${memCode || '-'}\` · flag \`${FLAG}\` คืนค่าเดิม (${String(originalFlag)}) เมื่อจบ`,
     `- **ผลรวม:** ${ok ? 'ผ่าน' : 'ไม่ผ่าน'} — ${steps.length - failed}/${steps.length} ขั้นผ่าน`,
     ...(E2E_ENV === 'local'
       ? [
