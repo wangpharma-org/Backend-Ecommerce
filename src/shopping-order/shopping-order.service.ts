@@ -29,6 +29,7 @@ import { ClientKafka } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import { lineDiscountPercent } from 'src/promotion/promo-line-value';
 import {
+  applyVisibleProductFilter,
   HIDDEN_PRODUCT_MESSAGE,
   isHiddenProduct,
 } from 'src/products/product-visibility.util';
@@ -43,6 +44,8 @@ interface CountSale {
   pro_code: string;
   order_count: number;
 }
+
+const RECENT_ORDERED_PRODUCT_LIMIT = 50;
 
 interface EcommerceOrderCreatedEvent {
   sh_running: string;
@@ -1076,7 +1079,38 @@ export class ShoppingOrderService {
   async getLast6OrdersByMemberCode(memCode: string): Promise<any[]> {
     try {
       const isL16 = await this.isL16Member(memCode);
-      const query = this.shoppingOrderRepo
+      const latestQuery = this.shoppingOrderRepo
+        .createQueryBuilder('order')
+        .innerJoin('order.orderHeader', 'header')
+        .innerJoin('order.product', 'product')
+        .select('MAX(order.spo_id)', 'spo_id')
+        .addSelect('MAX(header.soh_datetime)', 'last_ordered_at')
+        .where('header.mem_code = :memCode', { memCode })
+        // ของแถมมี 3 แบบ: is_reward, happy hour (ราคา 0), listFree (ราคา NULL ไม่มี flag)
+        .andWhere('order.is_reward = false')
+        .andWhere('order.spo_total_decimal > 0')
+        .andWhere(
+          '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)',
+        );
+      applyVisibleProductFilter(latestQuery, 'product');
+
+      if (isL16) {
+        latestQuery.andWhere(
+          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
+        );
+      }
+
+      // หา 1 แถวล่าสุดต่อรหัสก่อน ไม่งั้นร้านที่สั่งตัวเดิมซ้ำจะได้ไม่ครบจำนวน
+      const latest = await latestQuery
+        .groupBy('product.pro_code')
+        .orderBy('last_ordered_at', 'DESC')
+        .limit(RECENT_ORDERED_PRODUCT_LIMIT)
+        .getRawMany<{ spo_id: number; last_ordered_at: Date }>();
+
+      const spoIds = latest.map((row) => Number(row.spo_id));
+      if (spoIds.length === 0) return [];
+
+      const orders = await this.shoppingOrderRepo
         .createQueryBuilder('order')
         .leftJoin('order.product', 'product')
         .leftJoinAndSelect('product.units', 'units')
@@ -1089,20 +1123,7 @@ export class ShoppingOrderService {
         .leftJoinAndSelect('product.flashsale', 'fsp')
         .leftJoinAndSelect('fsp.flashsale', 'fs')
         .leftJoin('order.orderHeader', 'header')
-        .where('header.mem_code = :memCode', { memCode })
-        .andWhere(
-          '(product.pro_priceA != 0 OR product.pro_priceB != 0 OR product.pro_priceC != 0)',
-        );
-
-      if (isL16) {
-        query.andWhere(
-          '(product.pro_l16_only = 0 OR product.pro_l16_only IS NULL)',
-        );
-      }
-
-      const orders = await query
-        .orderBy('header.soh_datetime', 'DESC')
-        .take(20)
+        .where('order.spo_id IN (:...spoIds)', { spoIds })
         .select([
           'order.spo_id',
           'product.pro_code',
@@ -1137,16 +1158,11 @@ export class ShoppingOrderService {
         ])
         .getMany();
 
-      const uniqueMap = new Map<string, ShoppingOrderEntity>();
-      for (const order of orders) {
-        const code = order.product?.pro_code;
-        if (code && !uniqueMap.has(code)) {
-          uniqueMap.set(code, order);
-        }
-      }
+      const orderById = new Map(orders.map((order) => [order.spo_id, order]));
 
-      return Array.from(uniqueMap.values())
-        .slice(0, 6)
+      return spoIds
+        .map((id) => orderById.get(id))
+        .filter((order): order is ShoppingOrderEntity => !!order)
         .map((order) => {
           const product = order.product;
           if (!product) return order;
@@ -1190,7 +1206,7 @@ export class ShoppingOrderService {
               inCarts: resolvedCarts,
             },
           };
-        }); //ส่งไปแค่ 6 อัน
+        });
     } catch (error) {
       this.logger.error(error);
       throw new Error('Failed to fetch order data.');
