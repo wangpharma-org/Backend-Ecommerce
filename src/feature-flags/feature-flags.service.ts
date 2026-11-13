@@ -28,6 +28,8 @@ const DEFAULT_DISABLED_FLAGS = new Set([
   'policy_doc',
   // อีเวนต์กิจกรรมกลาง (activity_event) — เปิดเมื่อ sale-backend รับ topic แล้ว
   'activity_tracking',
+  // ECWC-766: ห้ามใส่ตะกร้าเกินสต็อก — เปิดเมื่อหน้าบ้าน/แอปแสดงข้อความแล้ว
+  'cart_stock_limit',
 ]);
 
 @Injectable()

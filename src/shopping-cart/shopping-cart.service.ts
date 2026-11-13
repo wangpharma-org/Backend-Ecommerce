@@ -49,6 +49,12 @@ import { PreorderProductEntity } from 'src/preorder/preorder-product.entity';
 import { PreorderCampaignStatus } from 'src/preorder/preorder-campaign.entity';
 import { rethrowAsHttp } from 'src/common/http-error.util';
 import { selectCurrentLots } from 'src/lot/lot-display.util';
+import { FeatureFlagsService } from 'src/feature-flags/feature-flags.service';
+import {
+  CART_STOCK_LIMIT_FLAG,
+  CART_STOCK_LIMIT_MESSAGE,
+  exceedsStock,
+} from './cart-stock-limit';
 import { CartBasketEntity } from 'src/special-collection/cart-basket.entity';
 import {
   hashStickerOptions,
@@ -449,7 +455,44 @@ export class ShoppingCartService {
     private readonly preorderProductRepo: Repository<PreorderProductEntity>,
     @Optional()
     private readonly activityService?: ActivityService,
+    @Optional()
+    private readonly featureFlagsService?: FeatureFlagsService,
   ) {}
+
+  // ECWC-766: ห้ามเพิ่มจำนวนจนเกินสต็อก (นับทุกแถวที่ซื้อของสินค้านี้ในตะกร้า ไม่นับของแถม/รางวัล)
+  // flag cart_stock_limit ปิด หรือไม่มี FeatureFlagsService → ข้าม (behavior เดิม)
+  private async ensureWithinStock(
+    mem_code: string,
+    product: ProductEntity,
+    addAmount: number,
+    addUnitLevel: string,
+  ): Promise<void> {
+    if (!(Number(addAmount) > 0) || !this.featureFlagsService) return;
+    const enabled = await this.featureFlagsService.getFlag(
+      CART_STOCK_LIMIT_FLAG,
+    );
+    if (!enabled) return;
+    const rows = await this.shoppingCartRepo.find({
+      where: {
+        mem_code,
+        pro_code: product.pro_code,
+        hotdeal_free: false,
+        is_reward: false,
+      },
+      select: ['spc_id', 'spc_amount', 'spc_unit_enum'],
+    });
+    if (
+      exceedsStock({
+        rows,
+        units: product.units ?? [],
+        addAmount: Number(addAmount),
+        addUnitLevel,
+        stock: product.pro_stock,
+      })
+    ) {
+      throw new BadRequestException(CART_STOCK_LIMIT_MESSAGE);
+    }
+  }
 
   /** pro_code ที่กำลังเปิดจองล่วงหน้า (campaign เปิดและเริ่มแล้ว) ต้องสั่งผ่านหน้า Pre-order เท่านั้น ห้ามเข้าตะกร้าปกติ */
   private async getActivePreorderProCodes(
@@ -1442,6 +1485,16 @@ export class ShoppingCartService {
 
       const unitEnum = this.convertUnitNameToEnum(data.pro_unit, product);
       // const unitEnum = await this.convertUnitNameToEnum(data.pro_unit, product);
+
+      // สินค้าสั่งทำ (สติ๊กเกอร์) ผลิตตามสั่ง / พรีออเดอร์ที่จัดสรรแล้วได้สิทธิ์ไว้ก่อน → ไม่ผูกสต็อก
+      if (!data.customOptions && !data.isPreorderFulfillment) {
+        await this.ensureWithinStock(
+          data.mem_code,
+          product,
+          data.amount,
+          unitEnum,
+        );
+      }
 
       // แถวของกระเช้าโปร (basket_id) แยกจากสินค้าเดี่ยวเสมอ ห้ามรวมจำนวนเข้าไป
       // สินค้าสั่งทำ: รูปแบบเดียวกันรวมจำนวน รูปแบบต่างกันเป็นคนละแถว
