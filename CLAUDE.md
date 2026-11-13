@@ -72,6 +72,12 @@ e2e: `scripts/e2e/sticker-label.e2e.ts`
 เปิดใช้ด้วย feature flag `store_name_consent` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/store-visibility.md](docs/store-visibility.md)
 e2e: `scripts/e2e/store-visibility.e2e.ts`
 
+## ห้ามใส่ตะกร้าเกินสต็อก (ECWC-766)
+
+`addProductCart` รวมทุกแถวที่ซื้อของสินค้านั้นในตะกร้า (หน่วยเล็กสุด ไม่นับของแถม/รางวัล) + จำนวนที่เพิ่ม เทียบ `pro_stock` — เกินตอบ 400 ข้อความให้ติดต่อฝ่ายขาย / Line @wangpharma (ไม่บอกตัวเลข) · ลดจำนวนได้เสมอ · ไม่เช็คตอน submit-order
+เปิดใช้ด้วย feature flag `cart_stock_limit` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/cart-stock-limit.md](docs/cart-stock-limit.md)
+e2e: `scripts/e2e/cart-stock-limit.e2e.ts`
+
 ## งดแสดงสินค้าบนหน้าร้าน (WGDD-428)
 
 `product.pro_hidden` = 1 → ซ่อนจากลูกค้าทุกหน้า (list/search/ES/category/promotion/flashsale/hotdeal/recommend/favorite) + detail/get-one ตอบ 404 + add-cart 404 + submit-order 400 — ค่ามาจาก productservice `is_display` ผ่าน Kafka `product_update_from_easyacc` (แอดมินกดใน resellerwebsite) ห้ามแก้ตรงใน ecommerce
