@@ -75,6 +75,7 @@ e2e: `scripts/e2e/store-visibility.e2e.ts`
 ## ห้ามใส่ตะกร้าเกินสต็อก (ECWC-766)
 
 `addProductCart` รวมทุกแถวที่ซื้อของสินค้านั้นในตะกร้า (หน่วยเล็กสุด ไม่นับของแถม/รางวัล) + จำนวนที่เพิ่ม เทียบ `pro_stock` — เกินตอบ 400 ข้อความให้ติดต่อฝ่ายขาย / Line @wangpharma (ไม่บอกตัวเลข) · ลดจำนวนได้เสมอ · ไม่เช็คตอน submit-order
+ปุ่ม "แจ้งฝ่ายขายให้ติดต่อกลับ" → ตาราง `stock_callback_request` ([src/stock-callback/](src/stock-callback/)) ระบบขายดึงผ่าน `/ecom/internal/stock-callback-requests`
 เปิดใช้ด้วย feature flag `cart_stock_limit` (migration สร้างไว้เป็นปิด) รายละเอียดใน [docs/cart-stock-limit.md](docs/cart-stock-limit.md)
 e2e: `scripts/e2e/cart-stock-limit.e2e.ts`
 
