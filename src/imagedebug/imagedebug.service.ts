@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Imagedebug } from './imagedebug.entity';
 import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
@@ -59,6 +59,46 @@ export class ImagedebugService {
       // ภาพ debug เป็นแค่ side-effect เสริม ไม่ควรกระทบ response หลัก (เจอจริง: pro_code
       // สินค้าที่เลิกขายไปแล้วไม่มีใน table product ทำให้ FK constraint fail)
       return 'Error occurred while upserting image debug';
+    }
+  }
+
+  async UpsertImgMany(
+    items: { pro_code: string; imageUrl?: string }[],
+  ): Promise<void> {
+    if (items.length === 0) return;
+    try {
+      const existing = await this.imagedebugRepository.find({
+        where: {
+          relatedImage: { pro_code: In(items.map((item) => item.pro_code)) },
+        },
+        relations: { relatedImage: true },
+        select: { id: true, relatedImage: { pro_code: true } },
+      });
+      const existingCodes = new Set(
+        existing.map((row) => row.relatedImage.pro_code),
+      );
+      const missing = items.filter((item) => !existingCodes.has(item.pro_code));
+      if (missing.length === 0) return;
+
+      // orIgnore กัน request ซ้อนกัน insert รหัสเดียวกันชน unique
+      await this.imagedebugRepository
+        .createQueryBuilder()
+        .insert()
+        .values(
+          missing.map((item) => ({
+            relatedImage: { pro_code: item.pro_code },
+            imageUrl: item.imageUrl || 'No Image',
+          })),
+        )
+        .orIgnore()
+        .execute();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        'Error occurred while bulk upserting image debug:',
+        errorMessage,
+      );
     }
   }
 
