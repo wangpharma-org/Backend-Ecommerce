@@ -1058,12 +1058,12 @@ export class AppController {
   ): Promise<ShoppingOrderEntity[]> {
     const result =
       await this.shoppingOrderService.getLast6OrdersByMemberCode(memCode);
-    for (const resultItem of result) {
-      await this.imagedebugService.UpsercetImg({
+    await this.imagedebugService.UpsertImgMany(
+      result.map((resultItem) => ({
         pro_code: resultItem.product.pro_code,
         imageUrl: resultItem.product.pro_imgmain,
-      });
-    }
+      })),
+    );
     return result;
   }
 
