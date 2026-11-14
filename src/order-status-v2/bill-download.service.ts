@@ -9,17 +9,13 @@ import { ConfigService } from '@nestjs/config';
 import { isAxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
 
-interface IssuedBillRef {
-  shRunning: string;
-  invoiceNo: string;
-}
-
-// ECWC-767: ดาวน์โหลดบิล PDF จาก bill-management-service (บิลทั้ง ecommerce และ legacy ที่ผ่าน QC แล้ว)
+// ECWC-767: มีบิลหรือไม่ดูจาก order picking (QC ผ่านแล้ว) · PDF ให้ bill-management-service วาดจากข้อมูล order picking ตอนกด
 @Injectable()
 export class BillDownloadService {
   private readonly logger = new Logger(BillDownloadService.name);
   private readonly billApiUrl: string;
   private readonly billApiKey: string;
+  private readonly orderPickingUrl: string;
 
   constructor(
     private readonly httpService: HttpService,
@@ -30,28 +26,30 @@ export class BillDownloadService {
       'https://warehouse.wangpharma.com/api/billing'
     ).replace(/\/$/, '');
     this.billApiKey = this.configService.get<string>('BILL_API_KEY') ?? '';
+    this.orderPickingUrl = (
+      this.configService.get<string>('ORDER_PICKING_API_URL') ??
+      'https://warehouse.wangpharma.com'
+    ).replace(/\/$/, '');
   }
 
-  // sh_running → เลขบิล เฉพาะใบที่ออกบิลแล้ว · เรียกระบบบิลไม่ได้ = ถือว่ายังไม่มีบิล ไม่ให้หน้าสถานะพังตาม
+  // sh_running → เลขบิล เฉพาะใบที่ QC ผ่านแล้ว · เรียก order picking ไม่ได้ = ถือว่ายังไม่มีบิล ไม่ให้หน้าสถานะพังตาม
   async findIssuedInvoices(
     memCode: string,
     shRunnings: string[],
   ): Promise<Map<string, string>> {
-    if (shRunnings.length === 0 || !this.billApiKey) return new Map();
+    if (shRunnings.length === 0) return new Map();
     try {
       const response = await firstValueFrom(
-        this.httpService.post<IssuedBillRef[]>(
-          `${this.billApiUrl}/bills/issued-lookup`,
-          { memCode, shRunnings },
-          { headers: { 'x-api-key': this.billApiKey }, timeout: 5000 },
+        this.httpService.post<Record<string, string>>(
+          `${this.orderPickingUrl}/api/ecom/bill/ready-batch`,
+          { mem_code: memCode, sh_running: shRunnings },
+          { timeout: 5000 },
         ),
       );
-      return new Map(
-        response.data.map((ref) => [ref.shRunning, ref.invoiceNo]),
-      );
+      return new Map(Object.entries(response.data ?? {}));
     } catch (error: unknown) {
       this.logger.error(
-        `Error lookup issued bills ${memCode}: ${error instanceof Error ? error.message : String(error)}`,
+        `Error lookup bill-ready runnings ${memCode}: ${error instanceof Error ? error.message : String(error)}`,
       );
       return new Map();
     }
